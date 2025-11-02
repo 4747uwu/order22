@@ -44,15 +44,15 @@ jobs:
           fi
 
           # Create and navigate to project directory
-          mkdir -p /opt/medical-project
-          cd /opt/medical-project
+          mkdir -p /opt/order22
+          cd /opt/order22
           
           # Clean up and get fresh code
-          rm -rf healthCare
+          rm -rf order22
           git clone https://github.com/4747uwu/order22.git
           
           # Navigate to the MedicalProject subdirectory
-          cd healthCare
+          cd order22
           
           # ✅ FIXED: Create production environment file with LOCAL MongoDB
           cat > .env << 'EOF'
