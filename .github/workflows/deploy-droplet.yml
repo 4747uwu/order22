@@ -48,7 +48,7 @@ jobs:
           cd /opt/medical-project
           
           # Clean up and get fresh code
-          rm -rf healthCare
+          rm -rf order22
           git clone https://github.com/4747uwu/order22.git
           
           # Navigate to the MedicalProject subdirectory
