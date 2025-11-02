@@ -3,9 +3,11 @@ import axios from 'axios';
 import sessionManager from '../services/sessionManager';
 
 // API URL configuration
-const API_URL = import.meta.env.VITE_BACKEND_URL && import.meta.env.VITE_BACKEND_URL !== ''
-  ? `${import.meta.env.VITE_BACKEND_URL}/api`
-  : 'http://localhost:5000/api';
+// const API_URL = import.meta.env.VITE_BACKEND_URL && import.meta.env.VITE_BACKEND_URL !== ''
+//   ? `${import.meta.env.VITE_BACKEND_URL}/api`
+//   : 'http://localhost:5000/api';
+
+const API_URL = '/api';
 
 console.log('🔍 API_URL:', API_URL);
 
