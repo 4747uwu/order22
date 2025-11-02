@@ -1,0 +1,473 @@
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useAuth } from '../../hooks/useAuth';
+import Navbar from '../../components/common/Navbar';
+import Search from '../../components/common/Search/Search';
+import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
+import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
+import api from '../../services/api';
+import { RefreshCw, UserCheck, Users2, BarChart3 } from 'lucide-react';
+import toast from 'react-hot-toast';
+import { formatStudiesForWorklist } from '../../utils/studyFormatter';
+
+const AssignerDashboard = () => {
+  const { currentUser, currentOrganizationContext } = useAuth();
+  
+  // State management
+  const [studies, setStudies] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchFilters, setSearchFilters] = useState({});
+  const [currentView, setCurrentView] = useState('all');
+  const [selectedStudies, setSelectedStudies] = useState([]);
+  const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
+  const [bulkAssignModal, setBulkAssignModal] = useState({ show: false });
+  const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
+  const [analytics, setAnalytics] = useState(null);
+
+  // ✅ ADD: API VALUES STATE (separate from local study counts)
+  const [apiValues, setApiValues] = useState({
+    total: 0,
+    pending: 0,
+    inprogress: 0,
+    completed: 0
+  });
+
+  const intervalRef = useRef(null);
+
+  // ✅ REMOVE: Local statusCounts calculation - use API values instead
+  // const statusCounts = useMemo(() => { ... }); // DELETE THIS
+
+  // ✅ NEW: Use API values for tab counts (always constant)
+  const tabCounts = useMemo(() => ({
+    all: apiValues.total,
+    pending: apiValues.pending,
+    inprogress: apiValues.inprogress,
+    completed: apiValues.completed
+  }), [apiValues]);
+
+  // Column configuration (same as before)
+  const getDefaultColumnConfig = () => ({
+    checkbox: { visible: true, order: 1, label: 'Select' },
+    workflowStatus: { visible: true, order: 2, label: 'Status' },
+    patientId: { visible: true, order: 3, label: 'Patient ID' },
+    patientName: { visible: true, order: 4, label: 'Patient Name' },
+    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
+    studyDescription: { visible: true, order: 6, label: 'Description' },
+    seriesCount: { visible: true, order: 7, label: 'Series' },
+    modality: { visible: true, order: 8, label: 'Modality' },
+    location: { visible: true, order: 9, label: 'Location' },
+    studyDate: { visible: true, order: 10, label: 'Study Date' },
+    uploadDate: { visible: false, order: 11, label: 'Upload Date' },
+    reportedDate: { visible: true, order: 12, label: 'Reported Date' },
+    reportedBy: { visible: false, order: 13, label: 'Reported By' },
+    accession: { visible: false, order: 14, label: 'Accession' },
+    seenBy: { visible: false, order: 15, label: 'Seen By' },
+    actions: { visible: true, order: 16, label: 'Actions' },
+    assignedDoctor: { visible: true, order: 17, label: 'Assignment' }
+  });
+
+  const [columnConfig, setColumnConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('assignerWorklistColumnConfig');
+      if (saved) {
+        const parsedConfig = JSON.parse(saved);
+        return { ...getDefaultColumnConfig(), ...parsedConfig };
+      }
+    } catch (error) {
+      console.warn('Error loading assignor column config:', error);
+    }
+    return getDefaultColumnConfig();
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('assignerWorklistColumnConfig', JSON.stringify(columnConfig));
+    } catch (error) {
+      console.warn('Error saving assignor column config:', error);
+    }
+  }, [columnConfig]);
+
+  // API endpoints
+  const getApiEndpoint = useCallback(() => {
+    switch (currentView) {
+      case 'pending': return '/admin/studies/pending';
+      case 'inprogress': return '/admin/studies/inprogress';
+      case 'completed': return '/admin/studies/completed';
+      default: return '/admin/studies';
+    }
+  }, [currentView]);
+
+  const fetchStudies = useCallback(async (filters = {}) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const endpoint = getApiEndpoint();
+      const params = { ...filters, category: currentView === 'all' ? undefined : currentView };
+      
+      const response = await api.get(endpoint, { params });
+      if (response.data.success) {
+        // ✅ FORMAT IN FRONTEND
+        const rawStudies = response.data.data || [];
+        const formattedStudies = formatStudiesForWorklist(rawStudies);
+        setStudies(formattedStudies);
+      }
+    } catch (err) {
+      console.error('❌ Error fetching studies:', err);
+      setError('Failed to fetch studies.');
+      setStudies([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [getApiEndpoint, currentView]);
+
+  // ✅ UPDATED: Fetch analytics AND set API values
+  const fetchAnalytics = useCallback(async (filters = {}) => {
+    try {
+      // ✅ FIXED: Use the passed filters parameter or searchFilters
+      const params = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
+      console.log('🔍 ANALYTICS: Fetching with params:', params);
+      
+      const response = await api.get('/admin/values', { params });
+      if (response.data.success) {
+        // ✅ SET ANALYTICS
+        setAnalytics(response.data);
+        
+        // ✅ SET API VALUES for tab counts
+        setApiValues({
+          total: response.data.total || 0,
+          pending: response.data.pending || 0,
+          inprogress: response.data.inprogress || 0,
+          completed: response.data.completed || 0
+        });
+
+        console.log('📊 API VALUES UPDATED:', {
+          total: response.data.total,
+          pending: response.data.pending,
+          inprogress: response.data.inprogress,
+          completed: response.data.completed
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      setAnalytics(null);
+      // ✅ Reset API values on error
+      setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
+    }
+  }, [searchFilters]);
+
+  const fetchAvailableAssignees = useCallback(async () => {
+    try {
+      const response = await api.get('/assigner/available-assignees');
+      if (response.data.success) {
+        setAvailableAssignees(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching assignees:', error);
+    }
+  }, []);
+
+  // ✅ UPDATED: Initial data fetch with today as default
+  useEffect(() => {
+    // ✅ SET DEFAULT FILTERS ON MOUNT
+    const defaultFilters = {
+      dateFilter: 'today', // ✅ CHANGED: Use today as default
+      dateType: 'createdAt',
+      modality: 'all',
+      labId: 'all',
+      priority: 'all',
+      assigneeRole: 'all',
+      limit: 50
+    };
+    
+    setSearchFilters(defaultFilters);
+    fetchStudies(defaultFilters);
+    fetchAvailableAssignees();
+    fetchAnalytics(defaultFilters);
+  }, []); // ✅ Empty dependency array for initial mount only
+
+  // Auto-refresh every 5 minutes
+  useEffect(() => {
+    intervalRef.current = setInterval(() => {
+      console.log('🔄 Auto-refreshing assignor dashboard data...');
+      fetchStudies(searchFilters);
+      fetchAvailableAssignees();
+      fetchAnalytics(searchFilters);
+    }, 5 * 60 * 1000);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [fetchStudies, fetchAvailableAssignees, fetchAnalytics, searchFilters]);
+
+  // ✅ UPDATED: Handlers with proper analytics refresh
+  const handleSearch = useCallback((searchParams) => {
+    console.log('🔍 SEARCH: New search params:', searchParams);
+    setSearchFilters(searchParams);
+    // ✅ Immediately refresh analytics with new filters
+    fetchAnalytics(searchParams);
+  }, [fetchAnalytics]);
+
+  const handleFilterChange = useCallback((filters) => {
+    console.log('🔍 FILTER CHANGE:', filters);
+    setSearchFilters(filters);
+    // ✅ Immediately refresh analytics with new filters
+    fetchAnalytics(filters);
+  }, [fetchAnalytics]);
+  
+  const handleViewChange = useCallback((view) => {
+    console.log(`📊 TAB CHANGE: ${currentView} -> ${view}`);
+    setCurrentView(view);
+    setSelectedStudies([]);
+    
+    // ✅ PRESERVE IMPORTANT FILTERS when switching tabs
+    setSearchFilters(prevFilters => {
+      const preservedFilters = {
+        // Date filters
+        dateFilter: prevFilters.dateFilter,
+        dateType: prevFilters.dateType,
+        customDateFrom: prevFilters.customDateFrom,
+        customDateTo: prevFilters.customDateTo,
+        // Other filters
+        modality: prevFilters.modality,
+        labId: prevFilters.labId,
+        priority: prevFilters.priority,
+        assigneeRole: prevFilters.assigneeRole,
+        // Pagination
+        limit: prevFilters.limit,
+        // Category (update to new view)
+        category: view === 'all' ? undefined : view
+      };
+      
+      // Remove undefined values
+      const cleanedFilters = Object.fromEntries(
+        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
+      );
+      
+      // ✅ IMMEDIATELY refresh analytics with preserved filters
+      fetchAnalytics(cleanedFilters);
+      
+      return cleanedFilters;
+    });
+  }, [currentView, fetchAnalytics]);
+
+  const handleSelectAll = useCallback((checked) => {
+    setSelectedStudies(checked ? studies.map(study => study._id) : []);
+  }, [studies]);
+
+  const handleSelectStudy = useCallback((studyId) => {
+    setSelectedStudies(prev => 
+      prev.includes(studyId) 
+        ? prev.filter(id => id !== studyId) 
+        : [...prev, studyId]
+    );
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    console.log('🔄 MANUAL REFRESH');
+    fetchStudies(searchFilters);
+    fetchAvailableAssignees();
+    fetchAnalytics(searchFilters);
+  }, [fetchStudies, fetchAvailableAssignees, fetchAnalytics, searchFilters]);
+
+  // Assignment handlers (same as before)
+  const handleAssignStudy = useCallback((study) => {
+    setAssignmentModal({ show: true, study });
+  }, []);
+
+  const handleBulkAssign = useCallback(() => {
+    if (selectedStudies.length === 0) {
+      toast.error('Please select studies to assign');
+      return;
+    }
+    setBulkAssignModal({ show: true });
+  }, [selectedStudies]);
+
+  // ✅ UPDATED: Single assignment handler
+  const handleAssignmentSubmit = useCallback(async (assignmentData) => {
+    try {
+      const { study, assignedToIds, assigneeRole, priority, notes, dueDate } = assignmentData;
+      
+      console.log('🔄 Submitting assignment:', {
+        studyId: study._id,
+        assignedToIds,
+        assigneeRole,
+        priority
+      });
+      
+      const response = await api.post(`/assigner/update-study-assignments/${study._id}`, {
+        assignedToIds, // Array of selected radiologist IDs
+        assigneeRole,
+        priority,
+        notes,
+        dueDate
+      });
+
+      if (response.data.success) {
+        toast.success(response.data.message);
+        setAssignmentModal({ show: false, study: null });
+        fetchStudies(searchFilters);
+        fetchAnalytics(searchFilters);
+      }
+    } catch (error) {
+      console.error('Assignment error:', error);
+      toast.error(error.response?.data?.message || 'Failed to update assignments');
+    }
+  }, [fetchStudies, searchFilters, fetchAnalytics]);
+
+  const handleBulkAssignmentSubmit = useCallback(async (assignmentData) => {
+    try {
+      const { assignedTo, assigneeRole, priority, notes, dueDate } = assignmentData;
+      
+      const response = await api.post('/assigner/bulk-assign', {
+        studyIds: selectedStudies,
+        assignedTo,
+        assigneeRole,
+        priority,
+        notes,
+        dueDate
+      });
+
+      if (response.data.success) {
+        toast.success(response.data.message);
+        setBulkAssignModal({ show: false });
+        setSelectedStudies([]);
+        fetchStudies(searchFilters);
+        fetchAnalytics(searchFilters);
+      }
+    } catch (error) {
+      console.error('Bulk assignment error:', error);
+      toast.error(error.response?.data?.message || 'Failed to bulk assign studies');
+    }
+  }, [selectedStudies, fetchStudies, searchFilters, fetchAnalytics]);
+
+  // Column configuration handlers
+  const handleColumnChange = useCallback((columnKey, visible) => {
+    setColumnConfig(prev => ({
+      ...prev,
+      [columnKey]: {
+        ...prev[columnKey],
+        visible
+      }
+    }));
+  }, []);
+
+  const handleResetColumns = useCallback(() => {
+    const defaultConfig = getDefaultColumnConfig();
+    setColumnConfig(defaultConfig);
+  }, []);
+
+  // Additional actions for navbar
+  const additionalActions = [
+    {
+      label: 'Bulk Assign',
+      icon: Users2,
+      onClick: handleBulkAssign,
+      variant: 'primary',
+      tooltip: 'Assign selected studies',
+      disabled: selectedStudies.length === 0
+    },
+    {
+      label: 'Analytics',
+      icon: BarChart3,
+      onClick: () => console.log('Show analytics modal'),
+      variant: 'secondary',
+      tooltip: 'View assignment analytics'
+    }
+  ];
+
+  console.log(studies)
+
+  return (
+    <div className="h-screen bg-gray-50 flex flex-col">
+      <Navbar
+        title="Assignor Dashboard"
+        subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • Case Assignment`}
+        showOrganizationSelector={false}
+        onRefresh={handleRefresh}
+        additionalActions={additionalActions}
+        notifications={analytics?.overview?.overdueStudies || 0}
+      />
+      
+      <Search
+        onSearch={handleSearch}
+        onFilterChange={handleFilterChange}
+        loading={loading}
+        totalStudies={tabCounts.all} // ✅ Use API values
+        currentCategory={currentView}
+        analytics={analytics}
+      />
+
+      <div className="flex-1 min-h-0 p-0 px-0">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">
+          
+          <div className="flex items-center justify-between px-4 py-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+            <div className="flex items-center space-x-3">
+              <h2 className="text-sm font-bold text-black uppercase tracking-wide">
+                ASSIGNMENT WORKLIST
+              </h2>
+              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border">
+                {studies.length} studies loaded
+              </span>
+              {selectedStudies.length > 0 && (
+                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                  {selectedStudies.length} selected
+                </span>
+              )}
+            </div>
+
+            {/* ✅ UPDATED: Use API values for tab counts */}
+            <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
+              {[
+                { key: 'all', label: 'All', count: tabCounts.all },
+                { key: 'pending', label: 'Pending', count: tabCounts.pending },
+                { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress },
+                { key: 'completed', label: 'Completed', count: tabCounts.completed }
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => handleViewChange(tab.key)}
+                  className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 last:border-r-0 transition-colors ${
+                    currentView === tab.key
+                      ? 'bg-black text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {tab.label} ({tab.count}) {/* ✅ Now shows API values */}
+                </button>
+              ))}
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              <ColumnConfigurator
+                columnConfig={columnConfig}
+                onColumnChange={handleColumnChange}
+                onResetToDefault={handleResetColumns}
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0">
+            <WorklistTable
+              studies={studies}
+              loading={loading}
+              columnConfig={columnConfig}
+              selectedStudies={selectedStudies}
+              onSelectAll={handleSelectAll}
+              onSelectStudy={handleSelectStudy}
+              onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
+              onAssignDoctor={handleAssignStudy}
+              // ✅ NEW PROPS for assignment modal
+              availableAssignees={availableAssignees}
+              onAssignmentSubmit={handleAssignmentSubmit}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AssignerDashboard;
