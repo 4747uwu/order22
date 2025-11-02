@@ -44,11 +44,11 @@ jobs:
           fi
 
           # Create and navigate to project directory
-          mkdir -p /opt/order22
-          cd /opt/order22
+          mkdir -p /opt/medical-project
+          cd /opt/medical-project
           
           # Clean up and get fresh code
-          rm -rf order22
+          rm -rf healthCare
           git clone https://github.com/4747uwu/order22.git
           
           # Navigate to the MedicalProject subdirectory
