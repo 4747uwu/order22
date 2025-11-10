@@ -241,7 +241,7 @@ export const formatStudyForWorklist = (rawStudy) => {
   }
 };
 
-// ✅ FIXED: Assignment info formatter to handle multiple active assignments
+// ✅ IMPROVED: Assignment info formatter to handle populated assignment data
 const formatAssignmentInfo = (assignmentArray) => {
   console.log('🔍 FORMATTING ASSIGNMENTS:', assignmentArray);
   
@@ -259,31 +259,23 @@ const formatAssignmentInfo = (assignmentArray) => {
     };
   }
   
-  // ✅ SIMPLE FIX: Get the most recent assignments (last 2-3 entries)
-  // Since your backend is adding assignments without clearing old ones,
-  // we'll take the most recent unique assignments
-  
-  // Sort by assignment date (most recent first)
-  const sortedAssignments = assignmentArray.sort((a, b) => 
-    new Date(b.assignedAt) - new Date(a.assignedAt)
-  );
-  
-  console.log('📋 SORTED ASSIGNMENTS BY DATE:', sortedAssignments.map(a => ({
-    assignedTo: a.assignedTo,
-    assignedAt: a.assignedAt,
-    status: a.status
-  })));
-  
-  // ✅ GET LATEST ASSIGNMENTS (assume cleared assignments are not the current ones)
-  // Take the most recent assignment date and get all assignments from that date
-  const latestAssignmentDate = sortedAssignments[0]?.assignedAt;
-  const latestAssignments = sortedAssignments.filter(a => 
-    a.assignedAt === latestAssignmentDate
-  );
-  
-  console.log('📋 LATEST ASSIGNMENTS FROM SAME TIME:', latestAssignments);
-  
-  if (latestAssignments.length === 0) {
+  // ✅ FIX: Handle populated assignment objects properly
+  const activeAssignments = assignmentArray.filter(assignment => {
+    // Check if assignment has valid assignedTo
+    const hasAssignedTo = assignment.assignedTo && 
+                         (typeof assignment.assignedTo === 'object' ? assignment.assignedTo._id : assignment.assignedTo);
+    
+    console.log('🔍 CHECKING ASSIGNMENT:', {
+      hasAssignedTo,
+      assignedTo: assignment.assignedTo,
+      assignedAt: assignment.assignedAt
+    });
+    
+    return hasAssignedTo && assignment.assignedAt;
+  });
+
+  if (activeAssignments.length === 0) {
+    console.log('❌ NO ACTIVE ASSIGNMENTS FOUND');
     return {
       isAssigned: false,
       assignedToDisplay: null,
@@ -296,50 +288,81 @@ const formatAssignmentInfo = (assignmentArray) => {
       status: null
     };
   }
-  
-  // ✅ EXTRACT ALL ASSIGNED DOCTOR IDS (remove duplicates)
-  const assignedToIds = [...new Set(latestAssignments.map(a => a.assignedTo?.toString()).filter(Boolean))];
-  
-  // ✅ CREATE DOCTOR OBJECTS with names
-  const assignedDoctors = assignedToIds.map(id => {
-    const assignment = latestAssignments.find(a => a.assignedTo?.toString() === id);
+
+  // Sort by assignment date (most recent first)
+  const sortedAssignments = activeAssignments.sort((a, b) => 
+    new Date(b.assignedAt) - new Date(a.assignedAt)
+  );
+
+  // ✅ CREATE DOCTOR OBJECTS from populated data
+  const assignedDoctors = sortedAssignments.map(assignment => {
+    const assignedTo = assignment.assignedTo;
+    
+    // Handle both populated objects and ObjectIds
+    let doctorInfo;
+    if (typeof assignedTo === 'object' && assignedTo._id) {
+      // Populated user object
+      doctorInfo = {
+        id: assignedTo._id.toString(),
+        name: assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim(),
+        email: assignedTo.email,
+        role: assignedTo.role
+      };
+    } else if (typeof assignedTo === 'string') {
+      // ObjectId string
+      doctorInfo = {
+        id: assignedTo,
+        name: 'Unknown Doctor',
+        email: null,
+        role: 'radiologist'
+      };
+    } else {
+      doctorInfo = {
+        id: 'unknown',
+        name: 'Unknown Doctor',
+        email: null,
+        role: 'radiologist'
+      };
+    }
+
     return {
-      id: id,
-      name: assignment?.assignedToName || 'Unknown Doctor',
-      email: assignment?.assignedToEmail || null,
-      role: assignment?.assignedToRole || assignment?.role || 'radiologist',
-      assignedAt: assignment?.assignedAt,
-      priority: assignment?.priority,
-      dueDate: assignment?.dueDate,
-      status: assignment?.status || 'assigned'
+      ...doctorInfo,
+      assignedAt: assignment.assignedAt,
+      priority: assignment.priority || 'NORMAL',
+      dueDate: assignment.dueDate,
+      status: assignment.status || 'assigned'
     };
   });
-  
-  // ✅ CREATE DISPLAY STRING
-  const assignedToDisplay = assignedDoctors.length === 1 
-    ? assignedDoctors[0].name
-    : `${assignedDoctors.length} Doctors`; // "2 Doctors" for multiple
-  
-  // ✅ GET LATEST ASSIGNMENT DATA
-  const latestAssignment = latestAssignments[0];
-  
+
+  // Remove duplicates by doctor ID
+  const uniqueDoctors = assignedDoctors.filter((doctor, index, self) => 
+    index === self.findIndex(d => d.id === doctor.id)
+  );
+
+  const assignedToIds = uniqueDoctors.map(doctor => doctor.id);
+  const assignedToDisplay = uniqueDoctors.length === 1 
+    ? uniqueDoctors[0].name
+    : `${uniqueDoctors.length} Doctors`;
+
+  const latestAssignment = sortedAssignments[0];
+
   console.log('✅ FORMATTED ASSIGNMENT INFO:', {
-    assignedCount: assignedDoctors.length,
+    assignedCount: uniqueDoctors.length,
     assignedToIds,
     assignedToDisplay,
-    doctors: assignedDoctors.map(d => d.name)
+    doctors: uniqueDoctors.map(d => d.name)
   });
-  
+
   return {
-    isAssigned: true, // ✅ This should be true when we have assignments
+    isAssigned: true,
     assignedToDisplay,
     assignedToIds,
-    assignedCount: assignedDoctors.length,
-    assignedDoctors,
+    assignedCount: uniqueDoctors.length,
+    assignedDoctors: uniqueDoctors,
     latestAssignedAt: latestAssignment.assignedAt,
     priority: latestAssignment.priority || 'NORMAL',
     latestDueDate: latestAssignment.dueDate,
-    status: 'assigned' // Since we have assignments
+    status: 'assigned'
   };
 };
 

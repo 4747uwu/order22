@@ -24,7 +24,7 @@ const AssignerDashboard = () => {
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
   const [analytics, setAnalytics] = useState(null);
 
-  // ✅ ADD: API VALUES STATE (separate from local study counts)
+  // ✅ API VALUES STATE (separate from local study counts)
   const [apiValues, setApiValues] = useState({
     total: 0,
     pending: 0,
@@ -34,11 +34,8 @@ const AssignerDashboard = () => {
 
   const intervalRef = useRef(null);
 
-  // ✅ REMOVE: Local statusCounts calculation - use API values instead
-  // const statusCounts = useMemo(() => { ... }); // DELETE THIS
-
-  // ✅ NEW: Use API values for tab counts (always constant)
-  const tabCounts = useMemo(() => ({
+  // ✅ USE API VALUES for tab counts (like admin dashboard)
+  const statusCounts = useMemo(() => ({
     all: apiValues.total,
     pending: apiValues.pending,
     inprogress: apiValues.inprogress,
@@ -87,7 +84,7 @@ const AssignerDashboard = () => {
     }
   }, [columnConfig]);
 
-  // API endpoints
+  // ✅ UPDATED: API endpoints (like admin dashboard)
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/admin/studies/pending';
@@ -97,43 +94,60 @@ const AssignerDashboard = () => {
     }
   }, [currentView]);
 
+  // ✅ UPDATED: fetchStudies (like admin dashboard)
   const fetchStudies = useCallback(async (filters = {}) => {
     setLoading(true);
     setError(null);
     try {
       const endpoint = getApiEndpoint();
-      const params = { ...filters, category: currentView === 'all' ? undefined : currentView };
+      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
+      // ✅ Don't pass category param since endpoints are already status-specific
+      const params = { ...activeFilters };
+      delete params.category;
+      
+      console.log('🔍 [Assignor] Fetching studies with params:', {
+        endpoint,
+        params,
+        currentView,
+        searchFilters,
+        passedFilters: filters
+      });
       
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
-        // ✅ FORMAT IN FRONTEND
         const rawStudies = response.data.data || [];
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
+        
+        console.log('✅ [Assignor] Studies fetched:', {
+          raw: rawStudies.length,
+          formatted: formattedStudies.length,
+          endpoint,
+          appliedParams: params,
+          currentView
+        });
       }
     } catch (err) {
-      console.error('❌ Error fetching studies:', err);
+      console.error('❌ [Assignor] Error fetching studies:', err);
       setError('Failed to fetch studies.');
       setStudies([]);
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, currentView]);
+  }, [getApiEndpoint, searchFilters]);
 
-  // ✅ UPDATED: Fetch analytics AND set API values
+  // ✅ UPDATED: Fetch analytics (like admin dashboard)
   const fetchAnalytics = useCallback(async (filters = {}) => {
     try {
-      // ✅ FIXED: Use the passed filters parameter or searchFilters
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 ANALYTICS: Fetching with params:', params);
+      console.log('🔍 [Assignor] Fetching analytics with params:', params);
       
       const response = await api.get('/admin/values', { params });
       if (response.data.success) {
-        // ✅ SET ANALYTICS
         setAnalytics(response.data);
         
-        // ✅ SET API VALUES for tab counts
         setApiValues({
           total: response.data.total || 0,
           pending: response.data.pending || 0,
@@ -141,7 +155,7 @@ const AssignerDashboard = () => {
           completed: response.data.completed || 0
         });
 
-        console.log('📊 API VALUES UPDATED:', {
+        console.log('📊 [Assignor] API VALUES UPDATED:', {
           total: response.data.total,
           pending: response.data.pending,
           inprogress: response.data.inprogress,
@@ -149,9 +163,8 @@ const AssignerDashboard = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      console.error('Error fetching assignor analytics:', error);
       setAnalytics(null);
-      // ✅ Reset API values on error
       setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
     }
   }, [searchFilters]);
@@ -167,11 +180,10 @@ const AssignerDashboard = () => {
     }
   }, []);
 
-  // ✅ UPDATED: Initial data fetch with today as default
+  // ✅ UPDATED: Initial data fetch (like admin dashboard)
   useEffect(() => {
-    // ✅ SET DEFAULT FILTERS ON MOUNT
     const defaultFilters = {
-      dateFilter: 'today', // ✅ CHANGED: Use today as default
+      dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
       labId: 'all',
@@ -182,73 +194,61 @@ const AssignerDashboard = () => {
     
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters);
-    fetchAvailableAssignees();
     fetchAnalytics(defaultFilters);
-  }, []); // ✅ Empty dependency array for initial mount only
+    fetchAvailableAssignees();
+  }, []);
 
-  // Auto-refresh every 5 minutes
+  // ✅ ADD: Auto-fetch when view changes (like admin dashboard)
   useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      console.log('🔄 Auto-refreshing assignor dashboard data...');
+    if (Object.keys(searchFilters).length > 0) {
+      console.log(`🔄 [Assignor] View changed to: ${currentView}, refetching studies...`);
       fetchStudies(searchFilters);
-      fetchAvailableAssignees();
-      fetchAnalytics(searchFilters);
-    }, 5 * 60 * 1000);
+    }
+  }, [currentView, fetchStudies]);
 
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [fetchStudies, fetchAvailableAssignees, fetchAnalytics, searchFilters]);
+  // ✅ REMOVE: Auto-refresh interval (admin dashboard doesn't have this)
 
-  // ✅ UPDATED: Handlers with proper analytics refresh
+  // ✅ UPDATED: Handlers (like admin dashboard)
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 SEARCH: New search params:', searchParams);
+    console.log('🔍 [Assignor] NEW SEARCH PARAMS:', searchParams);
     setSearchFilters(searchParams);
-    // ✅ Immediately refresh analytics with new filters
+    
+    fetchStudies(searchParams);
     fetchAnalytics(searchParams);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics]);
 
   const handleFilterChange = useCallback((filters) => {
-    console.log('🔍 FILTER CHANGE:', filters);
+    console.log('🔍 [Assignor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
-    // ✅ Immediately refresh analytics with new filters
+    
+    fetchStudies(filters);
     fetchAnalytics(filters);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics]);
   
+  // ✅ UPDATED: handleViewChange (like admin dashboard)
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`📊 [Assignor] TAB CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
     setSelectedStudies([]);
     
-    // ✅ PRESERVE IMPORTANT FILTERS when switching tabs
     setSearchFilters(prevFilters => {
       const preservedFilters = {
-        // Date filters
         dateFilter: prevFilters.dateFilter,
         dateType: prevFilters.dateType,
         customDateFrom: prevFilters.customDateFrom,
         customDateTo: prevFilters.customDateTo,
-        // Other filters
         modality: prevFilters.modality,
         labId: prevFilters.labId,
         priority: prevFilters.priority,
         assigneeRole: prevFilters.assigneeRole,
-        // Pagination
         limit: prevFilters.limit,
-        // Category (update to new view)
-        category: view === 'all' ? undefined : view
       };
       
-      // Remove undefined values
       const cleanedFilters = Object.fromEntries(
         Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
       );
       
-      // ✅ IMMEDIATELY refresh analytics with preserved filters
       fetchAnalytics(cleanedFilters);
-      
       return cleanedFilters;
     });
   }, [currentView, fetchAnalytics]);
@@ -265,12 +265,13 @@ const AssignerDashboard = () => {
     );
   }, []);
 
+  // ✅ UPDATED: handleRefresh (like admin dashboard)
   const handleRefresh = useCallback(() => {
-    console.log('🔄 MANUAL REFRESH');
+    console.log('🔄 [Assignor] Manual refresh');
     fetchStudies(searchFilters);
-    fetchAvailableAssignees();
     fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAvailableAssignees, fetchAnalytics, searchFilters]);
+    fetchAvailableAssignees();
+  }, [fetchStudies, fetchAnalytics, fetchAvailableAssignees, searchFilters]);
 
   // Assignment handlers (same as before)
   const handleAssignStudy = useCallback((study) => {
@@ -285,12 +286,11 @@ const AssignerDashboard = () => {
     setBulkAssignModal({ show: true });
   }, [selectedStudies]);
 
-  // ✅ UPDATED: Single assignment handler
   const handleAssignmentSubmit = useCallback(async (assignmentData) => {
     try {
       const { study, assignedToIds, assigneeRole, priority, notes, dueDate } = assignmentData;
       
-      console.log('🔄 Submitting assignment:', {
+      console.log('🔄 [Assignor] Submitting assignment:', {
         studyId: study._id,
         assignedToIds,
         assigneeRole,
@@ -298,7 +298,7 @@ const AssignerDashboard = () => {
       });
       
       const response = await api.post(`/assigner/update-study-assignments/${study._id}`, {
-        assignedToIds, // Array of selected radiologist IDs
+        assignedToIds,
         assigneeRole,
         priority,
         notes,
@@ -378,8 +378,6 @@ const AssignerDashboard = () => {
     }
   ];
 
-  console.log(studies)
-
   return (
     <div className="h-screen bg-gray-50 flex flex-col">
       <Navbar
@@ -395,7 +393,7 @@ const AssignerDashboard = () => {
         onSearch={handleSearch}
         onFilterChange={handleFilterChange}
         loading={loading}
-        totalStudies={tabCounts.all} // ✅ Use API values
+        totalStudies={statusCounts.all} // ✅ Use API values like admin dashboard
         currentCategory={currentView}
         analytics={analytics}
       />
@@ -418,13 +416,13 @@ const AssignerDashboard = () => {
               )}
             </div>
 
-            {/* ✅ UPDATED: Use API values for tab counts */}
+            {/* ✅ UPDATED: Use statusCounts like admin dashboard */}
             <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
               {[
-                { key: 'all', label: 'All', count: tabCounts.all },
-                { key: 'pending', label: 'Pending', count: tabCounts.pending },
-                { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress },
-                { key: 'completed', label: 'Completed', count: tabCounts.completed }
+                { key: 'all', label: 'All', count: statusCounts.all },
+                { key: 'pending', label: 'Pending', count: statusCounts.pending },
+                { key: 'inprogress', label: 'In Progress', count: statusCounts.inprogress },
+                { key: 'completed', label: 'Completed', count: statusCounts.completed }
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -435,7 +433,7 @@ const AssignerDashboard = () => {
                       : 'bg-white text-gray-700 hover:bg-gray-100'
                   }`}
                 >
-                  {tab.label} ({tab.count}) {/* ✅ Now shows API values */}
+                  {tab.label} ({tab.count})
                 </button>
               ))}
             </div>
@@ -459,7 +457,6 @@ const AssignerDashboard = () => {
               onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
               onAssignDoctor={handleAssignStudy}
-              // ✅ NEW PROPS for assignment modal
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
             />

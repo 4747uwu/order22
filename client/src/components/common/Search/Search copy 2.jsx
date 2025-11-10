@@ -21,7 +21,7 @@ const Search = ({
     totalStudies = 0,
     currentCategory = 'all',
     analytics = null,
-    theme = 'default' // ✅ ADD: Theme support
+    theme = 'default' // ✅ ADD THEME PROP
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -43,57 +43,29 @@ const Search = ({
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [searchTimeout, setSearchTimeout] = useState(null);
 
+    // ✅ THEME COLORS
+    const isGreenTheme = theme === 'admin';
+    const themeColors = {
+        border: isGreenTheme ? 'border-gray-300' : 'border-teal-300',
+        borderLight: isGreenTheme ? 'border-teal-200' : 'border-teal-200',
+        bg: isGreenTheme ? 'bg-white' : 'bg-teal',
+        bgSecondary: isGreenTheme ? 'bg-teal-100' : 'bg-teal-50',
+        text: isGreenTheme ? 'text-teal-900' : 'text-gray-900',
+        textSecondary: isGreenTheme ? 'text-teal-700' : 'text-gray-700',
+        textMuted: isGreenTheme ? 'text-teal-600' : 'text-gray-500',
+        focus: isGreenTheme ? 'focus:ring-teal-500 focus:border-teal-500' : 'focus:ring-black focus:border-black',
+        accent: isGreenTheme ? 'bg-teal-600 text-white hover:bg-teal-700' : 'bg-black text-white hover:bg-gray-800',
+        accentSecondary: isGreenTheme ? 'bg-teal-500 hover:bg-teal-600' : 'bg-gray-600 hover:bg-gray-700'
+    };
+
     // Check if user is admin or assignor
     const isAdmin = currentUser?.role === 'admin';
     const isAssignor = currentUser?.role === 'assignor';
-    const isGreenTheme = theme === 'admin'; // ✅ Green theme for admin
 
     // Check user permissions for creating entities
     const canCreateDoctor = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
     const canCreateLab = ['super_admin', 'admin'].includes(currentUser?.role);
     const canCreateUser = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
-
-    // ✅ ENHANCED: Extended date options
-    const dateOptions = [
-        { value: 'today', label: 'Today' },
-        { value: 'yesterday', label: 'Yesterday' },
-        { value: 'tomorrow', label: 'Tomorrow' },
-        { value: 'last2days', label: 'Last 2 Days' },
-        { value: 'last7days', label: 'Last 7 Days' },
-        { value: 'last30days', label: 'Last 30 Days' },
-        { value: 'thisWeek', label: 'This Week' },
-        { value: 'lastWeek', label: 'Last Week' },
-        { value: 'thisMonth', label: 'This Month' },
-        { value: 'lastMonth', label: 'Last Month' },
-        { value: 'last3months', label: 'Last 3 Months' },
-        { value: 'last6months', label: 'Last 6 Months' },
-        { value: 'thisYear', label: 'This Year' },
-        { value: 'lastYear', label: 'Last Year' },
-        { value: 'custom', label: 'Custom Range' }
-    ];
-
-    // ✅ THEME COLORS
-    const themeColors = isGreenTheme ? {
-        primary: 'teal-600',
-        primaryHover: 'teal-700',
-        primaryLight: 'teal-50',
-        border: 'teal-300',
-        borderLight: 'teal-200',
-        text: 'teal-700',
-        textSecondary: 'teal-600',
-        background: 'teal-50',
-        focus: 'focus:ring-teal-500 focus:border-teal-500'
-    } : {
-        primary: 'black',
-        primaryHover: 'gray-800',
-        primaryLight: 'gray-50',
-        border: 'gray-300',
-        borderLight: 'gray-200',
-        text: 'gray-700',
-        textSecondary: 'gray-600',
-        background: 'gray-50',
-        focus: 'focus:ring-black focus:border-black'
-    };
 
     // Handle search input change with debouncing
     const handleSearchChange = useCallback((value) => {
@@ -170,7 +142,7 @@ const Search = ({
         handleSearch();
     }, [handleSearch]);
 
-    // Admin action handlers
+    // ✅ ADMIN ACTION HANDLERS
     const handleCreateDoctor = useCallback(() => {
         navigate('/admin/create-doctor');
     }, [navigate]);
@@ -200,39 +172,54 @@ const Search = ({
         { value: 'NORMAL', label: 'Normal' }
     ];
 
+    // ✅ ENHANCED DATE OPTIONS
+    const dateOptions = [
+        { value: 'today', label: 'Today' },
+        { value: 'yesterday', label: 'Yesterday' },
+        { value: 'last2days', label: 'Last 2 Days' },
+        { value: 'last7days', label: 'Last 7 Days' },
+        { value: 'last30days', label: 'Last 30 Days' },
+        { value: 'thisWeek', label: 'This Week' },
+        { value: 'lastWeek', label: 'Last Week' },
+        { value: 'thisMonth', label: 'This Month' },
+        { value: 'lastMonth', label: 'Last Month' },
+        { value: 'thisYear', label: 'This Year' },
+        { value: 'custom', label: 'Custom Range' }
+    ];
+
     const hasActiveFilters = searchTerm || Object.values(filters).some(v => v !== 'all' && v !== 'today' && v !== 'createdAt' && v !== '' && v !== 50);
 
     return (
-        <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
-            {/* ✅ MAIN SEARCH ROW */}
+        <div className={`${themeColors.bg} border-b ${themeColors.border} px-3 py-2.5`}>
+            {/* ✅ COMPACT MAIN SEARCH ROW */}
             <div className="flex items-center gap-2">
                 
-                {/* ✅ SEARCH INPUT */}
+                {/* ✅ COMPACT SEARCH INPUT WITH GREEN THEME */}
                 <div className="flex-1 relative max-w-md">
-                    <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
+                    <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 ${themeColors.textMuted}`} size={14} />
                     <input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => handleSearchChange(e.target.value)}
                         placeholder="Search patients, IDs..."
-                        className={`w-full pl-8 pr-6 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} transition-colors`}
+                        className={`w-full pl-8 pr-6 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} transition-colors bg-white ${themeColors.text}`}
                     />
                     {searchTerm && (
                         <button 
                             onClick={() => handleSearchChange('')}
-                            className={`absolute right-2 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary} hover:text-${themeColors.text} p-0.5`}
+                            className={`absolute right-2 top-1/2 transform -translate-y-1/2 ${themeColors.textMuted} hover:${themeColors.textSecondary} p-0.5`}
                         >
                             <X size={12} />
                         </button>
                     )}
                 </div>
 
-                {/* ✅ QUICK FILTERS */}
+                {/* ✅ COMPACT QUICK FILTERS WITH GREEN THEME */}
                 <div className="flex items-center gap-1">
                     <select
                         value={filters.modality}
                         onChange={(e) => handleFilterChange('modality', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16`}
+                        className={`px-2 py-1.5 text-xs border ${themeColors.border} rounded bg-white ${themeColors.textSecondary} ${themeColors.focus} min-w-16`}
                     >
                         {modalityOptions.map(option => (
                             <option key={option.value} value={option.value}>
@@ -244,7 +231,7 @@ const Search = ({
                     <select
                         value={filters.priority}
                         onChange={(e) => handleFilterChange('priority', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16`}
+                        className={`px-2 py-1.5 text-xs border ${themeColors.border} rounded bg-white ${themeColors.textSecondary} ${themeColors.focus} min-w-16`}
                     >
                         {priorityOptions.map(option => (
                             <option key={option.value} value={option.value}>
@@ -253,12 +240,12 @@ const Search = ({
                         ))}
                     </select>
 
-                    {/* ASSIGNOR-SPECIFIC FILTER */}
+                    {/* ✅ ASSIGNOR-SPECIFIC FILTER WITH GREEN THEME */}
                     {isAssignor && (
                         <select
                             value={filters.assigneeRole}
                             onChange={(e) => handleFilterChange('assigneeRole', e.target.value)}
-                            className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-20`}
+                            className={`px-2 py-1.5 text-xs border ${themeColors.border} rounded bg-white ${themeColors.textSecondary} ${themeColors.focus} min-w-20`}
                         >
                             <option value="all">All Roles</option>
                             <option value="radiologist">Radiologist</option>
@@ -267,7 +254,7 @@ const Search = ({
                     )}
                 </div>
 
-                {/* ✅ ENHANCED: TIME FILTERS WITH MORE OPTIONS */}
+                {/* ✅ COMPACT TIME FILTERS WITH GREEN THEME */}
                 <div className="flex items-center gap-1">
                     {/* Quick date buttons for most common options */}
                     {['Today', 'Yesterday', '7 Days', '30 Days'].map((period) => {
@@ -305,7 +292,7 @@ const Search = ({
                         );
                     })}
                     
-                    {/* ✅ ENHANCED: More options dropdown */}
+                    {/* ✅ UPDATED: More options dropdown with teal colors */}
                     <div className="relative">
                         <select
                             value={filters.dateFilter || 'today'}
@@ -325,15 +312,19 @@ const Search = ({
                     </div>
                 </div>
 
-                {/* ADMIN BUTTONS */}
+                {/* ✅ ENHANCED ADMIN BUTTONS WITH GREEN THEME */}
                 {(canCreateDoctor || canCreateLab || canCreateUser) && (
-                    <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border}`}>
+                    <div className={`flex items-center gap-1 pl-2 border-l ${themeColors.borderLight}`}>
                         
-                        {/* Manage Users Button */}
+                        {/* ✅ UPDATED: Manage Users Button with teal gradient */}
                         {isAdmin && (
                             <button
                                 onClick={() => navigate('/admin/user-management')}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
+                                    isGreenTheme 
+                                        ? 'bg-gradient-to-r from-teal-600 to-green-600 text-white hover:from-teal-700 hover:to-green-700' 
+                                        : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700'
+                                } text-xs font-medium rounded transition-colors`}
                                 title="Manage Users"
                             >
                                 <Shield size={12} />
@@ -341,11 +332,15 @@ const Search = ({
                             </button>
                         )}
                         
-                        {/* Create User Button */}
+                        {/* ✅ UPDATED: Create User Button with teal gradient */}
                         {canCreateUser && (
                             <button
                                 onClick={handleCreateUser}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
+                                    isGreenTheme 
+                                        ? 'bg-gradient-to-r from-green-600 to-teal-600 text-white hover:from-green-700 hover:to-teal-700' 
+                                        : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:from-purple-700 hover:to-indigo-700'
+                                } text-xs font-medium rounded transition-colors`}
                                 title="Create New User"
                             >
                                 <Users size={12} />
@@ -353,11 +348,15 @@ const Search = ({
                             </button>
                         )}
                         
-                        {/* Create Doctor Button */}
+                        {/* ✅ UPDATED: Create Doctor Button with teal colors */}
                         {canCreateDoctor && (
                             <button
                                 onClick={handleCreateDoctor}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-teal-700 hover:bg-teal-800' : 'bg-black hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
+                                    isGreenTheme 
+                                        ? 'bg-teal-600 text-white hover:bg-teal-700' 
+                                        : 'bg-black text-white hover:bg-gray-800'
+                                } text-xs font-medium rounded transition-colors`}
                                 title="Create Doctor Account"
                             >
                                 <UserPlus size={12} />
@@ -365,11 +364,15 @@ const Search = ({
                             </button>
                         )}
                         
-                        {/* Create Lab Button */}
+                        {/* ✅ UPDATED: Create Lab Button with teal colors */}
                         {canCreateLab && (
                             <button
                                 onClick={handleCreateLab}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-slate-600 hover:bg-slate-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${
+                                    isGreenTheme 
+                                        ? 'bg-green-600 text-white hover:bg-green-700' 
+                                        : 'bg-gray-700 text-white hover:bg-gray-800'
+                                } text-xs font-medium rounded transition-colors`}
                                 title="Create Lab"
                             >
                                 <Building size={12} />
@@ -379,37 +382,33 @@ const Search = ({
                     </div>
                 )}
 
-                {/* ASSIGNOR ANALYTICS DISPLAY */}
+                {/* ✅ ASSIGNOR ANALYTICS DISPLAY WITH GREEN THEME */}
                 {isAssignor && analytics && (
-                    <div className={`flex items-center gap-2 pl-2 border-l border-${themeColors.border}`}>
+                    <div className={`flex items-center gap-2 pl-2 border-l ${themeColors.borderLight}`}>
                         <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Unassigned:</span>
+                            <span className={themeColors.textMuted}>Unassigned:</span>
                             <span className="font-bold text-red-600 ml-1">{analytics.overview?.totalUnassigned || 0}</span>
                         </div>
                         <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Assigned:</span>
-                            <span className="font-bold text-green-600 ml-1">{analytics.overview?.totalAssigned || 0}</span>
+                            <span className={themeColors.textMuted}>Assigned:</span>
+                            <span className={`font-bold ${isGreenTheme ? 'text-green-700' : 'text-green-600'} ml-1`}>{analytics.overview?.totalAssigned || 0}</span>
                         </div>
                         <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Overdue:</span>
+                            <span className={themeColors.textMuted}>Overdue:</span>
                             <span className="font-bold text-orange-600 ml-1">{analytics.overview?.overdueStudies || 0}</span>
                         </div>
                     </div>
                 )}
 
-                {/* ACTION BUTTONS */}
+                {/* ✅ COMPACT ACTION BUTTONS WITH GREEN THEME */}
                 <div className="flex items-center gap-1">
                     {/* Advanced Toggle */}
                     <button
                         onClick={() => setShowAdvanced(!showAdvanced)}
                         className={`px-2 py-1.5 text-xs font-medium rounded border transition-colors flex items-center gap-1 ${
                             showAdvanced 
-                                ? isGreenTheme 
-                                    ? `bg-teal-600 text-white border-teal-600` 
-                                    : 'bg-black text-white border-black'
-                                : isGreenTheme
-                                    ? `bg-white text-${themeColors.text} border-${themeColors.border} hover:bg-${themeColors.primaryLight}`
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                ? themeColors.accent
+                                : `bg-white ${themeColors.textSecondary} ${themeColors.border} hover:${themeColors.bgSecondary}`
                         }`}
                     >
                         <Filter size={12} />
@@ -431,35 +430,35 @@ const Search = ({
                     <button
                         onClick={handleRefresh}
                         disabled={loading}
-                        className={`p-1.5 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded transition-colors disabled:opacity-50`}
+                        className={`p-1.5 ${themeColors.textMuted} hover:${themeColors.textSecondary} hover:${themeColors.bgSecondary} rounded transition-colors disabled:opacity-50`}
                         title="Refresh"
                     >
                         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                     </button>
                 </div>
 
-                {/* RESULTS COUNT */}
-                <div className={`flex items-center gap-1 text-xs text-${themeColors.textSecondary} pl-2 border-l border-${themeColors.border}`}>
-                    <span className={`font-bold text-${themeColors.primary}`}>{totalStudies.toLocaleString()}</span>
+                {/* ✅ COMPACT RESULTS COUNT WITH GREEN THEME */}
+                <div className={`flex items-center gap-1 text-xs ${themeColors.textMuted} pl-2 border-l ${themeColors.borderLight}`}>
+                    <span className={`font-bold ${themeColors.text}`}>{totalStudies.toLocaleString()}</span>
                     <span className="hidden sm:inline">studies</span>
-                    {loading && <span className={`text-${isGreenTheme ? 'teal-600' : 'green-600'} font-medium`}>• Live</span>}
+                    {loading && <span className={`${isGreenTheme ? 'text-green-700' : 'text-green-600'} font-medium`}>• Live</span>}
                 </div>
             </div>
 
-            {/* ✅ ADVANCED FILTERS PANEL */}
+            {/* ✅ COMPACT ADVANCED FILTERS PANEL WITH GREEN THEME */}
             {showAdvanced && (
-                <div className={`mt-2.5 pt-2.5 border-t border-${themeColors.borderLight}`}>
+                <div className={`mt-2.5 pt-2.5 border-t ${themeColors.borderLight}`}>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                         
                         {/* Date Range Selector */}
                         <div className="col-span-2">
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                            <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                 Date Range
                             </label>
                             <select
                                 value={filters.dateFilter || 'today'}
                                 onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="">All Time</option>
                                 {dateOptions.map(option => (
@@ -472,13 +471,13 @@ const Search = ({
 
                         {/* Date Type */}
                         <div>
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                            <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                 Date Type
                             </label>
                             <select
                                 value={filters.dateType || 'createdAt'}
                                 onChange={(e) => handleFilterChange('dateType', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="createdAt">Upload Date</option>
                                 <option value="StudyDate">Study Date</option>
@@ -489,25 +488,25 @@ const Search = ({
                         {filters.dateFilter === 'custom' && (
                             <>
                                 <div>
-                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                                    <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                         From Date
                                     </label>
                                     <input
                                         type="date"
                                         value={filters.customDateFrom || ''}
                                         onChange={(e) => handleFilterChange('customDateFrom', e.target.value)}
-                                        className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                        className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                                     />
                                 </div>
                                 <div>
-                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                                    <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                         To Date
                                     </label>
                                     <input
                                         type="date"
                                         value={filters.customDateTo || ''}
                                         onChange={(e) => handleFilterChange('customDateTo', e.target.value)}
-                                        className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                        className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                                     />
                                 </div>
                             </>
@@ -515,13 +514,13 @@ const Search = ({
 
                         {/* Lab Selector */}
                         <div>
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                            <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                 Lab
                             </label>
                             <select
                                 value={filters.labId || 'all'}
                                 onChange={(e) => handleFilterChange('labId', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="all">All Labs</option>
                                 {/* Add lab options dynamically */}
@@ -530,13 +529,13 @@ const Search = ({
 
                         {/* Results Per Page */}
                         <div>
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                            <label className={`block text-xs font-medium ${themeColors.textSecondary} mb-1`}>
                                 Per Page
                             </label>
                             <select
-                                value={filters.limit}
+                                value={filters.limit || 50}
                                 onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`w-full px-2 py-1.5 text-xs border ${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value={20}>20</option>
                                 <option value={50}>50</option>

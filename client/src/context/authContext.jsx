@@ -8,6 +8,7 @@ import sessionManager from '../services/sessionManager';
 //   : 'http://localhost:5000/api';
 
 const API_URL = '/api';
+// const API_URL = 'http://localhost:5000/api';
 
 console.log('🔍 API_URL:', API_URL);
 

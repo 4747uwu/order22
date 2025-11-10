@@ -66,7 +66,7 @@ const CreateLab = () => {
         setLoading(true);
 
         try {
-            const response = await api.post('/admin-crud/labs', formData);
+            const response = await api.post('/admin/admin-crud/labs', formData);
 
             if (response.data.success) {
                 toast.success('Lab created successfully!');
