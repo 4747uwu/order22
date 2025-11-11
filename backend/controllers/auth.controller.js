@@ -447,3 +447,103 @@ export const getAvailableOrganizations = async (req, res) => {
         });
     }
 };
+
+
+// ... existing imports
+
+// GET SPECIFIC LAB DETAILS FOR ELECTRON APP
+export const labConnectorLogin = async (req, res) => {
+    const { email, password } = req.body;
+
+    // 1. Basic Validation
+    if (!email || !password) {
+        return res.status(400).json({ 
+            success: false, 
+            message: 'Please provide email and password.' 
+        });
+    }
+
+    try {
+        // 2. Find User & Populate specifically for Lab context
+        // We explicitly need the organization identifier and lab identifier
+        const user = await User.findOne({ email: email.trim().toLowerCase() })
+            .select('+password')
+            .populate('organization', 'name identifier status')
+            .populate('lab', 'name identifier isActive');
+
+        // 3. Verify Credentials
+        if (!user || !(await bcrypt.compare(password, user.password))) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid email or password.' 
+            });
+        }
+
+        // 4. Security Checks
+        if (!user.isActive) {
+            return res.status(403).json({ success: false, message: 'Account is deactivated.' });
+        }
+
+        // --- STRICT LAB CHECKS START HERE ---
+
+        // Enforce Role
+        if (user.role !== 'lab_staff') {
+             return res.status(403).json({ 
+                 success: false, 
+                 message: 'Access Denied: This application is for Lab Staff only.' 
+             });
+        }
+
+        // Verify Organization Link & Status
+        if (!user.organization || !user.organization.identifier) {
+             return res.status(403).json({ success: false, message: 'Configuration Error: No Organization linked to this account.' });
+        }
+        if (user.organization.status !== 'active') {
+             return res.status(403).json({ success: false, message: 'Your Organization account is not active.' });
+        }
+
+        // Verify Lab Link & Status
+        if (!user.lab || !user.lab.identifier) {
+             return res.status(403).json({ success: false, message: 'Configuration Error: No Lab assigned to this account.' });
+        }
+        if (!user.lab.isActive) {
+             return res.status(403).json({ success: false, message: 'Your assigned Lab is currently inactive.' });
+        }
+
+        // 5. Generate Token
+        // We include the critical identifiers in the token payload too, just in case.
+        const tokenPayload = {
+            userId: user._id,
+            role: user.role,
+            organizationIdentifier: user.organization.identifier,
+            labIdentifier: user.lab.identifier
+        };
+        const token = generateToken(tokenPayload);
+
+        // 6. Success Response specifically tailored for the Electron App
+        res.json({
+            success: true,
+            message: 'Lab Connector authenticated successfully.',
+            token: token,
+            user: {
+                _id: user._id,
+                fullName: user.fullName,
+                email: user.email,
+                role: user.role,
+                // The two critical pieces of data for tagwrite.lua:
+                organizationIdentifier: user.organization.identifier,
+                lab: {
+                    identifier: user.lab.identifier,
+                    name: user.lab.name
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Lab Connector Login Error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error during lab authentication.' 
+        });
+    }
+};

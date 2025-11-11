@@ -6,6 +6,7 @@ import LoginPage from './pages/Login';
 import SuperAdminDashboard from './pages/superadmin/Dashboard';
 import AdminDashboard from './pages/admin/Dashboard';
 import AssignerDashboard from './pages/assigner/Dashboard'; // ✅ Import actual AssignerDashboard
+import LabDashboard from './pages/lab/Dashboard';
 import CreateDoctor from './pages/admin/CreateDoctor';
 import CreateLab from './pages/admin/CreateLab';
 import CreateUser from './pages/admin/CreateUser';
@@ -150,11 +151,7 @@ const AppRoutes = () => {
         path="/lab/dashboard" 
         element={
           <ProtectedRoute allowedRoles={['lab_staff']}>
-            <DashboardPlaceholder 
-              title="Lab Dashboard" 
-              description="Laboratory workflow and sample management"
-              role="Lab Staff"
-            />
+            <LabDashboard/>
           </ProtectedRoute>
         } 
       />

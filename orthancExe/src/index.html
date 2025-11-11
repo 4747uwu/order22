@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Orthanc Manager</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+
+  <div class="app-container">
+    <header>
+      <h1>Orthanc Manager</h1>
+      <nav class="main-nav">
+        <button id="nav-settings" class="nav-btn active">Settings</button>
+        <button id="nav-explorer" class="nav-btn" disabled>Explorer (Start Server First)</button>
+      </nav>
+      <div id="status-badge" class="status-stopped">Stopped</div>
+
+      <header>
+        <div class="header-right" style="display: flex; align-items: center; gap: 15px;">
+          <span id="user-display" style="color: #aaa; font-size: 0.9em;"></span>
+          <button id="logout-btn"
+            style="padding: 6px 12px; background: #d9534f; border: none; border-radius: 4px; color: white; cursor: pointer;">Logout</button>
+        </div>
+      </header>
+    </header>
+
+    <main>
+      <div id="tab-settings" class="tab-content active">
+        <div class="card">
+          <h2>Configuration</h2>
+          <div class="form-grid">
+            <!-- UPDATED LABEL HERE -->
+            <div class="input-group">
+              <label for="config-ip">Server IP Address (Read-Only)</label>
+              <input type="text" id="config-ip" disabled class="read-only" />
+            </div>
+            <div class="input-group">
+              <label for="config-port">HTTP Port (Read-Only)</label>
+              <input type="number" id="config-port" disabled class="read-only" />
+            </div>
+
+            <div class="input-group full-width divider-top">
+              <h3>TagWrite.lua Settings</h3>
+            </div>
+            <div class="input-group">
+              <label for="lua-creator">Private Creator</label>
+              <input type="text" id="lua-creator" placeholder="e.g. STR55" />
+            </div>
+            <div class="input-group">
+              <label for="lua-org">Private Organisation</label>
+              <input type="text" id="lua-org" placeholder="e.g. UJJ" />
+            </div>
+          </div>
+
+          <div class="actions">
+            <button id="btn-save" class="btn-secondary">Save Lua Settings</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-explorer" class="tab-content">
+        <webview id="orthanc-webview" src="about:blank"></webview>
+      </div>
+
+    </main>
+
+    <footer>
+      <div class="control-bar">
+        <button id="btn-toggle-server" class="btn-primary start">Start Server</button>
+      </div>
+      <div class="log-container">
+        <div class="log-header">Server Logs</div>
+        <div id="log-output"></div>
+      </div>
+    </footer>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+
+</html>

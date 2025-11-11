@@ -176,10 +176,14 @@ export const createDoctor = async (req, res) => {
     }
 };
 
-// ✅ CREATE LAB
+// ✅ CREATE LAB WITH USER ACCOUNT
 export const createLab = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const {
+            // Lab details
             name,
             identifier,
             contactPerson,
@@ -187,7 +191,16 @@ export const createLab = async (req, res) => {
             contactPhone,
             address,
             notes,
-            settings
+            settings,
+            
+            // ✅ NEW: User account details for lab staff
+            staffUserDetails: {
+                fullName,
+                email: staffEmail,
+                username,
+                password,
+                role = 'lab_staff' // Default role
+            } = {}
         } = req.body;
 
         // Validate admin permissions
@@ -204,6 +217,16 @@ export const createLab = async (req, res) => {
                 success: false,
                 message: 'Lab name and identifier are required'
             });
+        }
+
+        // ✅ VALIDATE: Staff user details if provided
+        if (staffEmail || fullName || username || password) {
+            if (!staffEmail || !fullName || !password) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Staff email, full name, and password are required for lab staff account'
+                });
+            }
         }
 
         const userOrgId = req.user.organization;
@@ -229,6 +252,38 @@ export const createLab = async (req, res) => {
             });
         }
 
+        // ✅ CHECK: If staff email already exists
+        let staffUser = null;
+        if (staffEmail) {
+            const existingStaffUser = await User.findOne({
+                email: staffEmail.toLowerCase().trim(),
+                organizationIdentifier: userOrgIdentifier
+            });
+
+            if (existingStaffUser) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Staff email already exists in this organization'
+                });
+            }
+
+            // Generate username if not provided
+            const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
+
+            // Check if username exists in organization
+            const existingUsername = await User.findOne({
+                username: finalUsername,
+                organizationIdentifier: userOrgIdentifier
+            });
+
+            if (existingUsername) {
+                return res.status(409).json({
+                    success: false,
+                    message: 'Staff username already exists in this organization'
+                });
+            }
+        }
+
         // Create new lab
         const newLab = new Lab({
             organization: userOrgId,
@@ -248,25 +303,79 @@ export const createLab = async (req, res) => {
             }
         });
 
-        await newLab.save();
+        await newLab.save({ session });
 
-        // Return created lab with populated organization
+        // ✅ CREATE: Staff user account if details provided
+        if (staffEmail) {
+            const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
+
+            staffUser = new User({
+                organization: userOrgId,
+                organizationIdentifier: userOrgIdentifier,
+                username: finalUsername,
+                email: staffEmail.toLowerCase().trim(),
+                password: password, // Will be hashed by pre-save hook
+                fullName: fullName.trim(),
+                role: role,
+                lab: newLab._id, // ✅ LINK: Connect user to lab
+                createdBy: req.user._id,
+                isActive: true,
+                
+                // ✅ SET: Lab staff permissions
+                permissions: {
+                    canViewCases: true,
+                    canViewPatients: true,
+                    canRegisterPatients: true,
+                    canDownloadReports: false, // Limited access
+                    canPrintReports: true,
+                    canViewDashboard: true
+                }
+            });
+
+            await staffUser.save({ session });
+
+            console.log('✅ LAB STAFF CREATED:', {
+                labId: newLab._id,
+                staffUserId: staffUser._id,
+                email: staffEmail,
+                username: finalUsername
+            });
+        }
+
+        await session.commitTransaction();
+
+        // Return created lab with populated organization and staff user
         const createdLab = await Lab.findById(newLab._id)
             .populate('organization', 'name displayName');
 
+        const responseData = {
+            lab: createdLab,
+            staffUser: staffUser ? {
+                _id: staffUser._id,
+                fullName: staffUser.fullName,
+                email: staffUser.email,
+                username: staffUser.username,
+                role: staffUser.role,
+                isActive: staffUser.isActive
+            } : null
+        };
+
         res.status(201).json({
             success: true,
-            message: 'Lab created successfully',
-            data: createdLab
+            message: staffUser 
+                ? 'Lab and staff account created successfully!' 
+                : 'Lab created successfully!',
+            data: responseData
         });
 
     } catch (error) {
+        await session.abortTransaction();
         console.error('Create lab error:', error);
 
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: 'Lab identifier already exists'
+                message: 'Lab identifier or staff credentials already exist'
             });
         }
 
@@ -275,6 +384,8 @@ export const createLab = async (req, res) => {
             message: 'Failed to create lab',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        session.endSession();
     }
 };
 

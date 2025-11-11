@@ -4,13 +4,17 @@ import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-import { ArrowLeft, Building, Mail, Phone, MapPin, Settings, User } from 'lucide-react';
+import { ArrowLeft, Building, Mail, Phone, MapPin, Settings, User, UserPlus, Eye, EyeOff } from 'lucide-react';
 
 const CreateLab = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const [loading, setLoading] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
+    
+    // ✅ SEPARATE: Lab and staff user data
     const [formData, setFormData] = useState({
+        // Lab details
         name: '',
         identifier: '',
         contactPerson: '',
@@ -28,8 +32,20 @@ const CreateLab = () => {
             autoAssignStudies: false,
             defaultPriority: 'NORMAL',
             maxConcurrentStudies: 100
+        },
+        
+        // ✅ NEW: Staff user account details
+        staffUserDetails: {
+            fullName: '',
+            email: '',
+            username: '',
+            password: '',
+            role: 'lab_staff'
         }
     });
+
+    // ✅ ADD: State for whether to create staff account
+    const [createStaffAccount, setCreateStaffAccount] = useState(true);
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -53,6 +69,16 @@ const CreateLab = () => {
                                    settingField === 'maxConcurrentStudies' ? parseInt(value) || 0 : value
                 }
             }));
+        } else if (name.startsWith('staffUserDetails.')) {
+            // ✅ NEW: Handle staff user details
+            const staffField = name.split('.')[1];
+            setFormData(prev => ({
+                ...prev,
+                staffUserDetails: {
+                    ...prev.staffUserDetails,
+                    [staffField]: value
+                }
+            }));
         } else {
             setFormData(prev => ({
                 ...prev,
@@ -61,15 +87,62 @@ const CreateLab = () => {
         }
     };
 
+    // ✅ NEW: Auto-generate username from email
+    const handleStaffEmailChange = (e) => {
+        const email = e.target.value;
+        const username = email.split('@')[0].toLowerCase();
+        
+        setFormData(prev => ({
+            ...prev,
+            staffUserDetails: {
+                ...prev.staffUserDetails,
+                email,
+                username
+            }
+        }));
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
 
         try {
-            const response = await api.post('/admin/admin-crud/labs', formData);
+            // ✅ PREPARE: Data for submission
+            const submitData = {
+                ...formData,
+                // Only include staff details if creating staff account
+                staffUserDetails: createStaffAccount ? formData.staffUserDetails : undefined
+            };
+
+            console.log('🔍 [CreateLab] Submitting data:', {
+                hasStaffDetails: !!submitData.staffUserDetails,
+                labName: submitData.name,
+                labIdentifier: submitData.identifier
+            });
+
+            const response = await api.post('/admin/admin-crud/labs', submitData);
 
             if (response.data.success) {
-                toast.success('Lab created successfully!');
+                const { lab, staffUser } = response.data.data;
+                
+                if (staffUser) {
+                    toast.success(
+                        `Lab created successfully! Staff account created for ${staffUser.email}`,
+                        { duration: 5000 }
+                    );
+                    
+                    // ✅ SHOW: Login credentials to admin
+                    toast.success(
+                        `Lab Staff Login: ${staffUser.username} / [password provided]`,
+                        { 
+                            duration: 10000,
+                            icon: '🔑'
+                        }
+                    );
+                } else {
+                    toast.success('Lab created successfully!');
+                }
+                
                 navigate('/admin/dashboard');
             }
         } catch (error) {
@@ -86,6 +159,12 @@ const CreateLab = () => {
         { value: 'NORMAL', label: 'Normal' },
         { value: 'HIGH', label: 'High' },
         { value: 'URGENT', label: 'Urgent' }
+    ];
+
+    const staffRoles = [
+        { value: 'lab_staff', label: 'Lab Staff' },
+        { value: 'receptionist', label: 'Receptionist' },
+        { value: 'billing', label: 'Billing Staff' }
     ];
 
     const states = [
@@ -111,7 +190,7 @@ const CreateLab = () => {
         <div className="min-h-screen bg-gray-50 flex flex-col">
             <Navbar
                 title="Create Lab"
-                subtitle="Add new laboratory to organization"
+                subtitle="Add new laboratory to organization with staff account"
                 showOrganizationSelector={false}
             />
 
@@ -134,20 +213,20 @@ const CreateLab = () => {
                         <div className="px-6 py-4 border-b border-gray-200">
                             <h2 className="text-lg font-bold text-gray-900">Create New Laboratory</h2>
                             <p className="text-sm text-gray-600 mt-1">
-                                Fill in the details below to create a new laboratory for your organization.
+                                Fill in the details below to create a new laboratory and optionally create a staff account for lab access.
                             </p>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="p-6">
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                                
-                                {/* Basic Information */}
-                                <div className="space-y-6">
-                                    <div className="flex items-center space-x-2 mb-4">
-                                        <Building className="w-5 h-5 text-gray-600" />
-                                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Basic Information</h3>
-                                    </div>
+                        <form onSubmit={handleSubmit} className="p-6 space-y-8">
+                            
+                            {/* Basic Information */}
+                            <div>
+                                <div className="flex items-center space-x-2 mb-4">
+                                    <Building className="w-5 h-5 text-gray-600" />
+                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Lab Information</h3>
+                                </div>
 
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Lab Name *
@@ -181,29 +260,17 @@ const CreateLab = () => {
                                             Unique identifier for this lab (uppercase, max 10 characters)
                                         </p>
                                     </div>
+                                </div>
+                            </div>
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Notes
-                                        </label>
-                                        <textarea
-                                            name="notes"
-                                            value={formData.notes}
-                                            onChange={handleInputChange}
-                                            rows={3}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black"
-                                            placeholder="Additional notes about this lab..."
-                                        />
-                                    </div>
+                            {/* Contact Information */}
+                            <div>
+                                <div className="flex items-center space-x-2 mb-4">
+                                    <User className="w-5 h-5 text-gray-600" />
+                                    <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Contact Information</h3>
                                 </div>
 
-                                {/* Contact Information */}
-                                <div className="space-y-6">
-                                    <div className="flex items-center space-x-2 mb-4">
-                                        <User className="w-5 h-5 text-gray-600" />
-                                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Contact Information</h3>
-                                    </div>
-
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Contact Person
@@ -255,14 +322,14 @@ const CreateLab = () => {
                             </div>
 
                             {/* Address Section */}
-                            <div className="mt-8">
+                            <div>
                                 <div className="flex items-center space-x-2 mb-4">
                                     <MapPin className="w-5 h-5 text-gray-600" />
                                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Address</h3>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    <div className="md:col-span-2 lg:col-span-3">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                    <div className="md:col-span-2 lg:col-span-4">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Street Address
                                         </label>
@@ -323,8 +390,130 @@ const CreateLab = () => {
                                 </div>
                             </div>
 
+                            {/* ✅ NEW: Staff Account Section */}
+                            <div>
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className="flex items-center space-x-2">
+                                        <UserPlus className="w-5 h-5 text-gray-600" />
+                                        <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Lab Staff Account</h3>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <input
+                                            type="checkbox"
+                                            id="createStaffAccount"
+                                            checked={createStaffAccount}
+                                            onChange={(e) => setCreateStaffAccount(e.target.checked)}
+                                            className="w-4 h-4 text-black focus:ring-black border-gray-300 rounded"
+                                        />
+                                        <label htmlFor="createStaffAccount" className="ml-2 text-sm text-gray-700">
+                                            Create staff login account
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {createStaffAccount && (
+                                    <div className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                        <p className="text-sm text-gray-600 mb-4">
+                                            Create a login account for lab staff to access their lab's studies and manage patient data.
+                                        </p>
+                                        
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Staff Full Name *
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    name="staffUserDetails.fullName"
+                                                    value={formData.staffUserDetails.fullName}
+                                                    onChange={handleInputChange}
+                                                    required={createStaffAccount}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black bg-white"
+                                                    placeholder="Jane Smith"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Staff Email *
+                                                </label>
+                                                <input
+                                                    type="email"
+                                                    name="staffUserDetails.email"
+                                                    value={formData.staffUserDetails.email}
+                                                    onChange={handleStaffEmailChange}
+                                                    required={createStaffAccount}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black bg-white"
+                                                    placeholder="jane.smith@lab.com"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Username
+                                                </label>
+                                                <input
+                                                    type="text"
+                                                    name="staffUserDetails.username"
+                                                    value={formData.staffUserDetails.username}
+                                                    onChange={handleInputChange}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black bg-white"
+                                                    placeholder="jane.smith (auto-generated)"
+                                                />
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    Auto-generated from email if not provided
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Password *
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type={showPassword ? 'text' : 'password'}
+                                                        name="staffUserDetails.password"
+                                                        value={formData.staffUserDetails.password}
+                                                        onChange={handleInputChange}
+                                                        required={createStaffAccount}
+                                                        minLength={6}
+                                                        className="w-full px-3 py-2 pr-10 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black bg-white"
+                                                        placeholder="Minimum 6 characters"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setShowPassword(!showPassword)}
+                                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                                    >
+                                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Role
+                                                </label>
+                                                <select
+                                                    name="staffUserDetails.role"
+                                                    value={formData.staffUserDetails.role}
+                                                    onChange={handleInputChange}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black bg-white"
+                                                >
+                                                    {staffRoles.map(role => (
+                                                        <option key={role.value} value={role.value}>
+                                                            {role.label}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
                             {/* Settings Section */}
-                            <div className="mt-8">
+                            <div>
                                 <div className="flex items-center space-x-2 mb-4">
                                     <Settings className="w-5 h-5 text-gray-600" />
                                     <h3 className="text-sm font-bold text-gray-900 uppercase tracking-wide">Lab Settings</h3>
@@ -379,8 +568,23 @@ const CreateLab = () => {
                                 </div>
                             </div>
 
+                            {/* Notes */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Notes
+                                </label>
+                                <textarea
+                                    name="notes"
+                                    value={formData.notes}
+                                    onChange={handleInputChange}
+                                    rows={3}
+                                    className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black"
+                                    placeholder="Additional notes about this lab..."
+                                />
+                            </div>
+
                             {/* Form Actions */}
-                            <div className="flex items-center justify-end space-x-4 mt-8 pt-6 border-t border-gray-200">
+                            <div className="flex items-center justify-end space-x-4 pt-6 border-t border-gray-200">
                                 <button
                                     type="button"
                                     onClick={() => navigate('/admin/dashboard')}
@@ -393,7 +597,7 @@ const CreateLab = () => {
                                     disabled={loading}
                                     className="px-6 py-2 bg-black text-white rounded hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {loading ? 'Creating...' : 'Create Lab'}
+                                    {loading ? 'Creating...' : createStaffAccount ? 'Create Lab & Staff Account' : 'Create Lab'}
                                 </button>
                             </div>
                         </form>

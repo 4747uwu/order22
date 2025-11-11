@@ -1,0 +1,37 @@
+{
+  "name": "orthancexe",
+  "productName": "orthancexe",
+  "version": "1.0.0",
+  "description": "My Electron application description",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron-forge start",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "lint": "echo \"No linting configured\""
+  },
+  "keywords": [],
+  "author": {
+    "name": "Abhishek Shukla",
+    "email": "4747uwu@gmail.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "electron-squirrel-startup": "^1.0.1",
+    "electron-store": "^6.0.1",
+    "json5": "^2.2.3"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.2",
+    "@electron-forge/maker-deb": "^7.10.2",
+    "@electron-forge/maker-rpm": "^7.10.2",
+    "@electron-forge/maker-squirrel": "^7.10.2",
+    "@electron-forge/maker-zip": "^7.10.2",
+    "@electron-forge/plugin-auto-unpack-natives": "^7.10.2",
+    "@electron-forge/plugin-fuses": "^7.10.2",
+    "@electron/fuses": "^1.8.0",
+    "electron": "39.1.1"
+  }
+}

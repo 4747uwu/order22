@@ -6,7 +6,8 @@ import {
     logoutUser, 
     refreshToken,
     switchOrganization,
-    getAvailableOrganizations 
+    getAvailableOrganizations,
+    labConnectorLogin
 } from '../controllers/auth.controller.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -20,5 +21,5 @@ router.post('/refresh-token', protect, refreshToken); // ✅ NEW
 // Super admin specific routes
 router.post('/switch-organization', protect, authorize('super_admin'), switchOrganization);
 router.get('/organizations', protect, authorize('super_admin'), getAvailableOrganizations);
-
+router.post('/lab-login', labConnectorLogin); // <-- New dedicated endpoint for Electron app
 export default router;

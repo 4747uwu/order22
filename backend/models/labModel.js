@@ -76,7 +76,29 @@ const LabSchema = new mongoose.Schema({
             default: 'NORMAL'
         },
         maxConcurrentStudies: { type: Number, default: 100 }
-    }
+    },
+    
+    // ✅ NEW: Staff management
+    staffUsers: [{
+        userId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },
+        role: {
+            type: String,
+            enum: ['lab_staff', 'receptionist', 'billing'],
+            default: 'lab_staff'
+        },
+        addedAt: {
+            type: Date,
+            default: Date.now
+        },
+        isActive: {
+            type: Boolean,
+            default: true
+        }
+    }]
 }, { 
     timestamps: true,
     collection: 'labs'
@@ -86,6 +108,7 @@ const LabSchema = new mongoose.Schema({
 LabSchema.index({ organizationIdentifier: 1, identifier: 1 }, { unique: true });
 LabSchema.index({ organization: 1, isActive: 1 });
 LabSchema.index({ fullIdentifier: 1 });
+LabSchema.index({ 'staffUsers.userId': 1 }); // ✅ NEW: Staff user index
 
 // Pre-save middleware to create fullIdentifier
 LabSchema.pre('save', function(next) {
@@ -93,6 +116,11 @@ LabSchema.pre('save', function(next) {
         this.fullIdentifier = `${this.organizationIdentifier}_${this.identifier}`;
     }
     next();
+});
+
+// ✅ NEW: Virtual for active staff count
+LabSchema.virtual('activeStaffCount').get(function() {
+    return this.staffUsers ? this.staffUsers.filter(staff => staff.isActive).length : 0;
 });
 
 const Lab = mongoose.model('Lab', LabSchema);
