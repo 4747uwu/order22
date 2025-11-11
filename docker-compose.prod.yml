@@ -33,8 +33,8 @@ services:
       - SMTP_PASS=${SMTP_PASS}
       - SENDER_EMAIL=${SENDER_EMAIL}
       - ORTHANC_URL=http://165.232.189.64:8042
-      - ORTHANC_USERNAME=admin  
-      - ORTHANC_PASSWORD=admin
+      - ORTHANC_USERNAME=alice  
+      - ORTHANC_PASSWORD=alicePassword
       - FRONTEND_URL=http://165.232.189.64  # ✅ Change from 157.245.86.199
       - ORTHANC_STORAGE_PATH=/root/orthanc/orthancstorage
     
