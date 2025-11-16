@@ -2,43 +2,66 @@
 
 export const formatStudyForWorklist = (rawStudy) => {
   try {
+    // ✅ BHARAT PACS ID
+    const bharatPacsId = rawStudy.bharatPacsId || 'N/A';
+
+    // ✅ ORGANIZATION INFO - from populated organization
+    const organizationName = rawStudy.organization?.name || 
+                            rawStudy.organizationIdentifier || 
+                            'Unknown Organization';
+
+    // ✅ CENTER/LAB INFO - from populated sourceLab
+    const centerName = rawStudy.sourceLab?.name || 
+                      rawStudy.sourceLab?.labName || 
+                      rawStudy.sourceLab?.location || 
+                      'Unknown Center';
+
     // ✅ PATIENT INFO - handle multiple possible sources
     const patientName = rawStudy.patientInfo?.patientName ||
-                       rawStudy.patientData?.patientNameRaw || 
-                       (rawStudy.patientData?.firstName || '') + ' ' + (rawStudy.patientData?.lastName || '')
-                       
+                       rawStudy.patient?.patientNameRaw || 
+                       (rawStudy.patient?.firstName || '') + ' ' + (rawStudy.patient?.lastName || '') ||
+                       'Unknown Patient';
     
-    const patientId = rawStudy.patientData?.patientID || 
+    const patientId = rawStudy.patient?.patientID || 
                      rawStudy.patientId || 
                      rawStudy.patientInfo?.patientID ||
                      'N/A';
 
     // ✅ AGE/GENDER FORMATTING
-    const age = rawStudy.patientData?.ageString || 
+    const age = rawStudy.patient?.age || 
                 rawStudy.patientInfo?.age || 
                 'N/A';
-    const gender = rawStudy.patientData?.gender || 
+    const gender = rawStudy.patient?.gender || 
                    rawStudy.patientInfo?.gender || 
                    'N/A';
     const ageGender = age !== 'N/A' && gender !== 'N/A' ? 
                      `${age}${gender.charAt(0).toUpperCase()}` : 
                      'N/A';
 
-    // ✅ STUDY INFO
-    const studyDescription = rawStudy.studyDescription || 
-                            rawStudy.examDescription || 
-                            'No Description';
-    
+    // ✅ MODALITY
     const modality = rawStudy.modalitiesInStudy?.length > 0 ? 
                     rawStudy.modalitiesInStudy.join(', ') : 
                     (rawStudy.modality || 'N/A');
 
-    // ✅ LOCATION
-    const location = rawStudy.labData?.name || 
-                    rawStudy.labData?.location || 
-                    'Unknown Location';
+    // ✅ SERIES COUNT
+    const seriesCount = rawStudy.seriesCount || 0;
+    const seriesImages = `${rawStudy.seriesCount || 0}/${rawStudy.instanceCount || 0}`;
 
-    // ✅ DATES
+    // ✅ ACCESSION NUMBER
+    const accessionNumber = rawStudy.accessionNumber || 'N/A';
+
+    // ✅ REFERRAL NUMBER (from referring physician or accession)
+    const referralNumber = rawStudy.referringPhysician?.contactInfo || 
+                          rawStudy.physicians?.referring?.mobile ||
+                          rawStudy.accessionNumber || 
+                          'N/A';
+
+    // ✅ CLINICAL HISTORY
+    const clinicalHistory = rawStudy.clinicalHistory?.clinicalHistory || 
+                           'No history provided';
+
+    // ✅ STUDY TIME
+    const studyTime = rawStudy.studyTime || 'N/A';
     const studyDate = rawStudy.studyDate ? 
                      new Date(rawStudy.studyDate).toLocaleDateString('en-US', {
                        month: 'short',
@@ -46,194 +69,217 @@ export const formatStudyForWorklist = (rawStudy) => {
                        year: 'numeric'
                      }) : 'N/A';
 
-    const uploadDate = rawStudy.createdAt ? 
-                      new Date(rawStudy.createdAt).toLocaleDateString('en-US', {
+    // ✅ UPLOAD TIME
+    const uploadTime = rawStudy.createdAt ? 
+                      new Date(rawStudy.createdAt).toLocaleString('en-US', {
                         month: 'short',
                         day: '2-digit',
+                        year: 'numeric',
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: false
                       }) : 'N/A';
 
-    // ✅ FIXED: ASSIGNMENT INFO - handle multiple active assignments
-    const assignmentInfo = formatAssignmentInfo(rawStudy.assignment);
-    
-    // ✅ SERIES/INSTANCES
-    const seriesImages = `${rawStudy.seriesCount || 0}/${rawStudy.instanceCount || 0}`;
+    // ✅ RADIOLOGIST INFO - from assignment or category tracking
+    const getRadiologistInfo = (study) => {
+      // Method 1: From category tracking (most recent)
+      if (study.categoryTracking?.assigned?.assignedTo) {
+        const assignee = study.categoryTracking.assigned.assignedTo;
+        return {
+          radiologistName: assignee.fullName || `${assignee.firstName} ${assignee.lastName}`,
+          radiologistEmail: assignee.email,
+          radiologistRole: assignee.role
+        };
+      }
 
-    // ✅ ENHANCED: Extract reported information with multiple fallbacks
-    const getReportedInfo = (study) => {
-      // Method 1: From modern reports creator info
-      if (study._reportCreator) {
-        return {
-          reportedBy: study._reportCreator.fullName || study._reportCreator.name,
-          reportedByEmail: study._reportCreator.email,
-          reportedByRole: study._reportCreator.role
-        };
-      }
-      
-      // Method 2: From reportInfo.reporterName
-      if (study.reportInfo?.reporterName) {
-        return {
-          reportedBy: study.reportInfo.reporterName,
-          reportedByEmail: null,
-          reportedByRole: 'radiologist'
-        };
-      }
-      
-      // Method 3: From first assignment
-      if (study.assignment?.[0]?.assignedTo) {
-        const assignee = study.assignment[0].assignedTo;
-        return {
-          reportedBy: assignee.fullName || assignee.name,
-          reportedByEmail: assignee.email,
-          reportedByRole: assignee.role
-        };
-      }
-      
-      return {
-        reportedBy: null,
-        reportedByEmail: null,
-        reportedByRole: null
-      };
-    };
-
-    // ✅ ENHANCED: Extract verification information with proper population
-    const getVerificationInfo = (study) => {
-      const verificationInfo = study.reportInfo?.verificationInfo;
-      
-      if (!verificationInfo) {
-        return {
-          verifiedBy: null,
-          verifiedByEmail: null,
-          verifiedByRole: null,
-          verifiedAt: null,
-          verificationStatus: 'pending',
-          verificationNotes: null
-        };
-      }
-      
-      // Check if verifiedBy is populated (object) or just an ID (string)
-      let verifiedBy = null;
-      let verifiedByEmail = null;
-      let verifiedByRole = null;
-      
-      if (verificationInfo.verifiedBy) {
-        if (typeof verificationInfo.verifiedBy === 'object') {
-          // Populated user object
-          verifiedBy = verificationInfo.verifiedBy.fullName || verificationInfo.verifiedBy.name;
-          verifiedByEmail = verificationInfo.verifiedBy.email;
-          verifiedByRole = verificationInfo.verifiedBy.role;
-        } else {
-          // Just an ObjectId - not populated
-          verifiedBy = `User ${verificationInfo.verifiedBy.toString().substring(0, 8)}...`;
-          verifiedByRole = 'verifier';
+      // Method 2: From assignment array (latest)
+      if (study.assignment?.length > 0) {
+        const latestAssignment = study.assignment
+          .filter(a => a.assignedTo)
+          .sort((a, b) => new Date(b.assignedAt) - new Date(a.assignedAt))[0];
+        
+        if (latestAssignment?.assignedTo) {
+          const assignee = latestAssignment.assignedTo;
+          if (typeof assignee === 'object') {
+            return {
+              radiologistName: assignee.fullName || `${assignee.firstName} ${assignee.lastName}`,
+              radiologistEmail: assignee.email,
+              radiologistRole: assignee.role
+            };
+          }
         }
       }
-      
+
+      // Method 3: From current report status
+      if (study.currentReportStatus?.lastReportedBy) {
+        const reporter = study.currentReportStatus.lastReportedBy;
+        return {
+          radiologistName: reporter.fullName || `${reporter.firstName} ${reporter.lastName}`,
+          radiologistEmail: reporter.email,
+          radiologistRole: reporter.role
+        };
+      }
+
       return {
-        verifiedBy,
-        verifiedByEmail,
-        verifiedByRole,
-        verifiedAt: verificationInfo.verifiedAt,
-        verificationStatus: verificationInfo.verificationStatus || 'pending',
-        verificationNotes: verificationInfo.verificationNotes
+        radiologistName: 'Unassigned',
+        radiologistEmail: null,
+        radiologistRole: null
       };
     };
 
-    // ✅ GET EXTRACTED INFO
-    const reportedInfo = getReportedInfo(rawStudy);
+    const radiologistInfo = getRadiologistInfo(rawStudy);
+
+    // ✅ CASE STATUS - comprehensive workflow status
+    const getCaseStatus = (study) => {
+      // Priority cases
+      if (study.studyPriority === 'Emergency Case' || 
+          study.caseType === 'emergency' ||
+          study.currentCategory === 'URGENT') {
+        return {
+          status: 'URGENT',
+          category: study.currentCategory || 'URGENT',
+          workflowStatus: study.workflowStatus,
+          color: 'red'
+        };
+      }
+
+      // Check current category
+      const categoryMap = {
+        'CREATED': { label: 'Study Created', color: 'blue' },
+        'HISTORY_CREATED': { label: 'History Added', color: 'cyan' },
+        'UNASSIGNED': { label: 'Pending Assignment', color: 'orange' },
+        'ASSIGNED': { label: 'Assigned', color: 'purple' },
+        'PENDING': { label: 'In Progress', color: 'yellow' },
+        'DRAFT': { label: 'Draft Report', color: 'amber' },
+        'VERIFICATION_PENDING': { label: 'Verification Pending', color: 'indigo' },
+        'FINAL': { label: 'Finalized', color: 'green' },
+        'REPRINT_NEED': { label: 'Reprint Required', color: 'red' }
+      };
+
+      const categoryInfo = categoryMap[study.currentCategory] || categoryMap['CREATED'];
+
+      return {
+        status: categoryInfo.label,
+        category: study.currentCategory,
+        workflowStatus: study.workflowStatus,
+        color: categoryInfo.color
+      };
+    };
+
+    const caseStatus = getCaseStatus(rawStudy);
+
+    // ✅ STUDY LOCK INFO
+    const isLocked = rawStudy.studyLock?.isLocked || false;
+    const lockedBy = rawStudy.studyLock?.lockedByName || null;
+    const lockedAt = rawStudy.studyLock?.lockedAt || null;
+
+    // ✅ ASSIGNMENT INFO - handle multiple active assignments
+    const assignmentInfo = formatAssignmentInfo(rawStudy.assignment);
+
+    // ✅ VERIFICATION INFO
     const verificationInfo = getVerificationInfo(rawStudy);
 
-    // ✅ ENHANCED: Format dates with proper fallbacks
-    const reportedDate = rawStudy.reportInfo?.finalizedAt || 
-                        rawStudy.reportInfo?.downloadedAt || 
-                        rawStudy.reportInfo?.startedAt ||
-                        null;
+    // ✅ PRINT HISTORY
+    const printCount = rawStudy.printHistory?.length || 0;
+    const lastPrint = rawStudy.printHistory?.[rawStudy.printHistory.length - 1];
 
     return {
       _id: rawStudy._id,
       studyInstanceUID: rawStudy.studyInstanceUID,
       orthancStudyID: rawStudy.orthancStudyID,
       
-      // ✅ FORMATTED PATIENT INFO
+      // ✅ NEW FIELDS
+      bharatPacsId,
+      organizationName,
+      centerName,
+      
+      // ✅ PATIENT INFO
       patientId,
       patientName: patientName.trim() || 'Unknown Patient',
       patientAge: age,
       patientSex: gender,
       ageGender,
       
-      // ✅ FORMATTED STUDY INFO
-      studyDescription,
+      // ✅ STUDY INFO
       modality,
-      seriesCount: rawStudy.seriesCount || 0,
+      seriesCount,
       instanceCount: rawStudy.instanceCount || 0,
       seriesImages,
+      accessionNumber,
+      referralNumber,
+      clinicalHistory,
+      studyDescription: rawStudy.studyDescription || rawStudy.examDescription || 'No Description',
       
-      // ✅ FORMATTED DATES
+      // ✅ DATES & TIMES
       studyDate,
-      studyTime: rawStudy.studyTime,
-      uploadDate,
+      studyTime,
+      uploadTime,
+      uploadDate: rawStudy.createdAt,
       createdAt: rawStudy.createdAt,
       
-      // ✅ ENHANCED: Reported information with proper population
-      reportedDate: reportedDate ? new Date(reportedDate).toLocaleDateString('en-US', {
-        month: 'short',
-        day: '2-digit',
-        year: 'numeric'
-      }) : null,
-      reportedBy: reportedInfo.reportedBy,
-      reportedByEmail: reportedInfo.reportedByEmail,
-      reportedByRole: reportedInfo.reportedByRole,
+      // ✅ RADIOLOGIST INFO
+      radiologist: radiologistInfo.radiologistName,
+      radiologistEmail: radiologistInfo.radiologistEmail,
+      radiologistRole: radiologistInfo.radiologistRole,
       
-      // ✅ ENHANCED: Verification information with proper population
-      verifiedDate: verificationInfo.verifiedAt ? new Date(verificationInfo.verifiedAt).toLocaleDateString('en-US', {
-        month: 'short',
-        day: '2-digit',
-        year: 'numeric'
-      }) : null,
-      verifiedBy: verificationInfo.verifiedBy,
-      verifiedByEmail: verificationInfo.verifiedByEmail,
-      verifiedByRole: verificationInfo.verifiedByRole,
-      verificationStatus: verificationInfo.verificationStatus,
-      verificationNotes: verificationInfo.verificationNotes,
+      // ✅ CASE STATUS
+      caseStatus: caseStatus.status,
+      caseStatusCategory: caseStatus.category,
+      caseStatusColor: caseStatus.color,
+      workflowStatus: caseStatus.workflowStatus,
       
-      // ✅ DETAILED INFO: Raw verification data for debugging
-      _verificationInfo: verificationInfo,
-      _reportedInfo: reportedInfo,
+      // ✅ STUDY LOCK
+      isLocked,
+      lockedBy,
+      lockedAt,
       
-      // ✅ LOCATION/LAB
-      location,
-      
-      // ✅ WORKFLOW
-      workflowStatus: rawStudy.workflowStatus,
-      priority: rawStudy.priority || 'NORMAL',
-      
-      // ✅ ASSIGNMENT INFO - properly formatted for multiple assignments
+      // ✅ ASSIGNMENT INFO
       isAssigned: assignmentInfo.isAssigned,
-      assignedTo: assignmentInfo.assignedToDisplay, // Display string for UI
-      assignedToIds: assignmentInfo.assignedToIds, // Array of IDs for modal
+      assignedTo: assignmentInfo.assignedToDisplay,
+      assignedToIds: assignmentInfo.assignedToIds,
       assignedCount: assignmentInfo.assignedCount,
-      assignedDoctors: assignmentInfo.assignedDoctors, // Array of doctor objects
+      assignedDoctors: assignmentInfo.assignedDoctors,
       assignedAt: assignmentInfo.latestAssignedAt,
       assignmentPriority: assignmentInfo.priority,
       dueDate: assignmentInfo.latestDueDate,
-      assignmentStatus: assignmentInfo.status,
       
-      // ✅ FULL ASSIGNMENT DATA for modal
-      assignment: assignmentInfo,
+      // ✅ VERIFICATION
+      verificationStatus: verificationInfo.verificationStatus,
+      verifiedBy: verificationInfo.verifiedBy,
+      verifiedAt: verificationInfo.verifiedAt,
+      
+      // ✅ PRINT INFO
+      printCount,
+      lastPrintedAt: lastPrint?.printedAt,
+      lastPrintedBy: lastPrint?.printedByName,
+      lastPrintType: lastPrint?.printType,
       
       // ✅ TECHNICAL
-      accessionNumber: rawStudy.accessionNumber || '',
+      priority: rawStudy.priority || rawStudy.studyPriority || 'NORMAL',
       organizationIdentifier: rawStudy.organizationIdentifier,
       
+      // ✅ CATEGORY TRACKING
+      categoryTracking: {
+        currentCategory: rawStudy.currentCategory,
+        created: rawStudy.categoryTracking?.created,
+        historyCreated: rawStudy.categoryTracking?.historyCreated,
+        assigned: rawStudy.categoryTracking?.assigned,
+        final: rawStudy.categoryTracking?.final,
+        urgent: rawStudy.categoryTracking?.urgent,
+        reprint: rawStudy.categoryTracking?.reprint
+      },
+      
       // ✅ KEEP RAW DATA for debugging
-      _raw: rawStudy
+      _raw: rawStudy,
+      _verificationInfo: verificationInfo,
+      _radiologistInfo: radiologistInfo,
+      _assignmentInfo: assignmentInfo
     };
   } catch (error) {
     console.error('Error formatting study:', error);
     return {
       _id: rawStudy._id,
+      bharatPacsId: 'ERROR',
       patientId: 'ERROR',
       patientName: 'Formatting Error',
       _raw: rawStudy
@@ -241,10 +287,49 @@ export const formatStudyForWorklist = (rawStudy) => {
   }
 };
 
-// ✅ IMPROVED: Assignment info formatter to handle populated assignment data
-const formatAssignmentInfo = (assignmentArray) => {
-  console.log('🔍 FORMATTING ASSIGNMENTS:', assignmentArray);
+// ✅ VERIFICATION INFO EXTRACTOR
+const getVerificationInfo = (study) => {
+  const verificationInfo = study.reportInfo?.verificationInfo;
   
+  if (!verificationInfo) {
+    return {
+      verifiedBy: null,
+      verifiedByEmail: null,
+      verifiedByRole: null,
+      verifiedAt: null,
+      verificationStatus: 'pending',
+      verificationNotes: null
+    };
+  }
+  
+  let verifiedBy = null;
+  let verifiedByEmail = null;
+  let verifiedByRole = null;
+  
+  if (verificationInfo.verifiedBy) {
+    if (typeof verificationInfo.verifiedBy === 'object') {
+      verifiedBy = verificationInfo.verifiedBy.fullName || 
+                  `${verificationInfo.verifiedBy.firstName} ${verificationInfo.verifiedBy.lastName}`;
+      verifiedByEmail = verificationInfo.verifiedBy.email;
+      verifiedByRole = verificationInfo.verifiedBy.role;
+    } else {
+      verifiedBy = `User ${verificationInfo.verifiedBy.toString().substring(0, 8)}...`;
+      verifiedByRole = 'verifier';
+    }
+  }
+  
+  return {
+    verifiedBy,
+    verifiedByEmail,
+    verifiedByRole,
+    verifiedAt: verificationInfo.verifiedAt,
+    verificationStatus: verificationInfo.verificationStatus || 'pending',
+    verificationNotes: verificationInfo.verificationNotes
+  };
+};
+
+// ✅ ASSIGNMENT INFO FORMATTER
+const formatAssignmentInfo = (assignmentArray) => {
   if (!assignmentArray || !Array.isArray(assignmentArray) || assignmentArray.length === 0) {
     return {
       isAssigned: false,
@@ -259,23 +344,13 @@ const formatAssignmentInfo = (assignmentArray) => {
     };
   }
   
-  // ✅ FIX: Handle populated assignment objects properly
   const activeAssignments = assignmentArray.filter(assignment => {
-    // Check if assignment has valid assignedTo
     const hasAssignedTo = assignment.assignedTo && 
                          (typeof assignment.assignedTo === 'object' ? assignment.assignedTo._id : assignment.assignedTo);
-    
-    console.log('🔍 CHECKING ASSIGNMENT:', {
-      hasAssignedTo,
-      assignedTo: assignment.assignedTo,
-      assignedAt: assignment.assignedAt
-    });
-    
     return hasAssignedTo && assignment.assignedAt;
   });
 
   if (activeAssignments.length === 0) {
-    console.log('❌ NO ACTIVE ASSIGNMENTS FOUND');
     return {
       isAssigned: false,
       assignedToDisplay: null,
@@ -289,19 +364,15 @@ const formatAssignmentInfo = (assignmentArray) => {
     };
   }
 
-  // Sort by assignment date (most recent first)
   const sortedAssignments = activeAssignments.sort((a, b) => 
     new Date(b.assignedAt) - new Date(a.assignedAt)
   );
 
-  // ✅ CREATE DOCTOR OBJECTS from populated data
   const assignedDoctors = sortedAssignments.map(assignment => {
     const assignedTo = assignment.assignedTo;
     
-    // Handle both populated objects and ObjectIds
     let doctorInfo;
     if (typeof assignedTo === 'object' && assignedTo._id) {
-      // Populated user object
       doctorInfo = {
         id: assignedTo._id.toString(),
         name: assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim(),
@@ -309,7 +380,6 @@ const formatAssignmentInfo = (assignmentArray) => {
         role: assignedTo.role
       };
     } else if (typeof assignedTo === 'string') {
-      // ObjectId string
       doctorInfo = {
         id: assignedTo,
         name: 'Unknown Doctor',
@@ -334,7 +404,6 @@ const formatAssignmentInfo = (assignmentArray) => {
     };
   });
 
-  // Remove duplicates by doctor ID
   const uniqueDoctors = assignedDoctors.filter((doctor, index, self) => 
     index === self.findIndex(d => d.id === doctor.id)
   );
@@ -345,13 +414,6 @@ const formatAssignmentInfo = (assignmentArray) => {
     : `${uniqueDoctors.length} Doctors`;
 
   const latestAssignment = sortedAssignments[0];
-
-  console.log('✅ FORMATTED ASSIGNMENT INFO:', {
-    assignedCount: uniqueDoctors.length,
-    assignedToIds,
-    assignedToDisplay,
-    doctors: uniqueDoctors.map(d => d.name)
-  });
 
   return {
     isAssigned: true,

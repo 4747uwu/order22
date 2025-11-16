@@ -7,7 +7,7 @@ import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConf
 import api from '../../services/api';
 import { RefreshCw, Plus, Shield, Database } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { formatStudiesForWorklist } from '../../utils/studyFormatter'; // ✅ ADD STUDY FORMATTER
+import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
@@ -23,49 +23,44 @@ const Dashboard = () => {
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
-  // ✅ ADD: API VALUES STATE (like assigner dashboard)
-  const [apiValues, setApiValues] = useState({
-    total: 0,
+  // ✅ CATEGORY-BASED API VALUES
+  const [categoryValues, setCategoryValues] = useState({
+    all: 0,
+    created: 0,
+    history_created: 0,
+    unassigned: 0,
+    assigned: 0,
     pending: 0,
-    inprogress: 0,
-    completed: 0
+    draft: 0,
+    verification_pending: 0,
+    final: 0,
+    urgent: 0,
+    reprint_need: 0
   });
-
-  // ✅ USE API VALUES for tab counts (instead of local calculation)
-  const statusCounts = useMemo(() => ({
-    all: apiValues.total,
-    pending: apiValues.pending,
-    inprogress: apiValues.inprogress,
-    completed: apiValues.completed
-  }), [apiValues]);
 
   // Column configuration
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: true, order: 1, label: 'Select' },
-    workflowStatus: { visible: true, order: 2, label: 'Status' },
-    patientId: { visible: true, order: 3, label: 'Patient ID' },
+    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
+    centerName: { visible: true, order: 3, label: 'Center' },
     patientName: { visible: true, order: 4, label: 'Patient Name' },
-    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
-    studyDescription: { visible: true, order: 6, label: 'Description' },
-    seriesCount: { visible: true, order: 7, label: 'Series' },
-    modality: { visible: true, order: 8, label: 'Modality' },
-    location: { visible: true, order: 9, label: 'Location' },
-    studyDate: { visible: true, order: 10, label: 'Study Date' },
-    uploadDate: { visible: false, order: 11, label: 'Upload Date' },
-    reportedDate: { visible: true, order: 12, label: 'Reported Date' },
-    reportedBy: { visible: false, order: 13, label: 'Reported By' },
-    verifiedDate: { visible: true, order: 14, label: 'Verified Date' }, // ✅ ADD VERIFICATION COLUMNS
-    verifiedBy: { visible: false, order: 15, label: 'Verified By' },
-    verificationStatus: { visible: true, order: 16, label: 'Verification' },
-    accession: { visible: false, order: 17, label: 'Accession' },
-    seenBy: { visible: false, order: 18, label: 'Seen By' },
-    actions: { visible: true, order: 19, label: 'Actions' },
-    assignedDoctor: { visible: true, order: 20, label: 'Assign Doctor' }
+    patientId: { visible: true, order: 5, label: 'Patient ID' },
+    ageGender: { visible: true, order: 6, label: 'Age/Sex' },
+    modality: { visible: true, order: 7, label: 'Modality' },
+    seriesCount: { visible: true, order: 8, label: 'Series' },
+    accessionNumber: { visible: true, order: 9, label: 'Acc. No.' },
+    referralDoctor: { visible: false, order: 10, label: 'Referral Dr.' },
+    clinicalHistory: { visible: false, order: 11, label: 'History' },
+    studyTime: { visible: true, order: 12, label: 'Study Time' },
+    uploadTime: { visible: true, order: 13, label: 'Upload Time' },
+    radiologist: { visible: true, order: 14, label: 'Radiologist' },
+    caseStatus: { visible: true, order: 15, label: 'Status' },
+    actions: { visible: true, order: 16, label: 'Actions' }
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
     try {
-      const saved = localStorage.getItem('adminWorklistColumnConfig'); // ✅ SEPARATE CONFIG KEY
+      const saved = localStorage.getItem('adminWorklistColumnConfig');
       if (saved) {
         const parsedConfig = JSON.parse(saved);
         return { ...getDefaultColumnConfig(), ...parsedConfig };
@@ -78,30 +73,37 @@ const Dashboard = () => {
 
   useEffect(() => {
     try {
-      localStorage.setItem('adminWorklistColumnConfig', JSON.stringify(columnConfig)); // ✅ SEPARATE CONFIG KEY
+      localStorage.setItem('adminWorklistColumnConfig', JSON.stringify(columnConfig));
     } catch (error) {
       console.warn('Error saving admin column config:', error);
     }
   }, [columnConfig]);
 
+  // ✅ CATEGORY-BASED ENDPOINT MAPPING
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
-      case 'pending': return '/admin/studies/pending';
-      case 'inprogress': return '/admin/studies/inprogress';
-      case 'completed': return '/admin/studies/completed';
+      case 'created': return '/admin/studies/category/created';
+      case 'history_created': return '/admin/studies/category/history-created';
+      case 'unassigned': return '/admin/studies/category/unassigned';
+      case 'assigned': return '/admin/studies/category/assigned';
+      case 'pending': return '/admin/studies/category/pending';
+      case 'draft': return '/admin/studies/category/draft';
+      case 'verification_pending': return '/admin/studies/category/verification-pending';
+      case 'final': return '/admin/studies/category/final';
+      case 'urgent': return '/admin/studies/category/urgent';
+      case 'reprint_need': return '/admin/studies/category/reprint-need';
       default: return '/admin/studies';
     }
   }, [currentView]);
 
-  // ✅ FIX: Handle raw studies from backend with proper category handling
+  // ✅ FETCH STUDIES BY CATEGORY
   const fetchStudies = useCallback(async (filters = {}) => {
     setLoading(true);
     setError(null);
     try {
-      const endpoint = getApiEndpoint(); // This already gets the right endpoint based on currentView
+      const endpoint = getApiEndpoint();
       const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      // ✅ FIX: Don't pass category param since endpoints are already status-specific
       const params = { ...activeFilters };
       delete params.category; // Remove category since endpoints handle this
     
@@ -116,9 +118,10 @@ const Dashboard = () => {
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
         const rawStudies = response.data.data || [];
+        console.log('🔍 [Admin] Raw studies fetched:', rawStudies);
         
-        // ✅ UPDATED: Format raw populated studies (like doctor dashboard)
         const formattedStudies = formatStudiesForWorklist(rawStudies);
+        console.log(formattedStudies);
         setStudies(formattedStudies);
         
         console.log('✅ [Admin] Studies fetched:', {
@@ -136,41 +139,47 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters]); // ✅ REMOVE: currentView from dependencies since getApiEndpoint handles it
+  }, [getApiEndpoint, searchFilters, currentView]);
 
-  // ✅ ADD: Fetch analytics for API values
-  const fetchAnalytics = useCallback(async (filters = {}) => {
+  // ✅ FETCH CATEGORY VALUES
+  const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 [Admin] Fetching analytics with params:', params);
+      console.log('🔍 [Admin] Fetching category values with params:', params);
       
-      const response = await api.get('/admin/values', { params });
+      const response = await api.get('/admin/category-values', { params });
       if (response.data.success) {
-        setApiValues({
-          total: response.data.total || 0,
+        setCategoryValues({
+          all: response.data.all || 0,
+          created: response.data.created || 0,
+          history_created: response.data.history_created || 0,
+          unassigned: response.data.unassigned || 0,
+          assigned: response.data.assigned || 0,
           pending: response.data.pending || 0,
-          inprogress: response.data.inprogress || 0,
-          completed: response.data.completed || 0
+          draft: response.data.draft || 0,
+          verification_pending: response.data.verification_pending || 0,
+          final: response.data.final || 0,
+          urgent: response.data.urgent || 0,
+          reprint_need: response.data.reprint_need || 0
         });
 
-        console.log('📊 [Admin] API VALUES UPDATED:', {
-          total: response.data.total,
-          pending: response.data.pending,
-          inprogress: response.data.inprogress,
-          completed: response.data.completed
-        });
+        console.log('📊 [Admin] CATEGORY VALUES UPDATED:', response.data);
       }
     } catch (error) {
-      console.error('Error fetching admin analytics:', error);
-      setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
+      console.error('Error fetching category values:', error);
+      setCategoryValues({
+        all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
+        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, reprint_need: 0
+      });
     }
   }, [searchFilters]);
 
-  // ✅ ADD: Fetch available assignees
+  // ✅ FETCH AVAILABLE ASSIGNEES
   const fetchAvailableAssignees = useCallback(async () => {
     try {
-      const response = await api.get('/admin/available-assignees'); // Admin endpoint
+      const response = await api.get('/assigner/available-assignees');
+      console.log(response)
       if (response.data.success) {
         setAvailableAssignees(response.data.data);
       }
@@ -179,11 +188,10 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ UPDATED: Initial data fetch with today as default
+  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
   useEffect(() => {
-    // ✅ SET DEFAULT FILTERS ON MOUNT
     const defaultFilters = {
-      dateFilter: 'today', // ✅ CHANGED: Use today as default
+      dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
       labId: 'all',
@@ -193,68 +201,59 @@ const Dashboard = () => {
     
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters);
-    fetchAnalytics(defaultFilters);
+    fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
-  }, []); // ✅ Empty dependency array for initial mount only
+  }, []);
 
-  // ✅ FIX: Add useEffect to fetch studies when currentView changes (like doctor dashboard)
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
     console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
     fetchStudies(searchFilters);
-  }, [currentView, fetchStudies]); // ✅ ADD: currentView dependency
+  }, [currentView, fetchStudies]);
 
   // Handlers
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Admin] NEW SEARCH PARAMS:', searchParams);
     setSearchFilters(searchParams);
     
-    // ✅ IMMEDIATE: Fetch studies and analytics with new params
     fetchStudies(searchParams);
-    fetchAnalytics(searchParams);
-  }, [fetchStudies, fetchAnalytics]);
+    fetchCategoryValues(searchParams);
+  }, [fetchStudies, fetchCategoryValues]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Admin] FILTER CHANGE:', filters);
     setSearchFilters(filters);
     
-    // ✅ IMMEDIATE: Fetch studies and analytics with new filters
     fetchStudies(filters);
-    fetchAnalytics(filters);
-  }, [fetchStudies, fetchAnalytics]);
+    fetchCategoryValues(filters);
+  }, [fetchStudies, fetchCategoryValues]);
   
-  // ✅ FIX: Update the handleViewChange to be simpler (like doctor dashboard)
+  // ✅ HANDLE VIEW CHANGE
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 [Admin] TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`📊 [Admin] CATEGORY CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
     setSelectedStudies([]);
     
-    // ✅ PRESERVE IMPORTANT FILTERS when switching tabs (same as doctor dashboard)
     setSearchFilters(prevFilters => {
       const preservedFilters = {
-        // Date filters
         dateFilter: prevFilters.dateFilter,
         dateType: prevFilters.dateType,
         customDateFrom: prevFilters.customDateFrom,
         customDateTo: prevFilters.customDateTo,
-        // Other filters
         modality: prevFilters.modality,
         labId: prevFilters.labId,
         priority: prevFilters.priority,
-        // Pagination
         limit: prevFilters.limit,
-        // Remove category since endpoints handle this
       };
       
-      // Remove undefined values
       const cleanedFilters = Object.fromEntries(
         Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
       );
       
-      // ✅ IMMEDIATELY refresh analytics with preserved filters
-      fetchAnalytics(cleanedFilters);
+      fetchCategoryValues(cleanedFilters);
       return cleanedFilters;
     });
-  }, [currentView, fetchAnalytics]);
+  }, [currentView, fetchCategoryValues]);
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -271,16 +270,15 @@ const Dashboard = () => {
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Admin] Manual refresh');
     fetchStudies(searchFilters);
-    fetchAnalytics(searchFilters);
+    fetchCategoryValues(searchFilters);
     fetchAvailableAssignees();
-  }, [fetchStudies, fetchAnalytics, fetchAvailableAssignees, searchFilters]);
+  }, [fetchStudies, fetchCategoryValues, fetchAvailableAssignees, searchFilters]);
 
   const handleCreateStudy = useCallback(() => {
     console.log('Create new study');
     toast.success('Study creation feature coming soon');
   }, []);
 
-  // ✅ ADD: Assignment handlers (like assigner dashboard)
   const handleAssignmentSubmit = useCallback(async (assignmentData) => {
     try {
       const { study, assignedToIds, assigneeRole, priority, notes, dueDate } = assignmentData;
@@ -292,7 +290,7 @@ const Dashboard = () => {
         priority
       });
       
-      const response = await api.post(`/admin/update-study-assignments/${study._id}`, {
+      const response = await api.post(`/assigner/update-study-assignments/${study._id}`, {
         assignedToIds,
         assigneeRole,
         priority,
@@ -303,15 +301,14 @@ const Dashboard = () => {
       if (response.data.success) {
         toast.success(response.data.message);
         fetchStudies(searchFilters);
-        fetchAnalytics(searchFilters);
+        fetchCategoryValues(searchFilters);
       }
     } catch (error) {
       console.error('Admin assignment error:', error);
       toast.error(error.response?.data?.message || 'Failed to update assignments');
     }
-  }, [fetchStudies, searchFilters, fetchAnalytics]);
+  }, [fetchStudies, searchFilters, fetchCategoryValues]);
 
-  // ✅ COLUMN CONFIGURATION HANDLERS
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
       ...prev,
@@ -327,7 +324,41 @@ const Dashboard = () => {
     setColumnConfig(defaultConfig);
   }, []);
 
-  // ✅ UPDATED: Navbar additional actions with system overview
+  const handleUpdateStudyDetails = useCallback(async (formData) => {
+    try {
+      console.log('🔄 Updating study details:', formData);
+      
+      const response = await api.put(`/admin/studies/${formData.studyId}/details`, {
+        patientName: formData.patientName,
+        patientAge: formData.patientAge,
+        patientGender: formData.patientGender,
+        studyName: formData.studyName,
+        referringPhysician: formData.referringPhysician,
+        accessionNumber: formData.accessionNumber,
+        clinicalHistory: formData.clinicalHistory
+      });
+
+      if (response.data.success) {
+        toast.success('Study details updated successfully');
+        fetchStudies(searchFilters);
+        fetchCategoryValues(searchFilters);
+      }
+    } catch (error) {
+      console.error('Error updating study details:', error);
+      toast.error(error.response?.data?.message || 'Failed to update study details');
+      throw error;
+    }
+  }, [fetchStudies, searchFilters, fetchCategoryValues]);
+
+  const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
+    try {
+      // Refresh studies after lock toggle
+      await fetchStudies();
+    } catch (error) {
+      console.error('Lock toggle failed:', error);
+    }
+  }, [fetchStudies]);
+
   const additionalActions = [
     {
       label: 'System Overview',
@@ -352,9 +383,23 @@ const Dashboard = () => {
     }
   ];
 
+  // ✅ CATEGORY TABS CONFIGURATION
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: categoryValues.all, color: 'bg-gray-100 text-gray-800' },
+    { key: 'created', label: 'Created', count: categoryValues.created, color: 'bg-blue-100 text-blue-800' },
+    { key: 'history_created', label: 'History Created', count: categoryValues.history_created, color: 'bg-cyan-100 text-cyan-800' },
+    { key: 'unassigned', label: 'Unassigned', count: categoryValues.unassigned, color: 'bg-orange-100 text-orange-800' },
+    { key: 'assigned', label: 'Assigned', count: categoryValues.assigned, color: 'bg-purple-100 text-purple-800' },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending, color: 'bg-yellow-100 text-yellow-800' },
+    { key: 'draft', label: 'Draft', count: categoryValues.draft, color: 'bg-amber-100 text-amber-800' },
+    { key: 'verification_pending', label: 'Verification', count: categoryValues.verification_pending, color: 'bg-indigo-100 text-indigo-800' },
+    { key: 'final', label: 'Final', count: categoryValues.final, color: 'bg-green-100 text-green-800' },
+    { key: 'urgent', label: 'Urgent', count: categoryValues.urgent, color: 'bg-red-100 text-red-800' },
+    { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need, color: 'bg-pink-100 text-pink-800' }
+  ];
+
   return (
-    <div className="h-screen bg-teal-50 flex flex-col"> {/* ✅ UPDATED: Teal background */}
-      {/* ✅ NAVBAR WITH TEAL THEME */}
+    <div className="h-screen bg-teal-50 flex flex-col">
       <Navbar
         title="Admin Dashboard"
         subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • PACS Administration`}
@@ -362,30 +407,28 @@ const Dashboard = () => {
         onRefresh={handleRefresh}
         additionalActions={additionalActions}
         notifications={0}
-        theme="admin" // ✅ ADMIN THEME
+        theme="admin"
       />
       
-      {/* ✅ SEARCH WITH TEAL ACCENTS */}
       <Search
         onSearch={handleSearch}
         onFilterChange={handleFilterChange}
         loading={loading}
-        totalStudies={statusCounts.all}
+        totalStudies={categoryValues.all}
         currentCategory={currentView}
-        theme="admin" // ✅ ADMIN THEME
+        theme="admin"
       />
 
-      {/* ✅ MAIN WORKLIST AREA WITH TEAL THEME */}
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-teal-100 h-full flex flex-col"> {/* ✅ UPDATED: Teal border */}
+        <div className="bg-white rounded-lg shadow-sm border border-teal-100 h-full flex flex-col">
           
-          {/* ✅ UPDATED: WORKLIST HEADER WITH TEAL THEME */}
-          <div className="flex items-center justify-between px-4 py-1 border-b border-teal-200 bg-white rounded-t-lg"> {/* ✅ UPDATED: Teal border */}
+          {/* ✅ WORKLIST HEADER WITH CATEGORY TABS */}
+          <div className="flex items-center justify-between px-4 py-1 border-b border-teal-200 bg-white rounded-t-lg">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-teal-800 uppercase tracking-wide"> {/* ✅ UPDATED: Teal text */}
+              <h2 className="text-sm font-bold text-teal-800 uppercase tracking-wide">
                 ADMIN WORKLIST
               </h2>
-              <span className="text-xs text-teal-700 bg-white px-2 py-1 rounded border border-teal-200"> {/* ✅ UPDATED: Teal theme */}
+              <span className="text-xs text-teal-700 bg-white px-2 py-1 rounded border border-teal-200">
                 {studies.length} studies loaded
               </span>
               {selectedStudies.length > 0 && (
@@ -395,29 +438,32 @@ const Dashboard = () => {
               )}
             </div>
 
-            {/* ✅ UPDATED: MIDDLE SECTION - CATEGORY TABS WITH TEAL THEME */}
-            <div className="flex items-center border border-teal-300 rounded-md overflow-hidden bg-white"> {/* ✅ UPDATED: Teal border */}
-              {[
-                { key: 'all', label: 'All', count: statusCounts.all },
-                { key: 'pending', label: 'Pending', count: statusCounts.pending },
-                { key: 'inprogress', label: 'In Progress', count: statusCounts.inprogress },
-                { key: 'completed', label: 'Completed', count: statusCounts.completed }
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleViewChange(tab.key)}
-                  className={`px-3 py-1.5 text-xs font-medium border-r border-teal-300 last:border-r-0 transition-colors ${
-                    currentView === tab.key
-                      ? 'bg-teal-600 text-white' // ✅ UPDATED: Teal active
-                      : 'bg-white text-teal-700 hover:bg-teal-50' // ✅ UPDATED: Teal hover
-                  }`}
-                >
-                  {tab.label} ({tab.count})
-                </button>
-              ))}
+            {/* ✅ CATEGORY TABS - SCROLLABLE */}
+            <div className="flex-1 mx-4 overflow-x-auto">
+              <div className="flex items-center space-x-1 min-w-max">
+                {categoryTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleViewChange(tab.key)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                      currentView === tab.key
+                        ? 'bg-teal-600 text-white shadow-md scale-105'
+                        : `${tab.color} hover:shadow-sm`
+                    }`}
+                  >
+                    {tab.label}
+                    <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs font-bold ${
+                      currentView === tab.key 
+                        ? 'bg-white text-teal-600' 
+                        : 'bg-white bg-opacity-50'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
             
-            {/* Right section remains the same */}
             <div className="flex items-center space-x-2">
               <ColumnConfigurator
                 columnConfig={columnConfig}
@@ -428,7 +474,6 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Worklist table remains the same */}
           <div className="flex-1 min-h-0">
             <WorklistTable
               studies={studies}
@@ -441,6 +486,9 @@ const Dashboard = () => {
               onAssignDoctor={(study) => console.log('Assign doctor:', study._id)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
+              onUpdateStudyDetails={handleUpdateStudyDetails} // ✅ NEW
+              userRole={currentUser?.role || 'viewer'} // ✅ PASS USER ROLE
+              onToggleStudyLock={handleToggleStudyLock} // ✅ PASS LOCK HANDLER
               theme="admin"
             />
           </div>

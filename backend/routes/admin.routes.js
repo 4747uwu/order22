@@ -1,93 +1,44 @@
 import express from 'express';
-import {
-    getPendingStudies,
-    getInProgressStudies,
-    getCompletedStudies,
-    getAllStudiesForAdmin,
-    getValues
+import { 
+    getValues, 
+    getCategoryValues, // ✅ NEW
+    getStudiesByCategory, // ✅ NEW
+    getPendingStudies, 
+    getInProgressStudies, 
+    getCompletedStudies, 
+    getAllStudiesForAdmin 
 } from '../controllers/admin.controller.js';
-
-import {
-    createDoctor,
-    createLab,
-    getAllDoctors,
-    getAllLabs,
-    updateDoctor,
-    updateLab,
-    deleteDoctor,
-    deleteLab
-} from '../controllers/adminCRUD.controller.js';
-
-// ✅ IMPORT USER MANAGEMENT ROUTES
-import userManagementRoutes from './userManagement.routes.js';
-
-// ✅ IMPORT ADMIN USER MANAGEMENT
-import {
-    getOrganizationUsers,
-    updateUserCredentials,
-    switchUserRole,
-    toggleUserStatus,
-    resetUserPassword,
-    deleteUser
-} from '../controllers/adminUserManagement.controller.js';
-
 import { protect } from '../middleware/authMiddleware.js';
-// import { authenticate, authorize } from '../middleware/auth.js';
-import systemOverviewController from '../controllers/systemOverview.controller.js';
+import { updateStudyDetails, getStudyActionLogs } from '../controllers/Patient.controller.js'; // ✅ ADD getStudyActionLogs
+
+import { toggleStudyLock } from '../controllers/download.controller.js';
+
 
 const router = express.Router();
 
-// ✅ VALUES ENDPOINT FOR DASHBOARD COUNTS
-router.get('/values', protect, getValues);
+// ✅ Protect all admin routes
+router.use(protect);
+// router.use(authorize('admin', 'super_admin'));
 
-// ✅ STUDIES ENDPOINTS
-router.get('/studies/pending', protect, getPendingStudies);
-router.get('/studies/inprogress', protect, getInProgressStudies);
-router.get('/studies/completed', protect, getCompletedStudies);
-router.get('/studies', protect, getAllStudiesForAdmin);
+// ✅ Analytics endpoints
+router.get('/values', getValues);
+router.get('/category-values', getCategoryValues); // ✅ NEW
 
-// ✅ CRUD OPERATION ROUTES WITH PROTECTION
-router.post('/admin-crud/doctors', protect, createDoctor);
-router.get('/admin-crud/doctors', protect, getAllDoctors);
-router.put('/admin-crud/doctors/:doctorId', protect, updateDoctor);
-router.delete('/admin-crud/doctors/:doctorId', protect, deleteDoctor);
+// ✅ Category-based study endpoints
+router.get('/studies/category/:category', getStudiesByCategory); // ✅ NEW
 
-router.post('/admin-crud/labs', protect, createLab);
-router.get('/admin-crud/labs', protect, getAllLabs);
-router.put('/admin-crud/labs/:labId', protect, updateLab);
-router.delete('/admin-crud/labs/:labId', protect, deleteLab);
+// ✅ Add this route
+router.put('/studies/:studyId/details', protect, updateStudyDetails);
 
-// ✅ USER MANAGEMENT ROUTES
-router.use('/user-management', userManagementRoutes);
+// ✅ ADD THIS ROUTE
+router.get('/study-action-logs/:studyId', protect, getStudyActionLogs);
 
-// ✅ ADMIN USER MANAGEMENT ROUTES
-router.get('/manage-users', protect, getOrganizationUsers);
-router.put('/manage-users/:userId/credentials', protect, updateUserCredentials);
-router.put('/manage-users/:userId/role', protect, switchUserRole);
-router.put('/manage-users/:userId/status', protect, toggleUserStatus);
-router.post('/manage-users/:userId/reset-password', protect, resetUserPassword);
-router.delete('/manage-users/:userId', protect, deleteUser);
+// Legacy endpoints (keep for backwards compatibility)
+router.get('/studies/pending', getPendingStudies);
+router.get('/studies/inprogress', getInProgressStudies);
+router.get('/studies/completed', getCompletedStudies);
+router.get('/studies', getAllStudiesForAdmin);
 
-// ✅ SYSTEM OVERVIEW ROUTES
-router.get('/system-overview', 
-    protect
-    , 
-    // authorize(['admin', 'super_admin']), 
-    systemOverviewController.getSystemOverview
-);
 
-router.get('/system-health', 
-    protect
-    , 
-    // authorize(['admin', 'super_admin']), 
-    systemOverviewController.getSystemHealth
-);
-
-router.get('/organization-summary', 
-    protect
-    , 
-    // authorize(['super_admin']), 
-    systemOverviewController.getOrganizationSummary
-);
-
+router.post('/toggle-study-lock/:studyId', protect, toggleStudyLock);
 export default router;

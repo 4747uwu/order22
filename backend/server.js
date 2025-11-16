@@ -23,6 +23,7 @@ import documentsRoutes from './routes/documents.routes.js';
 import htmlTemplateRoutes from './routes/htmlTemplate.routes.js';
 import studyNotesRoutes from './routes/studyNotes.routes.js'; // ✅ ADD THIS LINE
 import labRoutes from './routes/lab.routes.js';
+import downloadRoutes from './routes/download.routes.js'
 
 
 
@@ -171,6 +172,7 @@ app.use('/api/reports', reportStoringRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/html-templates', htmlTemplateRoutes);
 app.use('/api/lab', labRoutes);
+app.use('/api/download', downloadRoutes);
 // ...existing code...
 
 

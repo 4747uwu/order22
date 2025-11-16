@@ -1,91 +1,173 @@
 // models/DicomStudy.model.js
 import mongoose from 'mongoose';
 
+// ✅ NEW: Action types enum for comprehensive tracking
+const ACTION_TYPES = {
+    // Upload & Ingestion
+    STUDY_UPLOADED: 'study_uploaded',
+    STUDY_RECEIVED: 'study_received',
+    METADATA_EXTRACTED: 'metadata_extracted',
+    
+    // History & Clinical
+    HISTORY_CREATED: 'history_created',
+    HISTORY_UPDATED: 'history_updated',
+    CLINICAL_NOTES_ADDED: 'clinical_notes_added',
+    
+    // Assignment
+    STUDY_ASSIGNED: 'study_assigned',
+    STUDY_REASSIGNED: 'study_reassigned',
+    ASSIGNMENT_ACCEPTED: 'assignment_accepted',
+    ASSIGNMENT_REJECTED: 'assignment_rejected',
+    
+    // Study Lock
+    STUDY_LOCKED: 'study_locked',
+    STUDY_UNLOCKED: 'study_unlocked',
+    LOCK_TRANSFERRED: 'lock_transferred',
+    
+    // Report Actions
+    REPORT_STARTED: 'report_started',
+    REPORT_DRAFTED: 'report_drafted',
+    REPORT_SAVED: 'report_saved',
+    REPORT_FINALIZED: 'report_finalized',
+    REPORT_VERIFIED: 'report_verified',
+    REPORT_REJECTED: 'report_rejected',
+    
+    // Print Actions
+    REPORT_PRINTED: 'report_printed',
+    REPORT_REPRINTED: 'report_reprinted',
+    REPORT_DOWNLOADED: 'report_downloaded',
+    
+    // Workflow
+    STATUS_CHANGED: 'status_changed',
+    PRIORITY_CHANGED: 'priority_changed',
+    STUDY_OPENED: 'study_opened',
+    STUDY_VIEWED: 'study_viewed',
+    
+    // Administrative
+    STUDY_DELETED: 'study_deleted',
+    STUDY_ARCHIVED: 'study_archived',
+    STUDY_RESTORED: 'study_restored',
+    NOTES_ADDED: 'notes_added',
+    ATTACHMENT_ADDED: 'attachment_added'
+};
+
 const DicomStudySchema = new mongoose.Schema({
-    studyInstanceUID: {
+    // ✅ NEW: BharatPacs ID - Auto-generated unique identifier
+    bharatPacsId: {
         type: String,
-        // required: true,
         unique: true,
-        index: { unique: true, background: true } // 🔥 Background index creation
+        sparse: true,
+        index: { background: true }
     },
     
-    // ✅ ADD: Organization fields (MISSING FROM YOUR MODEL)
+    studyInstanceUID: {
+        type: String,
+        unique: true,
+        index: { unique: true, background: true } 
+    },
+    
     organization: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Organization',
         required: true,
-        index: { background: true } // 🔥 Critical for multi-tenant queries
+        index: { background: true } 
     },
     organizationIdentifier: {
         type: String,
         required: true,
-        index: { background: true } // 🔥 Critical for filtering by org
+        index: { background: true } 
     },
     
-    // 🔧 CRITICAL: Optimized patient reference
     patient: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Patient',
         required: true,
-        index: { background: true } // 🔥 Background indexing
+        index: { background: true } 
     },
     patientId: { 
         type: String, 
         required: true,
-        index: { background: true } // 🔥 Background indexing
+        index: { background: true } 
     },
     
-    // 🔧 PERFORMANCE: Denormalized patient data for faster queries
     patientInfo: {
-        patientID: { type: String, index: { sparse: true, background: true } }, // 🔥 Sparse index
-        patientName: { type: String, index: { sparse: true, background: true } }, // 🔥 Sparse index
+        patientID: { type: String, index: { sparse: true, background: true } },
+        patientName: { type: String, index: { sparse: true, background: true } },
         age: String,
-        gender: { type: String, index: { sparse: true, background: true } } // 🔥 Gender filtering
+        gender: { type: String, index: { sparse: true, background: true } }
     },
 
-    // 🔧 OPTIMIZED: Study metadata with indexes
     studyDate: { 
         type: Date, 
         index: { background: true },
-        // 🔥 ADD: Default to current date for faster inserts
         default: Date.now
     },
     modality: { 
         type: String, 
         index: { background: true },
         enum: ['CT', 'MRI', 'XR', 'US', 'DX', 'CR', 'MG', 'NM', 'PT'],
-        // 🔥 ADD: Default value to avoid null checks
         default: 'CT'
     },
     accessionNumber: { 
         type: String, 
-        index: { sparse: true, background: true } // 🔥 Sparse index for optional fields
+        index: { sparse: true, background: true }
     },
-    age: {
-        type: String
-    },
-    gender: {
-        type: String
-    },
+    age: { type: String },
+    gender: { type: String },
 
+    // ✅ ENHANCED: Extended workflow statuses matching your categories
     workflowStatus: {
         type: String,
         enum: [
+            // CREATED
             'new_study_received',
+            'metadata_extracted',
+            
+            // HISTORY CREATED
+            'history_pending',
+            'history_created',
+            'history_verified',
+            
+            // UNASSIGNED
             'pending_assignment',
+            'awaiting_radiologist',
+            
+            // ASSIGNED
             'assigned_to_doctor',
+            'assignment_accepted',
+            
+            // PENDING
             'doctor_opened_report',
             'report_in_progress',
+            'pending_completion',
+            
+            // DRAFT
             'report_drafted',
+            'draft_saved',
+            
+            // VERIFICATION PENDING
+            'verification_pending',
+            'verification_in_progress',
+            
+            // FINAL
             'report_finalized',
+            'final_approved',
+            
+            // URGENT
+            'urgent_priority',
+            'emergency_case',
+            
+            // REPRINT NEED
+            'reprint_requested',
+            'correction_needed',
+            
+            // Other statuses
             'report_uploaded',
             'report_downloaded_radiologist',
             'report_downloaded',
             'final_report_downloaded',
-            // ✅ NEW: Verification workflow statuses
             'report_verified',
             'report_rejected',
-            'verification_in_progress',
             'archived'
         ],
         default: 'new_study_received',
@@ -95,24 +177,19 @@ const DicomStudySchema = new mongoose.Schema({
     currentCategory: {
         type: String,
         enum: [
-            'new_study_received',
-            'pending_assignment',
-            'assigned_to_doctor',
-            'doctor_opened_report',
-            'report_in_progress',
-            'report_drafted',
-            'report_finalized',
-            'report_uploaded',
-            'report_downloaded_radiologist',
-            'report_downloaded',
-            'final_report_downloaded',
-            // ✅ NEW: Verification workflow statuses
-            'report_verified',
-            'report_rejected',
-            'verification_in_progress',
-            'archived'
+            'ALL',
+            'CREATED',
+            'HISTORY_CREATED',
+            'UNASSIGNED',
+            'ASSIGNED',
+            'PENDING',
+            'DRAFT',
+            'VERIFICATION_PENDING',
+            'FINAL',
+            'URGENT',
+            'REPRINT_NEED'
         ],
-        default: 'new_study_received',
+        default: 'CREATED',
         index: { background: true }
     },
     
@@ -120,8 +197,279 @@ const DicomStudySchema = new mongoose.Schema({
         type: String,
         enum: ['yes', 'no'],
         default: 'no',
-        index: { sparse: true, background: true } // 🔥 Sparse index
+        index: { sparse: true, background: true }
     },
+
+    // ✅ NEW: Study Lock Management
+    studyLock: {
+        isLocked: {
+            type: Boolean,
+            default: false,
+            index: { background: true }
+        },
+        lockedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            sparse: true,
+            index: { sparse: true, background: true }
+        },
+        lockedByName: {
+            type: String
+        },
+        lockedByRole: {
+            type: String,
+            enum: ['admin', 'doctor_account', 'radiologist', 'verifier', 'lab_staff']
+        },
+        lockedAt: {
+            type: Date,
+            index: { sparse: true, background: true }
+        },
+        lockReason: {
+            type: String,
+            enum: ['reporting', 'verification', 'review', 'correction', 'administrative'],
+            default: 'reporting'
+        },
+        lockExpiry: {
+            type: Date // Auto-unlock after certain time
+        },
+        previousLocks: [{
+            lockedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            lockedByName: String,
+            lockedAt: Date,
+            unlockedAt: Date,
+            lockDuration: Number, // in minutes
+            lockReason: String
+        }]
+    },
+
+    // ✅ NEW: Comprehensive Action Log
+    actionLog: [{
+        actionType: {
+            type: String,
+            enum: Object.values(ACTION_TYPES),
+            required: true,
+            index: { background: true }
+        },
+        actionCategory: {
+            type: String,
+            enum: ['upload', 'history', 'assignment', 'lock', 'report', 'print', 'workflow', 'administrative'],
+            required: true
+        },
+        performedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },
+        performedByName: {
+            type: String,
+            required: true
+        },
+        performedByRole: {
+            type: String,
+            enum: ['admin', 'doctor_account', 'radiologist', 'verifier', 'lab_staff', 'technician', 'system']
+        },
+        performedAt: {
+            type: Date,
+            default: Date.now,
+            index: { background: true }
+        },
+        // For actions involving another user (assignment, lock transfer, etc.)
+        targetUser: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        targetUserName: {
+            type: String
+        },
+        targetUserRole: {
+            type: String
+        },
+        // Action details
+        actionDetails: {
+            previousValue: mongoose.Schema.Types.Mixed,
+            newValue: mongoose.Schema.Types.Mixed,
+            changes: mongoose.Schema.Types.Mixed,
+            metadata: mongoose.Schema.Types.Mixed
+        },
+        // Print-specific tracking
+        printInfo: {
+            printCount: Number,
+            isPrintOriginal: Boolean,
+            printMethod: String, // 'pdf', 'physical', 'email'
+            printerName: String,
+            copies: Number
+        },
+        // History-specific tracking
+        historyInfo: {
+            clinicalHistoryUpdated: Boolean,
+            previousInjuryUpdated: Boolean,
+            previousSurgeryUpdated: Boolean,
+            source: String // 'patient_modal', 'study_detail', 'admin_panel'
+        },
+        // Assignment-specific tracking
+        assignmentInfo: {
+            assignmentType: String, // 'initial', 'reassignment', 'transfer'
+            previousAssignee: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            priority: String,
+            dueDate: Date
+        },
+        notes: {
+            type: String,
+            maxlength: 2000
+        },
+        ipAddress: String,
+        userAgent: String,
+        sessionId: String
+    }],
+
+    // ✅ NEW: Category-specific tracking
+    categoryTracking: {
+        // CREATED tracking
+        created: {
+            uploadedAt: Date,
+            uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            uploadSource: String, // 'orthanc', 'dicom_upload', 'manual'
+            instancesReceived: Number,
+            seriesReceived: Number
+        },
+        
+        // HISTORY CREATED tracking
+        historyCreated: {
+            createdAt: Date,
+            createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            lastUpdatedAt: Date,
+            lastUpdatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            isComplete: { type: Boolean, default: false },
+            verifiedAt: Date,
+            verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+        },
+        
+        // UNASSIGNED tracking
+        unassigned: {
+            waitingSince: Date,
+            escalatedAt: Date,
+            escalationCount: { type: Number, default: 0 },
+            autoAssignmentAttempts: { type: Number, default: 0 }
+        },
+        
+        // ASSIGNED tracking
+        assigned: {
+            assignedAt: Date,
+            assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            acceptedAt: Date,
+            assignmentHistory: [{
+                assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                assignedAt: Date,
+                unassignedAt: Date,
+                reason: String
+            }]
+        },
+        
+        // PENDING tracking
+        pending: {
+            startedAt: Date,
+            lastActivityAt: Date,
+            estimatedCompletionTime: Date,
+            remindersSent: { type: Number, default: 0 }
+        },
+        
+        // DRAFT tracking
+        draft: {
+            draftCreatedAt: Date,
+            draftSavedAt: Date,
+            draftVersion: { type: Number, default: 1 },
+            autosaveCount: { type: Number, default: 0 },
+            lastAutosaveAt: Date
+        },
+        
+        // VERIFICATION PENDING tracking
+        verificationPending: {
+            submittedForVerificationAt: Date,
+            submittedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            verifier: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            verificationStartedAt: Date,
+            verificationDeadline: Date
+        },
+        
+        // FINAL tracking
+        final: {
+            finalizedAt: Date,
+            finalizedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            approvedAt: Date,
+            approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            signedDigitally: { type: Boolean, default: false },
+            digitalSignature: String
+        },
+        
+        // URGENT tracking
+        urgent: {
+            markedUrgentAt: Date,
+            markedUrgentBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            urgentReason: String,
+            urgentLevel: { type: String, enum: ['high', 'critical', 'emergency'] },
+            escalationPath: [String],
+            resolvedAt: Date
+        },
+        
+        // REPRINT tracking
+        reprint: {
+            reprintRequestedAt: Date,
+            reprintRequestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            reprintReason: String,
+            correctionDetails: String,
+            originalPrintDate: Date,
+            reprintCount: { type: Number, default: 0 },
+            reprintHistory: [{
+                reprintedAt: Date,
+                reprintedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+                reason: String,
+                changes: String
+            }]
+        }
+    },
+
+    // ✅ ENHANCED: Print tracking with detailed history
+    printHistory: [{
+        printedAt: {
+            type: Date,
+            default: Date.now
+        },
+        printedBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User',
+            required: true
+        },
+        printedByName: String,
+        printType: {
+            type: String,
+            enum: ['original', 'reprint', 'copy', 'draft'],
+            default: 'original'
+        },
+        printMethod: {
+            type: String,
+            enum: ['pdf_download', 'physical_print', 'email', 'fax'],
+            default: 'pdf_download'
+        },
+        reportVersion: Number,
+        reportStatus: {
+            type: String,
+            enum: ['draft', 'finalized', 'verified']
+        },
+        copies: {
+            type: Number,
+            default: 1
+        },
+        printerName: String,
+        recipientEmail: String,
+        faxNumber: String,
+        printReason: String,
+        reprintReason: String, // For reprints
+        bharatPacsId: String, // Reference to study
+        watermark: String, // 'ORIGINAL', 'REPRINT', 'COPY', 'DRAFT'
+        ipAddress: String,
+        userAgent: String
+    }],
 
     technologist: {
         name: { type: String, trim: true },
@@ -130,16 +478,15 @@ const DicomStudySchema = new mongoose.Schema({
         reasonToSend: { type: String, trim: true }
     },
     
-    // 🔧 PERFORMANCE: Assignment tracking
     assignment: [{
         assignedTo: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
-            index: { sparse: true, background: true } // 🔥 Sparse - not all studies assigned
+            index: { sparse: true, background: true }
         },
         assignedAt: { 
             type: Date, 
-            index: { sparse: true, background: true } // 🔥 Sparse index
+            index: { sparse: true, background: true }
         },
         assignedBy: {
             type: mongoose.Schema.Types.ObjectId,
@@ -147,13 +494,13 @@ const DicomStudySchema = new mongoose.Schema({
         },
         dueDate: { 
             type: Date, 
-            index: { sparse: true, background: true } // 🔥 Due date filtering
+            index: { sparse: true, background: true }
         },
         priority: {
             type: String,
             enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
             default: 'NORMAL',
-            index: { background: true } // 🔥 Priority filtering
+            index: { background: true }
         }
     }],
 
@@ -189,23 +536,21 @@ const DicomStudySchema = new mongoose.Schema({
         type: String,
         enum: ['SELECT', 'Emergency Case', 'Meet referral doctor', 'MLC Case', 'Study Exception'],
         default: 'SELECT',
-        index: { background: true } // 🔥 Priority queries
+        index: { background: true }
     },
 
-    // 🆕 Legacy field for backward compatibility
     lastAssignedDoctor: [{
         doctorId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'Doctor',
-            index: { sparse: true, background: true } // 🔥 Sparse index for historical entries
+            index: { sparse: true, background: true }
         },
         assignedAt: {
             type: Date,
-            index: { sparse: true, background: true } // 🔥 Sparse index for historical entries
+            index: { sparse: true, background: true }
         }
     }],
     
-    // 🔧 OPTIMIZED: Status history with size limit
     statusHistory: [{
         status: String,
         changedAt: { type: Date, default: Date.now },
@@ -213,7 +558,6 @@ const DicomStudySchema = new mongoose.Schema({
         note: String
     }],
     
-    // 🔧 PERFORMANCE: Report tracking
     reportInfo: {
         startedAt: Date,
         finalizedAt: Date,
@@ -221,7 +565,6 @@ const DicomStudySchema = new mongoose.Schema({
         reporterName: String,
         reportContent: String,
         
-        // ✅ NEW: Verification tracking
         verificationInfo: {
             verifiedBy: {
                 type: mongoose.Schema.Types.ObjectId,
@@ -273,7 +616,6 @@ const DicomStudySchema = new mongoose.Schema({
                 type: Number,
                 min: 0
             },
-            // Track verification history
             verificationHistory: [{
                 action: {
                     type: String,
@@ -291,7 +633,6 @@ const DicomStudySchema = new mongoose.Schema({
             }]
         },
 
-        // ✅ NEW: Link to modern report system
         modernReports: [{
             reportId: {
                 type: mongoose.Schema.Types.ObjectId,
@@ -302,34 +643,30 @@ const DicomStudySchema = new mongoose.Schema({
         }]
     },
     
-    // 🔧 OPTIMIZED: TAT tracking
     timingInfo: {
-        uploadToAssignmentMinutes: { type: Number, index: { sparse: true, background: true } }, // 🔥 Performance metrics
+        uploadToAssignmentMinutes: { type: Number, index: { sparse: true, background: true } },
         assignmentToReportMinutes: { type: Number, index: { sparse: true, background: true } },
         reportToDownloadMinutes: { type: Number, index: { sparse: true, background: true } },
-        totalTATMinutes: { type: Number, index: { sparse: true, background: true } } // 🔥 TAT reporting
+        totalTATMinutes: { type: Number, index: { sparse: true, background: true } }
     },
     
-    // 🔧 PERFORMANCE: Lab information
     sourceLab: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Lab',
-        index: { background: true } // 🔥 Lab filtering very common
+        index: { background: true }
     },
     ReportAvailable: {
         type: Boolean,
         default: false,
-        index: { background: true }, // 🔥 Report availability filtering
+        index: { background: true },
         required: false
     },
     
-    // 🔧 CRITICAL: Search optimization
     searchText: { 
         type: String, 
         index: { 
             name: 'searchTextIndex',
             background: true,
-            // 🔥 SUPER FAST: Text search optimization
             weights: {
                 searchText: 10,
                 'patientInfo.patientName': 5,
@@ -342,7 +679,7 @@ const DicomStudySchema = new mongoose.Schema({
     uploadedReports: [{
         filename: String,
         contentType: String,
-        data: String, // base64 encoded
+        data: String,
         size: Number,
         reportType: {
             type: String,
@@ -365,7 +702,7 @@ const DicomStudySchema = new mongoose.Schema({
     doctorReports: [{
         filename: String,
         contentType: String,
-        data: String, // base64 encoded
+        data: String,
         size: Number,
         reportType: {
             type: String,
@@ -385,7 +722,6 @@ const DicomStudySchema = new mongoose.Schema({
         }
     }],
 
-    // ✅ NEW: Modern Report References
     reports: [{
         reportId: {
             type: mongoose.Schema.Types.ObjectId,
@@ -409,7 +745,6 @@ const DicomStudySchema = new mongoose.Schema({
         downloadUrl: String
     }],
 
-    // ✅ ENHANCED: Current report status (denormalized for quick access)
     currentReportStatus: {
         hasReports: { type: Boolean, default: false },
         latestReportId: {
@@ -432,39 +767,36 @@ const DicomStudySchema = new mongoose.Schema({
         }
     },
     
-    // 🆕 Series and Instance tracking
     seriesCount: {
         type: Number,
         default: 0,
-        index: { sparse: true, background: true } // 🔥 For statistics
+        index: { sparse: true, background: true }
     },
     instanceCount: {
         type: Number,
         default: 0,
-        index: { sparse: true, background: true } // 🔥 For statistics
+        index: { sparse: true, background: true }
     },
     seriesImages: {
         type: String,
         default: "0/0"
     },
     
-    // Missing fields used in orthanc.routes.js:
     studyTime: { type: String },
     modalitiesInStudy: [{ type: String }],
     examDescription: { 
         type: String,
-        index: { sparse: true, background: true } // 🔥 Exam description search
+        index: { sparse: true, background: true }
     },
     institutionName: { 
         type: String,
-        index: { sparse: true, background: true } // 🔥 Institution filtering
+        index: { sparse: true, background: true }
     },
     orthancStudyID: { 
         type: String, 
-        index: { sparse: true, background: true } // 🔥 Orthanc integration
+        index: { sparse: true, background: true }
     },
     
-    // DICOM files storage
     dicomFiles: [{
         sopInstanceUID: String,
         seriesInstanceUID: String,
@@ -474,7 +806,6 @@ const DicomStudySchema = new mongoose.Schema({
         uploadedAt: { type: Date, default: Date.now }
     }],
     
-    // Case type for priority
     caseType: {
         type: String,
         enum: [
@@ -483,14 +814,15 @@ const DicomStudySchema = new mongoose.Schema({
             'Billed Study', 'New Study'
         ],
         default: 'routine',
-        index: { background: true } // 🔥 Case type filtering
+        index: { background: true }
     },
+    
     discussions: [{
         comment: {
             type: String,
             required: true,
             trim: true,
-            maxlength: 2000 // Prevent extremely long comments
+            maxlength: 2000
         },
         userName: {
             type: String,
@@ -501,23 +833,22 @@ const DicomStudySchema = new mongoose.Schema({
             type: String,
             required: true,
             enum: ['admin', 'doctor_account', 'lab_staff', 'technician'],
-            index: { background: true } // For filtering by role
+            index: { background: true }
         },
         userId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User',
-            required: false, // Optional for backward compatibility
+            required: false,
             index: { sparse: true, background: true }
         },
         dateTime: {
             type: Date,
             required: true,
             default: Date.now,
-            index: { background: true } // For sorting discussions chronologically
+            index: { background: true }
         }
     }],
     
-    // Referring physician information
     referringPhysician: {
         name: { type: String, trim: true },
         institution: { type: String, trim: true },
@@ -526,7 +857,7 @@ const DicomStudySchema = new mongoose.Schema({
     referringPhysicianName: { 
         type: String, 
         trim: true,
-        index: { sparse: true, background: true } // 🔥 Physician search
+        index: { sparse: true, background: true }
     },
 
     physicians: {
@@ -547,13 +878,11 @@ const DicomStudySchema = new mongoose.Schema({
     modifiedTime: { type: String },
     reportDate: { 
         type: Date,
-        index: { sparse: true, background: true } // 🔥 Report date filtering
+        index: { sparse: true, background: true }
     },
     reportTime: { type: String },
     
-    // 🆕 NEW: Add calculatedTAT field to store TAT values
     calculatedTAT: {
-        // Raw TAT values in minutes
         studyToUploadTAT: { type: Number, default: null, index: { sparse: true, background: true } },
         uploadToAssignmentTAT: { type: Number, default: null, index: { sparse: true, background: true } },
         assignmentToReportTAT: { type: Number, default: null, index: { sparse: true, background: true } },
@@ -562,11 +891,9 @@ const DicomStudySchema = new mongoose.Schema({
         totalTATMinutes: { type: Number, default: null, index: { sparse: true, background: true } },
         totalTATDays: { type: Number, default: null, index: { sparse: true, background: true } },
         
-        // Reset-aware calculations
         resetAwareTATDays: { type: Number, default: null },
         resetAwareTATMinutes: { type: Number, default: null },
         
-        // Formatted versions for quick access
         studyToUploadTATFormatted: { type: String, default: 'N/A' },
         uploadToAssignmentTATFormatted: { type: String, default: 'N/A' },
         assignmentToReportTATFormatted: { type: String, default: 'N/A' },
@@ -574,7 +901,6 @@ const DicomStudySchema = new mongoose.Schema({
         uploadToReportTATFormatted: { type: String, default: 'N/A' },
         totalTATFormatted: { type: String, default: 'N/A' },
         
-        // Status and metadata
         isCompleted: { type: Boolean, default: false },
         isOverdue: { type: Boolean, default: false, index: { background: true } },
         phase: { 
@@ -584,17 +910,14 @@ const DicomStudySchema = new mongoose.Schema({
             index: { background: true }
         },
         
-        // Calculation metadata
         calculatedAt: { type: Date, default: Date.now },
         calculatedBy: { type: String, default: 'system' },
         lastUpdated: { type: Date, default: Date.now },
         
-        // Reset information
         resetAt: { type: Date },
         resetReason: { type: String },
         resetCount: { type: Number, default: 0 },
         
-        // Key dates snapshot
         keyDates: {
             studyDate: { type: Date },
             uploadDate: { type: Date },
@@ -604,30 +927,26 @@ const DicomStudySchema = new mongoose.Schema({
         }
     },
 
-    // 🔧 UPDATE: Enhanced timingInfo for backward compatibility
     timingInfo: {
         uploadToAssignmentMinutes: { type: Number, index: { sparse: true, background: true } },
         assignmentToReportMinutes: { type: Number, index: { sparse: true, background: true } },
         reportToDownloadMinutes: { type: Number, index: { sparse: true, background: true } },
         totalTATMinutes: { type: Number, index: { sparse: true, background: true } },
         
-        // Reset tracking
         tatResetAt: { type: Date },
         tatResetReason: { type: String },
         tatResetCount: { type: Number, default: 0 },
         
-        // Calculation metadata
         lastCalculated: { type: Date },
         calculationMethod: { type: String, default: 'tatCalculator' }
     },
 
-    // 🆕 NEW: Clinical History stored in DicomStudy (PRIMARY)
     clinicalHistory: {
         clinicalHistory: { 
             type: String, 
             trim: true, 
             default: '',
-            index: { sparse: true, background: true } // For searching clinical notes
+            index: { sparse: true, background: true }
         },
         previousInjury: { 
             type: String, 
@@ -653,7 +972,6 @@ const DicomStudySchema = new mongoose.Schema({
             enum: ['patient_modal', 'study_detail', 'admin_panel', 'system'],
             default: 'study_detail'
         },
-        // 🔧 MIGRATION: Track data source for debugging
         dataSource: {
             type: String,
             enum: ['dicom_study_primary', 'migrated_from_patient', 'user_input'],
@@ -661,7 +979,6 @@ const DicomStudySchema = new mongoose.Schema({
         }
     },
 
-    // 🔧 LEGACY: Keep reference to patient clinical history for backward compatibility
     legacyClinicalHistoryRef: {
         fromPatientModel: { type: Boolean, default: false },
         lastSyncedAt: { type: Date },
@@ -670,22 +987,82 @@ const DicomStudySchema = new mongoose.Schema({
 
 }, { 
     timestamps: true,
-    // 🔧 SUPER FAST: Collection-level optimizations
-    collection: 'dicomstudies', // 🔥 Explicit collection name
-    // 🔥 PERFORMANCE: Optimize document structure
-    minimize: false, // Don't remove empty objects
-    versionKey: false, // Remove __v field for smaller documents
-    // 🔥 CACHING: Enable query result caching
-    read: 'primary', // Read from primary, fallback to secondary
-    // 🔥 COMPRESSION: Enable document compression
-    strict: true, // Strict schema validation for performance
-    validateBeforeSave: true, // Validate before save for data integrity
-    autoIndex: false, // 🔥 CRITICAL: Disable auto-indexing in production
-    bufferCommands: false, // 🔥 Disable command buffering for immediate execution
+    collection: 'dicomstudies',
+    minimize: false,
+    versionKey: false,
+    read: 'primary',
+    strict: true,
+    validateBeforeSave: true,
+    autoIndex: false,
+    bufferCommands: false,
 });
 
-// ✅ ADD: Multi-tenant compound indexes (CRITICAL!)
-// 🔥 MOST CRITICAL: Organization-based queries
+// ✅ NEW: Pre-save middleware to generate BharatPacs ID
+DicomStudySchema.pre('save', async function(next) {
+    // Generate BharatPacs ID if not exists
+    if (!this.bharatPacsId && this.isNew) {
+        const orgPrefix = this.organizationIdentifier ? this.organizationIdentifier.substring(0, 3).toUpperCase() : 'GEN';
+        const labPrefix = this.sourceLab ? 'LAB' : 'STD';
+        const timestamp = Date.now().toString(36).toUpperCase();
+        const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+        
+        this.bharatPacsId = `BP-${orgPrefix}-${labPrefix}-${timestamp}-${random}`;
+        
+        // Log the generation
+        this.actionLog.push({
+            actionType: ACTION_TYPES.STUDY_RECEIVED,
+            actionCategory: 'upload',
+            performedBy: this.createdBy || new mongoose.Types.ObjectId('000000000000000000000000'),
+            performedByName: 'System',
+            performedByRole: 'system',
+            actionDetails: {
+                metadata: {
+                    bharatPacsId: this.bharatPacsId,
+                    generatedAt: new Date()
+                }
+            },
+            notes: `BharatPacs ID generated: ${this.bharatPacsId}`
+        });
+    }
+    
+    // Existing pre-save logic
+    if (this.statusHistory && this.statusHistory.length > 50) {
+        this.statusHistory = this.statusHistory.slice(-50);
+    }
+    
+    if (this.uploadedReports && this.uploadedReports.length > 20) {
+        this.uploadedReports = this.uploadedReports.slice(-20);
+    }
+    
+    if (this.doctorReports && this.doctorReports.length > 20) {
+        this.doctorReports = this.doctorReports.slice(-20);
+    }
+    
+    if (this.caseType) {
+        this.caseType = this.caseType.toLowerCase();
+    }
+    
+    const searchTerms = [
+        this.bharatPacsId || '',
+        this.patientInfo?.patientName || '',
+        this.patientInfo?.patientID || '',
+        this.accessionNumber || '',
+        this.modality || '',
+        this.referringPhysicianName || '',
+        this.examDescription || '',
+        this.studyInstanceUID || ''
+    ].filter(term => term.trim().length > 0);
+    
+    this.searchText = searchTerms.join(' ').toLowerCase();
+    
+    if (this.seriesCount >= 0 && this.instanceCount >= 0) {
+        this.seriesImages = `${this.seriesCount}/${this.instanceCount}`;
+    }
+    
+    next();
+});
+
+// Existing indexes
 DicomStudySchema.index({ 
     organizationIdentifier: 1, 
     workflowStatus: 1, 
@@ -695,7 +1072,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 ORG + LAB: Organization and lab filtering
 DicomStudySchema.index({ 
     organizationIdentifier: 1, 
     sourceLab: 1, 
@@ -705,8 +1081,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔧 SUPER FAST: High-performance compound indexes (ORDER MATTERS!)
-// 🔥 MOST CRITICAL: Primary dashboard query (status + date)
 DicomStudySchema.index({ 
     workflowStatus: 1, 
     createdAt: -1 
@@ -715,7 +1089,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 DOCTOR WORKLOAD: Most frequent doctor queries
 DicomStudySchema.index({ 
     'assignment.assignedTo': 1, 
     workflowStatus: 1, 
@@ -726,7 +1099,6 @@ DicomStudySchema.index({
     sparse: true 
 });
 
-// 🔥 LAB DASHBOARD: Lab-specific queries
 DicomStudySchema.index({ 
     sourceLab: 1, 
     workflowStatus: 1, 
@@ -736,7 +1108,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// Add ZIP management index
 DicomStudySchema.index({ 
     'preProcessedDownload.zipStatus': 1, 
     'preProcessedDownload.zipExpiresAt': 1 
@@ -745,7 +1116,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 PATIENT HISTORY: Patient timeline
 DicomStudySchema.index({ 
     patient: 1, 
     studyDate: -1, 
@@ -755,7 +1125,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 MODALITY REPORTS: Modality-based filtering
 DicomStudySchema.index({ 
     modality: 1, 
     studyDate: -1, 
@@ -765,7 +1134,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 PRIORITY QUEUE: Urgent cases
 DicomStudySchema.index({ 
     'assignment.priority': 1, 
     workflowStatus: 1, 
@@ -776,7 +1144,6 @@ DicomStudySchema.index({
     sparse: true 
 });
 
-// 🔥 TIME-BASED QUERIES: Date range filtering
 DicomStudySchema.index({ 
     studyDate: -1, 
     createdAt: -1, 
@@ -786,7 +1153,6 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔥 SEARCH OPTIMIZATION: Text search with relevance
 DicomStudySchema.index({ 
     searchText: 'text',
     'patientInfo.patientName': 'text',
@@ -803,7 +1169,6 @@ DicomStudySchema.index({
     }
 });
 
-// 🔥 PERFORMANCE ANALYTICS: TAT reporting
 DicomStudySchema.index({ 
     'timingInfo.totalTATMinutes': 1, 
     studyDate: -1 
@@ -813,7 +1178,6 @@ DicomStudySchema.index({
     sparse: true 
 });
 
-// 🔥 REPORT STATUS: Report availability
 DicomStudySchema.index({ 
     ReportAvailable: 1, 
     workflowStatus: 1, 
@@ -823,60 +1187,66 @@ DicomStudySchema.index({
     background: true 
 });
 
-// 🔧 SUPER FAST: Pre-save middleware optimizations
-DicomStudySchema.pre('save', function(next) {
-    // 🔥 PERFORMANCE: Limit status history to prevent document bloat
-    if (this.statusHistory && this.statusHistory.length > 50) {
-        this.statusHistory = this.statusHistory.slice(-50);
-    }
-    
-    // 🔥 PERFORMANCE: Limit uploaded reports to prevent huge documents
-    if (this.uploadedReports && this.uploadedReports.length > 20) {
-        this.uploadedReports = this.uploadedReports.slice(-20);
-    }
-    
-    if (this.doctorReports && this.doctorReports.length > 20) {
-        this.doctorReports = this.doctorReports.slice(-20);
-    }
-    
-    // 🔥 NORMALIZATION: Normalize caseType to lowercase for consistency
-    if (this.caseType) {
-        this.caseType = this.caseType.toLowerCase();
-    }
-    
-    // 🔥 SEARCH OPTIMIZATION: Build comprehensive search text
-    const searchTerms = [
-        this.patientInfo?.patientName || '',
-        this.patientInfo?.patientID || '',
-        this.accessionNumber || '',
-        this.modality || '',
-        this.referringPhysicianName || '',
-        this.examDescription || '',
-        this.studyInstanceUID || ''
-    ].filter(term => term.trim().length > 0);
-    
-    this.searchText = searchTerms.join(' ').toLowerCase();
-    
-    // 🔥 PERFORMANCE: Auto-calculate series images string
-    if (this.seriesCount >= 0 && this.instanceCount >= 0) {
-        this.seriesImages = `${this.seriesCount}/${this.instanceCount}`;
-    }
-    
-    next();
+// ✅ NEW: Additional indexes for new features
+DicomStudySchema.index({ 
+    bharatPacsId: 1 
+}, { 
+    name: 'bharatpacs_id_index',
+    unique: true,
+    sparse: true,
+    background: true 
 });
 
-// 🔥 PERFORMANCE: Post-save middleware for cleanup
+DicomStudySchema.index({ 
+    'studyLock.isLocked': 1,
+    'studyLock.lockedBy': 1,
+    'studyLock.lockExpiry': 1
+}, { 
+    name: 'study_lock_index',
+    background: true 
+});
+
+DicomStudySchema.index({ 
+    'actionLog.actionType': 1,
+    'actionLog.performedAt': -1
+}, { 
+    name: 'action_log_index',
+    background: true 
+});
+
+DicomStudySchema.index({ 
+    'actionLog.performedBy': 1,
+    'actionLog.performedAt': -1
+}, { 
+    name: 'action_log_user_index',
+    background: true 
+});
+
+DicomStudySchema.index({ 
+    currentCategory: 1,
+    createdAt: -1
+}, { 
+    name: 'category_tracking_index',
+    background: true 
+});
+
+DicomStudySchema.index({ 
+    'printHistory.printedAt': -1,
+    'printHistory.printType': 1
+}, { 
+    name: 'print_history_index',
+    background: true 
+});
+
 DicomStudySchema.post('save', function(doc) {
-    // 🔥 ANALYTICS: Could trigger background analytics updates here
-    // Don't put heavy operations here - use background jobs instead
+    // Analytics could be triggered here
 });
 
-// 🔥 QUERY OPTIMIZATION: Static methods for common queries
 DicomStudySchema.statics.findByWorkflowStatus = function(status, limit = 50) {
     return this.find({ workflowStatus: status })
         .sort({ createdAt: -1 })
         .limit(limit)
-        .lean(); // 🔥 Use lean() for faster queries when you don't need full mongoose documents
+        .lean();
 };
 
 DicomStudySchema.statics.findByDoctor = function(doctorId, status = null, limit = 50) {
@@ -899,7 +1269,6 @@ DicomStudySchema.statics.findByLab = function(labId, status = null, limit = 50) 
         .lean();
 };
 
-// ✅ ADD: Organization-specific queries
 DicomStudySchema.statics.findByOrganization = function(orgIdentifier, status = null, limit = 50) {
     const query = { organizationIdentifier: orgIdentifier };
     if (status) query.workflowStatus = status;
@@ -910,17 +1279,16 @@ DicomStudySchema.statics.findByOrganization = function(orgIdentifier, status = n
         .lean();
 };
 
-// 🔥 CACHING: Virtual for computed fields
 DicomStudySchema.virtual('isUrgent').get(function() {
     return this.assignment?.priority === 'URGENT' || 
            this.studyPriority === 'Emergency Case' ||
            this.caseType === 'emergency';
 });
 
-// 🔥 PERFORMANCE: Transform output to remove heavy fields when not needed
 DicomStudySchema.methods.toSummary = function() {
     return {
         _id: this._id,
+        bharatPacsId: this.bharatPacsId,
         studyInstanceUID: this.studyInstanceUID,
         organization: this.organization,
         organizationIdentifier: this.organizationIdentifier,
@@ -928,21 +1296,22 @@ DicomStudySchema.methods.toSummary = function() {
         studyDate: this.studyDate,
         modality: this.modality,
         workflowStatus: this.workflowStatus,
+        currentCategory: this.currentCategory,
         assignment: this.assignment,
         seriesImages: this.seriesImages,
         createdAt: this.createdAt,
-        ReportAvailable: this.ReportAvailable
+        ReportAvailable: this.ReportAvailable,
+        isLocked: this.studyLock?.isLocked || false,
+        lockedBy: this.studyLock?.lockedByName
     };
 };
 
-// 🔧 METHODS: Instance method to reset TAT
 DicomStudySchema.methods.resetTAT = function(reason = 'manual_reset') {
     return import('../utils/tatCalculator.js').then(({ resetStudyTAT }) => {
         return resetStudyTAT(this._id, reason);
     });
 };
 
-// 🔧 STATICS: Static method to bulk update TAT
 DicomStudySchema.statics.bulkUpdateTAT = async function(query = {}) {
     const { calculateBatchTAT } = await import('../utils/tatCalculator.js');
     
@@ -970,7 +1339,6 @@ DicomStudySchema.statics.bulkUpdateTAT = async function(query = {}) {
     return { updated: bulkOps.length };
 };
 
-// 🔧 INDEXES: Add TAT-specific indexes
 DicomStudySchema.index({ 'calculatedTAT.totalTATMinutes': 1, workflowStatus: 1 }, { 
     name: 'tat_performance_index',
     background: true 
@@ -986,4 +1354,6 @@ DicomStudySchema.index({ 'calculatedTAT.phase': 1, createdAt: -1 }, {
     background: true 
 });
 
+// ✅ Export ACTION_TYPES for use in controllers
+export { ACTION_TYPES };
 export default mongoose.model('DicomStudy', DicomStudySchema);

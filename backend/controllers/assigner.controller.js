@@ -159,13 +159,13 @@ export const getUnassignedStudies = async (req, res) => {
 // ✅ GET AVAILABLE RADIOLOGISTS AND VERIFIERS FOR ASSIGNMENT
 export const getAvailableAssignees = async (req, res) => {
     try {
-        // Only assignor can access this
-        if (req.user.role !== 'assignor') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only assignor can access assignee list'
-            });
-        }
+        // // Only assignor can access this
+        // if (req.user.role !== 'assignor') {
+        //     return res.status(403).json({
+        //         success: false,
+        //         message: 'Only assignor can access assignee list'
+        //     });
+        // }
 
         // Get radiologists and verifiers in the same organization
         const radiologists = await User.find({
@@ -283,10 +283,13 @@ export const assignStudy = async (req, res) => {
 
             console.log(`🔄 Processing assignment for ${assigneeRole} (ID: ${assignedTo}) to study (ID: ${studyId})`);
 
-            // Only assignor can assign studies
-            if (req.user.role !== 'assignor') {
-                throw new Error('Only assignor can assign studies');
-            }
+            if (!['assignor', 'admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({
+        success: false,
+        message: 'Only assignor or admin can access unassigned studies'
+    });
+}
+
 
             // Validate required fields
             if (!assignedTo || !assigneeRole) {
@@ -314,6 +317,11 @@ export const assignStudy = async (req, res) => {
 
             if (!study) {
                 throw new Error('Study not found');
+            }
+
+            // ✅ CHECK IF STUDY IS LOCKED - PREVENT ASSIGNMENT IF LOCKED
+            if (study.studyLock?.isLocked) {
+                throw new Error(`Study is locked by ${study.studyLock.lockedByName || 'another user'}. Cannot assign while locked.`);
             }
 
             // Verify assignee exists and has correct role
@@ -403,6 +411,46 @@ export const assignStudy = async (req, res) => {
                 dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000)
             };
 
+            // ✅ CREATE ACTION LOG ENTRY FOR ASSIGNMENT
+            const assignmentActionLog = {
+                actionType: 'study_assigned',
+                actionCategory: 'assignment',
+                performedBy: assignedBy,
+                performedByName: req.user.fullName || req.user.email,
+                performedByRole: req.user.role,
+                performedAt: currentTime,
+                targetUser: assignedTo,
+                targetUserName: assignee.fullName || assignee.email,
+                targetUserRole: assigneeRole,
+                assignmentInfo: {
+                    assignmentType: existingAssignmentIndex > -1 ? 'reassignment' : 'initial',
+                    previousAssignee: existingAssignmentIndex > -1 ? study.assignment[existingAssignmentIndex].assignedTo : null,
+                    priority: validatedPriority,
+                    dueDate: newAssignment.dueDate
+                },
+                notes: notes || `Assigned to ${assignee.fullName || assignee.email} (${assigneeRole})`,
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent'),
+                sessionId: req.sessionID
+            };
+
+            // ✅ PREPARE CATEGORY TRACKING UPDATE FOR ASSIGNED
+            const categoryTrackingAssigned = {
+                assignedAt: currentTime,
+                assignedTo: assignedTo,
+                assignedBy: assignedBy,
+                acceptedAt: null,
+                assignmentHistory: study.categoryTracking?.assigned?.assignmentHistory || []
+            };
+
+            // Add to assignment history
+            categoryTrackingAssigned.assignmentHistory.push({
+                assignedTo: assignedTo,
+                assignedAt: currentTime,
+                unassignedAt: null,
+                reason: notes || 'Initial assignment'
+            });
+
             if (existingAssignmentIndex > -1) {
                 console.log(`ℹ️ User (ID: ${assignedTo}) already has assignment entry for study ${studyId}. Updating existing assignment.`);
                 
@@ -420,7 +468,10 @@ export const assignStudy = async (req, res) => {
                             [`${updatePath}.dueDate`]: newAssignment.dueDate,
                             status: 'assigned',
                             priority: validatedStudyPriority,
-                            workflowStatus: 'assigned_to_doctor'
+                            workflowStatus: 'assigned_to_doctor',
+                            // ✅ UPDATE CATEGORY TO ASSIGNED
+                            currentCategory: 'ASSIGNED',
+                            'categoryTracking.assigned': categoryTrackingAssigned
                         },
                         $push: {
                             statusHistory: {
@@ -428,7 +479,9 @@ export const assignStudy = async (req, res) => {
                                 changedAt: currentTime,
                                 changedBy: assignedBy,
                                 note: notes || `Assignment updated for ${assignee.fullName || assignee.email}`
-                            }
+                            },
+                            // ✅ ADD ACTION LOG ENTRY
+                            actionLog: assignmentActionLog
                         }
                     },
                     { session: currentSession, new: true, runValidators: false }
@@ -446,12 +499,17 @@ export const assignStudy = async (req, res) => {
                                 changedAt: currentTime,
                                 changedBy: assignedBy,
                                 note: notes || `Assigned to ${assignee.fullName || assignee.email} (${assigneeRole})`
-                            }
+                            },
+                            // ✅ ADD ACTION LOG ENTRY
+                            actionLog: assignmentActionLog
                         },
                         $set: {
                             status: 'assigned',
                             priority: validatedStudyPriority,
-                            workflowStatus: 'assigned_to_doctor'
+                            workflowStatus: 'assigned_to_doctor',
+                            // ✅ UPDATE CATEGORY TO ASSIGNED
+                            currentCategory: 'ASSIGNED',
+                            'categoryTracking.assigned': categoryTrackingAssigned
                         }
                     },
                     { session: currentSession, new: true, runValidators: false }
@@ -464,9 +522,12 @@ export const assignStudy = async (req, res) => {
 
             console.log('✅ CREATING ASSIGNMENT:', {
                 studyId: updatedStudy._id,
+                bharatPacsId: updatedStudy.bharatPacsId,
                 assignedTo: assignee.fullName || assignee.email,
                 priority: validatedPriority,
-                studyPriority: validatedStudyPriority
+                studyPriority: validatedStudyPriority,
+                category: updatedStudy.currentCategory,
+                isLocked: false // ✅ Study NOT locked after assignment
             });
 
             // Update assignee's activity stats
@@ -511,22 +572,19 @@ export const assignStudy = async (req, res) => {
                 console.error('⚠️ TAT calculation error (non-blocking):', tatError);
             }
 
-            // Clear caches
-            // const patientIdForCache = updatedStudy.patient?.patientID || updatedStudy.patientId;
-            // if (patientIdForCache) {
-            //     cache.del(`admin_patient_detail_${patientIdForCache}`);
-            // }
-            // cache.del(`assignor_workload_${assignedBy}`);
-            // cache.del(`${assigneeRole}_workload_${assignedTo}`);
-
             console.log(`✅ Assignment processed for ${assigneeRole} (ID: ${assignedTo}) to study ${studyId}`);
+            console.log(`📊 Study category updated: UNASSIGNED → ASSIGNED`);
+            console.log(`🔓 Study NOT locked after assignment (as requested)`);
 
             return {
                 studyId: updatedStudy.studyInstanceUID || updatedStudy._id,
+                bharatPacsId: updatedStudy.bharatPacsId,
                 assigneeName: assignee.fullName || assignee.email,
                 assigneeRole: assigneeRole,
                 assignedAt: currentTime,
                 priority: validatedPriority,
+                category: updatedStudy.currentCategory,
+                isLocked: false,
                 message: `${assigneeRole} ${assignee.fullName || assignee.email} assigned to study successfully`
             };
 
@@ -543,6 +601,325 @@ export const assignStudy = async (req, res) => {
         res.status(500).json({
             success: false,
             message: error.message || 'Failed to assign study',
+            error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    } finally {
+        if (session.inTransaction()) {
+            console.warn('Transaction was not explicitly committed or aborted before finally block. Ending session.');
+        }
+        await session.endSession();
+    }
+};
+
+// ✅ SIMPLIFIED: SINGLE ASSIGNMENT FUNCTION - CLEAR & REASSIGN
+export const updateStudyAssignments = async (req, res) => {
+    const session = await mongoose.startSession();
+
+    try {
+        const result = await session.withTransaction(async (currentSession) => {
+            const { studyId } = req.params;
+            const { assignedToIds = [], assigneeRole = 'radiologist', priority, notes, dueDate } = req.body;
+            const assignedBy = req.user._id;
+
+            console.log(`🔄 CLEARING & REASSIGNING study ${studyId}:`, {
+                newAssignees: assignedToIds,
+                role: assigneeRole,
+                assignedBy: assignedBy
+            });
+
+         if (!['assignor', 'admin', 'super_admin'].includes(req.user.role)) {
+    return res.status(403).json({
+        success: false,
+        message: 'Only assignor or admin can access unassigned studies'
+    });
+}
+
+
+            // Validate assignee role
+            if (!['radiologist', 'verifier'].includes(assigneeRole)) {
+                throw new Error('Can only assign to radiologist or verifier');
+            }
+
+            // Find study
+            let study = await DicomStudy.findOne({
+                _id: studyId,
+                organizationIdentifier: req.user.organizationIdentifier
+            })
+            .session(currentSession)
+            .read('primary')
+            .exec();
+
+            if (!study) {
+                throw new Error('Study not found');
+            }
+
+            // ✅ CHECK IF STUDY IS LOCKED - PREVENT ASSIGNMENT IF LOCKED
+            if (study.studyLock?.isLocked) {
+                throw new Error(`Study is locked by ${study.studyLock.lockedByName || 'another user'}. Cannot assign while locked.`);
+            }
+
+            const currentTime = new Date();
+            const validatedPriority = validatePriority(priority || study.priority);
+            const validatedStudyPriority = validatePriority(study.priority);
+
+            // ✅ DETERMINE NEW CATEGORY BASED ON ASSIGNMENT
+            const newCategory = assignedToIds.length > 0 ? 'ASSIGNED' : 'UNASSIGNED';
+            const newWorkflowStatus = assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment';
+
+            // ✅ STEP 1: COMPLETELY CLEAR ASSIGNMENT ARRAYS
+            console.log('🧹 CLEARING ALL ASSIGNMENTS AND LASTASSIGNEDDOCTOR...');
+            
+            // Clear both assignment and lastAssignedDoctor arrays
+            await DicomStudy.findByIdAndUpdate(
+                studyId,
+                {
+                    $set: {
+                        assignment: [], // ✅ Clear assignment array
+                        lastAssignedDoctor: [], // ✅ Clear lastAssignedDoctor array
+                        workflowStatus: newWorkflowStatus,
+                        status: assignedToIds.length > 0 ? 'assigned' : 'unassigned',
+                        priority: validatedStudyPriority,
+                        currentCategory: newCategory // ✅ Update category
+                    },
+                    $push: {
+                        statusHistory: {
+                            status: 'assignments_cleared',
+                            changedAt: currentTime,
+                            changedBy: assignedBy,
+                            note: 'All assignments cleared before reassignment'
+                        },
+                        // ✅ RECORD ACTION - CLEAR ASSIGNMENTS
+                        actionLog: {
+                            actionType: 'study_reassigned',
+                            actionCategory: 'assignment',
+                            performedBy: assignedBy,
+                            performedByName: req.user.fullName || req.user.email,
+                            performedByRole: req.user.role,
+                            performedAt: currentTime,
+                            assignmentInfo: {
+                                assignmentType: 'clear_all',
+                                previousAssignee: null,
+                                priority: validatedPriority,
+                                dueDate: null
+                            },
+                            notes: 'Cleared all assignments before reassignment',
+                            ipAddress: req.ip,
+                            userAgent: req.get('user-agent'),
+                            sessionId: req.sessionID
+                        }
+                    }
+                },
+                { session: currentSession }
+            );
+
+            console.log(`✅ Cleared all existing assignments and lastAssignedDoctor`);
+
+            // ✅ STEP 2: ADD NEW ASSIGNMENTS (if any)
+            const newAssignments = [];
+
+            if (assignedToIds.length > 0) {
+                console.log(`➕ Adding ${assignedToIds.length} new assignments...`);
+                
+                // Verify all assignees exist and are valid
+                const assignees = await User.find({
+                    _id: { $in: assignedToIds },
+                    organizationIdentifier: req.user.organizationIdentifier,
+                    role: assigneeRole,
+                    isActive: true
+                })
+                .session(currentSession)
+                .read('primary')
+                .exec();
+
+                if (assignees.length !== assignedToIds.length) {
+                    const foundIds = assignees.map(a => a._id.toString());
+                    const missingIds = assignedToIds.filter(id => !foundIds.includes(id));
+                    throw new Error(`Invalid or inactive ${assigneeRole}(s): ${missingIds.join(', ')}`);
+                }
+
+                // Create new assignment and lastAssignedDoctor objects
+                const newAssignmentArray = [];
+                const newLastAssignedDoctorArray = [];
+
+                for (const assigneeId of assignedToIds) {
+                    const assignee = assignees.find(a => a._id.toString() === assigneeId);
+                    
+                    // ✅ NEW ASSIGNMENT
+                    const newAssignment = {
+                        assignedTo: assigneeId,
+                        assignedBy: assignedBy,
+                        assignedAt: currentTime,
+                        role: assigneeRole,
+                        status: 'assigned',
+                        priority: validatedPriority,
+                        notes: notes || `Assigned via assignment update`,
+                        dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000)
+                    };
+
+                    // ✅ NEW LASTASSIGNEDDOCTOR
+                    const newLastAssignedDoctor = {
+                        doctorId: assigneeId,
+                        assignedAt: currentTime
+                    };
+
+                    newAssignmentArray.push(newAssignment);
+                    newLastAssignedDoctorArray.push(newLastAssignedDoctor);
+                    
+                    newAssignments.push({
+                        id: assigneeId,
+                        name: assignee.fullName || assignee.email,
+                        email: assignee.email
+                    });
+                }
+
+                // ✅ PREPARE CATEGORY TRACKING FOR ASSIGNED
+                const categoryTrackingAssigned = {
+                    assignedAt: currentTime,
+                    assignedTo: assignedToIds[0], // Primary assignee
+                    assignedBy: assignedBy,
+                    acceptedAt: null,
+                    assignmentHistory: study.categoryTracking?.assigned?.assignmentHistory || []
+                };
+
+                // Add to assignment history
+                categoryTrackingAssigned.assignmentHistory.push({
+                    assignedTo: assignedToIds,
+                    assignedAt: currentTime,
+                    unassignedAt: null,
+                    reason: notes || 'Bulk assignment update'
+                });
+
+                // ✅ ADD ALL NEW ASSIGNMENTS
+                await DicomStudy.findByIdAndUpdate(
+                    studyId,
+                    {
+                        $set: {
+                            assignment: newAssignmentArray, // ✅ Set fresh assignment array
+                            lastAssignedDoctor: newLastAssignedDoctorArray, // ✅ Set fresh lastAssignedDoctor array
+                            currentCategory: 'ASSIGNED', // ✅ Update category
+                            'categoryTracking.assigned': categoryTrackingAssigned
+                        },
+                        $push: {
+                            statusHistory: {
+                                status: 'assigned_to_doctor',
+                                changedAt: currentTime,
+                                changedBy: assignedBy,
+                                note: `Assigned to ${newAssignments.length} ${assigneeRole}(s): ${newAssignments.map(a => a.name).join(', ')}`
+                            },
+                            // ✅ RECORD ACTION - NEW ASSIGNMENT
+                            actionLog: {
+                                actionType: 'study_assigned',
+                                actionCategory: 'assignment',
+                                performedBy: assignedBy,
+                                performedByName: req.user.fullName || req.user.email,
+                                performedByRole: req.user.role,
+                                performedAt: currentTime,
+                                targetUser: assignedToIds.length === 1 ? assignedToIds[0] : null,
+                                targetUserName: newAssignments.map(a => a.name).join(', '),
+                                targetUserRole: assigneeRole,
+                                assignmentInfo: {
+                                    assignmentType: 'bulk_assignment',
+                                    previousAssignee: null,
+                                    priority: validatedPriority,
+                                    dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000)
+                                },
+                                notes: notes || `Assigned to ${newAssignments.length} ${assigneeRole}(s)`,
+                                ipAddress: req.ip,
+                                userAgent: req.get('user-agent'),
+                                sessionId: req.sessionID
+                            }
+                        }
+                    },
+                    { session: currentSession }
+                );
+
+                console.log(`✅ Added ${newAssignments.length} new assignments`);
+                console.log(`📊 Study category updated to: ASSIGNED`);
+
+                // ✅ UPDATE USER ACTIVITY STATS
+                await User.updateMany(
+                    { _id: { $in: assignedToIds } },
+                    {
+                        $inc: { 'activityStats.casesAssigned': 1 },
+                        $set: { 'activityStats.lastActivityAt': currentTime }
+                    },
+                    { session: currentSession }
+                );
+
+                await User.findByIdAndUpdate(
+                    assignedBy,
+                    {
+                        $inc: { 'activityStats.casesAssigned': newAssignments.length },
+                        $set: { 'activityStats.lastActivityAt': currentTime }
+                    },
+                    { session: currentSession }
+                );
+            } else {
+                console.log(`📊 Study category updated to: UNASSIGNED (no assignments)`);
+                
+                // ✅ RECORD ACTION - UNASSIGNMENT
+                await DicomStudy.findByIdAndUpdate(
+                    studyId,
+                    {
+                        $push: {
+                            actionLog: {
+                                actionType: 'study_reassigned',
+                                actionCategory: 'assignment',
+                                performedBy: assignedBy,
+                                performedByName: req.user.fullName || req.user.email,
+                                performedByRole: req.user.role,
+                                performedAt: currentTime,
+                                assignmentInfo: {
+                                    assignmentType: 'unassignment',
+                                    previousAssignee: null,
+                                    priority: null,
+                                    dueDate: null
+                                },
+                                notes: 'Study unassigned - all assignments removed',
+                                ipAddress: req.ip,
+                                userAgent: req.get('user-agent'),
+                                sessionId: req.sessionID
+                            }
+                        }
+                    },
+                    { session: currentSession }
+                );
+            }
+
+            console.log(`✅ Assignment update completed for study ${studyId}:`, {
+                cleared: 'all',
+                added: newAssignments.length,
+                newCategory: newCategory,
+                newStatus: newWorkflowStatus,
+                isLocked: false // ✅ Study NOT locked after assignment
+            });
+
+            return {
+                studyId: studyId,
+                clearedCount: 'all',
+                assignedCount: newAssignments.length,
+                newAssignments: newAssignments,
+                category: newCategory,
+                workflowStatus: newWorkflowStatus,
+                isLocked: false,
+                message: assignedToIds.length === 0 
+                    ? 'Study unassigned - all assignments cleared'
+                    : `Study assigned to ${newAssignments.length} ${assigneeRole}(s)`
+            };
+
+        }); // End of session.withTransaction
+
+        res.json({
+            success: true,
+            message: result.message,
+            data: result
+        });
+
+    } catch (error) {
+        console.error('❌ Update study assignments error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update study assignments',
             error: process.env.NODE_ENV === 'development' ? error.stack : undefined
         });
     } finally {
@@ -1078,216 +1455,216 @@ export const getAssignmentAnalytics = async (req, res) => {
     }
 };
 
-// ✅ SIMPLIFIED: SINGLE ASSIGNMENT FUNCTION - CLEAR & REASSIGN
-export const updateStudyAssignments = async (req, res) => {
-    const session = await mongoose.startSession();
+// // ✅ SIMPLIFIED: SINGLE ASSIGNMENT FUNCTION - CLEAR & REASSIGN
+// export const updateStudyAssignments = async (req, res) => {
+//     const session = await mongoose.startSession();
 
-    try {
-        const result = await session.withTransaction(async (currentSession) => {
-            const { studyId } = req.params;
-            const { assignedToIds = [], assigneeRole = 'radiologist', priority, notes, dueDate } = req.body;
-            const assignedBy = req.user._id;
+//     try {
+//         const result = await session.withTransaction(async (currentSession) => {
+//             const { studyId } = req.params;
+//             const { assignedToIds = [], assigneeRole = 'radiologist', priority, notes, dueDate } = req.body;
+//             const assignedBy = req.user._id;
 
-            console.log(`🔄 CLEARING & REASSIGNING study ${studyId}:`, {
-                newAssignees: assignedToIds,
-                role: assigneeRole,
-                assignedBy: assignedBy
-            });
+//             console.log(`🔄 CLEARING & REASSIGNING study ${studyId}:`, {
+//                 newAssignees: assignedToIds,
+//                 role: assigneeRole,
+//                 assignedBy: assignedBy
+//             });
 
-            // Only assignor can manage assignments
-            if (req.user.role !== 'assignor') {
-                throw new Error('Only assignor can manage study assignments');
-            }
+//             // Only assignor can manage assignments
+//             if (req.user.role !== 'assignor') {
+//                 throw new Error('Only assignor can manage study assignments');
+//             }
 
-            // Validate assignee role
-            if (!['radiologist', 'verifier'].includes(assigneeRole)) {
-                throw new Error('Can only assign to radiologist or verifier');
-            }
+//             // Validate assignee role
+//             if (!['radiologist', 'verifier'].includes(assigneeRole)) {
+//                 throw new Error('Can only assign to radiologist or verifier');
+//             }
 
-            // Find study
-            let study = await DicomStudy.findOne({
-                _id: studyId,
-                organizationIdentifier: req.user.organizationIdentifier
-            })
-            .session(currentSession)
-            .read('primary')
-            .exec();
+//             // Find study
+//             let study = await DicomStudy.findOne({
+//                 _id: studyId,
+//                 organizationIdentifier: req.user.organizationIdentifier
+//             })
+//             .session(currentSession)
+//             .read('primary')
+//             .exec();
 
-            if (!study) {
-                throw new Error('Study not found');
-            }
+//             if (!study) {
+//                 throw new Error('Study not found');
+//             }
 
-            const currentTime = new Date();
-            const validatedPriority = validatePriority(priority || study.priority);
-            const validatedStudyPriority = validatePriority(study.priority);
+//             const currentTime = new Date();
+//             const validatedPriority = validatePriority(priority || study.priority);
+//             const validatedStudyPriority = validatePriority(study.priority);
 
-            // ✅ STEP 1: COMPLETELY CLEAR ASSIGNMENT ARRAYS
-            console.log('🧹 CLEARING ALL ASSIGNMENTS AND LASTASSIGNEDDOCTOR...');
+//             // ✅ STEP 1: COMPLETELY CLEAR ASSIGNMENT ARRAYS
+//             console.log('🧹 CLEARING ALL ASSIGNMENTS AND LASTASSIGNEDDOCTOR...');
             
-            // Clear both assignment and lastAssignedDoctor arrays
-            await DicomStudy.findByIdAndUpdate(
-                studyId,
-                {
-                    $set: {
-                        assignment: [], // ✅ Clear assignment array
-                        lastAssignedDoctor: [], // ✅ Clear lastAssignedDoctor array
-                        workflowStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment',
-                        status: assignedToIds.length > 0 ? 'assigned' : 'unassigned',
-                        priority: validatedStudyPriority
-                    },
-                    $push: {
-                        statusHistory: {
-                            status: 'assignments_cleared',
-                            changedAt: currentTime,
-                            changedBy: assignedBy,
-                            note: 'All assignments cleared before reassignment'
-                        }
-                    }
-                },
-                { session: currentSession }
-            );
+//             // Clear both assignment and lastAssignedDoctor arrays
+//             await DicomStudy.findByIdAndUpdate(
+//                 studyId,
+//                 {
+//                     $set: {
+//                         assignment: [], // ✅ Clear assignment array
+//                         lastAssignedDoctor: [], // ✅ Clear lastAssignedDoctor array
+//                         workflowStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment',
+//                         status: assignedToIds.length > 0 ? 'assigned' : 'unassigned',
+//                         priority: validatedStudyPriority
+//                     },
+//                     $push: {
+//                         statusHistory: {
+//                             status: 'assignments_cleared',
+//                             changedAt: currentTime,
+//                             changedBy: assignedBy,
+//                             note: 'All assignments cleared before reassignment'
+//                         }
+//                     }
+//                 },
+//                 { session: currentSession }
+//             );
 
-            console.log(`✅ Cleared all existing assignments and lastAssignedDoctor`);
+//             console.log(`✅ Cleared all existing assignments and lastAssignedDoctor`);
 
-            // ✅ STEP 2: ADD NEW ASSIGNMENTS (if any)
-            const newAssignments = [];
+//             // ✅ STEP 2: ADD NEW ASSIGNMENTS (if any)
+//             const newAssignments = [];
 
-            if (assignedToIds.length > 0) {
-                console.log(`➕ Adding ${assignedToIds.length} new assignments...`);
+//             if (assignedToIds.length > 0) {
+//                 console.log(`➕ Adding ${assignedToIds.length} new assignments...`);
                 
-                // Verify all assignees exist and are valid
-                const assignees = await User.find({
-                    _id: { $in: assignedToIds },
-                    organizationIdentifier: req.user.organizationIdentifier,
-                    role: assigneeRole,
-                    isActive: true
-                })
-                .session(currentSession)
-                .read('primary')
-                .exec();
+//                 // Verify all assignees exist and are valid
+//                 const assignees = await User.find({
+//                     _id: { $in: assignedToIds },
+//                     organizationIdentifier: req.user.organizationIdentifier,
+//                     role: assigneeRole,
+//                     isActive: true
+//                 })
+//                 .session(currentSession)
+//                 .read('primary')
+//                 .exec();
 
-                if (assignees.length !== assignedToIds.length) {
-                    const foundIds = assignees.map(a => a._id.toString());
-                    const missingIds = assignedToIds.filter(id => !foundIds.includes(id));
-                    throw new Error(`Invalid or inactive ${assigneeRole}(s): ${missingIds.join(', ')}`);
-                }
+//                 if (assignees.length !== assignedToIds.length) {
+//                     const foundIds = assignees.map(a => a._id.toString());
+//                     const missingIds = assignedToIds.filter(id => !foundIds.includes(id));
+//                     throw new Error(`Invalid or inactive ${assigneeRole}(s): ${missingIds.join(', ')}`);
+//                 }
 
-                // Create new assignment and lastAssignedDoctor objects
-                const newAssignmentArray = [];
-                const newLastAssignedDoctorArray = [];
+//                 // Create new assignment and lastAssignedDoctor objects
+//                 const newAssignmentArray = [];
+//                 const newLastAssignedDoctorArray = [];
 
-                for (const assigneeId of assignedToIds) {
-                    const assignee = assignees.find(a => a._id.toString() === assigneeId);
+//                 for (const assigneeId of assignedToIds) {
+//                     const assignee = assignees.find(a => a._id.toString() === assigneeId);
                     
-                    // ✅ NEW ASSIGNMENT
-                    const newAssignment = {
-                        assignedTo: assigneeId,
-                        assignedBy: assignedBy,
-                        assignedAt: currentTime,
-                        role: assigneeRole,
-                        status: 'assigned',
-                        priority: validatedPriority,
-                        notes: notes || `Assigned via assignment update`,
-                        dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000)
-                    };
+//                     // ✅ NEW ASSIGNMENT
+//                     const newAssignment = {
+//                         assignedTo: assigneeId,
+//                         assignedBy: assignedBy,
+//                         assignedAt: currentTime,
+//                         role: assigneeRole,
+//                         status: 'assigned',
+//                         priority: validatedPriority,
+//                         notes: notes || `Assigned via assignment update`,
+//                         dueDate: dueDate ? new Date(dueDate) : new Date(Date.now() + 24 * 60 * 60 * 1000)
+//                     };
 
-                    // ✅ NEW LASTASSIGNEDDOCTOR
-                    const newLastAssignedDoctor = {
-                        doctorId: assigneeId,
-                        assignedAt: currentTime
-                    };
+//                     // ✅ NEW LASTASSIGNEDDOCTOR
+//                     const newLastAssignedDoctor = {
+//                         doctorId: assigneeId,
+//                         assignedAt: currentTime
+//                     };
 
-                    newAssignmentArray.push(newAssignment);
-                    newLastAssignedDoctorArray.push(newLastAssignedDoctor);
+//                     newAssignmentArray.push(newAssignment);
+//                     newLastAssignedDoctorArray.push(newLastAssignedDoctor);
                     
-                    newAssignments.push({
-                        id: assigneeId,
-                        name: assignee.fullName || assignee.email,
-                        email: assignee.email
-                    });
-                }
+//                     newAssignments.push({
+//                         id: assigneeId,
+//                         name: assignee.fullName || assignee.email,
+//                         email: assignee.email
+//                     });
+//                 }
 
-                // ✅ ADD ALL NEW ASSIGNMENTS
-                await DicomStudy.findByIdAndUpdate(
-                    studyId,
-                    {
-                        $set: {
-                            assignment: newAssignmentArray, // ✅ Set fresh assignment array
-                            lastAssignedDoctor: newLastAssignedDoctorArray // ✅ Set fresh lastAssignedDoctor array
-                        },
-                        $push: {
-                            statusHistory: {
-                                status: 'assigned_to_doctor',
-                                changedAt: currentTime,
-                                changedBy: assignedBy,
-                                note: `Assigned to ${newAssignments.length} ${assigneeRole}(s): ${newAssignments.map(a => a.name).join(', ')}`
-                            }
-                        }
-                    },
-                    { session: currentSession }
-                );
+//                 // ✅ ADD ALL NEW ASSIGNMENTS
+//                 await DicomStudy.findByIdAndUpdate(
+//                     studyId,
+//                     {
+//                         $set: {
+//                             assignment: newAssignmentArray, // ✅ Set fresh assignment array
+//                             lastAssignedDoctor: newLastAssignedDoctorArray // ✅ Set fresh lastAssignedDoctor array
+//                         },
+//                         $push: {
+//                             statusHistory: {
+//                                 status: 'assigned_to_doctor',
+//                                 changedAt: currentTime,
+//                                 changedBy: assignedBy,
+//                                 note: `Assigned to ${newAssignments.length} ${assigneeRole}(s): ${newAssignments.map(a => a.name).join(', ')}`
+//                             }
+//                         }
+//                     },
+//                     { session: currentSession }
+//                 );
 
-                console.log(`✅ Added ${newAssignments.length} new assignments`);
+//                 console.log(`✅ Added ${newAssignments.length} new assignments`);
 
-                // ✅ UPDATE USER ACTIVITY STATS
-                await User.updateMany(
-                    { _id: { $in: assignedToIds } },
-                    {
-                        $inc: { 'activityStats.casesAssigned': 1 },
-                        $set: { 'activityStats.lastActivityAt': currentTime }
-                    },
-                    { session: currentSession }
-                );
+//                 // ✅ UPDATE USER ACTIVITY STATS
+//                 await User.updateMany(
+//                     { _id: { $in: assignedToIds } },
+//                     {
+//                         $inc: { 'activityStats.casesAssigned': 1 },
+//                         $set: { 'activityStats.lastActivityAt': currentTime }
+//                     },
+//                     { session: currentSession }
+//                 );
 
-                await User.findByIdAndUpdate(
-                    assignedBy,
-                    {
-                        $inc: { 'activityStats.casesAssigned': newAssignments.length },
-                        $set: { 'activityStats.lastActivityAt': currentTime }
-                    },
-                    { session: currentSession }
-                );
-            }
+//                 await User.findByIdAndUpdate(
+//                     assignedBy,
+//                     {
+//                         $inc: { 'activityStats.casesAssigned': newAssignments.length },
+//                         $set: { 'activityStats.lastActivityAt': currentTime }
+//                     },
+//                     { session: currentSession }
+//                 );
+//             }
 
-            console.log(`✅ Assignment update completed for study ${studyId}:`, {
-                cleared: 'all',
-                added: newAssignments.length,
-                newStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment'
-            });
+//             console.log(`✅ Assignment update completed for study ${studyId}:`, {
+//                 cleared: 'all',
+//                 added: newAssignments.length,
+//                 newStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment'
+//             });
 
-            return {
-                studyId: studyId,
-                clearedCount: 'all',
-                assignedCount: newAssignments.length,
-                newAssignments: newAssignments,
-                workflowStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment',
-                message: assignedToIds.length === 0 
-                    ? 'Study unassigned - all assignments cleared'
-                    : `Study assigned to ${newAssignments.length} ${assigneeRole}(s)`
-            };
+//             return {
+//                 studyId: studyId,
+//                 clearedCount: 'all',
+//                 assignedCount: newAssignments.length,
+//                 newAssignments: newAssignments,
+//                 workflowStatus: assignedToIds.length > 0 ? 'assigned_to_doctor' : 'pending_assignment',
+//                 message: assignedToIds.length === 0 
+//                     ? 'Study unassigned - all assignments cleared'
+//                     : `Study assigned to ${newAssignments.length} ${assigneeRole}(s)`
+//             };
 
-        }); // End of session.withTransaction
+//         }); // End of session.withTransaction
 
-        res.json({
-            success: true,
-            message: result.message,
-            data: result
-        });
+//         res.json({
+//             success: true,
+//             message: result.message,
+//             data: result
+//         });
 
-    } catch (error) {
-        console.error('❌ Update study assignments error:', error);
-        res.status(500).json({
-            success: false,
-            message: error.message || 'Failed to update study assignments',
-            error: process.env.NODE_ENV === 'development' ? error.stack : undefined
-        });
-    } finally {
-        if (session.inTransaction()) {
-            console.warn('Transaction was not explicitly committed or aborted before finally block. Ending session.');
-        }
-        await session.endSession();
-    }
-};
+//     } catch (error) {
+//         console.error('❌ Update study assignments error:', error);
+//         res.status(500).json({
+//             success: false,
+//             message: error.message || 'Failed to update study assignments',
+//             error: process.env.NODE_ENV === 'development' ? error.stack : undefined
+//         });
+//     } finally {
+//         if (session.inTransaction()) {
+//             console.warn('Transaction was not explicitly committed or aborted before finally block. Ending session.');
+//         }
+//         await session.endSession();
+//     }
+// };
 
 export default {
     getUnassignedStudies,

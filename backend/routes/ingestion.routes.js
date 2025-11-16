@@ -5,6 +5,7 @@ import Redis from 'ioredis';
 import websocketService from '../config/webSocket.js';
 // 🔧 FIXED: Import the correct service name
 import CloudflareR2ZipService from '../services/wasabi.zip.service.js';
+import { recordStudyAction, updateCategoryTracking, ACTION_TYPES } from '../utils/RecordAction.js';
 
 // Import Mongoose Models
 import DicomStudy from '../models/dicomStudyModel.js';
@@ -895,6 +896,44 @@ async function processStableStudy(job) {
     
     await dicomStudyDoc.save();
     console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id} in organization ${organizationRecord.name}`);
+    
+    // ✅ NEW: Record study upload action
+    await recordStudyAction({
+        studyId: dicomStudyDoc._id,
+        actionType: ACTION_TYPES.STUDY_UPLOADED,
+        actionCategory: 'upload',
+        performedBy: new mongoose.Types.ObjectId('000000000000000000000000'), // System user
+        performedByName: 'System',
+        performedByRole: 'system',
+        actionDetails: {
+            metadata: {
+                organization: organizationRecord.name,
+                lab: labRecord.name,
+                seriesCount: allSeries.length,
+                instanceCount: totalInstances,
+                modalities: Array.from(modalitiesSet),
+                bharatPacsId: dicomStudyDoc.bharatPacsId
+            }
+        },
+        notes: `Study uploaded from Orthanc: ${orthancStudyId}`,
+        ipAddress: 'orthanc-server'
+    });
+    
+    // ✅ NEW: Update category tracking for CREATED
+    await updateCategoryTracking({
+        studyId: dicomStudyDoc._id,
+        category: 'created',
+        trackingData: {
+            uploadedAt: new Date(),
+            uploadedBy: new mongoose.Types.ObjectId('000000000000000000000000'),
+            uploadSource: 'orthanc',
+            instancesReceived: totalInstances,
+            seriesReceived: allSeries.length
+        },
+        performedBy: new mongoose.Types.ObjectId('000000000000000000000000'),
+        performedByName: 'System',
+        performedByRole: 'system'
+    });
     
     // 🆕 ADDITION: Queue ZIP creation job if study has instances
     if (totalInstances > 0) {

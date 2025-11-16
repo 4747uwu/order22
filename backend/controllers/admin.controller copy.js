@@ -4,15 +4,22 @@ import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
 import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
-// 🕐 CENTRALIZED: Date filtering utility function
+// 🕐 ENHANCED: Date filtering utility function with more options
 const buildDateFilter = (req) => {
     const IST_OFFSET = 5.5 * 60 * 60 * 1000;
     let filterStartDate = null;
     let filterEndDate = null;
+    let preset = null;
 
     if (req.query.quickDatePreset || req.query.dateFilter) {
         const preset = req.query.quickDatePreset || req.query.dateFilter;
         const now = Date.now();
+
+        console.log('🗓️ DATE FILTER DEBUG:', {
+            preset,
+            currentTime: new Date(now).toISOString(),
+            timezone: 'IST (+5:30)'
+        });
 
         switch (preset) {
             case 'last24h':
@@ -57,6 +64,69 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(yesterdayEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Tomorrow filter
+            case 'tomorrow':
+                const currentTimeISTTomorrow = new Date(Date.now() + IST_OFFSET);
+                const tomorrowIST = new Date(currentTimeISTTomorrow.getTime() + 86400000);
+                const tomorrowStartIST = new Date(
+                    tomorrowIST.getFullYear(),
+                    tomorrowIST.getMonth(),
+                    tomorrowIST.getDate(),
+                    0, 0, 0, 0
+                );
+                const tomorrowEndIST = new Date(
+                    tomorrowIST.getFullYear(),
+                    tomorrowIST.getMonth(),
+                    tomorrowIST.getDate(),
+                    23, 59, 59, 999
+                );
+                filterStartDate = new Date(tomorrowStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(tomorrowEndIST.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last 2 days
+            case 'last2days':
+                const currentTimeIST2Days = new Date(Date.now() + IST_OFFSET);
+                const twoDaysAgoIST = new Date(currentTimeIST2Days.getTime() - (2 * 86400000));
+                const twoDaysStartIST = new Date(
+                    twoDaysAgoIST.getFullYear(),
+                    twoDaysAgoIST.getMonth(),
+                    twoDaysAgoIST.getDate(),
+                    0, 0, 0, 0
+                );
+                const currentEndIST = new Date(currentTimeIST2Days.getTime());
+                filterStartDate = new Date(twoDaysStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentEndIST.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last 7 days
+            case 'last7days':
+                const currentTimeIST7Days = new Date(Date.now() + IST_OFFSET);
+                const sevenDaysAgoIST = new Date(currentTimeIST7Days.getTime() - (7 * 86400000));
+                const sevenDaysStartIST = new Date(
+                    sevenDaysAgoIST.getFullYear(),
+                    sevenDaysAgoIST.getMonth(),
+                    sevenDaysAgoIST.getDate(),
+                    0, 0, 0, 0
+                );
+                filterStartDate = new Date(sevenDaysStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentTimeIST7Days.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last 30 days
+            case 'last30days':
+                const currentTimeIST30Days = new Date(Date.now() + IST_OFFSET);
+                const thirtyDaysAgoIST = new Date(currentTimeIST30Days.getTime() - (30 * 86400000));
+                const thirtyDaysStartIST = new Date(
+                    thirtyDaysAgoIST.getFullYear(),
+                    thirtyDaysAgoIST.getMonth(),
+                    thirtyDaysAgoIST.getDate(),
+                    0, 0, 0, 0
+                );
+                filterStartDate = new Date(thirtyDaysStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentTimeIST30Days.getTime() - IST_OFFSET);
+                break;
+
             case 'thisWeek':
                 const currentTimeISTWeek = new Date(Date.now() + IST_OFFSET);
                 const dayOfWeek = currentTimeISTWeek.getDay();
@@ -71,6 +141,17 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(weekEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last week
+            case 'lastWeek':
+                const currentTimeISTLastWeek = new Date(Date.now() + IST_OFFSET);
+                const lastWeekEnd = new Date(currentTimeISTLastWeek.getTime() - (currentTimeISTLastWeek.getDay() * 86400000) - 86400000);
+                lastWeekEnd.setHours(23, 59, 59, 999);
+                const lastWeekStart = new Date(lastWeekEnd.getTime() - (6 * 86400000));
+                lastWeekStart.setHours(0, 0, 0, 0);
+                filterStartDate = new Date(lastWeekStart.getTime() - IST_OFFSET);
+                filterEndDate = new Date(lastWeekEnd.getTime() - IST_OFFSET);
+                break;
+
             case 'thisMonth':
                 const currentTimeISTMonth = new Date(Date.now() + IST_OFFSET);
                 const monthStartIST = new Date(
@@ -82,6 +163,83 @@ const buildDateFilter = (req) => {
                 const monthEndIST = new Date(currentTimeISTMonth.getTime());
                 filterStartDate = new Date(monthStartIST.getTime() - IST_OFFSET);
                 filterEndDate = new Date(monthEndIST.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last month
+            case 'lastMonth':
+                const currentTimeISTLastMonth = new Date(Date.now() + IST_OFFSET);
+                const lastMonthStartIST = new Date(
+                    currentTimeISTLastMonth.getFullYear(),
+                    currentTimeISTLastMonth.getMonth() - 1,
+                    1,
+                    0, 0, 0, 0
+                );
+                const lastMonthEndIST = new Date(
+                    currentTimeISTLastMonth.getFullYear(),
+                    currentTimeISTLastMonth.getMonth(),
+                    0,
+                    23, 59, 59, 999
+                );
+                filterStartDate = new Date(lastMonthStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(lastMonthEndIST.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last 3 months
+            case 'last3months':
+                const currentTimeIST3Months = new Date(Date.now() + IST_OFFSET);
+                const threeMonthsAgoIST = new Date(
+                    currentTimeIST3Months.getFullYear(),
+                    currentTimeIST3Months.getMonth() - 3,
+                    1,
+                    0, 0, 0, 0
+                );
+                filterStartDate = new Date(threeMonthsAgoIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentTimeIST3Months.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last 6 months
+            case 'last6months':
+                const currentTimeIST6Months = new Date(Date.now() + IST_OFFSET);
+                const sixMonthsAgoIST = new Date(
+                    currentTimeIST6Months.getFullYear(),
+                    currentTimeIST6Months.getMonth() - 6,
+                    1,
+                    0, 0, 0, 0
+                );
+                filterStartDate = new Date(sixMonthsAgoIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentTimeIST6Months.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: This year
+            case 'thisYear':
+                const currentTimeISTYear = new Date(Date.now() + IST_OFFSET);
+                const yearStartIST = new Date(
+                    currentTimeISTYear.getFullYear(),
+                    0,
+                    1,
+                    0, 0, 0, 0
+                );
+                filterStartDate = new Date(yearStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(currentTimeISTYear.getTime() - IST_OFFSET);
+                break;
+
+            // ✅ NEW: Last year
+            case 'lastYear':
+                const currentTimeISTLastYear = new Date(Date.now() + IST_OFFSET);
+                const lastYearStartIST = new Date(
+                    currentTimeISTLastYear.getFullYear() - 1,
+                    0,
+                    1,
+                    0, 0, 0, 0
+                );
+                const lastYearEndIST = new Date(
+                    currentTimeISTLastYear.getFullYear() - 1,
+                    11,
+                    31,
+                    23, 59, 59, 999
+                );
+                filterStartDate = new Date(lastYearStartIST.getTime() - IST_OFFSET);
+                filterEndDate = new Date(lastYearEndIST.getTime() - IST_OFFSET);
                 break;
 
             case 'custom':
@@ -101,10 +259,25 @@ const buildDateFilter = (req) => {
                 break;
 
             default:
-                filterStartDate = new Date(now - 86400000);
-                filterEndDate = new Date(now);
+                // Default to today if no valid preset
+                const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
+                const todayStartISTDefault = new Date(
+                    currentTimeISTDefault.getFullYear(),
+                    currentTimeISTDefault.getMonth(),
+                    currentTimeISTDefault.getDate(),
+                    0, 0, 0, 0
+                );
+                const todayEndISTDefault = new Date(
+                    currentTimeISTDefault.getFullYear(),
+                    currentTimeISTDefault.getMonth(),
+                    currentTimeISTDefault.getDate(),
+                    23, 59, 59, 999
+                );
+                filterStartDate = new Date(todayStartISTDefault.getTime() - IST_OFFSET);
+                filterEndDate = new Date(todayEndISTDefault.getTime() - IST_OFFSET);
         }
     } else {
+        // Default to today if no filter provided
         const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
         const todayStartISTDefault = new Date(
             currentTimeISTDefault.getFullYear(),
@@ -121,6 +294,14 @@ const buildDateFilter = (req) => {
         filterStartDate = new Date(todayStartISTDefault.getTime() - IST_OFFSET);
         filterEndDate = new Date(todayEndISTDefault.getTime() - IST_OFFSET);
     }
+
+    console.log('🎯 FINAL DATE RANGE (IST):', {
+        preset,
+        filterStartDate: filterStartDate?.toISOString(),
+        filterEndDate: filterEndDate?.toISOString(),
+        localStart: filterStartDate ? new Date(filterStartDate.getTime() + IST_OFFSET).toLocaleString() : null,
+        localEnd: filterEndDate ? new Date(filterEndDate.getTime() + IST_OFFSET).toLocaleString() : null
+    });
 
     return { filterStartDate, filterEndDate };
 };
@@ -188,17 +369,24 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ SIMPLIFIED: Execute study query with optimized aggregation
+
+// ✅ UPDATED: Execute study query with population (like doctor controller)
 const executeStudyQuery = async (queryFilters, limit) => {
     try {
-        // Get total count
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
-        // Execute main query with lean for performance
+        // ✅ SAME POPULATION AS DOCTOR CONTROLLER
         const studies = await DicomStudy.find(queryFilters)
+            .populate('assignment.assignedTo', 'fullName email role')
+            .populate('assignment.assignedBy', 'fullName email role')
+            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role')
+            .populate('sourceLab', 'name labName identifier location contactPerson')
+            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth')
             .sort({ createdAt: -1 })
             .limit(limit)
-            .lean();
+            .lean(); // ✅ Keep lean for performance
+
+        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}`);
 
         return { studies, totalStudies };
     } catch (error) {
@@ -206,6 +394,7 @@ const executeStudyQuery = async (queryFilters, limit) => {
         throw error;
     }
 };
+
 
 // ✅ SIMPLIFIED: Build lookup maps for users and labs  
 const buildLookupMaps = async (studies) => {
@@ -281,7 +470,7 @@ export const getValues = async (req, res) => {
         const statusCategories = {
             pending: ['new_study_received', 'pending_assignment', 'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
                     'report_downloaded_radiologist', 'report_downloaded'],
-            inprogress: ['report_finalized', 'report_drafted', 'report_uploaded'],
+            inprogress: ['report_finalized', 'report_drafted', 'report_uploaded', 'report_verified'],
             completed: ['final_report_downloaded']
         };
 
@@ -405,7 +594,11 @@ export const getValues = async (req, res) => {
     }
 };
 
-// 🟡 GET PENDING STUDIES - Multi-tenant
+// ✅ FIX: Use populated queries like doctor controller instead of manual lookups
+
+// ✅ REMOVE: buildLookupMaps function since we're using populated data
+
+// 🟡 GET PENDING STUDIES - Updated to use populated data
 export const getPendingStudies = async (req, res) => {
     try {
         const startTime = Date.now();
@@ -413,33 +606,28 @@ export const getPendingStudies = async (req, res) => {
         
         console.log('🟡 PENDING: Fetching pending studies for multi-tenant system');
         
-        // Get user from middleware (assuming it's attached to req.user)
         const user = req.user;
         if (!user) {
             return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
 
-        // Build query with multi-tenant support
         const pendingStatuses = ['new_study_received', 'pending_assignment'];
         const queryFilters = buildBaseQuery(req, user, pendingStatuses);
         
         console.log(`🔍 PENDING query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        // Execute query and build lookups
+        // ✅ USE POPULATED QUERY - NO MANUAL LOOKUPS
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-        const lookupMaps = await buildLookupMaps(studies);
 
-        // ✅ USE UTILS TO FORMAT STUDIES
-        const formattedStudies = formatStudiesForWorklist(studies, lookupMaps.userMap, lookupMaps.labMap);
-
+        // ✅ RETURN RAW STUDIES - Let frontend format them (like doctor controller)
         const processingTime = Date.now() - startTime;
         console.log(`✅ PENDING: Completed in ${processingTime}ms`);
 
         return res.status(200).json({
             success: true,
-            count: formattedStudies.length,
+            count: studies.length,
             totalRecords: totalStudies,
-            data: formattedStudies, // ✅ Now properly formatted for WorklistTable
+            data: studies, // ✅ Raw populated studies (like doctor controller)
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -481,23 +669,21 @@ export const getInProgressStudies = async (req, res) => {
         const inProgressStatuses = [
             'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
             'report_finalized', 'report_drafted', 'report_uploaded', 
-            'report_downloaded_radiologist', 'report_downloaded'
+            'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+            'report_rejected'
         ];
         const queryFilters = buildBaseQuery(req, user, inProgressStatuses);
 
+        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-        const lookupMaps = await buildLookupMaps(studies);
-
-        // ✅ USE UTILS TO FORMAT STUDIES
-        const formattedStudies = formatStudiesForWorklist(studies, lookupMaps.userMap, lookupMaps.labMap);
 
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
             success: true,
-            count: formattedStudies.length,
+            count: studies.length,
             totalRecords: totalStudies,
-            data: formattedStudies, // ✅ Properly formatted
+            data: studies, // ✅ Raw populated studies
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -538,19 +724,16 @@ export const getCompletedStudies = async (req, res) => {
         const completedStatuses = ['final_report_downloaded', 'archived'];
         const queryFilters = buildBaseQuery(req, user, completedStatuses);
 
+        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-        const lookupMaps = await buildLookupMaps(studies);
-
-        // ✅ USE UTILS TO FORMAT STUDIES
-        const formattedStudies = formatStudiesForWorklist(studies, lookupMaps.userMap, lookupMaps.labMap);
 
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
             success: true,
-            count: formattedStudies.length,
+            count: studies.length,
             totalRecords: totalStudies,
-            data: formattedStudies, // ✅ Properly formatted
+            data: studies, // ✅ Raw populated studies
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -596,7 +779,8 @@ export const getAllStudiesForAdmin = async (req, res) => {
                 'inprogress': [
                     'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
                     'report_finalized', 'report_drafted', 'report_uploaded', 
-                    'report_downloaded_radiologist', 'report_downloaded'
+                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+                    'report_rejected'
                 ],
                 'completed': ['final_report_downloaded', 'archived']
             };
@@ -605,19 +789,16 @@ export const getAllStudiesForAdmin = async (req, res) => {
 
         const queryFilters = buildBaseQuery(req, user, workflowStatuses);
 
+        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-        const lookupMaps = await buildLookupMaps(studies);
-
-        // ✅ USE UTILS TO FORMAT STUDIES
-        const formattedStudies = formatStudiesForWorklist(studies, lookupMaps.userMap, lookupMaps.labMap);
 
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
             success: true,
-            count: formattedStudies.length,
+            count: studies.length,
             totalRecords: totalStudies,
-            data: formattedStudies, // ✅ Properly formatted
+            data: studies, // ✅ Raw populated studies
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
