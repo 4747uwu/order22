@@ -143,10 +143,23 @@ export const createStudyNote = async (req, res) => {
 
         console.log(`✅ [Study Notes] Created note for study: ${studyId} by ${user.fullName || user.name}`);
 
+        // ✅ Ensure DicomStudy.hasStudyNotes is true so frontend can show indicator immediately
+        try {
+            await DicomStudy.findByIdAndUpdate(
+              studyId,
+              { $set: { hasStudyNotes: true } },
+              { new: false }
+            );
+            console.log(`✅ [Study Notes] Marked DicomStudy ${studyId} hasStudyNotes=true`);
+        } catch (updateErr) {
+            console.warn(`⚠️ [Study Notes] Failed to mark hasStudyNotes for ${studyId}:`, updateErr.message);
+        }
+
         res.status(201).json({
             success: true,
             message: 'Note created successfully',
-            data: populatedNote
+            data: populatedNote,
+            meta: { studyId, hasStudyNotes: true } // short-circuit info for frontend
         });
 
     } catch (error) {

@@ -173,6 +173,10 @@ export const formatStudyForWorklist = (rawStudy) => {
     const lockedBy = rawStudy.studyLock?.lockedByName || null;
     const lockedAt = rawStudy.studyLock?.lockedAt || null;
 
+    // ✅ HAS NOTES / ATTACHMENTS FLAGS (prefer explicit DB flags, fallback to arrays)
+    const hasStudyNotes = rawStudy.hasStudyNotes === true || (rawStudy.discussions && rawStudy.discussions.length > 0);
+    const hasAttachments = rawStudy.hasAttachments === true || (rawStudy.attachments && rawStudy.attachments.length > 0);
+
     // ✅ ASSIGNMENT INFO - handle multiple active assignments
     const assignmentInfo = formatAssignmentInfo(rawStudy.assignment);
 
@@ -232,6 +236,10 @@ export const formatStudyForWorklist = (rawStudy) => {
       isLocked,
       lockedBy,
       lockedAt,
+      
+      // ✅ NOTES / ATTACHMENTS FLAGS
+      hasStudyNotes,
+      hasAttachments,
       
       // ✅ ASSIGNMENT INFO
       isAssigned: assignmentInfo.isAssigned,

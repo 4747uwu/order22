@@ -343,7 +343,8 @@ const StudyRow = ({
   const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
   const isAssigned = study.isAssigned;
   const isLocked = study?.isLocked || false;
-  const hasNotes = study.discussions && study.discussions.length > 0;
+  // prefer explicit flag from backend but fall back to discussions array
+  const hasNotes = study.hasStudyNotes === true || (study.discussions && study.discussions.length > 0);
   const hasAttachments = study.attachments && study.attachments.length > 0;
   const canToggleLock = userRole === 'admin' || userRole === 'assignor';
 
@@ -506,9 +507,9 @@ const StudyRow = ({
 
       {/* STUDY / SERIES / IMAGES */}
       <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
-        <div className="text-[10px] text-gray-600">Study: 1</div>
-        <div className="text-xs font-medium text-gray-800">S: {study.seriesCount || 0}</div>
-        <div className="text-[10px] text-gray-500">I: {study.instanceCount || 0}</div>
+        <div className="text-[12px] text-gray-600">{study.studyDescription || 'N/A'}</div>
+        <div className="text-xs font-medium text-gray-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+        {/* <div className="text-[10px] text-gray-500">I: {study.instanceCount || 0}</div> */}
       </td>
 
       {/* PT ID / ACC NO */}
@@ -525,18 +526,25 @@ const StudyRow = ({
       </td>
 
       {/* CLINICAL HISTORY */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '825px' }}>
-        <div className="text-xs text-gray-700 line-clamp-2" title={study.clinicalHistory}>
-          {study.clinicalHistory || '-'}
-        </div>
-        <button
-          onClick={() => onEditPatient?.(study)}
-          className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline mt-1 font-medium"
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '1000px' }}>
+        <div 
+          className="text-xs text-gray-700" 
+          style={{
+            whiteSpace: 'normal',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word'
+          }}
         >
-          <Edit className="w-3 h-3" />
-          Edit
-        </button>
-      </td>
+           {study.clinicalHistory || '-'}
+         </div>
+         <button
+           onClick={() => onEditPatient?.(study)}
+           className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline mt-1 font-medium"
+         >
+           <Edit className="w-3 h-3" />
+           Edit
+         </button>
+       </td>
 
       {/* STUDY DATE/TIME */}
       <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
@@ -657,7 +665,7 @@ const StudyRow = ({
             className={`p-1.5 rounded-full transition-colors group ${
               hasNotes ? 'bg-green-100' : 'hover:bg-gray-100'
             }`}
-            title={hasNotes ? `${study.discussions.length} note(s)` : 'No notes'}
+            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
           >
             <MessageSquare className={`w-4 h-4 ${
               hasNotes ? 'text-green-600' : 'text-gray-400'
@@ -819,7 +827,7 @@ const WorklistTable = ({
     <div className="w-full h-full flex flex-col bg-white border border-gray-300">
       {/* ✅ SCROLLABLE TABLE CONTAINER */}
       <div className="flex-1 overflow-x-auto">
-        <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+        <table className="min-w-full border-collapse"  style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
           {/* ✅ EXCEL-LIKE HEADER - GREEN */}
           <thead className="sticky top-0 z-10">
             <tr className="text-white text-xs font-bold bg-gradient-to-r from-green-600 to-green-700">
@@ -836,8 +844,8 @@ const WorklistTable = ({
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '70px' }}>MOD</th>
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>STUDY /<br/>SERIES /<br/>IMAGES</th>
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '110px' }}>PT ID/<br/>ACC. NO.</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '375px' }}>REFERRAL<br/>DOCTOR</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '825px' }}>CLINICAL<br/>HISTORY</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '800px' }}>REFERRAL<br/>DOCTOR</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '2000px', minWidth: '400px' }}>CLINICAL<br/>HISTORY</th>
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>STUDY<br/>DATE/TIME</th>
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>UPLOAD<br/>DATE/TIME</th>
               <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '150px' }}>RADIOLOGIST</th>

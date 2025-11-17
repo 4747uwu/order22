@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
 import toast from 'react-hot-toast';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText } from 'lucide-react';
 // ✅ Import modals
 import AssignmentModal from '../../assigner/AssignmentModal';
-import StudyDetailedView from '../PatientDetailedView'; // ✅ NEW: Import detailed view
-import ReportModal from '../ReportModal/ReportModal'; // ✅ NEW: Import report modal
-import StudyNotesComponent from '../StudyNotes/StudyNotesComponent'; // ✅ ADD THIS IMPORT
+import StudyDetailedView from '../PatientDetailedView';
+import ReportModal from '../ReportModal/ReportModal';
+import StudyNotesComponent from '../StudyNotes/StudyNotesComponent';
+import TimelineModal from '../TimelineModal';
+import DownloadOptions from '../DownloadOptions/DownloadOptions';
+import api from '../../../services/api'
 
-const ROW_HEIGHT = 38; // ✅ ULTRA COMPACT
-
-// ✅ ADD MISSING UTILITY FUNCTIONS
+// ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
   switch (status) {
     case 'new_study_received':
@@ -43,157 +43,16 @@ const formatWorkflowStatus = (status) => {
   }
 };
 
-// ✅ MODERN STATUS DOT
-const StatusDot = ({ status, priority }) => {
-  const getStatusInfo = () => {
-    if (priority === 'EMERGENCY') return { color: 'bg-red-500', pulse: true };
-    
-    switch (status) {
-      case 'new_study_received':
-      case 'pending_assignment':
-        return { color: 'bg-yellow-500', pulse: false };
-      case 'assigned_to_doctor':
-      case 'doctor_opened_report':
-      case 'report_in_progress':
-        return { color: 'bg-blue-500', pulse: false };
-      case 'report_drafted':
-      case 'report_finalized':
-      case 'final_report_downloaded':
-        return { color: 'bg-green-500', pulse: false };
-      default:
-        return { color: 'bg-gray-400', pulse: false };
-    }
-  };
-
-  const { color, pulse } = getStatusInfo();
-  
-  return (
-    <div 
-      className={`w-2.5 h-2.5 rounded-full ${color} ${pulse ? 'animate-pulse' : ''}`}
-      title={status}
-    />
-  );
-};
-
-// ✅ MODERN DOWNLOAD DROPDOWN
-const DownloadDropdown = ({ study }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleLaunchViewer = useCallback(() => {
-    console.log('🖥️ Launch viewer for:', study._id);
-    toast.success('🖥️ Launching viewer...');
-    setIsOpen(false);
-  }, [study]);
-
-  const handleDirectDownload = useCallback(() => {
-    console.log('📥 Direct download for:', study._id);
-    toast.success('📥 Download started...');
-    setIsOpen(false);
-  }, [study]);
-
-  const handleR2Download = useCallback(() => {
-    console.log('🌐 R2 download for:', study._id);
-    toast.success('🌐 R2 download started...');
-    setIsOpen(false);
-  }, [study]);
-
-  return (
-    <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="p-1 text-gray-600 hover:text-black hover:bg-gray-100 rounded transition-colors"
-        title="Download Options"
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      </button>
-      
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 mt-1 w-60 bg-white rounded-md shadow-lg border border-gray-200 z-20">
-            <div className="py-1">
-              <button
-                onClick={handleLaunchViewer}
-                className="flex items-center w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-              >
-                <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553 2.276A2 2 0 0121 14.09V17a2 2 0 01-2 2H5a2 2 0 01-2-2v-2.91a2 2 0 01.447-1.814L8 10m7-6v6m0 0l-3-3m3 3l3-3" />
-                </svg>
-                Launch Viewer
-              </button>
-              
-              <button
-                onClick={handleR2Download}
-                className="flex items-center w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-              >
-                <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
-                </svg>
-                R2 CDN Download
-              </button>
-              
-              <button 
-                onClick={handleDirectDownload} 
-                className="flex items-center w-full px-3 py-2 text-xs text-gray-700 hover:bg-gray-50"
-              >
-                <svg className="w-3 h-3 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3" />
-                </svg>
-                Direct Download
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// ✅ MODERN ACTION BUTTONS
-const ActionButtons = ({ study, onViewReport, onShowStudyNotes }) => {
-  return (
-    <div className="flex items-center space-x-1">
-      <button 
-        className="p-1 text-gray-600 hover:text-black hover:bg-gray-100 rounded transition-colors" 
-        title="View Study"
-        onClick={() => console.log('👁️ View:', study._id)}
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-        </svg>
-      </button>
-      
-      <DownloadDropdown study={study} />
-      
-      {/* ✅ UPDATED: View Report button that opens modal */}
-      <button 
-        className="p-1 text-gray-600 hover:text-black hover:bg-gray-100 rounded transition-colors" 
-        title="View Report"
-        onClick={() => onViewReport && onViewReport(study)}
-      >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      </button>
-      
-     
-    </div>
-  );
-};
-
-// ✅ UTILITY FUNCTIONS
 const formatDate = (dateString) => {
-  if (!dateString) return 'N/A';
+  if (!dateString) return '-';
   try {
     return new Date(dateString).toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: '2-digit'
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
     });
   } catch {
-    return 'N/A';
+    return '-';
   }
 };
 
@@ -210,513 +69,734 @@ const formatTime = (dateString) => {
   }
 };
 
-// ✅ MODERN STUDY ROW WITH USER ICON CLICK
-const StudyRow = ({ index, style, data }) => {
-  const { studies, visibleColumns, selectedStudies, callbacks } = data;
-  const study = studies[index];
-  const assignButtonRef = useRef(null);
-  console.log(study)
-  if (!study) return null;
+const copyToClipboard = (text, label = 'ID') => {
+  navigator.clipboard.writeText(text).then(() => {
+    toast.success(`${label} copied!`, {
+      duration: 2000,
+      position: 'top-center',
+      style: { fontSize: '12px', padding: '8px 12px' }
+    });
+  }).catch(() => {
+    toast.error('Failed to copy', { duration: 2000 });
+  });
+};
 
-  const isSelected = selectedStudies?.includes(study._id);
-  const isEmergency = study.priority === 'EMERGENCY';
-  const isAssigned = study.isAssigned;
-  
-  const rowClasses = `flex items-center w-full h-full text-xs border-b border-gray-300 transition-all duration-150 hover:bg-gray-50 ${
-    isSelected ? 'bg-blue-50 border-blue-200' : 
-    isAssigned ? 'bg-green-50 border-green-200' : 
-    index % 2 === 0 ? 'bg-white' : 'bg-gray-100'
-  } ${isEmergency ? 'bg-red-50 border-red-200' : ''}`;
-
-  // ✅ HANDLE USER ICON CLICK - Opens detailed view
-  const handleUserIconClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log('👤 User icon clicked for study:', study._id);
-    if (callbacks.onShowDetailedView) {
-      callbacks.onShowDetailedView(study._id);
-    }
-  };
-
-  const handleAssignClick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (assignButtonRef.current && callbacks.onAssignDoctor) {
-      const rect = assignButtonRef.current.getBoundingClientRect();
-      const modalWidth = 350;
-      
-      const position = {
-        top: rect.bottom + 8,
-        left: rect.left - modalWidth,
-        width: modalWidth
-      };
-      
-      const modalHeight = 500;
-      const viewportHeight = window.innerHeight;
-      const viewportWidth = window.innerWidth;
-      
-      if (position.top + modalHeight > viewportHeight) {
-        position.top = rect.top - modalHeight - 8;
-      }
-      
-      if (position.left < 20) {
-        position.left = 20;
-      }
-      
-      if (position.left + modalWidth > viewportWidth - 20) {
-        position.left = rect.left;
-      }
-      
-      callbacks.onAssignDoctor(study, position);
-    }
-  };
+// ✅ ACTION DROPDOWN COMPONENT
+const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) => {
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div style={style} className="w-full">
-      <div className={rowClasses}>
-        
-        {/* ✅ CHECKBOX */}
-        {visibleColumns.checkbox && (
-          <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-            <input
-              type="checkbox"
-              className="w-3 h-3 rounded border-gray-300 text-black focus:ring-black focus:ring-1"
-              checked={isSelected}
-              onChange={() => callbacks.onSelectStudy(study._id)}
-            />
-          </div>
-        )}
-
-        {/* ✅ STATUS */}
-        {visibleColumns.workflowStatus && (
-          <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-            <StatusDot status={study.workflowStatus} priority={study.priority} />
-          </div>
-        )}
-
-        {/* ✅ USER ICON - CLICKABLE TO OPEN DETAILED VIEW */}
-        <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-          <button
-            onClick={handleUserIconClick}
-            className="p-1 hover:bg-blue-100 rounded-full transition-colors group"
-            title="View detailed patient information"
-          >
-            <svg className="w-3 h-3 text-gray-500 group-hover:text-blue-600 transition-colors" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-            </svg>
-          </button>
-        </div>
-        
-        {/* ✅ OTHER ICON COLUMNS */}
-        <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        </div>
-        
-        <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-          <svg className="w-3 h-3 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        </div>
-        
-    
-        {/* ✅ STUDY NOTES ICON - MAKE IT CLICKABLE */}
-        <div className="flex-shrink-0 w-8 flex items-center justify-center border-r border-gray-200">
-          <button
-            onClick={() => callbacks.onShowStudyNotes && callbacks.onShowStudyNotes(study._id)}
-            className="p-1 hover:bg-emerald-50 hover:text-emerald-600 rounded transition-colors group"
-            title="Study Notes"
-          >
-            <svg className="w-3 h-3 text-gray-500 group-hover:text-emerald-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-            </svg>
-          </button>
-        </div>
-
-
-        {/* ✅ PATIENT ID */}
-        {visibleColumns.patientId && (
-          <div className="flex-1 min-w-[100px] px-2 flex items-center border-r border-gray-200">
-            <div className="flex flex-col w-full">
-              <button 
-                className={`text-black font-medium hover:underline truncate transition-colors ${
-                  isEmergency ? 'text-red-700' : 'hover:text-blue-600'
-                }`}
-                onClick={() => callbacks.onPatienIdClick?.(study.patientId, study)}
+    <div className="relative">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="px-2 py-1 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded transition-colors flex items-center gap-1 w-full justify-center"
+      >
+        Actions
+        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)}></div>
+          <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-[9999]">
+            <div className="py-1">
+              <button
+                onClick={() => { onViewStudy?.(study); setIsOpen(false); }}
+                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
               >
-                {study.patientId || study.patient?.patientID || 'N/A'}
-                {isEmergency && (
-                  <span className="ml-1 inline-flex items-center px-1 py-0.5 rounded text-xs font-bold bg-red-600 text-white">
-                    🚨
-                  </span>
-                )}
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                View Study
               </button>
               
-              {isAssigned && (
-                <div className="text-[10px] text-green-600 mt-0.5 flex items-center space-x-1">
-                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full"></div>
-                  <span className="truncate">{study.assignedTo}</span>
-                </div>
-              )}
+              <button
+                onClick={() => { onViewReport?.(study); setIsOpen(false); }}
+                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                View Report
+              </button>
+              
+              <button
+                onClick={() => { onShowStudyNotes?.(study._id); setIsOpen(false); }}
+                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Study Notes
+              </button>
             </div>
           </div>
-        )}
+        </>
+      )}
+    </div>
+  );
+};
 
-        {/* ✅ PATIENT NAME */}
-        {visibleColumns.patientName && (
-          <div className="flex-1 min-w-[120px] px-2 flex items-center border-r border-gray-200">
-            <div className={`font-medium truncate ${isEmergency ? 'text-red-900' : 'text-gray-900'}`}>
-              {study.patientName || study.patient?.patientNameRaw || 'N/A'}
+// ✅ PATIENT EDIT MODAL
+const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
+  const [formData, setFormData] = useState({
+    patientName: '',
+    patientAge: '',
+    patientGender: '',
+    studyName: '',
+    referringPhysician: '',
+    accessionNumber: '',
+    clinicalHistory: ''
+  });
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (study && isOpen) {
+      setFormData({
+        patientName: study.patientName || '',
+        patientAge: study.patientAge || '',
+        patientGender: study.patientSex || '',
+        studyName: study.studyDescription || '',
+        referringPhysician: study.referralNumber || '',
+        accessionNumber: study.accessionNumber || '',
+        clinicalHistory: study.clinicalHistory || ''
+      });
+    }
+  }, [study, isOpen]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      await onSave({ studyId: study._id, ...formData });
+      toast.success('Study details updated');
+      onClose();
+    } catch (error) {
+      toast.error('Failed to update');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+        <div className="px-6 py-4 border-b bg-gray-800 text-white">
+          <h2 className="text-lg font-bold">{study?.patientName || 'Edit Study'}</h2>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Patient Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.patientName}
+                onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Patient Age <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.patientAge}
+                onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Gender <span className="text-red-500">*</span>
+              </label>
+              <select
+                value={formData.patientGender}
+                onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              >
+                <option value="">Select</option>
+                <option value="M">Male</option>
+                <option value="F">Female</option>
+                <option value="O">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Study Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.studyName}
+                onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Referring Physician <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={formData.referringPhysician}
+                onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Accession Number
+              </label>
+              <input
+                type="text"
+                value={formData.accessionNumber}
+                onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            <div className="col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Clinical History <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={formData.clinicalHistory}
+                onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
+                rows={4}
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
+                required
+              />
             </div>
           </div>
-        )}
 
-        {/* ✅ AGE/SEX */}
-        {visibleColumns.ageGender && (
-          <div className="flex-shrink-0 w-12 px-1 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.patientSex || study.patientAge || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ DESCRIPTION */}
-        {visibleColumns.studyDescription && (
-          <div className="flex-1 min-w-[150px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-900 font-medium' : 'text-gray-700'}`}>
-              {study.studyDescription || study.description || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ SERIES */}
-        {visibleColumns.seriesCount && (
-          <div className="flex-shrink-0 w-12 px-1 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.seriesCount || study.numberOfSeries || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ MODALITY */}
-        {visibleColumns.modality && (
-          <div className="flex-shrink-0 w-24 px-1 flex items-center justify-center border-r border-gray-200">
-            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
-              isEmergency ? 'bg-red-600 text-white' : 'bg-gray-200 text-black'
-            }`}>
-              {study.modality || 'N/A'}
-            </span>
-          </div>
-        )}
-
-        {/* ✅ LOCATION */}
-        {visibleColumns.location && (
-          <div className="flex-1 min-w-[100px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.location || study.sourceLab?.name || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ STUDY DATE */}
-        {visibleColumns.studyDate && (
-          <div className="flex-1 min-w-[40px] px-2 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              <div className="font-medium">{formatDate(study.studyDate)}</div>
-              <div className={`text-xs ${isEmergency ? 'text-red-500' : 'text-gray-500'}`}>
-                {formatTime(study.studyDate)}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ✅ UPLOAD DATE */}
-        {visibleColumns.uploadDate && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              <div className="font-medium">{formatDate(study.createdAt)}</div>
-              <div className={`text-xs ${isEmergency ? 'text-red-500' : 'text-gray-500'}`}>
-                {formatTime(study.createdAt)}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ✅ REPORTED DATE */}
-        {visibleColumns.reportedDate && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.reportedDate ? (
-                <>
-                  <div className="font-medium">{formatDate(study.reportedDate)}</div>
-                  <div className={`text-xs ${isEmergency ? 'text-red-500' : 'text-gray-500'}`}>
-                    {formatTime(study.reportedDate)}
-                  </div>
-                </>
-              ) : (
-                <div className="text-gray-400">Not reported</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ REPORTED BY */}
-        {visibleColumns.reportedBy && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.reportedBy || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ VERIFIED DATE */}
-        {visibleColumns.verifiedDate && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center justify-center border-r border-gray-200">
-            <div className={`text-center ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.verifiedDate ? (
-                <>
-                  <div className="font-medium">{formatDate(study.verifiedDate)}</div>
-                  <div className={`text-xs ${isEmergency ? 'text-red-500' : 'text-gray-500'}`}>
-                    {formatTime(study.verifiedDate)}
-                  </div>
-                </>
-              ) : (
-                <div className="text-gray-400">Not verified</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ VERIFIED BY */}
-        {visibleColumns.verifiedBy && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.verifiedBy || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ VERIFICATION STATUS */}
-        {visibleColumns.verificationStatus && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.verificationStatus || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ ACCESSION */}
-        {visibleColumns.accession && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.accessionNumber || 'N/A'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ SEEN BY */}
-        {visibleColumns.seenBy && (
-          <div className="flex-1 min-w-[80px] px-2 flex items-center border-r border-gray-200">
-            <div className={`truncate ${isEmergency ? 'text-red-700' : 'text-gray-600'}`}>
-              {study.seenBy || 'Not Assigned'}
-            </div>
-          </div>
-        )}
-
-        {/* ✅ ACTIONS */}
-        {visibleColumns.actions && (
-          <div className="flex-shrink-0 w-20 px-1 flex items-center justify-center border-r border-gray-200">
-            <ActionButtons 
-              study={study} 
-              onViewReport={callbacks.onViewReport} // ✅ NEW: Pass view report callback
-              onShowStudyNotes={callbacks.onShowStudyNotes} // ✅ ADD THIS
-            />
-          </div>
-        )}
-
-        {/* ✅ ASSIGN DOCTOR BUTTON */}
-        {visibleColumns.assignedDoctor && (
-          <div className="flex-shrink-0 w-20 px-1 flex items-center justify-center">
-            <button 
-              ref={assignButtonRef}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all ${
-                isEmergency 
-                  ? 'bg-red-600 text-white hover:bg-red-700 animate-pulse' 
-                  : isAssigned
-                    ? 'bg-blue-600 text-white hover:bg-blue-700'
-                    : 'bg-black text-white hover:bg-gray-800'
-              }`}
-              onClick={handleAssignClick}
-              title={isAssigned ? `Reassign from ${study.assignedTo}` : 'Assign to radiologist'}
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-6 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+              disabled={loading}
             >
-              {isEmergency && '🚨 '}
-              {isAssigned ? 'Reassign' : 'Assign'}
+              Close
+            </button>
+            <button
+              type="submit"
+              className="px-6 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              disabled={loading}
+            >
+              {loading ? 'Saving...' : 'Save'}
             </button>
           </div>
-        )}
+        </form>
       </div>
     </div>
   );
 };
 
-// ✅ MAIN COMPONENT
+// ✅ MAIN STUDY ROW COMPONENT
+const StudyRow = ({ 
+  study, 
+  index,
+  selectedStudies,
+  availableAssignees,
+  onSelectStudy,
+  onPatienIdClick,
+  onAssignDoctor,
+  onShowDetailedView,
+  onViewReport,
+  onShowStudyNotes,
+  onViewStudy,
+  onEditPatient,
+  onAssignmentSubmit,
+  onShowTimeline,
+  onToggleLock,
+  userRole
+}) => {
+  const assignInputRef = useRef(null);
+  const downloadButtonRef = useRef(null);
+  const [assignInputValue, setAssignInputValue] = useState('');
+  const [showAssignmentModal, setShowAssignmentModal] = useState(false);
+  const [assignmentModalPosition, setAssignmentModalPosition] = useState(null);
+  const [inputFocused, setInputFocused] = useState(false);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
+  const [downloadPosition, setDownloadPosition] = useState(null);
+  const [togglingLock, setTogglingLock] = useState(false);
+
+  const isSelected = selectedStudies?.includes(study._id);
+  const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
+  const isAssigned = study.isAssigned;
+  const isLocked = study?.isLocked || false;
+  const hasNotes = study.discussions && study.discussions.length > 0;
+  const hasAttachments = study.attachments && study.attachments.length > 0;
+  const canToggleLock = userRole === 'admin' || userRole === 'assignor';
+
+  // ✅ SYNC INPUT VALUE WITH RADIOLOGIST NAME (ONLY WHEN NOT FOCUSED)
+  useEffect(() => {
+    if (!inputFocused && !showAssignmentModal) {
+      // Only show radiologist name when input is NOT focused
+      setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
+    }
+  }, [isAssigned, study.radiologist, inputFocused, showAssignmentModal]);
+
+  const rowClasses = `${
+    isSelected ? 'bg-blue-100' : 
+    isAssigned ? 'bg-green-50' : 
+    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+  } ${isUrgent ? 'border-l-4 border-l-red-600' : ''} hover:bg-blue-50 transition-colors`;
+
+  // ✅ FIX: Clear input value when modal opens to show ALL radiologists
+  const handleAssignInputFocus = (e) => {
+    if (isLocked) {
+      toast.error(`Locked by ${study.studyLock?.lockedByName}`, { icon: '🔒' });
+      e.target.blur();
+      return;
+    }
+
+    setInputFocused(true);
+    
+    // ✅ CRITICAL FIX: Clear input value to show full list
+    setAssignInputValue('');
+    
+    if (assignInputRef.current) {
+      const rect = assignInputRef.current.getBoundingClientRect();
+      setAssignmentModalPosition({
+        top: rect.bottom + 8,
+        left: Math.max(20, Math.min(rect.left, window.innerWidth - 470)),
+        width: 450,
+        zIndex: 99999
+      });
+      setShowAssignmentModal(true);
+    }
+  };
+
+  // ✅ FIX: Reset input value when modal closes
+  const handleCloseAssignmentModal = () => {
+    setShowAssignmentModal(false);
+    setInputFocused(false);
+    
+    // ✅ Reset to radiologist name or empty
+    setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
+  };
+
+  const handleAssignmentSubmit = async (assignmentData) => {
+    await onAssignmentSubmit(assignmentData);
+    handleCloseAssignmentModal();
+  };
+
+  // ✅ Handle download button click
+  const handleDownloadClick = (e) => {
+    e.stopPropagation();
+    if (downloadButtonRef.current) {
+      const rect = downloadButtonRef.current.getBoundingClientRect();
+      setDownloadPosition({
+        top: rect.bottom + 8,
+        left: Math.max(20, Math.min(rect.left, window.innerWidth - 300))
+      });
+      setShowDownloadOptions(true);
+    }
+  };
+
+  // ✅ Handle lock toggle
+  const handleLockToggle = async (e) => {
+    e.stopPropagation();
+
+    setTogglingLock(true);
+    try {
+      await onToggleLock(study._id, !isLocked);
+      toast.success(isLocked ? 'Study unlocked' : 'Study locked');
+    } catch (error) {
+      toast.error('Failed to toggle study lock');
+    } finally {
+      setTogglingLock(false);
+    }
+  };
+
+  return (
+    <tr className={rowClasses}>
+      {/* BP ID */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
+        <div className="flex items-center justify-center gap-1">
+          <span className="text-xs font-mono font-medium text-gray-800 truncate" title={study.bharatPacsId}>
+            {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
+          </span>
+          <button
+            onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
+            className="p-1 hover:bg-gray-200 rounded"
+          >
+            <Copy className="w-3.5 h-3.5 text-gray-500" />
+          </button>
+        </div>
+      </td>
+
+      {/* CENTER NAME */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '140px' }}>
+        <div className="text-xs font-semibold text-gray-900 truncate" title={study.organizationName}>
+          {study.organizationName || '-'}
+        </div>
+      </td>
+
+      {/* SUB CENTER */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '130px' }}>
+        <div className="text-xs text-gray-700 truncate" title={study.centerName}>
+          {study.centerName || '-'}
+        </div>
+      </td>
+
+      {/* TRACK CASE - ✅ REDUCED WIDTH */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '50px' }}>
+        <button
+          onClick={() => onShowTimeline?.(study)}
+          className="p-1.5 hover:bg-purple-100 rounded-full transition-colors"
+          title="View Timeline"
+        >
+          <Clock className="w-4 h-4 text-purple-600" />
+        </button>
+      </td>
+
+      {/* PT NAME / UHID */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '160px' }}>
+        <button 
+          className="w-full text-left hover:underline"
+          onClick={() => onPatienIdClick?.(study.patientId, study)}
+        >
+          <div className="text-xs font-semibold text-gray-900 truncate" title={study.patientName}>
+            {study.patientName || '-'}
+            {isUrgent && <span className="ml-1">🚨</span>}
+          </div>
+          <div className="text-[10px] text-gray-500 truncate">
+            UHID: {study.patientId || '-'}
+          </div>
+        </button>
+      </td>
+
+      {/* AGE/SEX */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '70px' }}>
+        <div className="text-xs font-medium text-gray-800">
+          {study.ageGender !== 'N/A' ? study.ageGender : 
+           study.patientAge && study.patientSex ? 
+           `${study.patientAge}/${study.patientSex.charAt(0)}` : '-'}
+        </div>
+      </td>
+
+      {/* MODALITY - ✅ REDUCED WIDTH */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '70px' }}>
+        <span className={`px-2 py-1 rounded text-[10px] font-bold ${
+          isUrgent ? 'bg-red-600 text-white' : 'bg-blue-100 text-blue-800'
+        }`}>
+          {study.modality || '-'}
+        </span>
+      </td>
+
+      {/* STUDY / SERIES / IMAGES */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
+        <div className="text-[10px] text-gray-600">Study: 1</div>
+        <div className="text-xs font-medium text-gray-800">S: {study.seriesCount || 0}</div>
+        <div className="text-[10px] text-gray-500">I: {study.instanceCount || 0}</div>
+      </td>
+
+      {/* PT ID / ACC NO */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '110px' }}>
+        <div className="text-[11px] text-gray-700 truncate">ID: {study.patientId || '-'}</div>
+        <div className="text-[10px] text-gray-500 truncate">Acc: {study.accessionNumber || '-'}</div>
+      </td>
+
+      {/* REFERRAL DOCTOR */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '375px' }}>
+        <div className="text-xs text-gray-700 truncate" title={study.referralNumber}>
+          {study.referralNumber !== 'N/A' ? study.referralNumber : '-'}
+        </div>
+      </td>
+
+      {/* CLINICAL HISTORY */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '825px' }}>
+        <div className="text-xs text-gray-700 line-clamp-2" title={study.clinicalHistory}>
+          {study.clinicalHistory || '-'}
+        </div>
+        <button
+          onClick={() => onEditPatient?.(study)}
+          className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline mt-1 font-medium"
+        >
+          <Edit className="w-3 h-3" />
+          Edit
+        </button>
+      </td>
+
+      {/* STUDY DATE/TIME */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
+        <div className="text-[11px] font-medium text-gray-800">{formatDate(study.studyDate)}</div>
+        <div className="text-[10px] text-gray-500">{study.studyTime || '-'}</div>
+      </td>
+
+      {/* UPLOAD DATE/TIME */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
+        <div className="text-[11px] font-medium text-gray-800">{formatDate(study.createdAt)}</div>
+        <div className="text-[10px] text-gray-500">{formatTime(study.createdAt)}</div>
+      </td>
+
+      {/* RADIOLOGIST */}
+      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '150px' }}>
+        <div className="relative">
+          <input
+            ref={assignInputRef}
+            type="text"
+            value={assignInputValue}
+            onChange={(e) => setAssignInputValue(e.target.value)}
+            onFocus={handleAssignInputFocus}
+            onBlur={() => {
+              // ✅ Delay to allow modal click
+              setTimeout(() => {
+                if (!showAssignmentModal) {
+                  setInputFocused(false);
+                }
+              }, 200);
+            }}
+            placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
+            disabled={isLocked}
+            className={`w-full px-2 py-1.5 text-xs border rounded focus:ring-2 focus:ring-blue-500 ${
+              isLocked ? 'bg-gray-100 cursor-not-allowed' : 
+              isAssigned && !inputFocused ? 'bg-green-50 border-green-300 text-green-800 font-medium' : 
+              'bg-white border-gray-300'
+            }`}
+          />
+          {isAssigned && !inputFocused && !isLocked && (
+            <div className="w-2 h-2 bg-green-500 rounded-full absolute right-2 top-2" />
+          )}
+          {isLocked && (
+            <Lock className="w-4 h-4 text-red-600 absolute right-2 top-2" />
+          )}
+        </div>
+      </td>
+
+      {/* CASE STATUS - ✅ REDUCED WIDTH */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
+        <span className={`px-2 py-1 rounded text-[10px] font-medium ${getStatusColor(study.workflowStatus)}`}>
+          {study.caseStatus || formatWorkflowStatus(study.workflowStatus)}
+        </span>
+      </td>
+
+      {/* VIEW - ✅ REDUCED WIDTH */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '60px' }}>
+        <button
+          onClick={() => onViewStudy?.(study)}
+          className="text-xs text-blue-600 hover:underline font-semibold px-2 py-1"
+        >
+          View
+        </button>
+      </td>
+
+      {/* PRINT REPORT */}
+      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
+        <div className="text-xs text-gray-700">{study.printCount > 0 ? `${study.printCount} prints` : 'No prints'}</div>
+      </td>
+
+      {/* ACTION - ✅ ENHANCED WITH DOWNLOAD & LOCK TOGGLE */}
+      <td className="px-2 py-3 text-center border-b border-gray-300" style={{ width: '200px' }}>
+        <div className="flex items-center justify-center gap-1">
+          {/* Download Options */}
+          <button
+            ref={downloadButtonRef}
+            onClick={handleDownloadClick}
+            className="p-1.5 hover:bg-blue-100 rounded-full transition-colors group"
+            title="Download Options"
+          >
+            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-800" />
+          </button>
+
+          {/* ✅ Study Lock/Unlock Toggle - MAKE SURE THIS IS PRESENT */}
+          
+            <button
+              onClick={handleLockToggle}
+              disabled={togglingLock}
+              className={`p-1.5 rounded-full transition-colors group ${
+                togglingLock ? 'opacity-50 cursor-not-allowed' : 
+                isLocked ? 'hover:bg-red-100' : 'hover:bg-gray-100'
+              }`}
+              title={isLocked ? `Locked by ${study.studyLock?.lockedByName} - Click to unlock` : 'Lock Study'}
+            >
+              {isLocked ? (
+                <Lock className="w-4 h-4 text-red-600 group-hover:text-red-800" />
+              ) : (
+                <Unlock className="w-4 h-4 text-gray-500 group-hover:text-red-600" />
+              )}
+            </button>
+          
+
+          {/* Attachments */}
+          <button
+            onClick={() => console.log('Show attachments:', study._id)}
+            className={`p-1.5 rounded-full transition-colors group ${
+              hasAttachments ? 'bg-green-100' : 'hover:bg-gray-100'
+            }`}
+            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'No attachments'}
+          >
+            <Paperclip className={`w-4 h-4 ${
+              hasAttachments ? 'text-green-600' : 'text-gray-400'
+            } group-hover:text-green-800`} />
+          </button>
+
+          {/* Study Notes */}
+          <button
+            onClick={() => onShowStudyNotes?.(study._id)}
+            className={`p-1.5 rounded-full transition-colors group ${
+              hasNotes ? 'bg-green-100' : 'hover:bg-gray-100'
+            }`}
+            title={hasNotes ? `${study.discussions.length} note(s)` : 'No notes'}
+          >
+            <MessageSquare className={`w-4 h-4 ${
+              hasNotes ? 'text-green-600' : 'text-gray-400'
+            } group-hover:text-green-800`} />
+          </button>
+
+          {/* View Report */}
+          <button
+            onClick={() => onViewReport?.(study)}
+            className="p-1.5 hover:bg-purple-100 rounded-full transition-colors group"
+            title="View Report"
+          >
+            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-800" />
+          </button>
+
+          {/* Action Dropdown */}
+          <ActionDropdown 
+            study={study}
+            onViewReport={onViewReport}
+            onShowStudyNotes={onShowStudyNotes}
+            onViewStudy={onViewStudy}
+          />
+        </div>
+      </td>
+
+      {/* Download Options Modal */}
+      {showDownloadOptions && (
+        <DownloadOptions
+          study={study}
+          isOpen={showDownloadOptions}
+          onClose={() => setShowDownloadOptions(false)}
+          position={downloadPosition}
+        />
+      )}
+
+      {/* ASSIGNMENT MODAL */}
+      {showAssignmentModal && (
+        <AssignmentModal
+          study={study}
+          availableAssignees={availableAssignees}
+          onSubmit={handleAssignmentSubmit}
+          onClose={handleCloseAssignmentModal}
+          position={assignmentModalPosition}
+          searchTerm={assignInputValue} // ✅ This will be empty string on open
+        />
+      )}
+    </tr>
+  );
+};
+
+// ✅ MAIN WORKLIST TABLE
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
-  columnConfig = {}, 
   selectedStudies = [],
   onSelectAll, 
   onSelectStudy,
   onPatienIdClick,
   onAssignDoctor,
   availableAssignees = { radiologists: [], verifiers: [] },
-  onAssignmentSubmit
+  onAssignmentSubmit,
+  onUpdateStudyDetails,
+  userRole = 'viewer', // ✅ NEW: Pass user role
+  onToggleStudyLock // ✅ NEW: Lock toggle handler
 }) => {
   
-  const [assignmentModal, setAssignmentModal] = useState({
-    show: false,
-    study: null,
-    position: null
-  });
+  const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
+  const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
+  const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
+  const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
+  const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
+  const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
 
-  // ✅ NEW: Detailed view state
-  const [detailedView, setDetailedView] = useState({
-    show: false,
-    studyId: null
-  });
-
-  // ✅ NEW: Report modal state
-  const [reportModal, setReportModal] = useState({
-    show: false,
-    studyId: null,
-    studyData: null
-  });
-
-  // ✅ NEW: Study notes state
-  const [studyNotes, setStudyNotes] = useState({
-    show: false,
-    studyId: null
-  });
-
-  const visibleColumns = useMemo(() => {
-    const visible = {};
-    for (const key in columnConfig) {
-      if (columnConfig[key]?.visible) {
-        visible[key] = true;
-      }
-    }
-    return visible;
-  }, [columnConfig]);
-
-  const handleAssignDoctor = useCallback((study, position) => {
-    setAssignmentModal({
-      show: true,
-      study,
-      position
-    });
-    
-    if (onAssignDoctor) {
-      onAssignDoctor(study);
-    }
-  }, [onAssignDoctor]);
-
-  const handleAssignmentSubmit = useCallback(async (assignmentData) => {
-    try {
-      if (onAssignmentSubmit) {
-        await onAssignmentSubmit(assignmentData);
-      }
-      setAssignmentModal({ show: false, study: null, position: null });
-    } catch (error) {
-      console.error('Assignment submission error:', error);
-    }
-  }, [onAssignmentSubmit]);
-
-  const handleCloseAssignmentModal = useCallback(() => {
-    setAssignmentModal({ show: false, study: null, position: null });
+  // Handlers
+  const handleShowTimeline = useCallback((study) => {
+    setTimelineModal({ show: true, studyId: study._id, studyData: study });
   }, []);
 
-  // ✅ NEW: Detailed view handlers
   const handleShowDetailedView = useCallback((studyId) => {
-    console.log('🔍 Opening detailed view for study:', studyId);
-    setDetailedView({
-      show: true,
-      studyId: studyId
-    });
+    setDetailedView({ show: true, studyId });
   }, []);
 
-  const handleCloseDetailedView = useCallback(() => {
-    console.log('❌ Closing detailed view');
-    setDetailedView({
-      show: false,
-      studyId: null
-    });
-  }, []);
-
-  // ✅ NEW: Report modal handlers
   const handleViewReport = useCallback((study) => {
-    console.log('📄 Opening report modal for study:', study._id);
     setReportModal({
       show: true,
       studyId: study._id,
-      studyData: {
-        patientName: study.patientName,
-        patientId: study.patientId,
-        studyDate: study.studyDate,
-        modality: study.modality
-      }
+      studyData: { patientName: study.patientName, patientId: study.patientId }
     });
   }, []);
 
-  const handleCloseReportModal = useCallback(() => {
-    console.log('❌ Closing report modal');
-    setReportModal({
-      show: false,
-      studyId: null,
-      studyData: null
-    });
-  }, []);
-
-  // ✅ NEW: Study notes handlers
   const handleShowStudyNotes = useCallback((studyId) => {
-    console.log('📝 Opening study notes for:', studyId);
-    setStudyNotes({
-      show: true,
-      studyId: studyId
-    });
+    setStudyNotes({ show: true, studyId });
   }, []);
 
-  const handleCloseStudyNotes = useCallback(() => {
-    console.log('❌ Closing study notes');
-    setStudyNotes({
-      show: false,
-      studyId: null
-    });
+  const handleViewStudy = useCallback((study) => {
+    handleShowDetailedView(study._id);
+  }, [handleShowDetailedView]);
+
+  const handleEditPatient = useCallback((study) => {
+    setPatientEditModal({ show: true, study });
   }, []);
 
-  const virtualListData = useMemo(() => ({
-    studies,
-    visibleColumns,
-    selectedStudies,
-    callbacks: { 
-      onSelectStudy, 
-      onPatienIdClick, 
-      onAssignDoctor: handleAssignDoctor,
-      onShowDetailedView: handleShowDetailedView,
-      onViewReport: handleViewReport,
-      onShowStudyNotes: handleShowStudyNotes // ✅ ADD THIS
+  const handleSavePatientEdit = useCallback(async (formData) => {
+    try {
+      await onUpdateStudyDetails?.(formData);
+      setPatientEditModal({ show: false, study: null });
+    } catch (error) {
+      throw error;
     }
-  }), [studies, visibleColumns, selectedStudies, onSelectStudy, onPatienIdClick, handleAssignDoctor, handleShowDetailedView, handleViewReport, handleShowStudyNotes]);
+  }, [onUpdateStudyDetails]);
 
-  const allSelected = studies?.length > 0 && selectedStudies?.length === studies?.length;
+  // ✅ NEW: Handle study lock toggle
+  const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
+    try {
+      console.log("yes it is there")
+      
+      const response = await api.post(`/admin/toggle-study-lock/${studyId}`, {
+        shouldLock
+      });
+
+      console.log(response)
+
+      if (response.data.success) {
+        // Refresh study data or update local state
+        onToggleStudyLock?.(studyId, shouldLock);
+      } else {
+        throw new Error(response.data.message || 'Failed to toggle lock');
+      }
+    } catch (error) {
+      throw error;
+    }
+  }, [onToggleStudyLock]);
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
+      <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-black border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600 text-sm font-medium">Loading studies...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mx-auto mb-4"></div>
+          <p className="text-gray-600 text-sm">Loading studies...</p>
         </div>
       </div>
     );
@@ -729,135 +809,85 @@ const WorklistTable = ({
           <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
           </svg>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">No studies found</h3>
-          <p className="text-sm">Try adjusting your search or filter criteria</p>
+          <h3 className="text-lg font-medium mb-2">No studies found</h3>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-white relative">
-      
-      {/* ✅ MODERN HEADER */}
-      <div className="flex items-center bg-gray-100 border-b border-gray-300 text-xs font-bold text-gray-800 uppercase tracking-wide sticky top-0 z-10 flex-shrink-0">
-        
-        {visibleColumns.checkbox && (
-          <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300">
-            <input 
-              type="checkbox" 
-              className="w-3 h-3 rounded border-gray-300 text-black focus:ring-black focus:ring-1"
-              checked={allSelected}
-              onChange={(e) => onSelectAll?.(e.target.checked)}
-            />
-          </div>
-        )}
+    <div className="w-full h-full flex flex-col bg-white border border-gray-300">
+      {/* ✅ SCROLLABLE TABLE CONTAINER */}
+      <div className="flex-1 overflow-x-auto">
+        <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+          {/* ✅ EXCEL-LIKE HEADER - GREEN */}
+          <thead className="sticky top-0 z-10">
+            <tr className="text-white text-xs font-bold bg-gradient-to-r from-green-600 to-green-700">
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>BP ID</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '140px' }}>CENTER<br/>NAME</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '130px' }}>SUB<br/>CENTER</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '50px' }}>
+                <div className="flex items-center justify-center gap-1">
+                  <Clock className="w-3.5 h-3.5" />
+                </div>
+              </th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '160px' }}>PT NAME /<br/>UHID</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '70px' }}>AGE/<br/>SEX</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '70px' }}>MOD</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>STUDY /<br/>SERIES /<br/>IMAGES</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '110px' }}>PT ID/<br/>ACC. NO.</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '375px' }}>REFERRAL<br/>DOCTOR</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '825px' }}>CLINICAL<br/>HISTORY</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>STUDY<br/>DATE/TIME</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>UPLOAD<br/>DATE/TIME</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '150px' }}>RADIOLOGIST</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>STATUS</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '60px' }}>VIEW</th>
+              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>PRINT<br/>REPORT</th>
+              <th className="px-2 py-3 text-center" style={{ width: '80px' }}>
+                <div className="flex items-center justify-center gap-1">
+                  <Download className="w-3.5 h-3.5" />
+                  <Lock className="w-3.5 h-3.5" />
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  ACTION
+                </div>
+              </th>
+            </tr>
+          </thead>
 
-        {visibleColumns.workflowStatus && (
-          <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300">
-            s
-          </div>
-        )}
-        
-        {/* ✅ ICON HEADERS */}
-        <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300" title="Patient Info">
-          <svg className="w-3 h-3 mx-auto text-gray-600" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-          </svg>
-        </div>
-        <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300">
-          <svg className="w-3 h-3 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-          </svg>
-        </div>
-        <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300">
-          <svg className="w-3 h-3 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-          </svg>
-        </div>
-        
-        <div className="flex-shrink-0 w-8 px-1 py-2.5 text-center border-r border-gray-300" title="Study Notes">
-          <svg className="w-3 h-3 mx-auto text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-        </div>
-
-        {/* ✅ DATA HEADERS */}
-        {visibleColumns.patientId && <div className="flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-300">Patient ID</div>}
-        {visibleColumns.patientName && <div className="flex-1 min-w-[120px] px-2 py-2.5 border-r border-gray-300">Patient Name</div>}
-        {visibleColumns.ageGender && <div className="flex-shrink-0 w-12 px-1 py-2.5 text-center border-r border-gray-300">A/S</div>}
-        {visibleColumns.studyDescription && <div className="flex-1 min-w-[150px] px-2 py-2.5 border-r border-gray-300">Description</div>}
-        {visibleColumns.seriesCount && <div className="flex-shrink-0 w-12 px-1 py-2.5 text-center border-r border-gray-300">Series</div>}
-        {visibleColumns.modality && <div className="flex-shrink-0 w-24 px-1 py-2.5 text-center border-r border-gray-300">Modality</div>}
-        {visibleColumns.location && <div className="flex-1 min-w-[100px] px-2 py-2.5 border-r border-gray-300">Location</div>}
-        {visibleColumns.studyDate && <div className="flex-1 min-w-[40px] px-2 py-2.5 text-center border-r border-gray-300">Study Date</div>}
-        {visibleColumns.uploadDate && <div className="flex-1 min-w-[80px] px-2 py-2.5 text-center border-r border-gray-300">Upload Date</div>}
-        {visibleColumns.reportedDate && <div className="flex-1 min-w-[80px] px-2 py-2.5 text-center border-r border-gray-300">Reported Date</div>}
-        {visibleColumns.reportedBy && <div className="flex-1 min-w-[80px] px-2 py-2.5 border-r border-gray-300">Reported By</div>}
-        {visibleColumns.verifiedDate && <div className="flex-1 min-w-[80px] px-2 py-2.5 text-center border-r border-gray-300">Verified Date</div>}
-        {visibleColumns.verifiedBy && <div className="flex-1 min-w-[80px] px-2 py-2.5 border-r border-gray-300">Verified By</div>}
-        {visibleColumns.verificationStatus && <div className="flex-1 min-w-[80px] px-2 py-2.5 border-r border-gray-300">Verification</div>}
-        {visibleColumns.accession && <div className="flex-1 min-w-[80px] px-2 py-2.5 border-r border-gray-300">Accession</div>}
-        {visibleColumns.seenBy && <div className="flex-1 min-w-[80px] px-2 py-2.5 border-r border-gray-300">Seen By</div>}
-        {visibleColumns.actions && <div className="flex-shrink-0 w-20 px-1 py-2.5 text-center border-r border-gray-300">Actions</div>}
-        {visibleColumns.assignedDoctor && <div className="flex-shrink-0 w-20 px-1 py-2.5 text-center">Assign</div>}
+          {/* ✅ TABLE BODY */}
+          <tbody>
+            {studies.map((study, index) => (
+              <StudyRow
+                key={study._id}
+                study={study}
+                index={index}
+                selectedStudies={selectedStudies}
+                availableAssignees={availableAssignees}
+                onSelectStudy={onSelectStudy}
+                onPatienIdClick={onPatienIdClick}
+                onAssignDoctor={onAssignDoctor}
+                onShowDetailedView={handleShowDetailedView}
+                onViewReport={handleViewReport}
+                onShowStudyNotes={handleShowStudyNotes}
+                onViewStudy={handleViewStudy}
+                onEditPatient={handleEditPatient}
+                onAssignmentSubmit={onAssignmentSubmit}
+                onShowTimeline={handleShowTimeline}
+                onToggleLock={handleToggleStudyLock}
+                userRole={userRole}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* ✅ VIRTUALIZED CONTENT */}
-      <div className="w-full flex-1 relative">
-        <AutoSizer>
-          {({ height, width }) => (
-            <List
-              height={height}
-              width={width}
-              itemCount={studies.length}
-              itemSize={ROW_HEIGHT}
-              itemData={virtualListData}
-              overscanCount={10}
-            >
-              {StudyRow}
-            </List>
-          )}
-        </AutoSizer>
-      </div>
-
-      {/* ✅ ASSIGNMENT MODAL */}
-      {assignmentModal.show && (
-        <AssignmentModal
-          study={assignmentModal.study}
-          availableAssignees={availableAssignees}
-          onSubmit={handleAssignmentSubmit}
-          onClose={handleCloseAssignmentModal}
-          position={assignmentModal.position}
-        />
-      )}
-
-      {/* ✅ DETAILED VIEW MODAL */}
-      {detailedView.show && (
-        <StudyDetailedView
-          studyId={detailedView.studyId}
-          onClose={handleCloseDetailedView}
-        />
-      )}
-
-      {/* ✅ NEW: REPORT MODAL */}
-      {reportModal.show && (
-        <ReportModal
-          isOpen={reportModal.show}
-          studyId={reportModal.studyId}
-          studyData={reportModal.studyData}
-          onClose={handleCloseReportModal}
-        />
-      )}
-
-      {/* ✅ STUDY NOTES MODAL */}
-      {studyNotes.show && (
-        <StudyNotesComponent
-          studyId={studyNotes.studyId}
-          isOpen={studyNotes.show}
-          onClose={handleCloseStudyNotes}
-        />
-      )}
+      {/* ✅ MODALS */}
+      {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
+      {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
+      {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
+      {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
+      {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
     </div>
   );
 };

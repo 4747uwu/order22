@@ -848,6 +848,17 @@ const DicomStudySchema = new mongoose.Schema({
             index: { background: true }
         }
     }],
+
+     hasStudyNotes: {
+        type: Boolean,
+        default: false,
+        index: { background: true }
+    },
+    hasAttachments: {
+        type: Boolean,
+        default: false,
+        index: { background: true }
+    },
     
     referringPhysician: {
         name: { type: String, trim: true },
