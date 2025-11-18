@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import DicomStudy from '../models/dicomStudyModel.js';
 import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
+import Organization from '../models/organisation.js';
 import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
 // 🕐 ENHANCED: Date filtering utility function with more options
@@ -333,6 +334,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     // 🔍 SEARCH FILTERING
     if (req.query.search) {
         queryFilters.$or = [
+            { bharatPacsId: { $regex: req.query.search, $options: 'i' } },
             { accessionNumber: { $regex: req.query.search, $options: 'i' } },
             { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
             { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
@@ -369,19 +371,37 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-
-// ✅ UPDATED: Execute study query with population (like doctor controller)
+// ✅ ENHANCED: Execute study query with comprehensive population
 const executeStudyQuery = async (queryFilters, limit) => {
     try {
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
-        // ✅ SAME POPULATION AS DOCTOR CONTROLLER
+        // ✅ COMPREHENSIVE POPULATION - includes Organization for BharatPacs workflow
         const studies = await DicomStudy.find(queryFilters)
-            .populate('assignment.assignedTo', 'fullName email role')
-            .populate('assignment.assignedBy', 'fullName email role')
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role')
-            .populate('sourceLab', 'name labName identifier location contactPerson')
-            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth')
+            // Core references
+            .populate('organization', 'name identifier contactEmail contactPhone address')
+            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
+            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
+            
+            // Assignment references
+            .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
+            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
+            
+            // Report and verification references
+            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role')
+            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
+            
+            // Category tracking references
+            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
+            
+            // Lock references
+            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
+            
             .sort({ createdAt: -1 })
             .limit(limit)
             .lean(); // ✅ Keep lean for performance
@@ -395,63 +415,7 @@ const executeStudyQuery = async (queryFilters, limit) => {
     }
 };
 
-
-// ✅ SIMPLIFIED: Build lookup maps for users and labs  
-const buildLookupMaps = async (studies) => {
-    try {
-        // Extract unique user IDs and lab IDs from studies
-        const userIds = new Set();
-        const labIds = new Set();
-
-        studies.forEach(study => {
-            // Extract user IDs from assignments
-            if (study.assignment && Array.isArray(study.assignment)) {
-                study.assignment.forEach(assign => {
-                    if (assign.assignedTo) userIds.add(assign.assignedTo.toString());
-                    if (assign.assignedBy) userIds.add(assign.assignedBy.toString());
-                });
-            }
-            
-            // Extract user IDs from reportInfo
-            if (study.reportInfo) {
-                if (study.reportInfo.reportedBy) userIds.add(study.reportInfo.reportedBy.toString());
-                if (study.reportInfo.verifiedBy) userIds.add(study.reportInfo.verifiedBy.toString());
-            }
-
-            // Extract lab IDs
-            if (study.sourceLab) labIds.add(study.sourceLab.toString());
-        });
-
-        // Fetch users and labs in parallel
-        const [users, labs] = await Promise.all([
-            userIds.size > 0 ? User.find({ _id: { $in: Array.from(userIds) } })
-                .select('firstName lastName email role organizationIdentifier')
-                .lean() : [],
-            labIds.size > 0 ? Lab.find({ _id: { $in: Array.from(labIds) } })
-                .select('labName location organizationIdentifier')
-                .lean() : []
-        ]);
-
-        // Create lookup maps
-        const userMap = new Map();
-        const labMap = new Map();
-
-        users.forEach(user => {
-            userMap.set(user._id.toString(), user);
-        });
-
-        labs.forEach(lab => {
-            labMap.set(lab._id.toString(), lab);
-        });
-
-        return { userMap, labMap };
-    } catch (error) {
-        console.error('❌ Error building lookup maps:', error);
-        return { userMap: new Map(), labMap: new Map() };
-    }
-};
-
-// 🎯 GET DASHBOARD VALUES - Multi-tenant with assignment analytics for assignor
+// 🎯 GET DASHBOARD VALUES - Multi-tenant with assignment analytics
 export const getValues = async (req, res) => {
     console.log(`🔍 Fetching dashboard values with filters: ${JSON.stringify(req.query)}`);
     try {
@@ -532,7 +496,6 @@ export const getValues = async (req, res) => {
 
         // ✅ ADD ASSIGNMENT ANALYTICS FOR ASSIGNOR
         if (user.role === 'assignor') {
-            // Get unassigned studies count
             const unassignedQuery = {
                 ...queryFilters,
                 $or: [
@@ -552,11 +515,10 @@ export const getValues = async (req, res) => {
 
             const [unassignedResult, overdueResult] = await Promise.allSettled([
                 DicomStudy.countDocuments(unassignedQuery),
-                // Overdue studies (assigned but not completed within expected time)
                 DicomStudy.countDocuments({
                     ...queryFilters,
                     'assignment.status': 'assigned',
-                    'assignment.assignedAt': { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Older than 24 hours
+                    'assignment.assignedAt': { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
                 })
             ]);
 
@@ -572,7 +534,6 @@ export const getValues = async (req, res) => {
             console.log(`📊 ASSIGNOR ANALYTICS: Unassigned: ${totalUnassigned}, Assigned: ${response.overview.totalAssigned}, Overdue: ${overdueStudies}`);
         }
 
-        // Add filter summary for debugging/transparency
         if (process.env.NODE_ENV === 'development') {
             response.debug = {
                 filtersApplied: queryFilters,
@@ -594,11 +555,7 @@ export const getValues = async (req, res) => {
     }
 };
 
-// ✅ FIX: Use populated queries like doctor controller instead of manual lookups
-
-// ✅ REMOVE: buildLookupMaps function since we're using populated data
-
-// 🟡 GET PENDING STUDIES - Updated to use populated data
+// 🟡 GET PENDING STUDIES
 export const getPendingStudies = async (req, res) => {
     try {
         const startTime = Date.now();
@@ -616,10 +573,8 @@ export const getPendingStudies = async (req, res) => {
         
         console.log(`🔍 PENDING query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        // ✅ USE POPULATED QUERY - NO MANUAL LOOKUPS
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 
-        // ✅ RETURN RAW STUDIES - Let frontend format them (like doctor controller)
         const processingTime = Date.now() - startTime;
         console.log(`✅ PENDING: Completed in ${processingTime}ms`);
 
@@ -627,7 +582,7 @@ export const getPendingStudies = async (req, res) => {
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            data: studies, // ✅ Raw populated studies (like doctor controller)
+            data: studies,
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -655,7 +610,6 @@ export const getPendingStudies = async (req, res) => {
     }
 };
 
-// ✅ SAME PATTERN FOR OTHER ENDPOINTS
 export const getInProgressStudies = async (req, res) => {
     try {
         const startTime = Date.now();
@@ -674,7 +628,6 @@ export const getInProgressStudies = async (req, res) => {
         ];
         const queryFilters = buildBaseQuery(req, user, inProgressStatuses);
 
-        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 
         const processingTime = Date.now() - startTime;
@@ -683,7 +636,7 @@ export const getInProgressStudies = async (req, res) => {
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            data: studies, // ✅ Raw populated studies
+            data: studies,
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -724,7 +677,6 @@ export const getCompletedStudies = async (req, res) => {
         const completedStatuses = ['final_report_downloaded', 'archived'];
         const queryFilters = buildBaseQuery(req, user, completedStatuses);
 
-        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 
         const processingTime = Date.now() - startTime;
@@ -733,7 +685,7 @@ export const getCompletedStudies = async (req, res) => {
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            data: studies, // ✅ Raw populated studies
+            data: studies,
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -789,7 +741,6 @@ export const getAllStudiesForAdmin = async (req, res) => {
 
         const queryFilters = buildBaseQuery(req, user, workflowStatuses);
 
-        // ✅ USE POPULATED QUERY
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 
         const processingTime = Date.now() - startTime;
@@ -798,7 +749,7 @@ export const getAllStudiesForAdmin = async (req, res) => {
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            data: studies, // ✅ Raw populated studies
+            data: studies,
             pagination: {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
@@ -833,8 +784,246 @@ export const getAllStudiesForAdmin = async (req, res) => {
     }
 };
 
+// ✅ NEW: Get category values for all categories
+export const getCategoryValues = async (req, res) => {
+    console.log(`🔍 Fetching category values with filters: ${JSON.stringify(req.query)}`);
+    try {
+        const startTime = Date.now();
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
+        }
+
+        const queryFilters = buildBaseQuery(req, user);
+        
+        console.log(`🔍 Category query filters:`, JSON.stringify(queryFilters, null, 2));
+
+        // Execute parallel queries for all categories
+        const [
+            allCount,
+            createdCount,
+            historyCreatedCount,
+            unassignedCount,
+            assignedCount,
+            pendingCount,
+            draftCount,
+            verificationPendingCount,
+            finalCount,
+            urgentCount,
+            reprintNeedCount
+        ] = await Promise.all([
+            // ALL
+            DicomStudy.countDocuments(queryFilters),
+            
+            // CREATED
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'CREATED'
+            }),
+            
+            // HISTORY CREATED
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'HISTORY_CREATED'
+            }),
+            
+            // UNASSIGNED
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'UNASSIGNED'
+            }),
+            
+            // ASSIGNED
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'ASSIGNED'
+            }),
+            
+            // PENDING
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'PENDING'
+            }),
+            
+            // DRAFT
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'DRAFT'
+            }),
+            
+            // VERIFICATION PENDING
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'VERIFICATION_PENDING'
+            }),
+            
+            // FINAL
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'FINAL'
+            }),
+            
+            // URGENT
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                $or: [
+                    { currentCategory: 'URGENT' },
+                    { studyPriority: 'Emergency Case' },
+                    { caseType: 'emergency' },
+                    { 'assignment.priority': 'URGENT' }
+                ]
+            }),
+            
+            // REPRINT NEED
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                currentCategory: 'REPRINT_NEED'
+            })
+        ]);
+
+        const processingTime = Date.now() - startTime;
+        console.log(`🎯 Category values fetched in ${processingTime}ms`);
+
+        const response = {
+            success: true,
+            all: allCount,
+            created: createdCount,
+            history_created: historyCreatedCount,
+            unassigned: unassignedCount,
+            assigned: assignedCount,
+            pending: pendingCount,
+            draft: draftCount,
+            verification_pending: verificationPendingCount,
+            final: finalCount,
+            urgent: urgentCount,
+            reprint_need: reprintNeedCount,
+            performance: {
+                queryTime: processingTime,
+                fromCache: false,
+                filtersApplied: Object.keys(queryFilters).length > 0
+            }
+        };
+
+        if (process.env.NODE_ENV === 'development') {
+            response.debug = {
+                filtersApplied: queryFilters,
+                userRole: user.role,
+                organization: user.organizationIdentifier
+            };
+        }
+
+        res.status(200).json(response);
+
+    } catch (error) {
+        console.error('❌ Error fetching category values:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error fetching category statistics.',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ✅ NEW: Category-specific endpoints
+export const getStudiesByCategory = async (req, res) => {
+    try {
+        const startTime = Date.now();
+        const limit = parseInt(req.query.limit) || 50;
+        const { category } = req.params;
+        
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
+        }
+
+        console.log(`🔍 [${category.toUpperCase()}] Fetching studies for category`);
+
+        const queryFilters = buildBaseQuery(req, user);
+        
+        // ✅ CATEGORY-SPECIFIC FILTERS
+        switch (category) {
+            case 'created':
+                queryFilters.currentCategory = 'CREATED';
+                break;
+            case 'history-created':
+                queryFilters.currentCategory = 'HISTORY_CREATED';
+                break;
+            case 'unassigned':
+                queryFilters.currentCategory = 'UNASSIGNED';
+                break;
+            case 'assigned':
+                queryFilters.currentCategory = 'ASSIGNED';
+                break;
+            case 'pending':
+                queryFilters.currentCategory = 'PENDING';
+                break;
+            case 'draft':
+                queryFilters.currentCategory = 'DRAFT';
+                break;
+            case 'verification-pending':
+                queryFilters.currentCategory = 'VERIFICATION_PENDING';
+                break;
+            case 'final':
+                queryFilters.currentCategory = 'FINAL';
+                break;
+            case 'urgent':
+                queryFilters.$or = [
+                    { currentCategory: 'URGENT' },
+                    { studyPriority: 'Emergency Case' },
+                    { caseType: 'emergency' },
+                    { 'assignment.priority': 'URGENT' }
+                ];
+                break;
+            case 'reprint-need':
+                queryFilters.currentCategory = 'REPRINT_NEED';
+                break;
+            default:
+                // 'all' - no additional filter
+                break;
+        }
+
+        console.log(`🔍 [${category.toUpperCase()}] query filters:`, JSON.stringify(queryFilters, null, 2));
+
+        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+
+        const processingTime = Date.now() - startTime;
+        console.log(`✅ [${category.toUpperCase()}]: Completed in ${processingTime}ms`);
+
+        return res.status(200).json({
+            success: true,
+            count: studies.length,
+            totalRecords: totalStudies,
+            data: studies,
+            pagination: {
+                currentPage: 1,
+                totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies,
+                limit: limit,
+                hasNextPage: totalStudies > limit,
+                hasPrevPage: false
+            },
+            metadata: {
+                category: category,
+                organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
+                userRole: user.role,
+                processingTime: processingTime
+            }
+        });
+
+    } catch (error) {
+        console.error(`❌ [${req.params.category?.toUpperCase()}]: Error fetching studies:`, error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error fetching studies.',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
 export default {
     getValues,
+    getCategoryValues, // ✅ NEW
+    getStudiesByCategory, // ✅ NEW
     getPendingStudies,
     getInProgressStudies,
     getCompletedStudies,

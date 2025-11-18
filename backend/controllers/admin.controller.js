@@ -371,12 +371,12 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ ENHANCED: Execute study query with comprehensive population
-const executeStudyQuery = async (queryFilters, limit) => {
+// ✅ ENHANCED: Execute study query with pagination support
+const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     try {
+        const skip = (page - 1) * limit;
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
-        // ✅ COMPREHENSIVE POPULATION - includes Organization for BharatPacs workflow
         const studies = await DicomStudy.find(queryFilters)
             // Core references
             .populate('organization', 'name identifier contactEmail contactPhone address')
@@ -403,12 +403,13 @@ const executeStudyQuery = async (queryFilters, limit) => {
             .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
             
             .sort({ createdAt: -1 })
+            .skip(skip)
             .limit(limit)
-            .lean(); // ✅ Keep lean for performance
+            .lean();
 
-        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}`);
+        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies (page ${page}), Total: ${totalStudies}`);
 
-        return { studies, totalStudies };
+        return { studies, totalStudies, currentPage: page };
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
         throw error;
@@ -929,6 +930,7 @@ export const getStudiesByCategory = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1;
         const { category } = req.params;
         
         const user = req.user;
@@ -984,7 +986,7 @@ export const getStudiesByCategory = async (req, res) => {
 
         console.log(`🔍 [${category.toUpperCase()}] query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
         console.log(`✅ [${category.toUpperCase()}]: Completed in ${processingTime}ms`);
@@ -995,12 +997,12 @@ export const getStudiesByCategory = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: 1,
+                currentPage: currentPage,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
                 limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
             },
             metadata: {
                 category: category,

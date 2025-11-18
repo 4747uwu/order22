@@ -14,6 +14,16 @@ const Dashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   const navigate = useNavigate();
   
+  // ✅ PAGINATION STATE - Single source of truth
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50, // ✅ Default value
+    hasNextPage: false,
+    hasPrevPage: false
+  });
+  
   // State management
   const [studies, setStudies] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -97,39 +107,57 @@ const Dashboard = () => {
   }, [currentView]);
 
   // ✅ FETCH STUDIES BY CATEGORY
-  const fetchStudies = useCallback(async (filters = {}) => {
+  // ✅ UPDATED: Fetch studies with pagination - FIX for recordsPerPage reset
+  const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
+    
+    // ✅ Use pagination state if params not provided
+    const currentPage = page ?? pagination.currentPage;
+    const currentLimit = limit ?? pagination.recordsPerPage;
+    
     try {
       const endpoint = getApiEndpoint();
       const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      const params = { ...activeFilters };
-      delete params.category; // Remove category since endpoints handle this
+      const params = { 
+        ...activeFilters,
+        page: currentPage,
+        limit: currentLimit
+      };
+      delete params.category;
     
       console.log('🔍 [Admin] Fetching studies with params:', {
         endpoint,
         params,
-        currentView,
-        searchFilters,
-        passedFilters: filters
+        currentPage,
+        currentLimit,
+        paginationState: pagination
       });
       
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
         const rawStudies = response.data.data || [];
-        console.log('🔍 [Admin] Raw studies fetched:', rawStudies);
-        
         const formattedStudies = formatStudiesForWorklist(rawStudies);
-        console.log(formattedStudies);
         setStudies(formattedStudies);
+        
+        // ✅ CRITICAL: Only update BACKEND data, keep frontend limit
+        setPagination(prev => ({
+          ...prev,
+          currentPage: response.data.pagination?.currentPage || currentPage,
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          // ✅ DON'T update recordsPerPage from backend
+          recordsPerPage: currentLimit, // Keep what WE requested
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
+        }));
         
         console.log('✅ [Admin] Studies fetched:', {
           raw: rawStudies.length,
           formatted: formattedStudies.length,
-          endpoint,
-          appliedParams: params,
-          currentView
+          requestedLimit: currentLimit,
+          backendLimit: response.data.pagination?.limit
         });
       }
     } catch (err) {
@@ -139,7 +167,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView]);
+  }, [getApiEndpoint, searchFilters, currentView, pagination.currentPage, pagination.recordsPerPage]);
 
   // ✅ FETCH CATEGORY VALUES
   const fetchCategoryValues = useCallback(async (filters = {}) => {
@@ -195,38 +223,70 @@ const Dashboard = () => {
       dateType: 'createdAt',
       modality: 'all',
       labId: 'all',
-      priority: 'all',
-      limit: 50
+      priority: 'all'
     };
     
     setSearchFilters(defaultFilters);
-    fetchStudies(defaultFilters);
+    // ✅ Use initial recordsPerPage from state (50)
+    fetchStudies(defaultFilters, 1, pagination.recordsPerPage);
     fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
-  }, []);
+  }, []); // ✅ Empty deps - only run once on mount
 
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
     console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
-    fetchStudies(searchFilters);
-  }, [currentView, fetchStudies]);
+    // ✅ Keep current recordsPerPage, reset to page 1
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]);
+
+  // ✅ UPDATED: Handle page change
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`📄 [Admin] Page change: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Update state first
+    setPagination(prev => ({
+      ...prev,
+      currentPage: newPage
+    }));
+    
+    // ✅ Fetch with NEW page but CURRENT limit
+    fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
+
+  // ✅ CRITICAL FIX: Handle records per page change
+  const handleRecordsPerPageChange = useCallback((newLimit) => {
+    console.log(`📊 [Admin] Records per page change: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Update pagination state IMMEDIATELY
+    setPagination(prev => ({
+      ...prev,
+      recordsPerPage: newLimit,
+      currentPage: 1 // Reset to page 1
+    }));
+    
+    // ✅ Fetch with NEW limit and page 1
+    fetchStudies(searchFilters, 1, newLimit);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
   // Handlers
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Admin] NEW SEARCH PARAMS:', searchParams);
     setSearchFilters(searchParams);
     
-    fetchStudies(searchParams);
+    // ✅ Keep current recordsPerPage, reset to page 1
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchCategoryValues(searchParams);
-  }, [fetchStudies, fetchCategoryValues]);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Admin] FILTER CHANGE:', filters);
     setSearchFilters(filters);
     
-    fetchStudies(filters);
+    // ✅ Keep current recordsPerPage, reset to page 1
+    fetchStudies(filters, 1, pagination.recordsPerPage);
     fetchCategoryValues(filters);
-  }, [fetchStudies, fetchCategoryValues]);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
   // ✅ HANDLE VIEW CHANGE
   const handleViewChange = useCallback((view) => {
@@ -383,19 +443,19 @@ const Dashboard = () => {
     }
   ];
 
-  // ✅ CATEGORY TABS CONFIGURATION
+  // ✅ UPDATED CATEGORY TABS - Compact & Modern with unified color
   const categoryTabs = [
-    { key: 'all', label: 'All', count: categoryValues.all, color: 'bg-gray-100 text-gray-800' },
-    { key: 'created', label: 'Created', count: categoryValues.created, color: 'bg-blue-100 text-blue-800' },
-    { key: 'history_created', label: 'History Created', count: categoryValues.history_created, color: 'bg-cyan-100 text-cyan-800' },
-    { key: 'unassigned', label: 'Unassigned', count: categoryValues.unassigned, color: 'bg-orange-100 text-orange-800' },
-    { key: 'assigned', label: 'Assigned', count: categoryValues.assigned, color: 'bg-purple-100 text-purple-800' },
-    { key: 'pending', label: 'Pending', count: categoryValues.pending, color: 'bg-yellow-100 text-yellow-800' },
-    { key: 'draft', label: 'Draft', count: categoryValues.draft, color: 'bg-amber-100 text-amber-800' },
-    { key: 'verification_pending', label: 'Verification', count: categoryValues.verification_pending, color: 'bg-indigo-100 text-indigo-800' },
-    { key: 'final', label: 'Final', count: categoryValues.final, color: 'bg-green-100 text-green-800' },
-    { key: 'urgent', label: 'Urgent', count: categoryValues.urgent, color: 'bg-red-100 text-red-800' },
-    { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need, color: 'bg-pink-100 text-pink-800' }
+    { key: 'all', label: 'All', count: categoryValues.all },
+    { key: 'created', label: 'Created', count: categoryValues.created },
+    { key: 'history_created', label: 'History', count: categoryValues.history_created },
+    { key: 'unassigned', label: 'Unassigned', count: categoryValues.unassigned },
+    { key: 'assigned', label: 'Assigned', count: categoryValues.assigned },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending },
+    { key: 'draft', label: 'Draft', count: categoryValues.draft },
+    { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
+    { key: 'final', label: 'Final', count: categoryValues.final },
+    { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
+    { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
   ];
 
   return (
@@ -420,45 +480,52 @@ const Dashboard = () => {
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-teal-100 h-full flex flex-col">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
-          {/* ✅ WORKLIST HEADER WITH CATEGORY TABS */}
-          <div className="flex items-center justify-between px-4 py-1 border-b border-teal-200 bg-white rounded-t-lg">
+          {/* ✅ COMPACT WORKLIST HEADER WITH MODERN CATEGORY TABS */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-teal-800 uppercase tracking-wide">
-                ADMIN WORKLIST
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Admin Worklist
               </h2>
-              <span className="text-xs text-teal-700 bg-white px-2 py-1 rounded border border-teal-200">
-                {studies.length} studies loaded
+              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                {studies.length} loaded
               </span>
               {selectedStudies.length > 0 && (
-                <span className="text-xs text-teal-600 bg-teal-50 px-2 py-1 rounded border border-teal-200">
+                <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md font-medium border border-teal-200">
                   {selectedStudies.length} selected
                 </span>
               )}
             </div>
 
-            {/* ✅ CATEGORY TABS - SCROLLABLE */}
-            <div className="flex-1 mx-4 overflow-x-auto">
-              <div className="flex items-center space-x-1 min-w-max">
+            {/* ✅ COMPACT MODERN CATEGORY TABS */}
+            <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center gap-1.5 min-w-max">
                 {categoryTabs.map((tab) => (
                   <button
                     key={tab.key}
                     onClick={() => handleViewChange(tab.key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded transition-all ${
+                    className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
                       currentView === tab.key
-                        ? 'bg-teal-600 text-white shadow-md scale-105'
-                        : `${tab.color} hover:shadow-sm`
+                        ? 'bg-teal-600 text-white shadow-md scale-[1.02]'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
                     }`}
                   >
-                    {tab.label}
-                    <span className={`ml-1.5 px-1.5 py-0.5 rounded text-xs font-bold ${
-                      currentView === tab.key 
-                        ? 'bg-white text-teal-600' 
-                        : 'bg-white bg-opacity-50'
-                    }`}>
-                      {tab.count}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{tab.label}</span>
+                      <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
+                        currentView === tab.key 
+                          ? 'bg-white text-teal-600' 
+                          : 'bg-white text-slate-600'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    </div>
+                    
+                    {/* Active indicator */}
+                    {currentView === tab.key && (
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
+                    )}
                   </button>
                 ))}
               </div>
@@ -486,9 +553,12 @@ const Dashboard = () => {
               onAssignDoctor={(study) => console.log('Assign doctor:', study._id)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
-              onUpdateStudyDetails={handleUpdateStudyDetails} // ✅ NEW
-              userRole={currentUser?.role || 'viewer'} // ✅ PASS USER ROLE
-              onToggleStudyLock={handleToggleStudyLock} // ✅ PASS LOCK HANDLER
+              onUpdateStudyDetails={handleUpdateStudyDetails}
+              userRole={currentUser?.role || 'viewer'}
+              onToggleStudyLock={handleToggleStudyLock}
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
               theme="admin"
             />
           </div>
