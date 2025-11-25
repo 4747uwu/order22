@@ -18,6 +18,7 @@ import VerifierDashboard from './pages/verifier/dashboard'; // Import Verifier D
 import DoctorTemplates from './pages/doctor/templates'; // Import Doctor Templates
 import OnlineReportingSystem from './components/OnlineReportingSystem/OnlineReportingSystem'; // Import Online Reporting System
 import OnlineReportingSystemWithOHIF from './components/OnlineReportingSystem/OnlineReportingSystemWithOHIF'; // ✅ NEW: Import OHIF version
+import OHIFViewerPage from './pages/doctor/OHIFViewerPage'; // ✅ NEW: OHIF full-view page
 import SystemOverview from './pages/admin/SystemOverview';
 
 // Protected Route Component
@@ -308,6 +309,16 @@ const AppRoutes = () => {
             <OnlineReportingRouteHandler />
           </ProtectedRoute>
         } 
+      />
+      
+      {/* ✅ NEW: OHIF full-view route for view-only (header + Report Now) */}
+      <Route
+        path="/doctor/viewer/:studyId"
+        element={
+          <ProtectedRoute allowedRoles={['doctor_account', 'radiologist']}>
+            <OHIFViewerPage />
+          </ProtectedRoute>
+        }
       />
       
       {/* Default redirect */}

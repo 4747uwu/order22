@@ -1,8 +1,8 @@
 import mongoose from 'mongoose';
 import DicomStudy from '../models/dicomStudyModel.js';
 import User from '../models/userModel.js';
-import Lab from '../models/labModel.js';
-import Organization from '../models/organisation.js';
+import { ACTION_TYPES } from '../models/dicomStudyModel.js';
+
 import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
 
@@ -222,6 +222,332 @@ export const getStudyActionLogs = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch action logs',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ✅ LOCK STUDY FOR REPORTING
+export const lockStudyForReporting = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'User not authenticated' 
+            });
+        }
+
+        console.log(`🔒 Attempting to lock study ${studyId} for user ${user.email}`);
+
+        // Find the study
+        const study = await DicomStudy.findOne({
+            _id: studyId,
+            organizationIdentifier: user.organizationIdentifier
+        });
+
+        if (!study) {
+            return res.status(404).json({
+                success: false,
+                message: 'Study not found'
+            });
+        }
+
+        // ✅ CHECK IF ALREADY LOCKED
+        if (study.studyLock?.isLocked) {
+            // Check if locked by current user
+            if (study.studyLock.lockedBy?.toString() === user._id.toString()) {
+                console.log(`✅ Study already locked by current user ${user.email}`);
+                return res.json({
+                    success: true,
+                    message: 'Study already locked by you',
+                    alreadyLocked: true,
+                    data: {
+                        studyId: study._id,
+                        bharatPacsId: study.bharatPacsId,
+                        isLocked: true,
+                        lockedBy: user._id,
+                        lockedByName: user.fullName || user.email,
+                        lockedAt: study.studyLock.lockedAt,
+                        lockReason: study.studyLock.lockReason
+                    }
+                });
+            } else {
+                // Locked by another user
+                console.log(`❌ Study locked by ${study.studyLock.lockedByName}`);
+                return res.status(423).json({
+                    success: false,
+                    message: `Study is currently locked by ${study.studyLock.lockedByName}`,
+                    locked: true,
+                    lockedBy: study.studyLock.lockedByName,
+                    lockedAt: study.studyLock.lockedAt
+                });
+            }
+        }
+
+        // ✅ LOCK THE STUDY
+        const lockExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+
+        const updatedStudy = await DicomStudy.findByIdAndUpdate(
+            studyId,
+            {
+                $set: {
+                    'studyLock.isLocked': true,
+                    'studyLock.lockedBy': user._id,
+                    'studyLock.lockedByName': user.fullName || user.email,
+                    'studyLock.lockedByRole': user.role,
+                    'studyLock.lockedAt': new Date(),
+                    'studyLock.lockReason': 'reporting',
+                    'studyLock.lockExpiry': lockExpiry,
+                    
+                    // ✅ UPDATE WORKFLOW STATUS
+                    workflowStatus: user.role === 'radiologist' ? 'doctor_opened_report' : 'report_in_progress',
+                    currentCategory: 'PENDING'
+                },
+                $push: {
+                    // ✅ ADD TO ACTION LOG
+                    actionLog: {
+                        actionType: ACTION_TYPES.STUDY_LOCKED,
+                        actionCategory: 'lock',
+                        performedBy: user._id,
+                        performedByName: user.fullName || user.email,
+                        performedByRole: user.role,
+                        performedAt: new Date(),
+                        actionDetails: {
+                            metadata: {
+                                lockReason: 'reporting',
+                                lockExpiry: lockExpiry,
+                                sessionStart: new Date()
+                            }
+                        },
+                        notes: `Study locked for reporting by ${user.fullName || user.email}`,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent')
+                    },
+                    
+                    // ✅ ADD TO STATUS HISTORY
+                    statusHistory: {
+                        status: 'study_locked_for_reporting',
+                        changedAt: new Date(),
+                        changedBy: user._id,
+                        note: `Locked for reporting by ${user.fullName || user.email}`
+                    }
+                }
+            },
+            { new: true, runValidators: true }
+        )
+        .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
+        .lean();
+
+        console.log(`✅ Study ${studyId} locked successfully by ${user.email}`);
+
+        res.json({
+            success: true,
+            message: 'Study locked successfully for reporting',
+            data: {
+                studyId: updatedStudy._id,
+                bharatPacsId: updatedStudy.bharatPacsId,
+                isLocked: true,
+                lockedBy: user._id,
+                lockedByName: user.fullName || user.email,
+                lockedAt: new Date(),
+                lockExpiry: lockExpiry,
+                lockReason: 'reporting',
+                workflowStatus: updatedStudy.workflowStatus,
+                currentCategory: updatedStudy.currentCategory
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error locking study:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to lock study',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ✅ UNLOCK STUDY (when user leaves reporting or session ends)
+export const unlockStudy = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'User not authenticated' 
+            });
+        }
+
+        console.log(`🔓 Attempting to unlock study ${studyId} by user ${user.email}`);
+
+        const study = await DicomStudy.findOne({
+            _id: studyId,
+            organizationIdentifier: user.organizationIdentifier
+        });
+
+        if (!study) {
+            return res.status(404).json({
+                success: false,
+                message: 'Study not found'
+            });
+        }
+
+        // ✅ CHECK IF STUDY IS LOCKED BY CURRENT USER
+        if (!study.studyLock?.isLocked) {
+            return res.json({
+                success: true,
+                message: 'Study is not locked',
+                alreadyUnlocked: true
+            });
+        }
+
+        if (study.studyLock.lockedBy?.toString() !== user._id.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: `Cannot unlock study locked by ${study.studyLock.lockedByName}`
+            });
+        }
+
+        // ✅ CALCULATE LOCK DURATION
+        const lockDuration = Math.floor(
+            (new Date() - new Date(study.studyLock.lockedAt)) / 1000 / 60
+        ); // in minutes
+
+        // ✅ UNLOCK THE STUDY
+        const updatedStudy = await DicomStudy.findByIdAndUpdate(
+            studyId,
+            {
+                $set: {
+                    'studyLock.isLocked': false
+                },
+                $push: {
+                    // ✅ ARCHIVE LOCK INFO
+                    'studyLock.previousLocks': {
+                        lockedBy: user._id,
+                        lockedByName: user.fullName || user.email,
+                        lockedAt: study.studyLock.lockedAt,
+                        unlockedAt: new Date(),
+                        lockDuration: lockDuration,
+                        lockReason: study.studyLock.lockReason
+                    },
+                    
+                    // ✅ ADD TO ACTION LOG
+                    actionLog: {
+                        actionType: ACTION_TYPES.STUDY_UNLOCKED,
+                        actionCategory: 'lock',
+                        performedBy: user._id,
+                        performedByName: user.fullName || user.email,
+                        performedByRole: user.role,
+                        performedAt: new Date(),
+                        actionDetails: {
+                            metadata: {
+                                lockDuration: lockDuration,
+                                lockReason: study.studyLock.lockReason,
+                                sessionEnd: new Date()
+                            }
+                        },
+                        notes: `Study unlocked after ${lockDuration} minutes`,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent')
+                    },
+                    
+                    statusHistory: {
+                        status: 'study_unlocked',
+                        changedAt: new Date(),
+                        changedBy: user._id,
+                        note: `Unlocked after ${lockDuration} minutes`
+                    }
+                },
+                $unset: {
+                    'studyLock.lockedBy': '',
+                    'studyLock.lockedByName': '',
+                    'studyLock.lockedByRole': '',
+                    'studyLock.lockedAt': '',
+                    'studyLock.lockReason': '',
+                    'studyLock.lockExpiry': ''
+                }
+            },
+            { new: true }
+        )
+        .select('_id bharatPacsId studyLock')
+        .lean();
+
+        console.log(`✅ Study ${studyId} unlocked successfully by ${user.email} (Duration: ${lockDuration}m)`);
+
+        res.json({
+            success: true,
+            message: `Study unlocked successfully (Session: ${lockDuration} minutes)`,
+            data: {
+                studyId: updatedStudy._id,
+                bharatPacsId: updatedStudy.bharatPacsId,
+                isLocked: false,
+                lockDuration: lockDuration
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error unlocking study:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to unlock study',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ✅ CHECK LOCK STATUS
+export const checkStudyLockStatus = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'User not authenticated' 
+            });
+        }
+
+        const study = await DicomStudy.findOne({
+            _id: studyId,
+            organizationIdentifier: user.organizationIdentifier
+        })
+        .select('_id bharatPacsId studyLock')
+        .lean();
+
+        if (!study) {
+            return res.status(404).json({
+                success: false,
+                message: 'Study not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                studyId: study._id,
+                bharatPacsId: study.bharatPacsId,
+                isLocked: study.studyLock?.isLocked || false,
+                lockedBy: study.studyLock?.lockedBy || null,
+                lockedByName: study.studyLock?.lockedByName || null,
+                lockedAt: study.studyLock?.lockedAt || null,
+                lockExpiry: study.studyLock?.lockExpiry || null,
+                lockReason: study.studyLock?.lockReason || null,
+                canEdit: !study.studyLock?.isLocked || 
+                        study.studyLock?.lockedBy?.toString() === user._id.toString()
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Error checking lock status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to check lock status',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }

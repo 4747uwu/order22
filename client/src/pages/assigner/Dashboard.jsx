@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
@@ -12,6 +12,16 @@ import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 const AssignerDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   
+  // ✅ PAGINATION STATE - Single source of truth
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
+  
   // State management
   const [studies, setStudies] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -19,48 +29,41 @@ const AssignerDashboard = () => {
   const [searchFilters, setSearchFilters] = useState({});
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
-  const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
-  const [bulkAssignModal, setBulkAssignModal] = useState({ show: false });
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
-  const [analytics, setAnalytics] = useState(null);
 
-  // ✅ API VALUES STATE (separate from local study counts)
-  const [apiValues, setApiValues] = useState({
-    total: 0,
+  // ✅ UPDATED: CATEGORY-BASED API VALUES (same as admin)
+  const [categoryValues, setCategoryValues] = useState({
+    all: 0,
+    created: 0,
+    history_created: 0,
+    unassigned: 0,
+    assigned: 0,
     pending: 0,
-    inprogress: 0,
-    completed: 0
+    draft: 0,
+    verification_pending: 0,
+    final: 0,
+    urgent: 0,
+    reprint_need: 0
   });
 
-  const intervalRef = useRef(null);
-
-  // ✅ USE API VALUES for tab counts (like admin dashboard)
-  const statusCounts = useMemo(() => ({
-    all: apiValues.total,
-    pending: apiValues.pending,
-    inprogress: apiValues.inprogress,
-    completed: apiValues.completed
-  }), [apiValues]);
-
-  // Column configuration (same as before)
+  // Column configuration
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: true, order: 1, label: 'Select' },
-    workflowStatus: { visible: true, order: 2, label: 'Status' },
-    patientId: { visible: true, order: 3, label: 'Patient ID' },
+    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
+    centerName: { visible: true, order: 3, label: 'Center' },
     patientName: { visible: true, order: 4, label: 'Patient Name' },
-    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
-    studyDescription: { visible: true, order: 6, label: 'Description' },
-    seriesCount: { visible: true, order: 7, label: 'Series' },
-    modality: { visible: true, order: 8, label: 'Modality' },
-    location: { visible: true, order: 9, label: 'Location' },
-    studyDate: { visible: true, order: 10, label: 'Study Date' },
-    uploadDate: { visible: false, order: 11, label: 'Upload Date' },
-    reportedDate: { visible: true, order: 12, label: 'Reported Date' },
-    reportedBy: { visible: false, order: 13, label: 'Reported By' },
-    accession: { visible: false, order: 14, label: 'Accession' },
-    seenBy: { visible: false, order: 15, label: 'Seen By' },
-    actions: { visible: true, order: 16, label: 'Actions' },
-    assignedDoctor: { visible: true, order: 17, label: 'Assignment' }
+    patientId: { visible: true, order: 5, label: 'Patient ID' },
+    ageGender: { visible: true, order: 6, label: 'Age/Sex' },
+    modality: { visible: true, order: 7, label: 'Modality' },
+    seriesCount: { visible: true, order: 8, label: 'Series' },
+    accessionNumber: { visible: false, order: 9, label: 'Acc. No.' },
+    referralDoctor: { visible: false, order: 10, label: 'Referral Dr.' },
+    clinicalHistory: { visible: false, order: 11, label: 'History' },
+    studyTime: { visible: true, order: 12, label: 'Study Time' },
+    uploadTime: { visible: true, order: 13, label: 'Upload Time' },
+    radiologist: { visible: true, order: 14, label: 'Radiologist' },
+    caseStatus: { visible: true, order: 15, label: 'Status' },
+    actions: { visible: true, order: 16, label: 'Actions' }
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
@@ -84,48 +87,72 @@ const AssignerDashboard = () => {
     }
   }, [columnConfig]);
 
-  // ✅ UPDATED: API endpoints (like admin dashboard)
+  // ✅ UPDATED: CATEGORY-BASED ENDPOINT MAPPING (same as admin)
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
-      case 'pending': return '/admin/studies/pending';
-      case 'inprogress': return '/admin/studies/inprogress';
-      case 'completed': return '/admin/studies/completed';
+      case 'created': return '/admin/studies/category/created';
+      case 'history_created': return '/admin/studies/category/history-created';
+      case 'unassigned': return '/admin/studies/category/unassigned';
+      case 'assigned': return '/admin/studies/category/assigned';
+      case 'pending': return '/admin/studies/category/pending';
+      case 'draft': return '/admin/studies/category/draft';
+      case 'verification_pending': return '/admin/studies/category/verification-pending';
+      case 'final': return '/admin/studies/category/final';
+      case 'urgent': return '/admin/studies/category/urgent';
+      case 'reprint_need': return '/admin/studies/category/reprint-need';
       default: return '/admin/studies';
     }
   }, [currentView]);
 
-  // ✅ UPDATED: fetchStudies (like admin dashboard)
-  const fetchStudies = useCallback(async (filters = {}) => {
+  // ✅ FETCH STUDIES WITH PAGINATION (EXACT SAME AS ADMIN)
+  const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
+    
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
+    const requestPage = page !== null ? page : pagination.currentPage;
+    const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
+    
     try {
       const endpoint = getApiEndpoint();
       const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      // ✅ Don't pass category param since endpoints are already status-specific
-      const params = { ...activeFilters };
-      delete params.category;
+      const params = { 
+        ...activeFilters,
+        page: requestPage,
+        limit: requestLimit
+      };
+      delete params.category; // ✅ Don't send category in params
       
-      console.log('🔍 [Assignor] Fetching studies with params:', {
+      console.log('🔍 [Assignor] Fetching studies:', {
         endpoint,
-        params,
-        currentView,
-        searchFilters,
-        passedFilters: filters
+        requestPage,
+        requestLimit,
+        filters: params
       });
       
       const response = await api.get(endpoint, { params });
+      
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
-        console.log('✅ [Assignor] Studies fetched:', {
-          raw: rawStudies.length,
-          formatted: formattedStudies.length,
-          endpoint,
-          appliedParams: params,
-          currentView
+        // ✅ CRITICAL: Update pagination with response data but keep our requested values
+        setPagination({
+          currentPage: requestPage,
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          recordsPerPage: requestLimit,
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
+        });
+        
+        console.log('✅ [Assignor] Studies loaded:', {
+          count: formattedStudies.length,
+          page: requestPage,
+          limit: requestLimit,
+          total: response.data.pagination?.totalRecords
         });
       }
     } catch (err) {
@@ -135,40 +162,43 @@ const AssignerDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
 
-  // ✅ UPDATED: Fetch analytics (like admin dashboard)
-  const fetchAnalytics = useCallback(async (filters = {}) => {
+  // ✅ UPDATED: FETCH CATEGORY VALUES (same as admin)
+  const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 [Assignor] Fetching analytics with params:', params);
+      console.log('🔍 [Assignor] Fetching category values with params:', params);
       
-      const response = await api.get('/admin/values', { params });
+      const response = await api.get('/admin/category-values', { params });
       if (response.data.success) {
-        setAnalytics(response.data);
-        
-        setApiValues({
-          total: response.data.total || 0,
+        setCategoryValues({
+          all: response.data.all || 0,
+          created: response.data.created || 0,
+          history_created: response.data.history_created || 0,
+          unassigned: response.data.unassigned || 0,
+          assigned: response.data.assigned || 0,
           pending: response.data.pending || 0,
-          inprogress: response.data.inprogress || 0,
-          completed: response.data.completed || 0
+          draft: response.data.draft || 0,
+          verification_pending: response.data.verification_pending || 0,
+          final: response.data.final || 0,
+          urgent: response.data.urgent || 0,
+          reprint_need: response.data.reprint_need || 0
         });
 
-        console.log('📊 [Assignor] API VALUES UPDATED:', {
-          total: response.data.total,
-          pending: response.data.pending,
-          inprogress: response.data.inprogress,
-          completed: response.data.completed
-        });
+        console.log('📊 [Assignor] CATEGORY VALUES UPDATED:', response.data);
       }
     } catch (error) {
-      console.error('Error fetching assignor analytics:', error);
-      setAnalytics(null);
-      setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
+      console.error('Error fetching assignor category values:', error);
+      setCategoryValues({
+        all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
+        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, reprint_need: 0
+      });
     }
   }, [searchFilters]);
 
+  // ✅ FETCH AVAILABLE ASSIGNEES
   const fetchAvailableAssignees = useCallback(async () => {
     try {
       const response = await api.get('/assigner/available-assignees');
@@ -180,78 +210,69 @@ const AssignerDashboard = () => {
     }
   }, []);
 
-  // ✅ UPDATED: Initial data fetch (like admin dashboard)
+  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
   useEffect(() => {
     const defaultFilters = {
       dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
       labId: 'all',
-      priority: 'all',
-      assigneeRole: 'all',
-      limit: 50
+      priority: 'all'
     };
     
     setSearchFilters(defaultFilters);
-    fetchStudies(defaultFilters);
-    fetchAnalytics(defaultFilters);
+    fetchStudies(defaultFilters, 1, 50);
+    fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
-  }, []);
+  }, []); // ✅ Empty deps - only run once on mount
 
-  // ✅ ADD: Auto-fetch when view changes (like admin dashboard)
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
-    if (Object.keys(searchFilters).length > 0) {
-      console.log(`🔄 [Assignor] View changed to: ${currentView}, refetching studies...`);
-      fetchStudies(searchFilters);
-    }
-  }, [currentView, fetchStudies]);
+    console.log(`🔄 [Assignor] currentView changed to: ${currentView}`);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
-  // ✅ REMOVE: Auto-refresh interval (admin dashboard doesn't have this)
+  // ✅ SIMPLIFIED: Handle page change
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`📄 [Assignor] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Just fetch with new page, keeping current limit
+    fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
-  // ✅ UPDATED: Handlers (like admin dashboard)
+  // ✅ SIMPLIFIED: Handle records per page change
+  const handleRecordsPerPageChange = useCallback((newLimit) => {
+    console.log(`📊 [Assignor] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Fetch with new limit, reset to page 1
+    fetchStudies(searchFilters, 1, newLimit);
+  }, [fetchStudies, searchFilters]);
+
+  // Handlers
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 [Assignor] NEW SEARCH PARAMS:', searchParams);
+    console.log('🔍 [Assignor] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
     
-    fetchStudies(searchParams);
-    fetchAnalytics(searchParams);
-  }, [fetchStudies, fetchAnalytics]);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
+    fetchCategoryValues(searchParams);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Assignor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
     
-    fetchStudies(filters);
-    fetchAnalytics(filters);
-  }, [fetchStudies, fetchAnalytics]);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(filters, 1, pagination.recordsPerPage);
+    fetchCategoryValues(filters);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
-  // ✅ UPDATED: handleViewChange (like admin dashboard)
+  // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 [Assignor] TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`🔄 [Assignor] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
-    setSelectedStudies([]);
-    
-    setSearchFilters(prevFilters => {
-      const preservedFilters = {
-        dateFilter: prevFilters.dateFilter,
-        dateType: prevFilters.dateType,
-        customDateFrom: prevFilters.customDateFrom,
-        customDateTo: prevFilters.customDateTo,
-        modality: prevFilters.modality,
-        labId: prevFilters.labId,
-        priority: prevFilters.priority,
-        assigneeRole: prevFilters.assigneeRole,
-        limit: prevFilters.limit,
-      };
-      
-      const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
-      );
-      
-      fetchAnalytics(cleanedFilters);
-      return cleanedFilters;
-    });
-  }, [currentView, fetchAnalytics]);
+  }, [currentView]);
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -265,26 +286,12 @@ const AssignerDashboard = () => {
     );
   }, []);
 
-  // ✅ UPDATED: handleRefresh (like admin dashboard)
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Assignor] Manual refresh');
-    fetchStudies(searchFilters);
-    fetchAnalytics(searchFilters);
+    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+    fetchCategoryValues(searchFilters);
     fetchAvailableAssignees();
-  }, [fetchStudies, fetchAnalytics, fetchAvailableAssignees, searchFilters]);
-
-  // Assignment handlers (same as before)
-  const handleAssignStudy = useCallback((study) => {
-    setAssignmentModal({ show: true, study });
-  }, []);
-
-  const handleBulkAssign = useCallback(() => {
-    if (selectedStudies.length === 0) {
-      toast.error('Please select studies to assign');
-      return;
-    }
-    setBulkAssignModal({ show: true });
-  }, [selectedStudies]);
+  }, [fetchStudies, fetchCategoryValues, fetchAvailableAssignees, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
   const handleAssignmentSubmit = useCallback(async (assignmentData) => {
     try {
@@ -307,43 +314,15 @@ const AssignerDashboard = () => {
 
       if (response.data.success) {
         toast.success(response.data.message);
-        setAssignmentModal({ show: false, study: null });
-        fetchStudies(searchFilters);
-        fetchAnalytics(searchFilters);
+        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+        fetchCategoryValues(searchFilters);
       }
     } catch (error) {
-      console.error('Assignment error:', error);
+      console.error('Assignor assignment error:', error);
       toast.error(error.response?.data?.message || 'Failed to update assignments');
     }
-  }, [fetchStudies, searchFilters, fetchAnalytics]);
+  }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
 
-  const handleBulkAssignmentSubmit = useCallback(async (assignmentData) => {
-    try {
-      const { assignedTo, assigneeRole, priority, notes, dueDate } = assignmentData;
-      
-      const response = await api.post('/assigner/bulk-assign', {
-        studyIds: selectedStudies,
-        assignedTo,
-        assigneeRole,
-        priority,
-        notes,
-        dueDate
-      });
-
-      if (response.data.success) {
-        toast.success(response.data.message);
-        setBulkAssignModal({ show: false });
-        setSelectedStudies([]);
-        fetchStudies(searchFilters);
-        fetchAnalytics(searchFilters);
-      }
-    } catch (error) {
-      console.error('Bulk assignment error:', error);
-      toast.error(error.response?.data?.message || 'Failed to bulk assign studies');
-    }
-  }, [selectedStudies, fetchStudies, searchFilters, fetchAnalytics]);
-
-  // Column configuration handlers
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
       ...prev,
@@ -359,83 +338,112 @@ const AssignerDashboard = () => {
     setColumnConfig(defaultConfig);
   }, []);
 
-  // Additional actions for navbar
   const additionalActions = [
-    {
-      label: 'Bulk Assign',
-      icon: Users2,
-      onClick: handleBulkAssign,
-      variant: 'primary',
-      tooltip: 'Assign selected studies',
-      disabled: selectedStudies.length === 0
-    },
     {
       label: 'Analytics',
       icon: BarChart3,
-      onClick: () => console.log('Show analytics modal'),
+      onClick: () => console.log('Open analytics'),
       variant: 'secondary',
       tooltip: 'View assignment analytics'
+    },
+    {
+      label: 'Bulk Assign',
+      icon: Users2,
+      onClick: () => {
+        if (selectedStudies.length > 0) {
+          console.log('Bulk assign:', selectedStudies);
+        } else {
+          toast.error('Please select studies to assign');
+        }
+      },
+      variant: 'primary',
+      tooltip: 'Assign multiple studies',
+      disabled: selectedStudies.length === 0
     }
   ];
 
+  // ✅ UPDATED: CATEGORY TABS (same as admin dashboard)
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: categoryValues.all },
+    { key: 'created', label: 'Created', count: categoryValues.created },
+    { key: 'history_created', label: 'History', count: categoryValues.history_created },
+    { key: 'unassigned', label: 'Unassigned', count: categoryValues.unassigned },
+    { key: 'assigned', label: 'Assigned', count: categoryValues.assigned },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending },
+    { key: 'draft', label: 'Draft', count: categoryValues.draft },
+    { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
+    { key: 'final', label: 'Final', count: categoryValues.final },
+    { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
+    { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
+  ];
+
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-teal-50 flex flex-col">
       <Navbar
         title="Assignor Dashboard"
-        subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • Case Assignment`}
+        subtitle={`${currentOrganizationContext || 'Organization View'} • Assignment Management`}
         showOrganizationSelector={false}
         onRefresh={handleRefresh}
         additionalActions={additionalActions}
-        notifications={analytics?.overview?.overdueStudies || 0}
+        notifications={0}
       />
       
       <Search
         onSearch={handleSearch}
         onFilterChange={handleFilterChange}
         loading={loading}
-        totalStudies={statusCounts.all} // ✅ Use API values like admin dashboard
+        totalStudies={categoryValues.all}
         currentCategory={currentView}
-        analytics={analytics}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
-          <div className="flex items-center justify-between px-4 py-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-black uppercase tracking-wide">
-                ASSIGNMENT WORKLIST
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Assignment Worklist
               </h2>
-              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border">
-                {studies.length} studies loaded
+              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                {studies.length} loaded
               </span>
               {selectedStudies.length > 0 && (
-                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md font-medium border border-teal-200">
                   {selectedStudies.length} selected
                 </span>
               )}
             </div>
 
-            {/* ✅ UPDATED: Use statusCounts like admin dashboard */}
-            <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
-              {[
-                { key: 'all', label: 'All', count: statusCounts.all },
-                { key: 'pending', label: 'Pending', count: statusCounts.pending },
-                { key: 'inprogress', label: 'In Progress', count: statusCounts.inprogress },
-                { key: 'completed', label: 'Completed', count: statusCounts.completed }
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => handleViewChange(tab.key)}
-                  className={`px-3 py-1.5 text-xs font-medium border-r border-gray-300 last:border-r-0 transition-colors ${
-                    currentView === tab.key
-                      ? 'bg-black text-white'
-                      : 'bg-white text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  {tab.label} ({tab.count})
-                </button>
-              ))}
+            {/* ✅ UPDATED: COMPACT MODERN CATEGORY TABS (same as admin) */}
+            <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center gap-1.5 min-w-max">
+                {categoryTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleViewChange(tab.key)}
+                    className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
+                      currentView === tab.key
+                        ? 'bg-teal-600 text-white shadow-md scale-[1.02]'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{tab.label}</span>
+                      <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
+                        currentView === tab.key 
+                          ? 'bg-white text-teal-600' 
+                          : 'bg-white text-slate-600'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    </div>
+                    
+                    {currentView === tab.key && (
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
+                    )}
+                  </button>
+                ))}
+              </div>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -456,9 +464,13 @@ const AssignerDashboard = () => {
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
-              onAssignDoctor={handleAssignStudy}
+              onAssignDoctor={(study) => console.log('Assign doctor:', study._id)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
+              userRole={currentUser?.role || 'assignor'}
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
             />
           </div>
         </div>

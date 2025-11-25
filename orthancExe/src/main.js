@@ -19,7 +19,7 @@ const CONFIG_FILE = path.join(ORTHANC_FOLDER, 'Configuration', 'orthanc.json');
 const LUA_FILE = path.join(ORTHANC_FOLDER, 'Configuration', 'tagwrite.lua');
 
 // YOUR AUTH SERVER URL
-const AUTH_API_URL = 'http://localhost:5000/api/auth/lab-login';
+const AUTH_API_URL = 'http://165.232.189.64/api/auth/lab-login';
 
 let mainWindow;
 let orthancProcess = null;

@@ -19,7 +19,7 @@ const Dashboard = () => {
     currentPage: 1,
     totalPages: 1,
     totalRecords: 0,
-    recordsPerPage: 50, // ✅ Default value
+    recordsPerPage: 50,
     hasNextPage: false,
     hasPrevPage: false
   });
@@ -112,9 +112,9 @@ const Dashboard = () => {
     setLoading(true);
     setError(null);
     
-    // ✅ Use pagination state if params not provided
-    const currentPage = page ?? pagination.currentPage;
-    const currentLimit = limit ?? pagination.recordsPerPage;
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
+    const requestPage = page !== null ? page : pagination.currentPage;
+    const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
     try {
       const endpoint = getApiEndpoint();
@@ -122,42 +122,40 @@ const Dashboard = () => {
       
       const params = { 
         ...activeFilters,
-        page: currentPage,
-        limit: currentLimit
+        page: requestPage,
+        limit: requestLimit
       };
       delete params.category;
     
-      console.log('🔍 [Admin] Fetching studies with params:', {
+      console.log('🔍 [Admin] Fetching studies:', {
         endpoint,
-        params,
-        currentPage,
-        currentLimit,
-        paginationState: pagination
+        requestPage,
+        requestLimit,
+        filters: params
       });
       
       const response = await api.get(endpoint, { params });
+      
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
-        // ✅ CRITICAL: Only update BACKEND data, keep frontend limit
-        setPagination(prev => ({
-          ...prev,
-          currentPage: response.data.pagination?.currentPage || currentPage,
+        // ✅ CRITICAL: Update pagination with response data but keep our requested values
+        setPagination({
+          currentPage: requestPage, // Use what we REQUESTED
           totalPages: response.data.pagination?.totalPages || 1,
           totalRecords: response.data.pagination?.totalRecords || 0,
-          // ✅ DON'T update recordsPerPage from backend
-          recordsPerPage: currentLimit, // Keep what WE requested
+          recordsPerPage: requestLimit, // Use what we REQUESTED
           hasNextPage: response.data.pagination?.hasNextPage || false,
           hasPrevPage: response.data.pagination?.hasPrevPage || false
-        }));
+        });
         
-        console.log('✅ [Admin] Studies fetched:', {
-          raw: rawStudies.length,
-          formatted: formattedStudies.length,
-          requestedLimit: currentLimit,
-          backendLimit: response.data.pagination?.limit
+        console.log('✅ [Admin] Studies loaded:', {
+          count: formattedStudies.length,
+          page: requestPage,
+          limit: requestLimit,
+          total: response.data.pagination?.totalRecords
         });
       }
     } catch (err) {
@@ -167,7 +165,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView, pagination.currentPage, pagination.recordsPerPage]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
 
   // ✅ FETCH CATEGORY VALUES
   const fetchCategoryValues = useCallback(async (filters = {}) => {
@@ -227,8 +225,7 @@ const Dashboard = () => {
     };
     
     setSearchFilters(defaultFilters);
-    // ✅ Use initial recordsPerPage from state (50)
-    fetchStudies(defaultFilters, 1, pagination.recordsPerPage);
+    fetchStudies(defaultFilters, 1, 50);
     fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
   }, []); // ✅ Empty deps - only run once on mount
@@ -236,45 +233,32 @@ const Dashboard = () => {
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
     console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
-    // ✅ Keep current recordsPerPage, reset to page 1
+    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
-  // ✅ UPDATED: Handle page change
+  // ✅ SIMPLIFIED: Handle page change
   const handlePageChange = useCallback((newPage) => {
-    console.log(`📄 [Admin] Page change: ${pagination.currentPage} -> ${newPage}`);
+    console.log(`📄 [Admin] Changing page: ${pagination.currentPage} -> ${newPage}`);
     
-    // ✅ Update state first
-    setPagination(prev => ({
-      ...prev,
-      currentPage: newPage
-    }));
-    
-    // ✅ Fetch with NEW page but CURRENT limit
+    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
   }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
-  // ✅ CRITICAL FIX: Handle records per page change
+  // ✅ SIMPLIFIED: Handle records per page change
   const handleRecordsPerPageChange = useCallback((newLimit) => {
-    console.log(`📊 [Admin] Records per page change: ${pagination.recordsPerPage} -> ${newLimit}`);
+    console.log(`📊 [Admin] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
     
-    // ✅ Update pagination state IMMEDIATELY
-    setPagination(prev => ({
-      ...prev,
-      recordsPerPage: newLimit,
-      currentPage: 1 // Reset to page 1
-    }));
-    
-    // ✅ Fetch with NEW limit and page 1
+    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
-  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
+  }, [fetchStudies, searchFilters]);
 
   // Handlers
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 [Admin] NEW SEARCH PARAMS:', searchParams);
+    console.log('🔍 [Admin] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
     
-    // ✅ Keep current recordsPerPage, reset to page 1
+    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchCategoryValues(searchParams);
   }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
@@ -283,37 +267,24 @@ const Dashboard = () => {
     console.log('🔍 [Admin] FILTER CHANGE:', filters);
     setSearchFilters(filters);
     
-    // ✅ Keep current recordsPerPage, reset to page 1
+    // ✅ Reset to page 1, keep current limit
     fetchStudies(filters, 1, pagination.recordsPerPage);
     fetchCategoryValues(filters);
   }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
-  // ✅ HANDLE VIEW CHANGE
+  // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 [Admin] CATEGORY CHANGE: ${currentView} -> ${view}`);
+    console.log(`🔄 [Admin] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
-    setSelectedStudies([]);
-    
-    setSearchFilters(prevFilters => {
-      const preservedFilters = {
-        dateFilter: prevFilters.dateFilter,
-        dateType: prevFilters.dateType,
-        customDateFrom: prevFilters.customDateFrom,
-        customDateTo: prevFilters.customDateTo,
-        modality: prevFilters.modality,
-        labId: prevFilters.labId,
-        priority: prevFilters.priority,
-        limit: prevFilters.limit,
-      };
-      
-      const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
-      );
-      
-      fetchCategoryValues(cleanedFilters);
-      return cleanedFilters;
-    });
-  }, [currentView, fetchCategoryValues]);
+    // Note: This will trigger the useEffect below
+  }, [currentView]);
+
+  // ✅ Fetch when view changes
+  useEffect(() => {
+    console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);

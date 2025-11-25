@@ -9,7 +9,7 @@ import {
     getAllStudiesForAdmin 
 } from '../controllers/admin.controller.js';
 import { protect } from '../middleware/authMiddleware.js';
-import { updateStudyDetails, getStudyActionLogs } from '../controllers/Patient.controller.js'; // ✅ ADD getStudyActionLogs
+import { updateStudyDetails, getStudyActionLogs, lockStudyForReporting } from '../controllers/Patient.controller.js'; // ✅ ADD getStudyActionLogs
 
 import { toggleStudyLock } from '../controllers/download.controller.js';
 
@@ -38,6 +38,7 @@ router.get('/studies/pending', getPendingStudies);
 router.get('/studies/inprogress', getInProgressStudies);
 router.get('/studies/completed', getCompletedStudies);
 router.get('/studies', getAllStudiesForAdmin);
+router.post('/studies/:studyId/lock',  lockStudyForReporting);
 
 
 router.post('/toggle-study-lock/:studyId', protect, toggleStudyLock);

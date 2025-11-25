@@ -620,7 +620,23 @@ async function processStableStudy(job) {
     console.log(`[StableStudy] 🚀 Processing stable study: ${orthancStudyId}`);
     job.progress = 10;
     
-    // 🔧 OPTIMIZED: Single API call to get all series info (EXACTLY AS YOUR CODE)
+    // 🔧 STEP 1: Get study-level info to extract StudyInstanceUID
+    const studyInfoUrl = `${ORTHANC_BASE_URL}/studies/${orthancStudyId}`;
+    console.log(`[StableStudy] 🌐 Fetching study info from: ${studyInfoUrl}`);
+    
+    const studyInfoResponse = await axios.get(studyInfoUrl, {
+      headers: { 'Authorization': orthancAuth },
+      timeout: 10000
+    });
+    
+    const studyInfo = studyInfoResponse.data;
+    const studyInstanceUID = studyInfo.MainDicomTags?.StudyInstanceUID || orthancStudyId;
+    
+    console.log(`[StableStudy] 📊 Study Instance UID: ${studyInstanceUID}`);
+    
+    job.progress = 20;
+    
+    // 🔧 STEP 2: Get series info
     const seriesUrl = `${ORTHANC_BASE_URL}/studies/${orthancStudyId}/series`;
     console.log(`[StableStudy] 🌐 Fetching series from: ${seriesUrl}`);
     
@@ -759,18 +775,22 @@ async function processStableStudy(job) {
     
     job.progress = 80;
     
-    // 🔧 UPDATED: Find existing study by orthancStudyID (EXACTLY AS YOUR CODE)
-    let dicomStudyDoc = await DicomStudy.findOne({ orthancStudyID: orthancStudyId });
+    // 🔧 CRITICAL FIX: Find existing study by studyInstanceUID instead of orthancStudyID
+    let dicomStudyDoc = await DicomStudy.findOne({ 
+      studyInstanceUID: studyInstanceUID 
+    });
     
     console.log(`[StableStudy] 📊 Final optimized counts - Series: ${allSeries.length}, Instances: ${totalInstances}`);
     
-    // 🔧 UPDATED: In the studyData object creation
+    // 🔧 UPDATED: studyData object with studyInstanceUID
     const studyData = {
-      // ✅ ENSURE organization context is ALWAYS set
       organization: organizationRecord._id,
-      organizationIdentifier: organizationRecord.identifier, // ✅ This was missing!
+      organizationIdentifier: organizationRecord.identifier,
       
+      // ✅ CRITICAL: Add studyInstanceUID
+      studyInstanceUID: studyInstanceUID,
       orthancStudyID: orthancStudyId,
+      
       accessionNumber: tags.AccessionNumber || '',
       patient: patientRecord._id,
       patientId: patientRecord.patientID,
@@ -782,12 +802,10 @@ async function processStableStudy(job) {
       institutionName: tags.InstitutionName || '',
       workflowStatus: totalInstances > 0 ? 'new_study_received' : 'new_metadata_only',
       
-      // ✅ FIXED: Use calculated counts
       seriesCount: allSeries.length,
       instanceCount: totalInstances,
       seriesImages: `${allSeries.length}/${totalInstances}`,
       
-      // ✅ ENSURE patientInfo structure
       patientInfo: {
           patientID: patientRecord.patientID,
           patientName: patientRecord.patientNameRaw,
@@ -837,7 +855,6 @@ async function processStableStudy(job) {
       studyComments: tags.StudyComments || '',
       additionalPatientHistory: tags.AdditionalPatientHistory || '',
       
-      // 🆕 UPDATED: Store organization and lab identification info
       customLabInfo: {
         organizationId: organizationRecord._id,
         organizationIdentifier: organizationRecord.identifier,
@@ -853,12 +870,14 @@ async function processStableStudy(job) {
       storageInfo: {
         type: 'orthanc',
         orthancStudyId: orthancStudyId,
+        studyInstanceUID: studyInstanceUID, // ✅ Also store here for reference
         receivedAt: new Date(),
         isStableStudy: true,
         instancesFound: totalInstances,
         processingMethod: totalInstances > 0 ? 'optimized_with_instances' : 'metadata_only',
         debugInfo: {
-          apiCallsUsed: 2, // Only /series and /tags calls
+          apiCallsUsed: 3, // /studies, /series, /tags
+          studyInfoUsed: true,
           seriesApiUsed: true,
           singleInstanceTagsUsed: true,
           modalitiesExtracted: Array.from(modalitiesSet),
@@ -875,27 +894,27 @@ async function processStableStudy(job) {
     };
     
     if (dicomStudyDoc) {
-      console.log(`[StableStudy] 📝 Updating existing study`);
+      console.log(`[StableStudy] 📝 Updating existing study with UID: ${studyInstanceUID}`);
       Object.assign(dicomStudyDoc, studyData);
       dicomStudyDoc.statusHistory.push({
         status: studyData.workflowStatus,
         changedAt: new Date(),
-        note: `Optimized stable study updated: ${allSeries.length} series, ${totalInstances} instances. Org: ${organizationRecord.name}, Lab: ${labRecord.name}`
+        note: `Study updated: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
       });
     } else {
-      console.log(`[StableStudy] 🆕 Creating new study`);
+      console.log(`[StableStudy] 🆕 Creating new study with UID: ${studyInstanceUID}`);
       dicomStudyDoc = new DicomStudy({
         ...studyData,
         statusHistory: [{
           status: studyData.workflowStatus,
           changedAt: new Date(),
-          note: `Optimized stable study created: ${allSeries.length} series, ${totalInstances} instances. Org: ${organizationRecord.name}, Lab: ${labRecord.name}`
+          note: `Study created: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
         }]
       });
     }
     
     await dicomStudyDoc.save();
-    console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id} in organization ${organizationRecord.name}`);
+    console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
     
     // ✅ NEW: Record study upload action
     await recordStudyAction({
@@ -972,13 +991,14 @@ async function processStableStudy(job) {
     const result = {
       success: true,
       orthancStudyId: orthancStudyId,
+      studyInstanceUID: studyInstanceUID, // ✅ Include in result
       studyDatabaseId: dicomStudyDoc._id,
       seriesCount: allSeries.length,
       instanceCount: totalInstances,
       processedAt: new Date(),
       elapsedTime: Date.now() - startTime,
-      processingMethod: 'optimized_api_calls_with_multi_tenancy',
-      apiCallsUsed: 2, // Only /series and /tags calls
+      processingMethod: 'optimized_api_calls_with_study_uid',
+      apiCallsUsed: 3,
       metadataSummary: {
         organizationName: organizationRecord.name,
         organizationId: organizationRecord.identifier,
@@ -988,13 +1008,14 @@ async function processStableStudy(job) {
         labId: labRecord.identifier,
         modalities: Array.from(modalitiesSet),
         studyDate: tags.StudyDate || 'Unknown',
-        institutionName: tags.InstitutionName || 'Unknown'
+        institutionName: tags.InstitutionName || 'Unknown',
+        studyInstanceUID: studyInstanceUID
       }
     };
     
     await redis.setex(`job:result:${requestId}`, 3600, JSON.stringify(result));
     
-    console.log(`[StableStudy] ✅ Multi-tenant processing completed in ${Date.now() - startTime}ms - Org: ${organizationRecord.name}, Lab: ${labRecord.name}, Series: ${allSeries.length}, Instances: ${totalInstances}`);
+    console.log(`[StableStudy] ✅ Processing completed - UID: ${studyInstanceUID}, Series: ${allSeries.length}, Instances: ${totalInstances}`);
     return result;
     
   } catch (error) {

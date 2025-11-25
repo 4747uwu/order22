@@ -1,12 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
+import DoctorWorklistTable from '../../components/common/WorklistTable/doctorWorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
-import CreateTypistModal from '../../components/doctor/CreateTypistModal'; // ✅ NEW IMPORT
+import CreateTypistModal from '../../components/doctor/CreateTypistModal';
 import api from '../../services/api';
-import { RefreshCw, FileText, Eye, Clock, CheckCircle2, AlertCircle, UserPlus } from 'lucide-react'; // ✅ ADD UserPlus
+import { RefreshCw, FileText, Eye, Clock, CheckCircle2, AlertCircle, UserPlus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
@@ -15,6 +15,16 @@ const DoctorDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   const navigate = useNavigate();
   
+  // ✅ PAGINATION STATE - Single source of truth
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
+  
   // State management
   const [studies, setStudies] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -22,19 +32,15 @@ const DoctorDashboard = () => {
   const [searchFilters, setSearchFilters] = useState({});
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
-
-  // ✅ NEW: Typist modal state
   const [showTypistModal, setShowTypistModal] = useState(false);
 
-  // ✅ ADD: API VALUES STATE (separate from local study counts)
+  // ✅ API VALUES STATE (separate from local study counts)
   const [apiValues, setApiValues] = useState({
     total: 0,
     pending: 0,
     inprogress: 0,
     completed: 0
   });
-
-  const intervalRef = useRef(null);
 
   // ✅ USE: API values for tab counts
   const tabCounts = useMemo(() => ({
@@ -46,23 +52,22 @@ const DoctorDashboard = () => {
 
   // Column configuration (doctor-specific)
   const getDefaultColumnConfig = () => ({
-    checkbox: { visible: true, order: 1, label: 'Select' },
-    workflowStatus: { visible: true, order: 2, label: 'Status' },
-    patientId: { visible: true, order: 3, label: 'Patient ID' },
+    checkbox: { visible: false, order: 1, label: 'Select' },
+    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
+    centerName: { visible: true, order: 3, label: 'Center' },
     patientName: { visible: true, order: 4, label: 'Patient Name' },
-    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
-    studyDescription: { visible: true, order: 6, label: 'Description' },
-    seriesCount: { visible: true, order: 7, label: 'Series' },
-    modality: { visible: true, order: 8, label: 'Modality' },
-    location: { visible: true, order: 9, label: 'Location' },
-    studyDate: { visible: true, order: 10, label: 'Study Date' },
-    uploadDate: { visible: false, order: 11, label: 'Upload Date' },
-    reportedDate: { visible: true, order: 12, label: 'Report Date' },
-    reportedBy: { visible: false, order: 13, label: 'Reported By' },
-    accession: { visible: false, order: 14, label: 'Accession' },
-    seenBy: { visible: false, order: 15, label: 'Seen By' },
-    actions: { visible: true, order: 16, label: 'Actions' },
-    assignedDoctor: { visible: false, order: 17, label: 'Assignment' } // Hide assignment for doctor
+    patientId: { visible: true, order: 5, label: 'Patient ID' },
+    ageGender: { visible: true, order: 6, label: 'Age/Sex' },
+    modality: { visible: true, order: 7, label: 'Modality' },
+    seriesCount: { visible: true, order: 8, label: 'Series' },
+    accessionNumber: { visible: false, order: 9, label: 'Acc. No.' },
+    referralDoctor: { visible: true, order: 10, label: 'Referral Dr.' },
+    clinicalHistory: { visible: true, order: 11, label: 'History' },
+    studyTime: { visible: true, order: 12, label: 'Study Time' },
+    uploadTime: { visible: true, order: 13, label: 'Upload Time' },
+    radiologist: { visible: false, order: 14, label: 'Radiologist' },
+    caseStatus: { visible: true, order: 15, label: 'Status' },
+    actions: { visible: true, order: 16, label: 'Actions' }
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
@@ -86,7 +91,7 @@ const DoctorDashboard = () => {
     }
   }, [columnConfig]);
 
-  // API endpoints
+  // ✅ API endpoints
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/doctor/studies/pending';
@@ -96,46 +101,75 @@ const DoctorDashboard = () => {
     }
   }, [currentView]);
 
-  const fetchStudies = useCallback(async (filters = {}) => {
+  // ✅ FETCH STUDIES WITH PAGINATION (EXACT SAME AS ADMIN)
+  const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
+    
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
+    const requestPage = page !== null ? page : pagination.currentPage;
+    const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
+    
     try {
       const endpoint = getApiEndpoint();
-      const params = { ...filters, category: currentView === 'all' ? undefined : currentView };
+      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 DOCTOR: Fetching studies from:', endpoint, 'with params:', params);
+      const params = { 
+        ...activeFilters,
+        page: requestPage,
+        limit: requestLimit
+      };
+      delete params.category; // ✅ Don't send category in params (it's in the endpoint)
+      
+      console.log('🔍 [Doctor] Fetching studies:', {
+        endpoint,
+        requestPage,
+        requestLimit,
+        filters: params
+      });
       
       const response = await api.get(endpoint, { params });
+      
       if (response.data.success) {
-        // ✅ USE SAME PATTERN AS ASSIGNER DASHBOARD
         const rawStudies = response.data.data || [];
-        console.log('📦 DOCTOR: Raw studies received:', rawStudies.length);
-        
-        // ✅ FORMAT STUDIES IN FRONTEND USING STUDY FORMATTER
         const formattedStudies = formatStudiesForWorklist(rawStudies);
-        console.log('✨ DOCTOR: Formatted studies:', formattedStudies.length);
-        
         setStudies(formattedStudies);
+        
+        // ✅ CRITICAL: Update pagination with response data but keep our requested values
+        setPagination({
+          currentPage: requestPage, // Use what we REQUESTED
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          recordsPerPage: requestLimit, // Use what we REQUESTED
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
+        });
+        
+        console.log('✅ [Doctor] Studies loaded:', {
+          count: formattedStudies.length,
+          page: requestPage,
+          limit: requestLimit,
+          total: response.data.pagination?.totalRecords
+        });
       }
     } catch (err) {
-      console.error('❌ Error fetching doctor studies:', err);
+      console.error('❌ [Doctor] Error fetching studies:', err);
       setError('Failed to fetch studies.');
       setStudies([]);
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, currentView]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
 
-  // ✅ Fetch analytics AND set API values
+  // ✅ FETCH ANALYTICS (API VALUES)
   const fetchAnalytics = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 DOCTOR ANALYTICS: Fetching with params:', params);
+      console.log('🔍 [Doctor] Fetching analytics with params:', params);
       
       const response = await api.get('/doctor/values', { params });
       if (response.data.success) {
-        // ✅ SET API VALUES for tab counts
         setApiValues({
           total: response.data.total || 0,
           pending: response.data.pending || 0,
@@ -143,12 +177,7 @@ const DoctorDashboard = () => {
           completed: response.data.completed || 0
         });
 
-        console.log('📊 DOCTOR API VALUES UPDATED:', {
-          total: response.data.total,
-          pending: response.data.pending,
-          inprogress: response.data.inprogress,
-          completed: response.data.completed
-        });
+        console.log('📊 [Doctor] API VALUES UPDATED:', response.data);
       }
     } catch (error) {
       console.error('Error fetching doctor analytics:', error);
@@ -156,73 +185,67 @@ const DoctorDashboard = () => {
     }
   }, [searchFilters]);
 
-  // ✅ Initial data fetch
+  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
   useEffect(() => {
-    fetchStudies(searchFilters);
-    fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics]);
-
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      console.log('🔄 Auto-refreshing doctor dashboard data...');
-      fetchStudies(searchFilters);
-      fetchAnalytics(searchFilters);
-    }, 5 * 60 * 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+    const defaultFilters = {
+      dateFilter: 'today',
+      dateType: 'createdAt',
+      modality: 'all',
+      priority: 'all'
     };
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+    
+    setSearchFilters(defaultFilters);
+    fetchStudies(defaultFilters, 1, 50);
+    fetchAnalytics(defaultFilters);
+  }, []); // ✅ Empty deps - only run once on mount
 
-  // ✅ Handlers with proper analytics refresh (same as assigner)
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  useEffect(() => {
+    console.log(`🔄 [Doctor] currentView changed to: ${currentView}`);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
+
+  // ✅ SIMPLIFIED: Handle page change
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`📄 [Doctor] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Just fetch with new page, keeping current limit
+    fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
+
+  // ✅ SIMPLIFIED: Handle records per page change
+  const handleRecordsPerPageChange = useCallback((newLimit) => {
+    console.log(`📊 [Doctor] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Fetch with new limit, reset to page 1
+    fetchStudies(searchFilters, 1, newLimit);
+  }, [fetchStudies, searchFilters]);
+
+  // ✅ Handlers
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 DOCTOR SEARCH: New search params:', searchParams);
+    console.log('🔍 [Doctor] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
+    
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchAnalytics(searchParams);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
-    console.log('🔍 DOCTOR FILTER CHANGE:', filters);
+    console.log('🔍 [Doctor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
-    fetchAnalytics(filters);
-  }, [fetchAnalytics]);
-  
-  const handleViewChange = useCallback((view) => {
-    console.log(`📊 DOCTOR TAB CHANGE: ${currentView} -> ${view}`);
-    setCurrentView(view);
-    setSelectedStudies([]);
     
-    // ✅ PRESERVE IMPORTANT FILTERS when switching tabs (same as assigner)
-    setSearchFilters(prevFilters => {
-      const preservedFilters = {
-        // Date filters
-        dateFilter: prevFilters.dateFilter,
-        dateType: prevFilters.dateType,
-        customDateFrom: prevFilters.customDateFrom,
-        customDateTo: prevFilters.customDateTo,
-        // Other filters
-        modality: prevFilters.modality,
-        labId: prevFilters.labId,
-        priority: prevFilters.priority,
-        // Pagination
-        limit: prevFilters.limit,
-        // Category (update to new view)
-        category: view === 'all' ? undefined : view
-      };
-      
-      // Remove undefined values
-      const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
-      );
-      
-      // ✅ IMMEDIATELY refresh analytics with preserved filters
-      fetchAnalytics(cleanedFilters);
-      return cleanedFilters;
-    });
-  }, [currentView, fetchAnalytics]);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(filters, 1, pagination.recordsPerPage);
+    fetchAnalytics(filters);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
+  
+  // ✅ SIMPLIFIED: View change
+  const handleViewChange = useCallback((view) => {
+    console.log(`🔄 [Doctor] VIEW CHANGE: ${currentView} -> ${view}`);
+    setCurrentView(view);
+  }, [currentView]);
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -235,27 +258,14 @@ const DoctorDashboard = () => {
         : [...prev, studyId]
     );
   }, []);
+  console.log(studies)
 
   const handleRefresh = useCallback(() => {
-    console.log('🔄 DOCTOR MANUAL REFRESH');
-    fetchStudies(searchFilters);
+    console.log('🔄 [Doctor] Manual refresh');
+    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
     fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
-  // Doctor-specific handlers
-  const handleOpenReport = useCallback((study) => {
-    console.log('📝 Opening report for study:', study._id);
-    toast.success('Opening report editor...');
-    // Navigate to report creation/editing page
-  }, []);
-
-  const handleViewDicom = useCallback((study) => {
-    console.log('🖼️ Opening DICOM viewer for study:', study._id);
-    toast.success('Opening DICOM viewer...');
-    // Navigate to DICOM viewer
-  }, []);
-
-  // ✅ NEW: Typist-related handlers
   const handleCreateTypist = useCallback(() => {
     console.log('👥 Opening create typist modal');
     setShowTypistModal(true);
@@ -264,10 +274,8 @@ const DoctorDashboard = () => {
   const handleTypistCreated = useCallback((newTypist) => {
     console.log('✅ Typist created successfully:', newTypist);
     toast.success(`Typist ${newTypist.fullName} created and linked to your account`);
-    // You can add additional logic here like refreshing a typist list
   }, []);
 
-  // Column configuration handlers
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
       ...prev,
@@ -283,7 +291,33 @@ const DoctorDashboard = () => {
     setColumnConfig(defaultConfig);
   }, []);
 
-  // ✅ UPDATED: Additional actions for navbar (added Create Typist)
+  const handleUpdateStudyDetails = useCallback(async (formData) => {
+    try {
+      console.log('🔄 Updating study details:', formData);
+      
+      const response = await api.put(`/doctor/studies/${formData.studyId}/details`, {
+        patientName: formData.patientName,
+        patientAge: formData.patientAge,
+        patientGender: formData.patientGender,
+        studyName: formData.studyName,
+        referringPhysician: formData.referringPhysician,
+        accessionNumber: formData.accessionNumber,
+        clinicalHistory: formData.clinicalHistory
+      });
+
+      if (response.data.success) {
+        toast.success('Study details updated successfully');
+        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+        fetchAnalytics(searchFilters);
+      }
+    } catch (error) {
+      console.error('Error updating study details:', error);
+      toast.error(error.response?.data?.message || 'Failed to update study details');
+      throw error;
+    }
+  }, [fetchStudies, searchFilters, fetchAnalytics, pagination.currentPage, pagination.recordsPerPage]);
+
+  // Additional actions for navbar
   const additionalActions = [
     {
       label: 'Templates',
@@ -297,37 +331,20 @@ const DoctorDashboard = () => {
       icon: UserPlus,
       onClick: handleCreateTypist,
       variant: 'secondary',
-      tooltip: 'Create a typist to assist with report typing',
-      disabled: false
-    },
-    {
-      label: 'Create Report',
-      icon: FileText,
-      onClick: () => handleOpenReport(selectedStudies[0]),
-      variant: 'primary',
-      tooltip: 'Create new report',
-      disabled: selectedStudies.length !== 1
-    },
-    {
-      label: 'DICOM Viewer',
-      icon: Eye,
-      onClick: () => handleViewDicom(selectedStudies[0]),
-      variant: 'secondary',
-      tooltip: 'Open DICOM viewer',
-      disabled: selectedStudies.length !== 1
+      tooltip: 'Create a typist to assist with report typing'
     }
   ];
 
-  console.log('🔍 DOCTOR DASHBOARD DEBUG:', {
-    studies: studies.length,
-    apiValues,
-    tabCounts,
-    currentView,
-    searchFilters
-  });
+  // ✅ UPDATED CATEGORY TABS
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
+    { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Clock },
+    { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress, icon: AlertCircle },
+    { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 }
+  ];
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-teal-50 flex flex-col">
       <Navbar
         title="Doctor Dashboard"
         subtitle={`${currentOrganizationContext || 'Organization View'} • My Cases`}
@@ -346,47 +363,56 @@ const DoctorDashboard = () => {
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
-          <div className="flex items-center justify-between px-4 py-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-black uppercase tracking-wide">
-                MY WORKLIST
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                My Worklist
               </h2>
-              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border">
-                {studies.length} studies loaded
+              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                {studies.length} loaded
               </span>
               {selectedStudies.length > 0 && (
-                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                <span className="text-[10px] text-teal-700 bg-teal-50 px-2 py-0.5 rounded-md font-medium border border-teal-200">
                   {selectedStudies.length} selected
                 </span>
               )}
             </div>
 
-            {/* ✅ Tab counts using API values */}
-            <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
-              {[
-                { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
-                { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Clock },
-                { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress, icon: AlertCircle },
-                { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => handleViewChange(tab.key)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-r border-gray-300 last:border-r-0 transition-colors ${
-                      currentView === tab.key
-                        ? 'bg-black text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon size={12} />
-                    {tab.label} ({tab.count})
-                  </button>
-                );
-              })}
+            <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center gap-1.5 min-w-max">
+                {categoryTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleViewChange(tab.key)}
+                      className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
+                        currentView === tab.key
+                          ? 'bg-teal-600 text-white shadow-md scale-[1.02]'
+                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Icon className="w-3 h-3" />
+                        <span className="truncate">{tab.label}</span>
+                        <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
+                          currentView === tab.key 
+                            ? 'bg-white text-teal-600' 
+                            : 'bg-white text-slate-600'
+                        }`}>
+                          {tab.count}
+                        </span>
+                      </div>
+                      
+                      {currentView === tab.key && (
+                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -399,21 +425,19 @@ const DoctorDashboard = () => {
           </div>
 
           <div className="flex-1 min-h-0">
-            <WorklistTable
+            <DoctorWorklistTable
               studies={studies}
               loading={loading}
-              columnConfig={columnConfig}
-              selectedStudies={selectedStudies}
-              onSelectAll={handleSelectAll}
-              onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
-              onAssignDoctor={() => {}} // Disabled for doctor
+              onUpdateStudyDetails={handleUpdateStudyDetails}
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
             />
           </div>
         </div>
       </div>
 
-      {/* ✅ NEW: Create Typist Modal */}
       <CreateTypistModal
         isOpen={showTypistModal}
         onClose={() => setShowTypistModal(false)}
