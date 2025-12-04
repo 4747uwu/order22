@@ -285,12 +285,23 @@ const StudyRow = ({
     });
   };
 
-  // ✅ NEW: Open OHIF + Reporting
+
   const handleOHIFReporting = () => {
     console.log('🖼️ Opening OHIF + Reporting for study:', study._id);
-    navigate(`/online-reporting/${study._id}?openOHIF=true`);
+    
+    // ✅ Pass studyInstanceUID in navigation state
+    navigate(`/online-reporting/${study._id}?openOHIF=true`, {
+      state: {
+        study: {
+          ...study,
+          studyInstanceUID: study.studyInstanceUID || study.studyInstanceUIDs || null
+        }
+      }
+    });
+    
     toast.success('Opening OHIF viewer with reporting...', { icon: '🖼️' });
   };
+
 
   return (
     <tr className={rowClasses}>
@@ -536,7 +547,7 @@ const DoctorWorklistTable = ({
   onPageChange,
   onRecordsPerPageChange
 }) => {
-  
+  console.log(studies)
   const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
   const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });

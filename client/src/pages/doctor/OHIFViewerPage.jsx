@@ -19,11 +19,35 @@ const OHIFViewerPage = () => {
 
       // Use location.state if caller provided full study object
       if (location.state?.study) {
-        setStudy(location.state.study);
+        const passed = location.state.study;
+        setStudy(passed);
+
+        // Build StudyInstanceUIDs string from passed study (support array or single value)
+        const orthancStudyID = passed.orthancStudyID || passed.studyId || passed._id || null;
+        const studyInstanceUID = passed.studyInstanceUID || passed.studyInstanceUIDs || passed.StudyInstanceUID || passed.studyInstanceUid || null;
+
+        let studyUIDs = '';
+        if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
+          studyUIDs = studyInstanceUID.join(',');
+        } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
+          studyUIDs = studyInstanceUID.trim();
+        } else if (orthancStudyID) {
+          studyUIDs = orthancStudyID;
+        }
+
+        if (studyUIDs) {
+          const OHIF_BASE = 'http://165.232.189.64:4000/viewer';
+          const url = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+          setOhifUrl(url);
+          console.log('OHIFViewerPage -> crafted OHIF URL from location.state:', url);
+        } else {
+          console.warn('OHIFViewerPage -> no StudyInstanceUID found in location.state study');
+        }
+
         setLoading(false);
         return;
       }
-
+      
       try {
         // Use same endpoint OnlineReportingSystemWithOHIF uses to get reporting info
         const resp = await api.get(`/documents/study/${studyId}/reporting-info`);
@@ -87,11 +111,25 @@ const OHIFViewerPage = () => {
       const lockResponse = await api.post(`/admin/studies/${studyId}/lock`);
       if (!lockResponse?.data?.success) throw new Error(lockResponse?.data?.message || 'Lock failed');
       toast.success('Study locked for reporting', { icon: '🔒' });
-      navigate(`/doctor/reporting/${studyId}`, { state: { study, locked: true, lockInfo: lockResponse.data.data } });
+
+      // ✅ UPDATED: Pass studyInstanceUID in state
+      navigate(`/online-reporting/${studyId}?openOHIF=true`, { 
+        state: { 
+          study: {
+            ...study,
+            studyInstanceUID: study.studyInstanceUID || study.studyInstanceUIDs || null
+          },
+          locked: true, 
+          lockInfo: lockResponse.data.data 
+        } 
+      });
     } catch (error) {
       console.error('Error transitioning to reporting:', error);
       if (error.response?.status === 423) {
-        toast.error(`Study is locked by ${error.response.data.lockedBy}`, { duration: 5000, icon: '🔒' });
+        toast.error(`Study is locked by ${error.response.data.lockedBy}`, {
+          duration: 5000,
+          icon: '🔒'
+        });
       } else {
         toast.error(error.response?.data?.message || 'Failed to start reporting session');
       }

@@ -144,26 +144,56 @@ const formatStudyForWorklist = (study, userMap = new Map(), labMap = new Map()) 
 
         return {
             _id: study._id,
+            studyInstanceUID: study.studyInstanceUID || null, // ✅ INCLUDE THIS
+            orthancStudyID: study.orthancStudyID || null,
+            bharatPacsId: study.bharatPacsId || 'N/A',
             
-            // ✅ PATIENT INFO
-            patientId: study.patient?.PatientID || study.PatientID || study.patientId,
-            patientName: study.patient?.PatientName || study.PatientName || study.patientName,
-            patientAge: study.patient?.PatientAge || study.PatientAge || 'N/A',
-            patientSex: study.patient?.PatientSex || study.PatientSex || 'N/A',
-            ageGender: study.patient?.ageGender || study.ageGender || 'N/A',
-
-            // ✅ STUDY INFO
-            studyDescription: study.StudyDescription || study.studyDescription,
-            modality: study.Modality || study.modality,
-            modalitiesInStudy: study.ModalitiesInStudy || study.modalitiesInStudy || [],
-            studyDate: study.StudyDate || study.studyDate,
-            studyTime: study.StudyTime || study.studyTime,
+            // Patient info
+            patientName: study.patientInfo?.patientName || study.patient?.patientNameRaw || '-',
+            patientId: study.patientInfo?.patientID || study.patient?.patientID || study.patientId || '-',
+            patientAge: study.patientInfo?.age || study.patient?.age || study.age || 'N/A',
+            patientSex: study.patientInfo?.gender || study.patient?.gender || study.gender || 'N/A',
+            ageGender: formatAgeGender(
+                study.patientInfo?.age || study.patient?.age || study.age,
+                study.patientInfo?.gender || study.patient?.gender || study.gender
+            ),
             
-            // ✅ SERIES INFO
-            seriesCount: study.NumberOfSeries || study.seriesCount || 0,
-            instanceCount: study.NumberOfInstances || study.instanceCount || 0,
-            seriesImages: `${study.NumberOfSeries || study.seriesCount || 0}/${study.NumberOfInstances || study.instanceCount || 0}`,
-
+            // Center info
+            centerName: study.sourceLab?.name || study.sourceLab?.labName || '-',
+            
+            // Study details
+            modality: study.modality || (study.modalitiesInStudy?.[0]) || '-',
+            seriesCount: study.seriesCount || 0,
+            instanceCount: study.instanceCount || 0,
+            seriesImages: study.seriesImages || '0/0',
+            accessionNumber: study.accessionNumber || 'N/A',
+            studyDescription: study.examDescription || 'Unknown Study',
+            
+            // Clinical info
+            referralNumber: study.referringPhysicianName || 
+                           study.physicians?.referring?.name || 
+                           study.referralDoctor || 'N/A',
+            clinicalHistory: study.clinicalHistory?.clinicalHistory || 
+                           study.additionalPatientHistory || 
+                           'No history provided',
+            
+            // Dates
+            studyDate: formatDateForDisplay(study.studyDate),
+            studyTime: study.studyTime || '-',
+            uploadDate: study.createdAt,
+            uploadTime: formatDateTimeForDisplay(study.createdAt),
+            createdAt: study.createdAt,
+            
+            // Status
+            workflowStatus: study.workflowStatus || 'new_study_received',
+            currentCategory: study.currentCategory || 'CREATED',
+            caseStatus: formatCaseStatus(study.workflowStatus),
+            caseStatusCategory: getCaseStatusCategory(study.workflowStatus),
+            caseStatusColor: getCaseStatusColor(study.workflowStatus),
+            
+            // Priority
+            priority: study.studyPriority || 'SELECT',
+            
             // ✅ FIXED: Assignment info (flattened for easy access)
             isAssigned: assignmentInfo.isAssigned,
             assignedTo: assignmentInfo.assignedTo?.name || null,
@@ -180,10 +210,6 @@ const formatStudyForWorklist = (study, userMap = new Map(), labMap = new Map()) 
 
             // ✅ LOCATION/LAB INFO
             location: labInfo?.labName || study.institutionName || 'Unknown',
-            
-            // ✅ WORKFLOW STATUS
-            workflowStatus: study.workflowStatus || 'new_study_received',
-            priority: study.priority || 'NORMAL',
             
             // ✅ TIMESTAMPS
             createdAt: study.createdAt,
@@ -230,13 +256,126 @@ const formatStudyForWorklist = (study, userMap = new Map(), labMap = new Map()) 
  * @param {Map} labMap - Map of lab IDs to lab objects
  * @returns {Array} Formatted studies for frontend
  */
-export const formatStudiesForWorklist = (studies, userMap = new Map(), labMap = new Map()) => {
-    if (!Array.isArray(studies)) {
-        console.warn('formatStudiesForWorklist: studies is not an array');
+export const formatStudiesForWorklist = (studies) => {
+    if (!studies || !Array.isArray(studies)) {
+        console.warn('formatStudiesForWorklist: Invalid input, expected array');
         return [];
     }
 
-    return studies.map(study => formatStudyForWorklist(study, userMap, labMap));
+    return studies.map(study => {
+        const patientInfo = formatPatientInfo(study);
+        const studyInfo = formatStudyInfo(study);
+        // ✅ FIXED: Assignment info
+        const assignmentInfo = formatAssignmentInfo(study, userMap);
+        const reportInfo = formatReportInfo(study, userMap);
+        const labInfo = formatLabInfo(study, labMap);
+
+        // Determine priority from assignment or study level
+        const priority = assignmentInfo?.priority || study.studyPriority || 'NORMAL';
+
+        const formatted = {
+            _id: study._id,
+            studyInstanceUID: study.studyInstanceUID || null, // ✅ INCLUDE THIS
+            orthancStudyID: study.orthancStudyID || null,
+            bharatPacsId: study.bharatPacsId || 'N/A',
+            
+            // Patient info
+            patientName: study.patientInfo?.patientName || study.patient?.patientNameRaw || '-',
+            patientId: study.patientInfo?.patientID || study.patient?.patientID || study.patientId || '-',
+            patientAge: study.patientInfo?.age || study.patient?.age || study.age || 'N/A',
+            patientSex: study.patientInfo?.gender || study.patient?.gender || study.gender || 'N/A',
+            ageGender: formatAgeGender(
+                study.patientInfo?.age || study.patient?.age || study.age,
+                study.patientInfo?.gender || study.patient?.gender || study.gender
+            ),
+            
+            // Center info
+            centerName: study.sourceLab?.name || study.sourceLab?.labName || '-',
+            
+            // Study details
+            modality: study.modality || (study.modalitiesInStudy?.[0]) || '-',
+            seriesCount: study.seriesCount || 0,
+            instanceCount: study.instanceCount || 0,
+            seriesImages: study.seriesImages || '0/0',
+            accessionNumber: study.accessionNumber || 'N/A',
+            studyDescription: study.examDescription || 'Unknown Study',
+            
+            // Clinical info
+            referralNumber: study.referringPhysicianName || 
+                           study.physicians?.referring?.name || 
+                           study.referralDoctor || 'N/A',
+            clinicalHistory: study.clinicalHistory?.clinicalHistory || 
+                           study.additionalPatientHistory || 
+                           'No history provided',
+            
+            // Dates
+            studyDate: formatDateForDisplay(study.studyDate),
+            studyTime: study.studyTime || '-',
+            uploadDate: study.createdAt,
+            uploadTime: formatDateTimeForDisplay(study.createdAt),
+            createdAt: study.createdAt,
+            
+            // Status
+            workflowStatus: study.workflowStatus || 'new_study_received',
+            currentCategory: study.currentCategory || 'CREATED',
+            caseStatus: formatCaseStatus(study.workflowStatus),
+            caseStatusCategory: getCaseStatusCategory(study.workflowStatus),
+            caseStatusColor: getCaseStatusColor(study.workflowStatus),
+            
+            // Priority
+            priority: study.studyPriority || 'SELECT',
+            
+            // ✅ FIXED: Assignment info (flattened for easy access)
+            isAssigned: assignmentInfo.isAssigned,
+            assignedTo: assignmentInfo.assignedTo?.name || null,
+            assignedToEmail: assignmentInfo.assignedTo?.email || null,
+            assignedToRole: assignmentInfo.assignedTo?.role || null,
+            assignedBy: assignmentInfo.assignedBy?.name || null,
+            assignedAt: assignmentInfo.assignedAt,
+            assignmentPriority: assignmentInfo.priority,
+            dueDate: assignmentInfo.dueDate,
+            assignmentStatus: assignmentInfo.status,
+            
+            // ✅ Keep full assignment object for modal
+            assignment: assignmentInfo,
+
+            // ✅ LOCATION/LAB INFO
+            location: labInfo?.labName || study.institutionName || 'Unknown',
+            
+            // ✅ TIMESTAMPS
+            createdAt: study.createdAt,
+            updatedAt: study.updatedAt,
+            
+            // ✅ REPORT INFO
+            hasReport: !!(study.reportInfo?.reportedBy || study.reportedBy),
+            reportedBy: reportInfo?.reportedBy,
+            verifiedBy: reportInfo?.verifiedBy,
+            reportInfo: study.reportInfo,
+
+            // ✅ ORIGINAL DATA (for debugging)
+            originalPatientInfo: {
+                patientID: study.patient?.PatientID || study.PatientID,
+                patientName: study.patient?.PatientName || study.PatientName,
+                patientAge: study.patient?.PatientAge || study.PatientAge,
+                patientSex: study.patient?.PatientSex || study.PatientSex,
+                ageGender: study.patient?.ageGender || study.ageGender
+            },
+            originalStudyInfo: {
+                studyDate: study.StudyDate || study.studyDate,
+                studyTime: study.StudyTime || study.studyTime,
+                studyDescription: study.StudyDescription || study.studyDescription,
+                modality: study.Modality || study.modality,
+                modalitiesInStudy: study.ModalitiesInStudy || study.modalitiesInStudy
+            },
+
+            // ✅ TECHNICAL INFO
+            accessionNumber: study.AccessionNumber || study.accessionNumber || '',
+            studyInstanceUID: study.StudyInstanceUID || study.studyInstanceUID,
+            organizationIdentifier: study.organizationIdentifier
+        };
+
+        return formatted;
+    });
 };
 
 /**

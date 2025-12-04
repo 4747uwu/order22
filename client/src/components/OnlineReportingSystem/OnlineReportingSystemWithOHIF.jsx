@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import ReportEditor from './ReportEditorWithOhif';
@@ -12,25 +12,25 @@ const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const location = useLocation();
   
-  // ✅ NEW: Check if this is a verifier session
-  const isVerifierMode = searchParams.get('verifier') === 'true';
-  const isVerificationMode = searchParams.get('verification') === 'true';
+  // ✅ NEW: Get studyInstanceUID from location state if available
+  const passedStudy = location.state?.study;
+  const passedStudyInstanceUID = passedStudy?.studyInstanceUID || passedStudy?.studyInstanceUIDs || null;
   
-  console.log('🔍 [OnlineReportingWithOHIF] Component mounted with studyId:', studyId);
-  console.log('🔍 [OnlineReportingWithOHIF] Verifier mode:', isVerifierMode);
-  console.log('🔍 [OnlineReportingWithOHIF] Verification mode:', isVerificationMode);
-  
+  // ✅ DEFINE ALL STATE VARIABLES FIRST (before any usage)
+  const [loading, setLoading] = useState(true);
   const [studyData, setStudyData] = useState(null);
   const [patientData, setPatientData] = useState(null);
   const [templates, setTemplates] = useState({});
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [reportData, setReportData] = useState({});
   const [reportContent, setReportContent] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [exportFormat, setExportFormat] = useState('docx');
+  const [ohifViewerUrl, setOhifViewerUrl] = useState('');
+  const [downloadOptions, setDownloadOptions] = useState(null);
   
   // ✅ NEW: Verifier-specific states
   const [verifying, setVerifying] = useState(false);
@@ -39,8 +39,9 @@ const OnlineReportingSystemWithOHIF = () => {
   // ✅ UPDATED: Width percentage dropdown instead of drag/drop
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // Percentage
 
-  // 🆕 NEW: Add state for download options
-  const [downloadOptions, setDownloadOptions] = useState(null);
+  // ✅ CHECK IF VERIFIER MODE (after state declarations)
+  const isVerifierMode = searchParams.get('verifierMode') === 'true';
+  const isVerificationMode = searchParams.get('action') === 'verify';
 
   // ✅ Width percentage options
   const widthOptions = [
@@ -81,6 +82,7 @@ const OnlineReportingSystemWithOHIF = () => {
       setVerifying(false);
       setRejecting(false);
       setExportFormat('docx');
+      setOhifViewerUrl(''); // ✅ Reset OHIF URL
       
       // Load new study data
       initializeReportingSystem();
@@ -129,26 +131,10 @@ const OnlineReportingSystemWithOHIF = () => {
       const [studyInfoResponse, templatesResponse, existingReportResponse] = await Promise.allSettled([
         api.get(studyInfoEndpoint),
         api.get(templatesEndpoint),
-        api.get(existingReportEndpoint) // ✅ Load existing report (specific or latest)
+        api.get(existingReportEndpoint)
       ]);
 
-      // 🔍 DEBUG: Log API responses
-      console.log('📡 [API Response] Study Info Response:', {
-        status: studyInfoResponse.status === 'fulfilled' ? studyInfoResponse.value.status : 'failed',
-        success: studyInfoResponse.status === 'fulfilled' ? studyInfoResponse.value.data?.success : false
-      });
-      
-      console.log('📡 [API Response] Templates Response:', {
-        status: templatesResponse.status === 'fulfilled' ? templatesResponse.value.status : 'failed',
-        success: templatesResponse.status === 'fulfilled' ? templatesResponse.value.data?.success : false
-      });
-
-      console.log('📡 [API Response] Existing Report Response:', {
-        status: existingReportResponse.status === 'fulfilled' ? existingReportResponse.value.status : 'failed',
-        success: existingReportResponse.status === 'fulfilled' ? existingReportResponse.value.data?.success : false
-      });
-
-      // Process study info (existing logic - keep unchanged)
+      // Process study info
       if (studyInfoResponse.status === 'fulfilled' && studyInfoResponse.value.data.success) {
         const data = studyInfoResponse.value.data.data;
         console.log('🔍 Loaded study data:', data);
@@ -164,16 +150,44 @@ const OnlineReportingSystemWithOHIF = () => {
                               studyInfo.studyId ||
                               null;
       
-        const studyInstanceUID = currentStudy.studyInstanceUID || 
+        // ✅ PRIORITY: Use passed studyInstanceUID first, then fetch from API
+        const studyInstanceUID = passedStudyInstanceUID ||
+                              currentStudy.studyInstanceUID || 
                               currentStudy.studyId || 
+                              studyInfo.studyInstanceUID ||
                               studyInfo.studyId ||
                               null;
       
         console.log('🔍 Extracted IDs:', {
           orthancStudyID,
           studyInstanceUID,
+          passedStudyInstanceUID,
           originalStudyId: currentStudy.studyId || studyInfo.studyId
         });
+
+        // ✅ NEW: Build OHIF viewer URL
+        if (studyInstanceUID) {
+          const OHIF_BASE = 'http://165.232.189.64:4000/viewer';
+          let studyUIDs = '';
+          
+          if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
+            studyUIDs = studyInstanceUID.join(',');
+          } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
+            studyUIDs = studyInstanceUID.trim();
+          } else if (orthancStudyID) {
+            studyUIDs = orthancStudyID;
+          }
+          
+          if (studyUIDs) {
+            const viewerUrl = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            setOhifViewerUrl(viewerUrl);
+            console.log('✅ [OHIF] Built viewer URL:', viewerUrl);
+          } else {
+            console.warn('⚠️ [OHIF] No valid StudyInstanceUID to build viewer URL');
+          }
+        } else {
+          console.warn('⚠️ [OHIF] No studyInstanceUID available');
+        }
         
         setStudyData({
           _id: studyId,
@@ -1179,13 +1193,23 @@ const OnlineReportingSystemWithOHIF = () => {
           style={{ width: `${leftPanelWidth}%` }}
         >
           <div className="flex-1">
-            <iframe
-              src="http://64.227.187.164:4000/"
-              className="w-full h-full border-0"
-              title="OHIF DICOM Viewer"
-              onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully')}
-              onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
-            />
+            {ohifViewerUrl ? (
+              <iframe
+                src={ohifViewerUrl}
+                className="w-full h-full border-0"
+                title="OHIF DICOM Viewer"
+                onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully with URL:', ohifViewerUrl)}
+                onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-white">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                  <p className="text-sm">Loading OHIF viewer...</p>
+                  <p className="text-xs text-gray-400 mt-2">Waiting for StudyInstanceUID...</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

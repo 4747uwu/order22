@@ -319,7 +319,8 @@ export const storeDraftReport = async (req, res) => {
                 // Only update if status is different to avoid unnecessary saves
                 if (study.workflowStatus !== 'report_drafted') {
                     study.workflowStatus = 'report_drafted';
-                    study.currentCategory = 'report_drafted';
+                    // currentCategory uses uppercase category tokens defined in schema
+                    study.currentCategory = 'DRAFT';
                     
                     // Add to status history
                     if (!study.statusHistory) {
@@ -698,7 +699,8 @@ export const storeFinalizedReport = async (req, res) => {
             
             // Update workflow status to report_finalized
             study.workflowStatus = 'report_finalized';
-            study.currentCategory = 'report_finalized';
+            // currentCategory uses uppercase category tokens defined in schema
+            study.currentCategory = 'FINAL';
             
             if (!study.reportInfo) {
                 study.reportInfo = {};
