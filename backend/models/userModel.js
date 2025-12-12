@@ -274,12 +274,19 @@ const UserSchema = new mongoose.Schema({
         minlength: [6, 'Password must be at least 6 characters long'],
         select: false,
     },
+
+    tempPassword:{
+        type: String,
+        required: [true, 'Temp Password is Needed'],
+        select: false,
+    },
     
     fullName: {
         type: String,
         required: [true, 'Full name is required'],
         trim: true,
     },
+
     
     // ✅ UPDATED ROLE SYSTEM
     role: {
@@ -501,20 +508,21 @@ UserSchema.index({ role: 1, isActive: 1 });
 UserSchema.index({ 'hierarchy.parentUser': 1, role: 1 });
 UserSchema.index({ 'roleConfig.linkedRadiologist': 1 });
 
-// Pre-save middleware
+
+//pre-save middleware
 UserSchema.pre('save', async function (next) {
-    // Hash password if modified
-    if (this.isModified('password')) {
-        const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10);
-        this.password = await bcrypt.hash(this.password, salt);
-    }
-    
-    // Set permissions based on role
-    if (this.isModified('role') || this.isNew) {
-        this.setPermissionsByRole();
-    }
-    
-    next();
+  if (this.isModified('password')) {
+    const rawPassword = this.password; // capture raw before hashing
+    const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10);
+    this.password = await bcrypt.hash(rawPassword, salt);
+    this.tempPassword = rawPassword; // now defined (but plaintext!)
+  }
+
+  if (this.isModified('role') || this.isNew) {
+    this.setPermissionsByRole();
+  }
+
+  next();
 });
 
 // ✅ ENHANCED METHOD: Set permissions based on new role system

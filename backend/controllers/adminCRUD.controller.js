@@ -93,6 +93,7 @@ export const createDoctor = async (req, res) => {
             username: finalUsername,
             email: email.toLowerCase().trim(),
             password: password, // Will be hashed by pre-save hook
+            
             fullName: fullName.trim(),
             role: 'doctor_account',
             createdBy: req.user._id,

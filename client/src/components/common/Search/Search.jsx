@@ -46,7 +46,7 @@ const Search = ({
     // Check if user is admin or assignor
     const isAdmin = currentUser?.role === 'admin';
     const isAssignor = currentUser?.role === 'assignor';
-    const isGreenTheme = theme === 'admin'; // ✅ Green theme for admin
+    const isGreenTheme = theme === 'adminn'; // ✅ Green theme for admin
 
     // Check user permissions for creating entities
     const canCreateDoctor = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);

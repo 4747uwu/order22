@@ -305,7 +305,7 @@ const AppRoutes = () => {
       <Route 
         path="/online-reporting/:studyId" 
         element={
-          <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'typist', 'verifier']}>
+          <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'typist', 'verifier', 'admin']}>
             <OnlineReportingRouteHandler />
           </ProtectedRoute>
         } 
@@ -315,7 +315,7 @@ const AppRoutes = () => {
       <Route
         path="/doctor/viewer/:studyId"
         element={
-          <ProtectedRoute allowedRoles={['doctor_account', 'radiologist']}>
+          <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'admin']}>
             <OHIFViewerPage />
           </ProtectedRoute>
         }

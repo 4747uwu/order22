@@ -1066,7 +1066,7 @@ export const getReportForVerification = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Fix organization access check for verifiers
+// ✅ COMPLETELY REWRITTEN: Update report during verification (NEVER creates new report)
 export const updateReportDuringVerification = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -1088,6 +1088,7 @@ export const updateReportDuringVerification = async (req, res) => {
             maintainFinalized: maintainFinalizedStatus
         });
 
+        // ✅ VALIDATION: Verifier role required
         if (!user || user.role !== 'verifier') {
             return res.status(403).json({ 
                 success: false, 
@@ -1095,6 +1096,7 @@ export const updateReportDuringVerification = async (req, res) => {
             });
         }
 
+        // ✅ VALIDATION: Valid study ID
         if (!studyId || !mongoose.Types.ObjectId.isValid(studyId)) {
             return res.status(400).json({
                 success: false,
@@ -1102,6 +1104,7 @@ export const updateReportDuringVerification = async (req, res) => {
             });
         }
 
+        // ✅ VALIDATION: Content required
         if (!htmlContent || !htmlContent.trim()) {
             return res.status(400).json({
                 success: false,
@@ -1113,7 +1116,7 @@ export const updateReportDuringVerification = async (req, res) => {
         session.startTransaction();
 
         try {
-            // ✅ STEP 1: Find the study and verify access
+            // ✅ STEP 1: Find the study
             const study = await DicomStudy.findById(studyId)
                 .populate('patient', 'fullName patientId age gender')
                 .session(session);
@@ -1133,118 +1136,67 @@ export const updateReportDuringVerification = async (req, res) => {
                 workflowStatus: study.workflowStatus
             });
 
-            // ✅ UPDATED: More flexible organization access check for verifiers
-            const hasOrganizationAccess = () => {
-                // If user has no organization restriction (admin-like verifier)
-                if (!user.organizationIdentifier) {
-                    console.log('🔍 [Verifier Update] User has no org restriction - allowing access');
-                    return true;
-                }
-                
-                // If study has no organization identifier
-                if (!study.organizationIdentifier) {
-                    console.log('🔍 [Verifier Update] Study has no org identifier - allowing access');
-                    return true;
-                }
-                
-                // Standard organization match
-                const matches = study.organizationIdentifier === user.organizationIdentifier;
-                console.log('🔍 [Verifier Update] Organization match:', matches);
-                return matches;
-            };
-
-            if (!hasOrganizationAccess()) {
-                await session.abortTransaction();
-                console.error('❌ [Verifier Update] Organization access denied:', {
-                    studyOrg: study.organizationIdentifier,
-                    userOrg: user.organizationIdentifier,
-                    userId: user._id,
-                    userRole: user.role
-                });
-                return res.status(403).json({
-                    success: false,
-                    message: 'Access denied to this study'
-                });
-            }
-
-            // ✅ STEP 2: Check if study is in verifiable state
-            const verifiableStatuses = ['report_finalized', 'report_drafted', 'verification_in_progress', 'report_verified', 'report_rejected'];
-            if (!verifiableStatuses.includes(study.workflowStatus)) {
-                await session.abortTransaction();
-                console.error('❌ [Verifier Update] Study not in verifiable state:', {
-                    currentStatus: study.workflowStatus,
-                    allowedStatuses: verifiableStatuses
-                });
-                return res.status(400).json({
-                    success: false,
-                    message: `Study status '${study.workflowStatus}' is not eligible for verification updates`
-                });
-            }
-
-            // ✅ STEP 3: Find the existing finalized report to update
+            // ✅ STEP 2: Find THE MOST RECENT finalized report for this study
             const Report = mongoose.model('Report');
-            let existingReport = await Report.findOne({
+            
+            const existingReport = await Report.findOne({
                 dicomStudy: studyId,
-                reportStatus: 'finalized', // ✅ Only update finalized reports
-                // ✅ UPDATED: More flexible organization check for reports too
-                $or: [
-                    { organizationIdentifier: user.organizationIdentifier },
-                    { organizationIdentifier: { $exists: false } },
-                    { organizationIdentifier: null }
-                ]
-            }).session(session);
+                reportStatus: 'finalized'
+            })
+            .sort({ createdAt: -1 }) // ✅ Get the most recent one
+            .session(session);
 
             if (!existingReport) {
-                // ✅ FALLBACK: Try to find any finalized report for this study
-                existingReport = await Report.findOne({
-                    dicomStudy: studyId,
-                    reportStatus: 'finalized'
-                }).session(session);
-
-                if (!existingReport) {
-                    await session.abortTransaction();
-                    return res.status(404).json({
-                        success: false,
-                        message: 'No finalized report found to update'
-                    });
-                } else {
-                    console.log('⚠️ [Verifier Update] Found finalized report with different org, allowing update for verifier');
-                }
+                await session.abortTransaction();
+                console.error('❌ [Verifier Update] No finalized report found for study:', studyId);
+                return res.status(404).json({
+                    success: false,
+                    message: 'No finalized report found to update. Please finalize a report first.'
+                });
             }
 
-            console.log('📄 [Verifier Update] Found existing finalized report:', {
+            console.log('📄 [Verifier Update] Found existing finalized report to UPDATE:', {
                 reportId: existingReport._id,
+                reportObjectId: existingReport._id.toString(),
                 currentStatus: existingReport.reportStatus,
                 reportOrg: existingReport.organizationIdentifier,
-                originalContent: existingReport.reportContent?.htmlContent?.length || 0
+                originalContent: existingReport.reportContent?.htmlContent?.length || 0,
+                createdAt: existingReport.createdAt,
+                createdBy: existingReport.createdBy
             });
 
-            // ✅ STEP 4: Update the existing report content
+            // ✅ STEP 3: UPDATE THE EXISTING REPORT (DO NOT CREATE NEW)
             const now = new Date();
 
-            // Update the report content
+            // Update content
             existingReport.reportContent.htmlContent = htmlContent;
             
+            // Update plain text
+            const plainText = htmlContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            existingReport.reportContent.plainTextContent = plainText;
+
             // Update template info if provided
             if (templateInfo) {
-                existingReport.reportContent.templateInfo = templateInfo;
+                existingReport.reportContent.templateInfo = {
+                    templateId: templateInfo.templateId || templateId,
+                    templateName: templateInfo.templateName,
+                    templateCategory: templateInfo.templateCategory,
+                    templateTitle: templateInfo.templateTitle
+                };
             }
 
-            // Recalculate statistics
-            const plainText = htmlContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            // Update statistics
             existingReport.reportContent.statistics = {
                 wordCount: plainText ? plainText.split(/\s+/).length : 0,
                 characterCount: plainText ? plainText.length : 0,
-                pageCount: 1
+                pageCount: Math.ceil((plainText?.length || 0) / 2500) || 1
             };
 
-            // ✅ IMPORTANT: Keep status as finalized (don't change to draft)
-            if (maintainFinalizedStatus) {
-                existingReport.reportStatus = 'finalized';
-                existingReport.reportType = 'finalized';
-            }
+            // ✅ CRITICAL: Keep status as finalized (DO NOT change)
+            existingReport.reportStatus = 'finalized';
+            existingReport.reportType = 'finalized';
 
-            // ✅ FIXED: Add to workflow history with correct enum values
+            // ✅ Update workflow history
             if (!existingReport.workflowInfo) {
                 existingReport.workflowInfo = { statusHistory: [] };
             }
@@ -1252,16 +1204,15 @@ export const updateReportDuringVerification = async (req, res) => {
                 existingReport.workflowInfo.statusHistory = [];
             }
 
-            // ✅ FIXED: Use 'finalized' status instead of 'updated_during_verification'
             existingReport.workflowInfo.statusHistory.push({
-                status: 'finalized', // ✅ FIXED: Use valid enum value
+                status: 'finalized',
                 changedAt: now,
                 changedBy: user._id,
-                notes: verificationNotes || 'Report updated during verification process',
-                userRole: user.role
+                notes: verificationNotes || 'Report content updated by verifier during verification process',
+                userRole: 'verifier'
             });
 
-            // ✅ FIXED: Add verification action with correct enum values
+            // ✅ Update verification history
             if (!existingReport.verificationInfo) {
                 existingReport.verificationInfo = { verificationHistory: [] };
             }
@@ -1269,48 +1220,73 @@ export const updateReportDuringVerification = async (req, res) => {
                 existingReport.verificationInfo.verificationHistory = [];
             }
 
-            // ✅ FIXED: Use 'corrections_requested' instead of 'report_updated'
             existingReport.verificationInfo.verificationHistory.push({
-                action: 'corrections_requested', // ✅ FIXED: Use valid enum value
+                action: 'corrections_requested',
                 performedBy: user._id,
                 performedAt: now,
                 notes: verificationNotes || 'Report content updated during verification'
             });
 
+            // Update verifier ID if not already set
+            if (!existingReport.verifierId) {
+                existingReport.verifierId = user._id;
+            }
+
+            // Update audit info
+            if (!existingReport.auditInfo) {
+                existingReport.auditInfo = { accessLog: [] };
+            }
+            if (!existingReport.auditInfo.accessLog) {
+                existingReport.auditInfo.accessLog = [];
+            }
+
+            existingReport.auditInfo.accessLog.push({
+                accessedBy: user._id,
+                accessedAt: now,
+                accessType: 'edit',
+                ipAddress: req.ip || 'unknown',
+                userAgent: req.headers['user-agent'] || 'unknown'
+            });
+
+            existingReport.auditInfo.lastAccessedAt = now;
+            existingReport.auditInfo.accessCount = (existingReport.auditInfo.accessCount || 0) + 1;
+
             // Update timestamps
             existingReport.updatedAt = now;
 
-            // Save the updated report
+            // ✅ CRITICAL: Use save() on the EXISTING document (not create)
+            console.log('💾 [Verifier Update] Saving EXISTING report (ID: ' + existingReport._id + ')...');
             const savedReport = await existingReport.save({ session });
 
-            console.log('✅ [Verifier Update] Report updated successfully:', {
-                reportId: savedReport._id,
+            console.log('✅ [Verifier Update] Report UPDATED successfully (same ID):', {
+                reportId: savedReport._id.toString(),
+                sameIdConfirmed: savedReport._id.toString() === existingReport._id.toString(),
                 newContentLength: savedReport.reportContent?.htmlContent?.length || 0,
-                statusMaintained: savedReport.reportStatus
+                statusMaintained: savedReport.reportStatus,
+                updatedAt: savedReport.updatedAt
             });
 
-            // ✅ STEP 5: Update study to reflect the modification
+            // ✅ STEP 4: Update study metadata
             study.reportInfo = study.reportInfo || {};
             study.reportInfo.lastModifiedAt = now;
             study.reportInfo.lastModifiedBy = user._id;
-            study.reportInfo.modificationReason = 'Updated during verification';
+            study.reportInfo.modificationReason = 'Updated during verification by ' + user.fullName;
 
-            // Add to study status history
             if (!study.statusHistory) {
                 study.statusHistory = [];
             }
             study.statusHistory.push({
-                status: 'report_finalized', // ✅ FIXED: Use valid workflow status
+                status: 'report_finalized',
                 changedAt: now,
                 changedBy: user._id,
-                note: `Report updated during verification by ${user.fullName}`
+                note: `Report updated during verification by ${user.fullName || 'verifier'}`
             });
 
             await study.save({ session });
 
             await session.commitTransaction();
 
-            console.log('✅ [Verifier Update] Complete update successful');
+            console.log('✅ [Verifier Update] Transaction committed - report updated, NOT created');
 
             res.status(200).json({
                 success: true,
@@ -1320,7 +1296,8 @@ export const updateReportDuringVerification = async (req, res) => {
                     reportStatus: savedReport.reportStatus,
                     updatedAt: savedReport.updatedAt,
                     contentLength: savedReport.reportContent?.htmlContent?.length || 0,
-                    updatedBy: user.fullName
+                    updatedBy: user.fullName,
+                    action: 'UPDATED_EXISTING_REPORT' // ✅ Clear indication
                 }
             });
 

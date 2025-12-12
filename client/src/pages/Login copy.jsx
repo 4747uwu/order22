@@ -4,14 +4,14 @@ import { useAuth } from '../hooks/useAuth';
 import { Eye, EyeOff, Mail, Lock, AlertCircle, Loader, Activity, Heart, Stethoscope, Shield, CheckCircle } from 'lucide-react';
 import ColorBends from '../creative/maxColor';
 
-// Animated monochrome medical icon component
+// ✅ UPDATED: Animated medical icon component with teal colors
 const AnimatedMedicalIcon = () => {
   const [activeIcon, setActiveIcon] = useState(0);
   const icons = [
-    { Icon: Activity, color: 'text-gray-100', label: 'Analytics' },
-    { Icon: Heart, color: 'text-gray-100', label: 'Health' },
-    { Icon: Stethoscope, color: 'text-gray-100', label: 'Diagnosis' },
-    { Icon: Shield, color: 'text-gray-100', label: 'Secure' }
+    { Icon: Activity, color: 'text-teal-500', label: 'Analytics' },
+    { Icon: Heart, color: 'text-green-500', label: 'Health' },
+    { Icon: Stethoscope, color: 'text-teal-600', label: 'Diagnosis' },
+    { Icon: Shield, color: 'text-green-600', label: 'Secure' }
   ];
 
   useEffect(() => {
@@ -21,12 +21,12 @@ const AnimatedMedicalIcon = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const { Icon, label } = icons[activeIcon];
+  const { Icon, color, label } = icons[activeIcon];
 
   return (
     <div className="relative w-12 h-12 mx-auto">
-      <div className="absolute inset-0 bg-gradient-to-br from-black to-gray-700 rounded-xl animate-pulse opacity-15"></div>
-      <div className="absolute inset-0 bg-gradient-to-br from-black to-gray-700 rounded-xl flex items-center justify-center shadow-lg">
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-500 to-green-600 rounded-xl animate-pulse opacity-20"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-teal-500 to-green-600 rounded-xl flex items-center justify-center shadow-lg">
         <Icon className={`h-6 w-6 text-white transition-all duration-500 ${activeIcon ? 'scale-110' : 'scale-100'}`} />
       </div>
       <div className="absolute -bottom-5 left-1/2 transform -translate-x-1/2 text-xs font-medium text-white whitespace-nowrap">
@@ -36,13 +36,13 @@ const AnimatedMedicalIcon = () => {
   );
 };
 
-// Security badge component (monochrome)
+// ✅ Security badge component
 const SecurityBadge = () => {
   return (
-    <div className="flex items-center justify-center space-x-2 text-xs text-gray-800">
-      <Shield className="h-3 w-3 text-gray-700" />
-      <span className="font-medium text-gray-900">256-bit Encrypted</span>
-      <CheckCircle className="h-3 w-3 text-gray-700" />
+    <div className="flex items-center justify-center space-x-2 text-xs text-teal-700">
+      <Shield className="h-3 w-3" />
+      <span className="font-medium">256-bit Encrypted</span>
+      <CheckCircle className="h-3 w-3" />
     </div>
   );
 };
@@ -111,28 +111,42 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-black">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
       
-      {/* ANIMATED BACKGROUND - monochrome */}
+      {/* ✅ ANIMATED BACKGROUND - ColorBends with teal colors */}
       <div className="absolute inset-0 z-0">
-        <ColorBends
-          colors={["#000000", "#0b0b0b", "#1f2937", "#374151", "#6b7280", "#ffffff"]}
-          rotation={140}
-          speed={0.3}
-          scale={1.5}
-          frequency={1.4}
-          warpStrength={1.17}
-          mouseInfluence={0.8}
-          parallax={0.7}
-          noise={0.08}
-          transparent
-        />
+        {/* <ColorBends
+  colors={["#14b8a6", "#0d9488", "#06b6d4", "#0891b2", "#10b981", "#059669"]} 
+  rotation={60}
+  speed={0.3}
+  scale={1.2}
+  frequency={1.4}
+  warpStrength={1.2}
+  mouseInfluence={0.8}
+  parallax={0.8}
+  noise={0.05}
+  transparent 
+/> */}
+
+
+ <ColorBends
+  colors={["#14b8a6", "#0d9488", "#06b6d4", "#0891b2", "#10b981", "#059669"]} 
+  rotation={140}
+  speed={0.3}
+  scale={1.5}
+  frequency={1.4}
+  warpStrength={1.17}
+  mouseInfluence={0.8}
+  parallax={0.7}
+  noise={0.08}
+  transparent 
+/>
       </div>
 
-      {/* OVERLAY for better text readability */}
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px] z-10"></div>
+      {/* ✅ OVERLAY for better text readability */}
+      <div className="absolute inset-0 bg-black/10 backdrop-blur-[2px] z-10"></div>
 
-      {/* CENTERED LOGIN FORM */}
+      {/* ✅ CENTERED LOGIN FORM */}
       <div className="relative z-20 w-full max-w-md px-6">
         
         {/* Header with animated icon */}
@@ -148,19 +162,19 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* LOGIN FORM with glass morphism (light card on dark background) */}
-        <div className="bg-white/95 backdrop-blur-xl p-8 shadow-2xl rounded-2xl border border-gray-200">
+        {/* ✅ LOGIN FORM with glass morphism */}
+        <div className="bg-white/95 backdrop-blur-xl p-8 shadow-2xl rounded-2xl border border-white/20">
           
           <form className="space-y-5" onSubmit={handleSubmit}>
             
-            {/* Email field */}
+            {/* ✅ Email field */}
             <div>
-              <label htmlFor="email" className="block text-xs font-semibold text-gray-900 mb-2">
+              <label htmlFor="email" className="block text-xs font-semibold text-teal-700 mb-2">
                 Email Address
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-500" />
+                  <Mail className="h-5 w-5 text-teal-500" />
                 </div>
                 <input
                   id="email"
@@ -171,19 +185,19 @@ const LoginPage = () => {
                   value={formData.email}
                   onChange={handleInputChange}
                   placeholder="your.email@hospital.com"
-                  className="block w-full pl-11 pr-4 py-3 text-sm border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 focus:border-transparent transition-all bg-white text-gray-900"
+                  className="block w-full pl-11 pr-4 py-3 text-sm border border-teal-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
                 />
               </div>
             </div>
 
-            {/* Password field */}
+            {/* ✅ Password field */}
             <div>
-              <label htmlFor="password" className="block text-xs font-semibold text-gray-900 mb-2">
+              <label htmlFor="password" className="block text-xs font-semibold text-teal-700 mb-2">
                 Password
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-500" />
+                  <Lock className="h-5 w-5 text-teal-500" />
                 </div>
                 <input
                   id="password"
@@ -194,7 +208,7 @@ const LoginPage = () => {
                   value={formData.password}
                   onChange={handleInputChange}
                   placeholder="Enter your password"
-                  className="block w-full pl-11 pr-12 py-3 text-sm border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-800 focus:border-transparent transition-all bg-white text-gray-900"
+                  className="block w-full pl-11 pr-12 py-3 text-sm border border-teal-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all bg-white"
                 />
                 <button
                   type="button"
@@ -202,9 +216,9 @@ const LoginPage = () => {
                   className="absolute inset-y-0 right-0 pr-3 flex items-center"
                 >
                   {showPassword ? (
-                    <EyeOff className="h-5 w-5 text-gray-500 hover:text-gray-700 transition-colors" />
+                    <EyeOff className="h-5 w-5 text-teal-400 hover:text-teal-600 transition-colors" />
                   ) : (
-                    <Eye className="h-5 w-5 text-gray-500 hover:text-gray-700 transition-colors" />
+                    <Eye className="h-5 w-5 text-teal-400 hover:text-teal-600 transition-colors" />
                   )}
                 </button>
               </div>
@@ -218,14 +232,14 @@ const LoginPage = () => {
               </div>
             )}
 
-            {/* Submit button */}
+            {/* ✅ Submit button */}
             <button
               type="submit"
               disabled={isLoading}
               className={`group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-semibold rounded-xl text-white transition-all ${
                 isLoading
                   ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-gray-900 to-gray-600 hover:from-gray-800 hover:to-gray-500 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
+                  : 'bg-gradient-to-r from-teal-500 to-green-600 hover:from-teal-600 hover:to-green-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02]'
               }`}
             >
               {isLoading ? (
@@ -235,18 +249,18 @@ const LoginPage = () => {
                 </div>
               ) : (
                 <div className="flex items-center">
-                  <Shield className="h-5 w-5 mr-2 text-white" />
+                  <Shield className="h-5 w-5 mr-2" />
                   Secure Sign In
                 </div>
               )}
             </button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+          {/* ✅ Footer */}
+          <div className="mt-6 pt-6 border-t border-teal-100 space-y-3">
             <SecurityBadge />
             <div className="text-center">
-              <button className="text-sm text-gray-700 hover:text-gray-900 font-medium transition-colors">
+              <button className="text-sm text-teal-600 hover:text-teal-700 font-medium transition-colors">
                 Forgot Password?
               </button>
             </div>
@@ -256,26 +270,26 @@ const LoginPage = () => {
           </div>
         </div>
 
-        {/* Trust badges */}
-        <div className="flex items-center justify-center space-x-6 text-xs text-gray-200 mt-6 drop-shadow">
+        {/* ✅ Trust badges */}
+        <div className="flex items-center justify-center space-x-6 text-xs text-white/90 mt-6 drop-shadow">
           <div className="flex items-center space-x-1">
-            <Shield className="h-3 w-3 text-gray-200" />
+            <Shield className="h-3 w-3" />
             <span>HIPAA Compliant</span>
           </div>
-          <div className="w-px h-4 bg-white/10"></div>
+          <div className="w-px h-4 bg-white/30"></div>
           <div className="flex items-center space-x-1">
-            <CheckCircle className="h-3 w-3 text-gray-200" />
+            <CheckCircle className="h-3 w-3" />
             <span>ISO Certified</span>
           </div>
         </div>
 
-        {/* Logo/Branding */}
+        {/* ✅ Logo/Branding */}
         <div className="text-center mt-8">
-          <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-            <Activity className="h-4 w-4 text-gray-200" />
-            <span className="text-sm font-semibold text-gray-200">Xcentic Pacs</span>
+          <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full border border-white/20">
+            <Activity className="h-4 w-4 text-white" />
+            <span className="text-sm font-semibold text-white">Bharat Pacs</span>
           </div>
-          <p className="text-xs text-gray-400 mt-2">XCENTIC X CODINGWODING</p>
+          <p className="text-xs text-white/70 mt-2">XCENTIC X CODINGWODING</p>
         </div>
       </div>
     </div>

@@ -11,5 +11,6 @@ router.get('/studies/inprogress', protect, doctorController.getInProgressStudies
 router.get('/studies/completed', protect, doctorController.getCompletedStudies);
 router.get('/studies', protect, doctorController.getAllStudiesForDoctor);
 router.post('/create-typist', protect, doctorController.createTypist);
-
+router.get('/studies/accepted',protect, doctorController.getAcceptedStudies);
+router.get('/studies/rejected',protect, doctorController.getRejectedStudies);
 export default router;

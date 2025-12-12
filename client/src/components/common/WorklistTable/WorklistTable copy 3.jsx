@@ -19,15 +19,15 @@ const getStatusColor = (status) => {
   switch (status) {
     case 'new_study_received':
     case 'pending_assignment':
-      return 'bg-gray-100 text-gray-700 border border-gray-300';
+      return 'bg-amber-50 text-amber-700 border border-amber-200';
     case 'assigned_to_doctor':
     case 'doctor_opened_report':
     case 'report_in_progress':
-      return 'bg-gray-200 text-gray-800 border border-gray-400';
+      return 'bg-blue-50 text-blue-700 border border-blue-200';
     case 'report_drafted':
     case 'report_finalized':
     case 'final_report_downloaded':
-      return 'bg-gray-800 text-white border border-gray-900';
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     default:
       return 'bg-slate-50 text-slate-700 border border-slate-200';
   }
@@ -108,7 +108,7 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
             <div className="py-1">
               <button
                 onClick={() => { onViewStudy?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
                 <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -118,7 +118,7 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
               
               <button
                 onClick={() => { onViewReport?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
                 <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -128,7 +128,7 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
               
               <button
                 onClick={() => { onShowStudyNotes?.(study._id); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
                 <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -143,7 +143,7 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
   );
 };
 
-// ✅ PATIENT EDIT MODAL - Black & White Theme
+// ✅ PATIENT EDIT MODAL
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     patientName: '',
@@ -189,8 +189,8 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden border-2 border-gray-900">
-        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden">
+        <div className="px-6 py-4 border-b bg-gray-800 text-white">
           <h2 className="text-lg font-bold">{study?.patientName || 'Edit Study'}</h2>
         </div>
 
@@ -204,7 +204,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 type="text"
                 value={formData.patientName}
                 onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -217,7 +217,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 type="text"
                 value={formData.patientAge}
                 onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -229,7 +229,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               <select
                 value={formData.patientGender}
                 onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               >
                 <option value="">Select</option>
@@ -247,7 +247,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 type="text"
                 value={formData.studyName}
                 onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -260,7 +260,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 type="text"
                 value={formData.referringPhysician}
                 onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
@@ -273,7 +273,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 type="text"
                 value={formData.accessionNumber}
                 onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
@@ -285,24 +285,24 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 value={formData.clinicalHistory}
                 onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
                 rows={4}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm border rounded focus:ring-2 focus:ring-blue-500"
                 required
               />
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t-2 border-gray-200">
+          <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
             <button
               type="button"
               onClick={onClose}
-              className="px-6 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 border-2 border-gray-400"
+              className="px-6 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
               disabled={loading}
             >
               Close
             </button>
             <button
               type="submit"
-              className="px-6 py-2 text-sm bg-gray-900 text-white rounded hover:bg-black disabled:opacity-50 border-2 border-gray-900"
+              className="px-6 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               disabled={loading}
             >
               {loading ? 'Saving...' : 'Save'}
@@ -314,7 +314,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   );
 };
 
-// ✅ UPDATED STUDY ROW - Black & White Theme
+// ✅ UPDATED STUDY ROW - Modern styling
 const StudyRow = ({ 
   study, 
   index,
@@ -331,7 +331,7 @@ const StudyRow = ({
   onAssignmentSubmit,
   onShowTimeline,
   onToggleLock,
-  onShowDocuments,
+  onShowDocuments,  // ✅ NEW PROP
   userRole
 }) => {
 
@@ -364,10 +364,10 @@ const StudyRow = ({
   }, [isAssigned, study.radiologist, inputFocused, showAssignmentModal]);
 
   const rowClasses = `${
-    isSelected ? 'bg-gray-100 border-l-2 border-l-gray-900' : 
-    isAssigned ? 'bg-gray-50' : 
+    isSelected ? 'bg-teal-50 border-l-2 border-l-teal-500' : 
+    isAssigned ? 'bg-emerald-50/30' : 
     index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} hover:bg-gray-100 transition-all duration-200 border-b border-slate-100`;
+  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} hover:bg-teal-50/50 transition-all duration-200 border-b border-slate-100`;
 
   // ✅ FIX: Clear input value when modal opens to show ALL radiologists
   const handleAssignInputFocus = (e) => {
@@ -378,6 +378,8 @@ const StudyRow = ({
     }
 
     setInputFocused(true);
+    
+    // ✅ CRITICAL FIX: Clear input value to show full list
     setAssignInputValue('');
     
     if (assignInputRef.current) {
@@ -396,6 +398,8 @@ const StudyRow = ({
   const handleCloseAssignmentModal = () => {
     setShowAssignmentModal(false);
     setInputFocused(false);
+    
+    // ✅ Reset to radiologist name or empty
     setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
   };
 
@@ -419,7 +423,7 @@ const StudyRow = ({
 
    const handleViewOnlyClick = (e) => {
   e.stopPropagation();
-  navigate(`/doctor/viewer/${study._id}`, {
+  navigate(`/doctor/viewer/${study._id}`, {  // ✅ Changed from /view-study to /doctor/viewer
     state: { study }
   });
 };
@@ -435,8 +439,12 @@ const StudyRow = ({
     });
   };
 
+  console.log(study)
+
+  // ✅ Handle lock toggle
  const handleLockToggle = async (e) => {
     e.stopPropagation();
+
     setTogglingLock(true);
     try {
       await onToggleLock(study._id, !isLocked);
@@ -450,7 +458,7 @@ const StudyRow = ({
 
   return (
     <tr className={rowClasses}>
-      {/* BP ID */}
+      {/* BP ID - Updated styling */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
         <div className="flex items-center justify-center gap-1.5">
           <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
@@ -458,12 +466,19 @@ const StudyRow = ({
           </span>
           <button
             onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+            className="p-1 hover:bg-teal-200 rounded-md transition-colors"
           >
-            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-teal-600" />
           </button>
         </div>
       </td>
+
+      {/* CENTER NAME */}
+      {/* <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '140px' }}>
+        <div className="text-xs font-semibold text-slate-800 truncate" title={study.organizationName}>
+          {study.organizationName || '-'}
+        </div>
+      </td> */}
 
       {/* SUB CENTER */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '130px' }}>
@@ -476,17 +491,17 @@ const StudyRow = ({
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '50px' }}>
         <button
           onClick={() => onShowTimeline?.(study)}
-          className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
+          className="p-2 hover:bg-teal-200 rounded-lg transition-all hover:scale-110"
           title="View Timeline"
         >
-          <Clock className="w-4 h-4 text-gray-700" />
+          <Clock className="w-4 h-4 text-teal-600" />
         </button>
       </td>
 
       {/* PT NAME / UHID */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '160px' }}>
         <button 
-          className="w-full text-left hover:underline decoration-gray-900"
+          className="w-full text-left hover:underline decoration-teal-500"
           onClick={() => onPatienIdClick?.(study.patientId, study)}
         >
           <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
@@ -511,7 +526,7 @@ const StudyRow = ({
       {/* MODALITY */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
         <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
-          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
+          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-blue-200 text-blue-700 border border-blue-200'
         }`}>
           {study.modality || '-'}
         </span>
@@ -521,31 +536,33 @@ const StudyRow = ({
       <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '60px' }}>
         <button
           onClick={handleViewOnlyClick}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+          className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
           title="View Images Only (No Locking)"
         >
-          <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+          <Eye className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
         </button>
       </td>
 
       {/* DOWNLOAD + OHIF REPORTING */}
       <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '150px' }}>
         <div className="flex items-center justify-center gap-1.5">
+          {/* Download button */}
           <button
             ref={downloadButtonRef}
             onClick={handleDownloadClick}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+            className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
             title="Download Options"
           >
-            <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
           </button>
 
+          {/* OHIF + Reporting button */}
           <button
             onClick={handleOHIFReporting}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-all group hover:scale-110"
+            className="p-2 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110"
             title="Report + OHIF Viewer"
           >
-            <Monitor className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
           </button>
         </div>
       </td>
@@ -569,7 +586,7 @@ const StudyRow = ({
         </div>
       </td>
 
-      {/* CLINICAL HISTORY */}
+      {/* CLINICAL HISTORY - reduced by 25% (1000px → 750px) */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '750px' }}>
         <div 
           className="text-xs text-slate-700 leading-relaxed" 
@@ -582,45 +599,49 @@ const StudyRow = ({
            {study.clinicalHistory || '-'}
          </div>
 
-         <div className="flex items-center gap-4 mt-3">
+         <div class="flex items-center gap-4 mt-3">
+
           <button
            onClick={() => onEditPatient?.(study)}
-           className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
+           className="flex items-center gap-1 text-[10px] text-teal-600 hover:text-teal-700 hover:underline mt-1.5 font-medium"
          >
            <Edit className="w-4 h-4" />
            Edit
          </button>
 
           <button
-            onClick={() => onShowDocuments?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
-              hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
-          >
-            <Paperclip className={`w-4 h-4 ${
-              hasAttachments ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-            
-            {hasAttachments && study.attachments.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                {study.attachments.length}
-              </span>
-            )}
-          </button>
+  onClick={() => onShowDocuments?.(study._id)}
+  className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
+    hasAttachments ? 'bg-emerald-50' : 'hover:bg-slate-100'
+  }`}
+  title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
+>
+  <Paperclip className={`w-4 h-4 ${
+    hasAttachments ? 'text-emerald-600' : 'text-slate-400'
+  } group-hover:text-emerald-700`} />
+  
+  {/* Attachment Count Badge */}
+  {hasAttachments && study.attachments.length > 0 && (
+    <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+      {study.attachments.length}
+    </span>
+  )}
+</button>
 
+          {/* Study Notes */}
           <button
             onClick={() => onShowStudyNotes?.(study._id)}
             className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-              hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
+              hasNotes ? 'bg-emerald-50' : 'hover:bg-slate-100'
             }`}
             title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
           >
             <MessageSquare className={`w-4 h-4 ${
-              hasNotes ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
+              hasNotes ? 'text-emerald-600' : 'text-slate-400'
+            } group-hover:text-emerald-700`} />
           </button>
          </div>
+         
        </td>
 
       {/* STUDY DATE/TIME */}
@@ -635,7 +656,7 @@ const StudyRow = ({
         <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
       </td>
 
-      {/* RADIOLOGIST */}
+      {/* RADIOLOGIST - increased by 25% (150px → 190px) */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
         <div className="relative">
           <input
@@ -653,14 +674,14 @@ const StudyRow = ({
             }}
             placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
             disabled={isLocked}
-            className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
-              isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
-              isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
+            className={`w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all ${
+              isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500' : 
+              isAssigned && !inputFocused ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-medium shadow-sm' : 
               'bg-white border-slate-200 hover:border-slate-300'
             }`}
           />
           {isAssigned && !inputFocused && !isLocked && (
-            <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
+            <div className="w-2 h-2 bg-emerald-500 rounded-full absolute right-3 top-3 shadow-sm" />
           )}
           {isLocked && (
             <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
@@ -668,19 +689,29 @@ const StudyRow = ({
         </div>
       </td>
 
-      {/* CASE STATUS */}
+      {/* CASE STATUS - increased by 25% (110px → 137.5px ≈ 140px) */}
       <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '140px' }}>
         <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
           {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
         </span>
       </td>
 
+      {/* VIEW */}
+      {/* <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '60px' }}>
+        <button
+          onClick={() => onViewStudy?.(study)}
+          className="text-xs text-teal-600 hover:text-teal-700 font-semibold px-3 py-1.5 hover:bg-teal-50 rounded-lg transition-all"
+        >
+          View
+        </button>
+      </td> */}
+
       {/* PRINT REPORT */}
       <td className="px-3 py-3.5 text-center border-r border-b border-b border-slate-200" style={{ width: '90px' }}>
         <div className="text-xs text-slate-600">
           {study.printCount > 0 ? (
             <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
-              <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
+              <span className="w-1.5 h-1.5 bg-teal-500 rounded-full"></span>
               {study.printCount}
             </span>
           ) : (
@@ -692,16 +723,18 @@ const StudyRow = ({
       {/* ACTION */}
       <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: '200px' }}>
         <div className="flex items-center justify-center gap-1.5">
+          {/* Download */}
           <button
             ref={downloadButtonRef}
             onClick={handleDownloadClick}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+            className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
             title="Download Options"
           >
-            <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
           </button>
 
-          <button
+          {/* Lock/Unlock */}
+                 <button
             onClick={handleLockToggle}
             disabled={togglingLock}
             className={`p-2 rounded-lg transition-all group hover:scale-110 ${
@@ -717,16 +750,29 @@ const StudyRow = ({
             )}
           </button>
 
+          {/* Attachments */}
+         
+
+          {/* View Report */}
           <button
             onClick={() => onViewReport?.(study)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+            className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
             title="View Report"
           >
-            <FileText className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
           </button>
+
+          {/* Action Dropdown */}
+          {/* <ActionDropdown 
+            study={study}
+            onViewReport={onViewReport}
+            onShowStudyNotes={onShowStudyNotes}
+            onViewStudy={onViewStudy}
+          /> */}
         </div>
       </td>
 
+      {/* Download Options Modal */}
       {showDownloadOptions && (
         <DownloadOptions
           study={study}
@@ -736,6 +782,7 @@ const StudyRow = ({
         />
       )}
 
+      {/* ASSIGNMENT MODAL */}
       {showAssignmentModal && (
         <AssignmentModal
           study={study}
@@ -743,14 +790,14 @@ const StudyRow = ({
           onSubmit={handleAssignmentSubmit}
           onClose={handleCloseAssignmentModal}
           position={assignmentModalPosition}
-          searchTerm={assignInputValue}
+          searchTerm={assignInputValue} // ✅ This will be empty string on open
         />
       )}
     </tr>
   );
 };
 
-// ✅ UPDATED MAIN TABLE - Black & White Theme
+// ✅ UPDATED MAIN TABLE - with pagination footer
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
@@ -764,6 +811,7 @@ const WorklistTable = ({
   onUpdateStudyDetails,
   userRole = 'viewer',
   onToggleStudyLock,
+  // ✅ NEW: Pagination props
   pagination = {
     currentPage: 1,
     totalPages: 1,
@@ -782,8 +830,9 @@ const WorklistTable = ({
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
   const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
   const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
-  const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
+  const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });  // ✅ NEW STATE
 
+  // Handlers
   const handleShowTimeline = useCallback((study) => {
     setTimelineModal({ show: true, studyId: study._id, studyData: study });
   }, []);
@@ -817,17 +866,24 @@ const WorklistTable = ({
     setPatientEditModal({ show: false, study: null });
   }, [onUpdateStudyDetails]);
 
+  // ✅ NEW: Handle show documents
   const handleShowDocuments = useCallback((studyId) => {
     setDocumentsModal({ show: true, studyId });
   }, []);
 
+  // ✅ Handle study lock toggle
    const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
     try {
+      console.log("yes it is there")
+      
       const response = await api.post(`/admin/toggle-study-lock/${studyId}`, {
         shouldLock
       });
 
+      console.log(response)
+
       if (response.data.success) {
+        // Refresh study data or update local state
         onToggleStudyLock?.(studyId, shouldLock);
       } else {
         throw new Error(response.data.message || 'Failed to toggle lock');
@@ -841,7 +897,7 @@ const WorklistTable = ({
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-900 border-t-transparent mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent mx-auto mb-4"></div>
           <p className="text-gray-600 text-sm">Loading studies...</p>
         </div>
       </div>
@@ -862,66 +918,73 @@ const WorklistTable = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border-2 border-gray-300">
+    <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border border-slate-200">
+      {/* ✅ SCROLLABLE TABLE CONTAINER */}
       <div className="flex-1 overflow-x-auto overflow-y-auto">
         <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
-          {/* ✅ BLACK & WHITE HEADER */}
+          {/* ✅ MODERN HEADER - Teal gradient */}
           <thead className="sticky top-0 z-10">
-            <tr className="text-white text-xs font-bold bg-gradient-to-r from-gray-800 via-gray-900 to-black shadow-lg">
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+            <tr className="text-white text-xs font-bold bg-gradient-to-r from-teal-600 via-teal-700 to-cyan-700 shadow-lg">
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
                 <div className="flex items-center justify-center gap-1.5">
                   <span>Xcentic ID</span>
                 </div>
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '130px' }}>
+              {/* <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '140px' }}>
+                CENTER<br/>NAME
+              </th> */}
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '130px' }}>
                 SUB<br/>CENTER
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '50px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '50px' }}>
                 <Clock className="w-4 h-4 mx-auto" />
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '160px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '160px' }}>
                 PT NAME /<br/>UHID
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '70px' }}>
                 AGE/<br/>SEX
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px', minWidth: '110px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '70px', minWidth: '110px' }}>
                 MOD
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '60px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '60px' }}>
                 <Eye className="w-4 h-4 mx-auto" />
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '150px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '150px' }}>
                 <div className="flex items-center justify-center gap-2">
                   <Download className="w-4 h-4" />
                   <Monitor className="w-4 h-4" />
                 </div>
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '90px' }}>
                 STUDY /<br/>SERIES / IMAGES
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '110px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '110px' }}>
                 PT ID/<br/>ACC. NO.
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '900px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '900px' }}>
                 REFERRAL<br/>DOCTOR
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '1000px', minWidth: '300px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '1000px', minWidth: '300px' }}>
                 CLINICAL<br/>HISTORY
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
                 STUDY<br/>DATE/TIME
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
                 UPLOAD<br/>DATE/TIME
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
                 RADIOLOGIST
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
                 STATUS
               </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
+              {/* <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '60px' }}>
+                VIEW
+              </th> */}
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '90px' }}>
                 PRINT<br/>REPORT
               </th>
               <th className="px-3 py-4 text-center" style={{ width: '200px' }}>
@@ -934,6 +997,7 @@ const WorklistTable = ({
             </tr>
           </thead>
 
+          {/* ✅ TABLE BODY */}
           <tbody>
             {studies.map((study, index) => (
               <StudyRow
@@ -953,7 +1017,7 @@ const WorklistTable = ({
                 onAssignmentSubmit={onAssignmentSubmit}
                 onShowTimeline={handleShowTimeline}
                 onToggleLock={handleToggleStudyLock}
-                onShowDocuments={handleShowDocuments}
+                onShowDocuments={handleShowDocuments}  // ✅ NEW PROP
                 userRole={userRole}
               />
             ))}
@@ -961,6 +1025,7 @@ const WorklistTable = ({
         </table>
       </div>
 
+      {/* ✅ PAGINATION FOOTER */}
       {studies.length > 0 && (
         <TableFooter
           currentPage={pagination.currentPage}
@@ -974,11 +1039,13 @@ const WorklistTable = ({
         />
       )}
 
+      {/* ✅ MODALS */}
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
       {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
       {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
       {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
       {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
+      {/* ✅ NEW: Documents Modal */}
       {documentsModal.show && (
         <StudyDocumentsManager
           studyId={documentsModal.studyId}

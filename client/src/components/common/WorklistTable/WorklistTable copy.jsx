@@ -8,24 +8,26 @@ import ReportModal from '../ReportModal/ReportModal';
 import StudyNotesComponent from '../StudyNotes/StudyNotesComponent';
 import TimelineModal from '../TimelineModal';
 import DownloadOptions from '../DownloadOptions/DownloadOptions';
+import StudyDocumentsManager  from '../../StudyDocuments/StudyDocumentsManager';  // ✅ NEW IMPORT
 import api from '../../../services/api'
+import TableFooter from './TableFooter';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
   switch (status) {
     case 'new_study_received':
     case 'pending_assignment':
-      return 'bg-yellow-100 text-yellow-800';
+      return 'bg-amber-50 text-amber-700 border border-amber-200';
     case 'assigned_to_doctor':
     case 'doctor_opened_report':
     case 'report_in_progress':
-      return 'bg-blue-100 text-blue-800';
+      return 'bg-blue-50 text-blue-700 border border-blue-200';
     case 'report_drafted':
     case 'report_finalized':
     case 'final_report_downloaded':
-      return 'bg-green-100 text-green-800';
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
     default:
-      return 'bg-gray-100 text-gray-800';
+      return 'bg-slate-50 text-slate-700 border border-slate-200';
   }
 };
 
@@ -89,10 +91,10 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
     <div className="relative">
       <button 
         onClick={() => setIsOpen(!isOpen)}
-        className="px-2 py-1 text-xs font-medium bg-gray-100 hover:bg-gray-200 rounded transition-colors flex items-center gap-1 w-full justify-center"
+        className="px-3 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all flex items-center gap-1.5 w-full justify-center shadow-sm hover:shadow"
       >
-        Actions
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <span>Actions</span>
+        <svg className="w-3.5 h-3.5 transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
@@ -100,13 +102,13 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
       {isOpen && (
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-gray-200 z-[9999]">
+          <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-[9999] overflow-hidden">
             <div className="py-1">
               <button
                 onClick={() => { onViewStudy?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 View Study
@@ -114,9 +116,9 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
               
               <button
                 onClick={() => { onViewReport?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 View Report
@@ -124,9 +126,9 @@ const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) 
               
               <button
                 onClick={() => { onShowStudyNotes?.(study._id); setIsOpen(false); }}
-                className="flex items-center w-full px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-700 transition-colors"
               >
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                 </svg>
                 Study Notes
@@ -310,7 +312,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   );
 };
 
-// ✅ MAIN STUDY ROW COMPONENT
+// ✅ UPDATED STUDY ROW - Modern styling
 const StudyRow = ({ 
   study, 
   index,
@@ -327,6 +329,7 @@ const StudyRow = ({
   onAssignmentSubmit,
   onShowTimeline,
   onToggleLock,
+  onShowDocuments,  // ✅ NEW PROP
   userRole
 }) => {
   const assignInputRef = useRef(null);
@@ -343,7 +346,6 @@ const StudyRow = ({
   const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
   const isAssigned = study.isAssigned;
   const isLocked = study?.isLocked || false;
-  // prefer explicit flag from backend but fall back to discussions array
   const hasNotes = study.hasStudyNotes === true || (study.discussions && study.discussions.length > 0);
   const hasAttachments = study.attachments && study.attachments.length > 0;
   const canToggleLock = userRole === 'admin' || userRole === 'assignor';
@@ -357,10 +359,10 @@ const StudyRow = ({
   }, [isAssigned, study.radiologist, inputFocused, showAssignmentModal]);
 
   const rowClasses = `${
-    isSelected ? 'bg-blue-100' : 
-    isAssigned ? 'bg-green-50' : 
-    index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-  } ${isUrgent ? 'border-l-4 border-l-red-600' : ''} hover:bg-blue-50 transition-colors`;
+    isSelected ? 'bg-teal-50 border-l-2 border-l-teal-500' : 
+    isAssigned ? 'bg-emerald-50/30' : 
+    index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
+  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} hover:bg-teal-50/50 transition-all duration-200 border-b border-slate-100`;
 
   // ✅ FIX: Clear input value when modal opens to show ALL radiologists
   const handleAssignInputFocus = (e) => {
@@ -414,8 +416,10 @@ const StudyRow = ({
     }
   };
 
+  console.log(study)
+
   // ✅ Handle lock toggle
-  const handleLockToggle = async (e) => {
+ const handleLockToggle = async (e) => {
     e.stopPropagation();
 
     setTogglingLock(true);
@@ -431,104 +435,103 @@ const StudyRow = ({
 
   return (
     <tr className={rowClasses}>
-      {/* BP ID */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
-        <div className="flex items-center justify-center gap-1">
-          <span className="text-xs font-mono font-medium text-gray-800 truncate" title={study.bharatPacsId}>
+      {/* BP ID - Updated styling */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
             {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
           </span>
           <button
             onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-            className="p-1 hover:bg-gray-200 rounded"
+            className="p-1 hover:bg-teal-200 rounded-md transition-colors"
           >
-            <Copy className="w-3.5 h-3.5 text-gray-500" />
+            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-teal-600" />
           </button>
         </div>
       </td>
 
       {/* CENTER NAME */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '140px' }}>
-        <div className="text-xs font-semibold text-gray-900 truncate" title={study.organizationName}>
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '140px' }}>
+        <div className="text-xs font-semibold text-slate-800 truncate" title={study.organizationName}>
           {study.organizationName || '-'}
         </div>
       </td>
 
       {/* SUB CENTER */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '130px' }}>
-        <div className="text-xs text-gray-700 truncate" title={study.centerName}>
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '130px' }}>
+        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
           {study.centerName || '-'}
         </div>
       </td>
 
-      {/* TRACK CASE - ✅ REDUCED WIDTH */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '50px' }}>
+      {/* TRACK CASE */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '50px' }}>
         <button
           onClick={() => onShowTimeline?.(study)}
-          className="p-1.5 hover:bg-purple-100 rounded-full transition-colors"
+          className="p-2 hover:bg-teal-200 rounded-lg transition-all hover:scale-110"
           title="View Timeline"
         >
-          <Clock className="w-4 h-4 text-purple-600" />
+          <Clock className="w-4 h-4 text-teal-600" />
         </button>
       </td>
 
       {/* PT NAME / UHID */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '160px' }}>
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '160px' }}>
         <button 
-          className="w-full text-left hover:underline"
+          className="w-full text-left hover:underline decoration-teal-500"
           onClick={() => onPatienIdClick?.(study.patientId, study)}
         >
-          <div className="text-xs font-semibold text-gray-900 truncate" title={study.patientName}>
+          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
             {study.patientName || '-'}
-            {isUrgent && <span className="ml-1">🚨</span>}
+            {isUrgent && <span className="text-rose-500">●</span>}
           </div>
-          <div className="text-[10px] text-gray-500 truncate">
+          <div className="text-[10px] text-slate-500 truncate">
             UHID: {study.patientId || '-'}
           </div>
         </button>
       </td>
 
       {/* AGE/SEX */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '70px' }}>
-        <div className="text-xs font-medium text-gray-800">
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
+        <div className="text-xs font-medium text-slate-700">
           {study.ageGender !== 'N/A' ? study.ageGender : 
            study.patientAge && study.patientSex ? 
            `${study.patientAge}/${study.patientSex.charAt(0)}` : '-'}
         </div>
       </td>
 
-      {/* MODALITY - ✅ REDUCED WIDTH */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '70px' }}>
-        <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-          isUrgent ? 'bg-red-600 text-white' : 'bg-blue-100 text-blue-800'
+      {/* MODALITY */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
+        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
+          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-blue-200 text-blue-700 border border-blue-200'
         }`}>
           {study.modality || '-'}
         </span>
       </td>
 
       {/* STUDY / SERIES / IMAGES */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
-        <div className="text-[12px] text-gray-600">{study.studyDescription || 'N/A'}</div>
-        <div className="text-xs font-medium text-gray-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-        {/* <div className="text-[10px] text-gray-500">I: {study.instanceCount || 0}</div> */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '90px' }}>
+        <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
       </td>
 
       {/* PT ID / ACC NO */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '110px' }}>
-        <div className="text-[11px] text-gray-700 truncate">ID: {study.patientId || '-'}</div>
-        <div className="text-[10px] text-gray-500 truncate">Acc: {study.accessionNumber || '-'}</div>
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '110px' }}>
+        <div className="text-[11px] text-slate-700 truncate">ID: {study.patientId || '-'}</div>
+        <div className="text-[10px] text-slate-500 truncate">Acc: {study.accessionNumber || '-'}</div>
       </td>
 
       {/* REFERRAL DOCTOR */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '375px' }}>
-        <div className="text-xs text-gray-700 truncate" title={study.referralNumber}>
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '375px' }}>
+        <div className="text-xs text-slate-700 truncate" title={study.referralNumber}>
           {study.referralNumber !== 'N/A' ? study.referralNumber : '-'}
         </div>
       </td>
 
-      {/* CLINICAL HISTORY */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '1000px' }}>
+      {/* CLINICAL HISTORY - reduced by 25% (1000px → 750px) */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '750px' }}>
         <div 
-          className="text-xs text-gray-700" 
+          className="text-xs text-slate-700 leading-relaxed" 
           style={{
             whiteSpace: 'normal',
             overflowWrap: 'break-word',
@@ -537,29 +540,66 @@ const StudyRow = ({
         >
            {study.clinicalHistory || '-'}
          </div>
-         <button
+
+         <div class="flex items-center gap-4 mt-3">
+
+          <button
            onClick={() => onEditPatient?.(study)}
-           className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline mt-1 font-medium"
+           className="flex items-center gap-1 text-[10px] text-teal-600 hover:text-teal-700 hover:underline mt-1.5 font-medium"
          >
-           <Edit className="w-3 h-3" />
+           <Edit className="w-4 h-4" />
            Edit
          </button>
+
+          <button
+  onClick={() => onShowDocuments?.(study._id)}
+  className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
+    hasAttachments ? 'bg-emerald-50' : 'hover:bg-slate-100'
+  }`}
+  title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
+>
+  <Paperclip className={`w-4 h-4 ${
+    hasAttachments ? 'text-emerald-600' : 'text-slate-400'
+  } group-hover:text-emerald-700`} />
+  
+  {/* Attachment Count Badge */}
+  {hasAttachments && study.attachments.length > 0 && (
+    <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+      {study.attachments.length}
+    </span>
+  )}
+</button>
+
+          {/* Study Notes */}
+          <button
+            onClick={() => onShowStudyNotes?.(study._id)}
+            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+              hasNotes ? 'bg-emerald-50' : 'hover:bg-slate-100'
+            }`}
+            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
+          >
+            <MessageSquare className={`w-4 h-4 ${
+              hasNotes ? 'text-emerald-600' : 'text-slate-400'
+            } group-hover:text-emerald-700`} />
+          </button>
+         </div>
+         
        </td>
 
       {/* STUDY DATE/TIME */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
-        <div className="text-[11px] font-medium text-gray-800">{formatDate(study.studyDate)}</div>
-        <div className="text-[10px] text-gray-500">{study.studyTime || '-'}</div>
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
+        <div className="text-[10px] text-slate-500">{study.studyTime || '-'}</div>
       </td>
 
       {/* UPLOAD DATE/TIME */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '100px' }}>
-        <div className="text-[11px] font-medium text-gray-800">{formatDate(study.createdAt)}</div>
-        <div className="text-[10px] text-gray-500">{formatTime(study.createdAt)}</div>
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
+        <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
       </td>
 
-      {/* RADIOLOGIST */}
-      <td className="px-2 py-3 border-r border-b border-gray-300" style={{ width: '150px' }}>
+      {/* RADIOLOGIST - increased by 25% (150px → 190px) */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
         <div className="relative">
           <input
             ref={assignInputRef}
@@ -568,7 +608,6 @@ const StudyRow = ({
             onChange={(e) => setAssignInputValue(e.target.value)}
             onFocus={handleAssignInputFocus}
             onBlur={() => {
-              // ✅ Delay to allow modal click
               setTimeout(() => {
                 if (!showAssignmentModal) {
                   setInputFocused(false);
@@ -577,108 +616,92 @@ const StudyRow = ({
             }}
             placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
             disabled={isLocked}
-            className={`w-full px-2 py-1.5 text-xs border rounded focus:ring-2 focus:ring-blue-500 ${
-              isLocked ? 'bg-gray-100 cursor-not-allowed' : 
-              isAssigned && !inputFocused ? 'bg-green-50 border-green-300 text-green-800 font-medium' : 
-              'bg-white border-gray-300'
+            className={`w-full px-3 py-2 text-xs border rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-all ${
+              isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500' : 
+              isAssigned && !inputFocused ? 'bg-emerald-50 border-emerald-300 text-emerald-700 font-medium shadow-sm' : 
+              'bg-white border-slate-200 hover:border-slate-300'
             }`}
           />
           {isAssigned && !inputFocused && !isLocked && (
-            <div className="w-2 h-2 bg-green-500 rounded-full absolute right-2 top-2" />
+            <div className="w-2 h-2 bg-emerald-500 rounded-full absolute right-3 top-3 shadow-sm" />
           )}
           {isLocked && (
-            <Lock className="w-4 h-4 text-red-600 absolute right-2 top-2" />
+            <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
           )}
         </div>
       </td>
 
-      {/* CASE STATUS - ✅ REDUCED WIDTH */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
-        <span className={`px-2 py-1 rounded text-[10px] font-medium ${getStatusColor(study.workflowStatus)}`}>
-          {study.caseStatus || formatWorkflowStatus(study.workflowStatus)}
+      {/* CASE STATUS - increased by 25% (110px → 137.5px ≈ 140px) */}
+      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '140px' }}>
+        <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
+          {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
         </span>
       </td>
 
-      {/* VIEW - ✅ REDUCED WIDTH */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '60px' }}>
+      {/* VIEW */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '60px' }}>
         <button
           onClick={() => onViewStudy?.(study)}
-          className="text-xs text-blue-600 hover:underline font-semibold px-2 py-1"
+          className="text-xs text-teal-600 hover:text-teal-700 font-semibold px-3 py-1.5 hover:bg-teal-50 rounded-lg transition-all"
         >
           View
         </button>
       </td>
 
       {/* PRINT REPORT */}
-      <td className="px-2 py-3 text-center border-r border-b border-gray-300" style={{ width: '90px' }}>
-        <div className="text-xs text-gray-700">{study.printCount > 0 ? `${study.printCount} prints` : 'No prints'}</div>
+      <td className="px-3 py-3.5 text-center border-r border-b border-b border-slate-200" style={{ width: '90px' }}>
+        <div className="text-xs text-slate-600">
+          {study.printCount > 0 ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
+              <span className="w-1.5 h-1.5 bg-teal-500 rounded-full"></span>
+              {study.printCount}
+            </span>
+          ) : (
+            <span className="text-slate-400">No prints</span>
+          )}
+        </div>
       </td>
 
-      {/* ACTION - ✅ ENHANCED WITH DOWNLOAD & LOCK TOGGLE */}
-      <td className="px-2 py-3 text-center border-b border-gray-300" style={{ width: '200px' }}>
-        <div className="flex items-center justify-center gap-1">
-          {/* Download Options */}
+      {/* ACTION */}
+      <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: '200px' }}>
+        <div className="flex items-center justify-center gap-1.5">
+          {/* Download */}
           <button
             ref={downloadButtonRef}
             onClick={handleDownloadClick}
-            className="p-1.5 hover:bg-blue-100 rounded-full transition-colors group"
+            className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
             title="Download Options"
           >
-            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-800" />
+            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
           </button>
 
-          {/* ✅ Study Lock/Unlock Toggle - MAKE SURE THIS IS PRESENT */}
-          
-            <button
-              onClick={handleLockToggle}
-              disabled={togglingLock}
-              className={`p-1.5 rounded-full transition-colors group ${
-                togglingLock ? 'opacity-50 cursor-not-allowed' : 
-                isLocked ? 'hover:bg-red-100' : 'hover:bg-gray-100'
-              }`}
-              title={isLocked ? `Locked by ${study.studyLock?.lockedByName} - Click to unlock` : 'Lock Study'}
-            >
-              {isLocked ? (
-                <Lock className="w-4 h-4 text-red-600 group-hover:text-red-800" />
-              ) : (
-                <Unlock className="w-4 h-4 text-gray-500 group-hover:text-red-600" />
-              )}
-            </button>
-          
+          {/* Lock/Unlock */}
+                 <button
+            onClick={handleLockToggle}
+            disabled={togglingLock}
+            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+              togglingLock ? 'opacity-50 cursor-not-allowed' : 
+              isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
+            }`}
+            title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
+          >
+            {isLocked ? (
+              <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
+            ) : (
+              <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
+            )}
+          </button>
 
           {/* Attachments */}
-          <button
-            onClick={() => console.log('Show attachments:', study._id)}
-            className={`p-1.5 rounded-full transition-colors group ${
-              hasAttachments ? 'bg-green-100' : 'hover:bg-gray-100'
-            }`}
-            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'No attachments'}
-          >
-            <Paperclip className={`w-4 h-4 ${
-              hasAttachments ? 'text-green-600' : 'text-gray-400'
-            } group-hover:text-green-800`} />
-          </button>
-
-          {/* Study Notes */}
-          <button
-            onClick={() => onShowStudyNotes?.(study._id)}
-            className={`p-1.5 rounded-full transition-colors group ${
-              hasNotes ? 'bg-green-100' : 'hover:bg-gray-100'
-            }`}
-            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
-          >
-            <MessageSquare className={`w-4 h-4 ${
-              hasNotes ? 'text-green-600' : 'text-gray-400'
-            } group-hover:text-green-800`} />
-          </button>
+         
 
           {/* View Report */}
           <button
             onClick={() => onViewReport?.(study)}
-            className="p-1.5 hover:bg-purple-100 rounded-full transition-colors group"
+            className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
             title="View Report"
           >
-            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-800" />
+            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
           </button>
 
           {/* Action Dropdown */}
@@ -716,7 +739,7 @@ const StudyRow = ({
   );
 };
 
-// ✅ MAIN WORKLIST TABLE
+// ✅ UPDATED MAIN TABLE - with pagination footer
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
@@ -728,8 +751,19 @@ const WorklistTable = ({
   availableAssignees = { radiologists: [], verifiers: [] },
   onAssignmentSubmit,
   onUpdateStudyDetails,
-  userRole = 'viewer', // ✅ NEW: Pass user role
-  onToggleStudyLock // ✅ NEW: Lock toggle handler
+  userRole = 'viewer',
+  onToggleStudyLock,
+  // ✅ NEW: Pagination props
+  pagination = {
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
+  },
+  onPageChange,
+  onRecordsPerPageChange
 }) => {
   
   const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
@@ -738,6 +772,7 @@ const WorklistTable = ({
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
   const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
   const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
+  const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });  // ✅ NEW STATE
 
   // Handlers
   const handleShowTimeline = useCallback((study) => {
@@ -769,16 +804,17 @@ const WorklistTable = ({
   }, []);
 
   const handleSavePatientEdit = useCallback(async (formData) => {
-    try {
-      await onUpdateStudyDetails?.(formData);
-      setPatientEditModal({ show: false, study: null });
-    } catch (error) {
-      throw error;
-    }
+    await onUpdateStudyDetails?.(formData);
+    setPatientEditModal({ show: false, study: null });
   }, [onUpdateStudyDetails]);
 
-  // ✅ NEW: Handle study lock toggle
-  const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
+  // ✅ NEW: Handle show documents
+  const handleShowDocuments = useCallback((studyId) => {
+    setDocumentsModal({ show: true, studyId });
+  }, []);
+
+  // ✅ Handle study lock toggle
+   const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
     try {
       console.log("yes it is there")
       
@@ -824,40 +860,71 @@ const WorklistTable = ({
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-white border border-gray-300">
+    <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border border-slate-200">
       {/* ✅ SCROLLABLE TABLE CONTAINER */}
-      <div className="flex-1 overflow-x-auto">
-        <table className="min-w-full border-collapse"  style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
-          {/* ✅ EXCEL-LIKE HEADER - GREEN */}
+      <div className="flex-1 overflow-x-auto overflow-y-auto">
+        <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
+          {/* ✅ MODERN HEADER - Teal gradient */}
           <thead className="sticky top-0 z-10">
-            <tr className="text-white text-xs font-bold bg-gradient-to-r from-green-600 to-green-700">
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>BP ID</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '140px' }}>CENTER<br/>NAME</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '130px' }}>SUB<br/>CENTER</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '50px' }}>
-                <div className="flex items-center justify-center gap-1">
-                  <Clock className="w-3.5 h-3.5" />
+            <tr className="text-white text-xs font-bold bg-gradient-to-r from-teal-600 via-teal-700 to-cyan-700 shadow-lg">
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
+                <div className="flex items-center justify-center gap-1.5">
+                  <span>BP ID</span>
                 </div>
               </th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '160px' }}>PT NAME /<br/>UHID</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '70px' }}>AGE/<br/>SEX</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '70px' }}>MOD</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>STUDY /<br/>SERIES /<br/>IMAGES</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '110px' }}>PT ID/<br/>ACC. NO.</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '800px' }}>REFERRAL<br/>DOCTOR</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '2000px', minWidth: '400px' }}>CLINICAL<br/>HISTORY</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>STUDY<br/>DATE/TIME</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '100px' }}>UPLOAD<br/>DATE/TIME</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '150px' }}>RADIOLOGIST</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>STATUS</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '60px' }}>VIEW</th>
-              <th className="px-2 py-3 text-center border-r border-green-800" style={{ width: '90px' }}>PRINT<br/>REPORT</th>
-              <th className="px-2 py-3 text-center" style={{ width: '80px' }}>
-                <div className="flex items-center justify-center gap-1">
-                  <Download className="w-3.5 h-3.5" />
-                  <Lock className="w-3.5 h-3.5" />
-                  <MessageSquare className="w-3.5 h-3.5" />
-                  ACTION
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '140px' }}>
+                CENTER<br/>NAME
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '130px' }}>
+                SUB<br/>CENTER
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '50px' }}>
+                <Clock className="w-4 h-4 mx-auto" />
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '160px' }}>
+                PT NAME /<br/>UHID
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '70px' }}>
+                AGE/<br/>SEX
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '70px', minWidth: '110px' }}>
+                MOD
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '90px' }}>
+                STUDY /<br/>SERIES / IMAGES
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '110px' }}>
+                PT ID/<br/>ACC. NO.
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '800px' }}>
+                REFERRAL<br/>DOCTOR
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '1500px', minWidth: '300px' }}>
+                CLINICAL<br/>HISTORY
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
+                STUDY<br/>DATE/TIME
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '100px' }}>
+                UPLOAD<br/>DATE/TIME
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
+                RADIOLOGIST
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
+                STATUS
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '60px' }}>
+                VIEW
+              </th>
+              <th className="px-3 py-4 text-center border-r border-teal-500/30" style={{ width: '90px' }}>
+                PRINT<br/>REPORT
+              </th>
+              <th className="px-3 py-4 text-center" style={{ width: '200px' }}>
+                <div className="flex items-center justify-center gap-2">
+                  <Download className="w-4 h-4" />
+                  <Lock className="w-4 h-4" />
+                  <MessageSquare className="w-4 h-4" />
                 </div>
               </th>
             </tr>
@@ -883,6 +950,7 @@ const WorklistTable = ({
                 onAssignmentSubmit={onAssignmentSubmit}
                 onShowTimeline={handleShowTimeline}
                 onToggleLock={handleToggleStudyLock}
+                onShowDocuments={handleShowDocuments}  // ✅ NEW PROP
                 userRole={userRole}
               />
             ))}
@@ -890,12 +958,34 @@ const WorklistTable = ({
         </table>
       </div>
 
+      {/* ✅ PAGINATION FOOTER */}
+      {studies.length > 0 && (
+        <TableFooter
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          totalRecords={pagination.totalRecords}
+          recordsPerPage={pagination.recordsPerPage}
+          onPageChange={onPageChange}
+          onRecordsPerPageChange={onRecordsPerPageChange}
+          displayedRecords={studies.length}
+          loading={loading}
+        />
+      )}
+
       {/* ✅ MODALS */}
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
       {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
       {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
       {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
       {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
+      {/* ✅ NEW: Documents Modal */}
+      {documentsModal.show && (
+        <StudyDocumentsManager
+          studyId={documentsModal.studyId}
+          isOpen={documentsModal.show}
+          onClose={() => setDocumentsModal({ show: false, studyId: null })}
+        />
+      )}
     </div>
   );
 };

@@ -371,7 +371,6 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ ENHANCED: Execute study query with pagination support
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     try {
         const skip = (page - 1) * limit;
@@ -383,6 +382,11 @@ const executeStudyQuery = async (queryFilters, limit, page = 1) => {
             .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
             .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
             
+            // ✅ ADD ATTACHMENTS POPULATION
+    .populate('attachments.documentId', 'fileName fileSize contentType uploadedAt')
+    .populate('attachments.uploadedBy', 'fullName email role')
+
+    
             // Assignment references
             .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
             .populate('assignment.assignedBy', 'fullName firstName lastName email role')

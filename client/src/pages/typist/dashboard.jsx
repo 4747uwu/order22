@@ -1,16 +1,26 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
-import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
+import DoctorWorklistTable from '../../components/common/WorklistTable/doctorWorklistTable';
 import api from '../../services/api';
-import { RefreshCw, FileText, Eye, Clock, CheckCircle2, AlertCircle, Edit, User, Keyboard } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { RefreshCw, FileText, Eye, Clock, CheckCircle, AlertCircle, Edit, User, Keyboard } from 'lucide-react';import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 
 const TypistDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
+  const navigate = useNavigate();
+  
+  // ✅ PAGINATION STATE
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
   
   // State management
   const [studies, setStudies] = useState([]);
@@ -19,112 +29,65 @@ const TypistDashboard = () => {
   const [searchFilters, setSearchFilters] = useState({});
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
-  
-  // ✅ TYPIST-SPECIFIC: Linked radiologist info
-  const [linkedRadiologist, setLinkedRadiologist] = useState(null);
 
-  // ✅ API VALUES STATE (separate from local study counts)
+  // ✅ API VALUES STATE - 2 categories
   const [apiValues, setApiValues] = useState({
     total: 0,
     pending: 0,
-    inprogress: 0,
-    completed: 0
+    typed: 0
   });
 
-  const intervalRef = useRef(null);
-
-  // ✅ USE: API values for tab counts
   const tabCounts = useMemo(() => ({
     all: apiValues.total,
     pending: apiValues.pending,
-    inprogress: apiValues.inprogress,
-    completed: apiValues.completed
+    typed: apiValues.typed
   }), [apiValues]);
 
-  // Column configuration (typist-specific)
-  const getDefaultColumnConfig = () => ({
-    checkbox: { visible: true, order: 1, label: 'Select' },
-    workflowStatus: { visible: true, order: 2, label: 'Status' },
-    patientId: { visible: true, order: 3, label: 'Patient ID' },
-    patientName: { visible: true, order: 4, label: 'Patient Name' },
-    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
-    studyDescription: { visible: true, order: 6, label: 'Description' },
-    seriesCount: { visible: true, order: 7, label: 'Series' },
-    modality: { visible: true, order: 8, label: 'Modality' },
-    location: { visible: true, order: 9, label: 'Location' },
-    studyDate: { visible: true, order: 10, label: 'Study Date' },
-    uploadDate: { visible: false, order: 11, label: 'Upload Date' },
-    reportedDate: { visible: true, order: 12, label: 'Report Date' },
-    reportedBy: { visible: false, order: 13, label: 'Reported By' },
-    accession: { visible: false, order: 14, label: 'Accession' },
-    seenBy: { visible: false, order: 15, label: 'Seen By' },
-    actions: { visible: true, order: 16, label: 'Actions' },
-    assignedDoctor: { visible: false, order: 17, label: 'Assignment' } // Hide assignment for typist
-  });
-
-  const [columnConfig, setColumnConfig] = useState(() => {
-    try {
-      const saved = localStorage.getItem('typistWorklistColumnConfig');
-      if (saved) {
-        const parsedConfig = JSON.parse(saved);
-        return { ...getDefaultColumnConfig(), ...parsedConfig };
-      }
-    } catch (error) {
-      console.warn('Error loading typist column config:', error);
-    }
-    return getDefaultColumnConfig();
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('typistWorklistColumnConfig', JSON.stringify(columnConfig));
-    } catch (error) {
-      console.warn('Error saving typist column config:', error);
-    }
-  }, [columnConfig]);
-
-  // API endpoints
+  // ✅ API endpoints
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/typist/studies/pending';
-      case 'inprogress': return '/typist/studies/inprogress';
-      case 'completed': return '/typist/studies/completed';
+      case 'typed': return '/typist/studies/typed';
       default: return '/typist/studies';
     }
   }, [currentView]);
 
-  // ✅ FETCH LINKED RADIOLOGIST INFO
-  const fetchLinkedRadiologist = useCallback(async () => {
-    try {
-      const response = await api.get('/typist/radiologist');
-      if (response.data.success) {
-        setLinkedRadiologist(response.data.radiologist);
-      }
-    } catch (err) {
-      console.error('❌ Error fetching linked radiologist:', err);
-    }
-  }, []);
-
-  const fetchStudies = useCallback(async (filters = {}) => {
+  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
+  const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
+    
+    const requestPage = page !== null ? page : pagination.currentPage;
+    const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
+    
     try {
       const endpoint = getApiEndpoint();
-      const params = { ...filters, category: currentView === 'all' ? undefined : currentView };
+      const params = { 
+        ...filters,
+        page: requestPage,
+        limit: requestLimit
+      };
       
       console.log('🔍 TYPIST: Fetching studies from:', endpoint, 'with params:', params);
       
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
-        // ✅ USE SAME PATTERN AS DOCTOR DASHBOARD
         const rawStudies = response.data.data || [];
-        console.log('📦 TYPIST: Raw studies received:', rawStudies.length);
         
-        // ✅ FORMAT STUDIES IN FRONTEND USING STUDY FORMATTER
+        // ✅ FORMAT STUDIES
         const formattedStudies = formatStudiesForWorklist(rawStudies);
-        console.log('✨ TYPIST: Formatted studies:', formattedStudies.length);
-        
         setStudies(formattedStudies);
+        
+        if (response.data.pagination) {
+          setPagination({
+            currentPage: response.data.pagination.currentPage,
+            totalPages: response.data.pagination.totalPages,
+            totalRecords: response.data.pagination.totalRecords,
+            recordsPerPage: response.data.pagination.limit,
+            hasNextPage: response.data.pagination.hasNextPage,
+            hasPrevPage: response.data.pagination.hasPrevPage
+          });
+        }
       }
     } catch (err) {
       console.error('❌ Error fetching typist studies:', err);
@@ -133,9 +96,9 @@ const TypistDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, currentView]);
+  }, [getApiEndpoint, searchFilters, currentView]);
 
-  // ✅ Fetch analytics AND set API values
+  // ✅ FETCH ANALYTICS
   const fetchAnalytics = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
@@ -144,199 +107,94 @@ const TypistDashboard = () => {
       
       const response = await api.get('/typist/values', { params });
       if (response.data.success) {
-        // ✅ SET API VALUES for tab counts
         setApiValues({
           total: response.data.total || 0,
           pending: response.data.pending || 0,
-          inprogress: response.data.inprogress || 0,
-          completed: response.data.completed || 0
+          typed: response.data.typed || 0
         });
 
         console.log('📊 TYPIST API VALUES UPDATED:', {
           total: response.data.total,
           pending: response.data.pending,
-          inprogress: response.data.inprogress,
-          completed: response.data.completed
+          typed: response.data.typed
         });
       }
     } catch (error) {
       console.error('Error fetching typist analytics:', error);
-      setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
+      setApiValues({ total: 0, pending: 0, typed: 0 });
     }
   }, [searchFilters]);
 
-  // ✅ Initial data fetch
+  // ✅ INITIAL FETCH
   useEffect(() => {
-    fetchLinkedRadiologist();
-    fetchStudies(searchFilters);
-    fetchAnalytics(searchFilters);
-  }, [fetchLinkedRadiologist, fetchStudies, fetchAnalytics]);
-
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    intervalRef.current = setInterval(() => {
-      console.log('🔄 Auto-refreshing typist dashboard data...');
-      fetchStudies(searchFilters);
-      fetchAnalytics(searchFilters);
-    }, 5 * 60 * 1000);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
+    const defaultFilters = {
+      dateFilter: 'today',
+      dateType: 'createdAt',
+      modality: 'all',
+      priority: 'all'
     };
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+    
+    setSearchFilters(defaultFilters);
+    fetchStudies(defaultFilters, 1, 50);
+    fetchAnalytics(defaultFilters);
+  }, []);
 
-  // ✅ Handlers with proper analytics refresh (same as doctor)
+  // ✅ FETCH WHEN VIEW CHANGES
+  useEffect(() => {
+    console.log(`🔄 [Typist] currentView changed to: ${currentView}`);
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]);
+
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`📄 [Typist] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
+
+  const handleRecordsPerPageChange = useCallback((newLimit) => {
+    console.log(`📊 [Typist] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    fetchStudies(searchFilters, 1, newLimit);
+  }, [fetchStudies, searchFilters]);
+
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 TYPIST SEARCH: New search params:', searchParams);
+    console.log('🔍 [Typist] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchAnalytics(searchParams);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
-    console.log('🔍 TYPIST FILTER CHANGE:', filters);
+    console.log('🔍 [Typist] FILTER CHANGE:', filters);
     setSearchFilters(filters);
+    fetchStudies(filters, 1, pagination.recordsPerPage);
     fetchAnalytics(filters);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
   
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 TYPIST TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`🔄 [Typist] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
-    setSelectedStudies([]);
-    
-    // ✅ PRESERVE IMPORTANT FILTERS when switching tabs
-    setSearchFilters(prevFilters => {
-      const preservedFilters = {
-        // Date filters
-        dateFilter: prevFilters.dateFilter,
-        dateType: prevFilters.dateType,
-        customDateFrom: prevFilters.customDateFrom,
-        customDateTo: prevFilters.customDateTo,
-        // Other filters
-        modality: prevFilters.modality,
-        labId: prevFilters.labId,
-        priority: prevFilters.priority,
-        // Pagination
-        limit: prevFilters.limit,
-        // Category (update to new view)
-        category: view === 'all' ? undefined : view
-      };
-      
-      // Remove undefined values
-      const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
-      );
-      
-      // ✅ IMMEDIATELY refresh analytics with preserved filters
-      fetchAnalytics(cleanedFilters);
-      return cleanedFilters;
-    });
-  }, [currentView, fetchAnalytics]);
-
-  const handleSelectAll = useCallback((checked) => {
-    setSelectedStudies(checked ? studies.map(study => study._id) : []);
-  }, [studies]);
-
-  const handleSelectStudy = useCallback((studyId) => {
-    setSelectedStudies(prev => 
-      prev.includes(studyId) 
-        ? prev.filter(id => id !== studyId) 
-        : [...prev, studyId]
-    );
-  }, []);
+  }, [currentView]);
 
   const handleRefresh = useCallback(() => {
-    console.log('🔄 TYPIST MANUAL REFRESH');
-    fetchLinkedRadiologist();
-    fetchStudies(searchFilters);
+    console.log('🔄 [Typist] Manual refresh');
+    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
     fetchAnalytics(searchFilters);
-  }, [fetchLinkedRadiologist, fetchStudies, fetchAnalytics, searchFilters]);
+  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
-  // Typist-specific handlers
-  const handleStartTyping = useCallback((study) => {
-    console.log('⌨️ Start typing report for study:', study._id);
-    toast.success('Opening report editor...');
-    // Navigate to report typing interface
-  }, []);
-
-  const handleEditReport = useCallback((study) => {
-    console.log('📝 Edit report for study:', study._id);
-    toast.success('Opening report editor...');
-    // Navigate to report editing interface
-  }, []);
-
-  const handleViewDicom = useCallback((study) => {
-    console.log('🖼️ Opening DICOM viewer for study:', study._id);
-    toast.success('Opening DICOM viewer...');
-    // Navigate to DICOM viewer
-  }, []);
-
-  // Column configuration handlers
-  const handleColumnChange = useCallback((columnKey, visible) => {
-    setColumnConfig(prev => ({
-      ...prev,
-      [columnKey]: {
-        ...prev[columnKey],
-        visible
-      }
-    }));
-  }, []);
-
-  const handleResetColumns = useCallback(() => {
-    const defaultConfig = getDefaultColumnConfig();
-    setColumnConfig(defaultConfig);
-  }, []);
-
-  // ✅ TYPIST-SPECIFIC: Additional actions for navbar
-  const additionalActions = [
-    {
-      label: 'Type Report',
-      icon: Keyboard,
-      onClick: () => handleStartTyping(selectedStudies[0]),
-      variant: 'primary',
-      tooltip: 'Start typing report',
-      disabled: selectedStudies.length !== 1
-    },
-    {
-      label: 'Edit Report',
-      icon: Edit,
-      onClick: () => handleEditReport(selectedStudies[0]),
-      variant: 'secondary',
-      tooltip: 'Edit existing report',
-      disabled: selectedStudies.length !== 1
-    },
-    {
-      label: 'DICOM Viewer',
-      icon: Eye,
-      onClick: () => handleViewDicom(selectedStudies[0]),
-      variant: 'secondary',
-      tooltip: 'Open DICOM viewer',
-      disabled: selectedStudies.length !== 1
-    }
+  // ✅ 2 CATEGORY TABS (Pending & Typed)
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
+    { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Clock },
+    { key: 'typed', label: 'Typed', count: tabCounts.typed, icon: CheckCircle }
   ];
 
-  console.log('🔍 TYPIST DASHBOARD DEBUG:', {
-    studies: studies.length,
-    apiValues,
-    tabCounts,
-    currentView,
-    searchFilters,
-    linkedRadiologist
-  });
-
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-teal-50 flex flex-col">
       <Navbar
         title="Typist Dashboard"
-        subtitle={
-          linkedRadiologist 
-            ? `${currentOrganizationContext || 'Organization View'} • Supporting ${linkedRadiologist.fullName}`
-            : `${currentOrganizationContext || 'Organization View'} • Report Typing`
-        }
+        subtitle={`${currentOrganizationContext || 'Organization View'} • Supporting ${currentUser?.roleConfig?.linkedRadiologist ? 'Radiologist' : 'Doctor'}`}
         showOrganizationSelector={false}
         onRefresh={handleRefresh}
-        additionalActions={additionalActions}
+        additionalActions={[]}
         notifications={0}
       />
       
@@ -349,77 +207,61 @@ const TypistDashboard = () => {
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
-          <div className="flex items-center justify-between px-4 py-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-black uppercase tracking-wide">
-                TYPING WORKLIST
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                Typing Worklist
               </h2>
-              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border">
-                {studies.length} studies loaded
+              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
+                {studies.length} loaded
               </span>
-              {selectedStudies.length > 0 && (
-                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
-                  {selectedStudies.length} selected
-                </span>
-              )}
-              {/* ✅ SHOW LINKED RADIOLOGIST INFO */}
-              {linkedRadiologist && (
-                <div className="flex items-center space-x-2 px-2 py-1 rounded border border-green-200 bg-green-50">
-                  <User className="w-3 h-3 text-green-600" />
-                  <span className="text-xs text-green-700 font-medium">
-                    {linkedRadiologist.fullName}
-                  </span>
-                </div>
-              )}
             </div>
 
-            {/* ✅ Tab counts using API values */}
-            <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
-              {[
-                { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
-                { key: 'pending', label: 'Ready to Type', count: tabCounts.pending, icon: Clock },
-                { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress, icon: AlertCircle },
-                { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => handleViewChange(tab.key)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-r border-gray-300 last:border-r-0 transition-colors ${
-                      currentView === tab.key
-                        ? 'bg-black text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon size={12} />
-                    {tab.label} ({tab.count})
-                  </button>
-                );
-              })}
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <ColumnConfigurator
-                columnConfig={columnConfig}
-                onColumnChange={handleColumnChange}
-                onResetToDefault={handleResetColumns}
-              />
+            <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center gap-1.5 min-w-max">
+                {categoryTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleViewChange(tab.key)}
+                      className={`
+                        flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+                        ${currentView === tab.key
+                          ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md'
+                          : 'bg-white text-slate-600 hover:bg-teal-50 border border-slate-200'
+                        }
+                      `}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      <span className={`
+                        ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold
+                        ${currentView === tab.key
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-100 text-slate-700'
+                        }
+                      `}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
           <div className="flex-1 min-h-0">
-            <WorklistTable
+            <DoctorWorklistTable
               studies={studies}
               loading={loading}
-              columnConfig={columnConfig}
-              selectedStudies={selectedStudies}
-              onSelectAll={handleSelectAll}
-              onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
-              onAssignDoctor={() => {}} // Disabled for typist
+              onUpdateStudyDetails={() => {}}
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
             />
           </div>
         </div>

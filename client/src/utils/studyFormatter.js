@@ -173,15 +173,18 @@ export const formatStudyForWorklist = (rawStudy) => {
     const lockedBy = rawStudy.studyLock?.lockedByName || null;
     const lockedAt = rawStudy.studyLock?.lockedAt || null;
 
+
     // ✅ HAS NOTES / ATTACHMENTS FLAGS (prefer explicit DB flags, fallback to arrays)
     const hasStudyNotes = rawStudy.hasStudyNotes === true || (rawStudy.discussions && rawStudy.discussions.length > 0);
-    const hasAttachments = rawStudy.hasAttachments === true || (rawStudy.attachments && rawStudy.attachments.length > 0);
+    const attachments = rawStudy.attachments || [];
+    const hasAttachments = rawStudy.hasAttachments === true || attachments.length > 0;
 
     // ✅ ASSIGNMENT INFO - handle multiple active assignments
     const assignmentInfo = formatAssignmentInfo(rawStudy.assignment);
 
     // ✅ VERIFICATION INFO
     const verificationInfo = getVerificationInfo(rawStudy);
+    const verificationNotes = rawStudy.reportInfo?.verificationInfo?.rejectionReason || '-'
 
     // ✅ PRINT HISTORY
     const printCount = rawStudy.printHistory?.length || 0;
@@ -255,6 +258,8 @@ export const formatStudyForWorklist = (rawStudy) => {
       verificationStatus: verificationInfo.verificationStatus,
       verifiedBy: verificationInfo.verifiedBy,
       verifiedAt: verificationInfo.verifiedAt,
+      verificationNotes: verificationNotes
+,
       
       // ✅ PRINT INFO
       printCount,
@@ -281,7 +286,9 @@ export const formatStudyForWorklist = (rawStudy) => {
       _raw: rawStudy,
       _verificationInfo: verificationInfo,
       _radiologistInfo: radiologistInfo,
-      _assignmentInfo: assignmentInfo
+      _assignmentInfo: assignmentInfo,
+      attachments: attachments,
+      hasAttachments: hasAttachments
     };
   } catch (error) {
     console.error('Error formatting study:', error);

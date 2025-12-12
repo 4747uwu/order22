@@ -1,15 +1,22 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
 import DoctorWorklistTable from '../../components/common/WorklistTable/doctorWorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import CreateTypistModal from '../../components/doctor/CreateTypistModal';
 import api from '../../services/api';
-import { RefreshCw, FileText, Eye, Clock, CheckCircle2, AlertCircle, UserPlus } from 'lucide-react';
-import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
-import { useNavigate } from 'react-router-dom';
+import { 
+  FileText, 
+  Clock, 
+  CheckCircle2,
+  UserPlus,
+  CheckCircle,
+  XCircle
+} from 'lucide-react';
+import toast from 'react-hot-toast';
 
 const DoctorDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
@@ -34,20 +41,22 @@ const DoctorDashboard = () => {
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [showTypistModal, setShowTypistModal] = useState(false);
 
-  // ✅ API VALUES STATE (separate from local study counts)
+  // ✅ UPDATED: API VALUES STATE - 5 categories (pending, completed, accepted, rejected)
   const [apiValues, setApiValues] = useState({
     total: 0,
     pending: 0,
-    inprogress: 0,
-    completed: 0
+    completed: 0,
+    accepted: 0,
+    rejected: 0
   });
 
-  // ✅ USE: API values for tab counts
+  // ✅ UPDATED: USE API values for tab counts - 5 categories
   const tabCounts = useMemo(() => ({
     all: apiValues.total,
     pending: apiValues.pending,
-    inprogress: apiValues.inprogress,
-    completed: apiValues.completed
+    completed: apiValues.completed,
+    accepted: apiValues.accepted,
+    rejected: apiValues.rejected
   }), [apiValues]);
 
   // Column configuration (doctor-specific)
@@ -78,7 +87,7 @@ const DoctorDashboard = () => {
         return { ...getDefaultColumnConfig(), ...parsedConfig };
       }
     } catch (error) {
-      console.warn('Error loading doctor column config:', error);
+      console.warn('Error loading column config:', error);
     }
     return getDefaultColumnConfig();
   });
@@ -87,101 +96,101 @@ const DoctorDashboard = () => {
     try {
       localStorage.setItem('doctorWorklistColumnConfig', JSON.stringify(columnConfig));
     } catch (error) {
-      console.warn('Error saving doctor column config:', error);
+      console.warn('Error saving column config:', error);
     }
   }, [columnConfig]);
 
-  // ✅ API endpoints
+  // ✅ UPDATED: API endpoints - 5 categories
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/doctor/studies/pending';
-      case 'inprogress': return '/doctor/studies/inprogress';
       case 'completed': return '/doctor/studies/completed';
+      case 'accepted': return '/doctor/studies/accepted';
+      case 'rejected': return '/doctor/studies/rejected';
       default: return '/doctor/studies';
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION (EXACT SAME AS ADMIN)
+  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
     
-    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
     try {
       const endpoint = getApiEndpoint();
-      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
-      
       const params = { 
-        ...activeFilters,
+        ...filters,
         page: requestPage,
         limit: requestLimit
       };
-      delete params.category; // ✅ Don't send category in params (it's in the endpoint)
       
-      console.log('🔍 [Doctor] Fetching studies:', {
-        endpoint,
-        requestPage,
-        requestLimit,
-        filters: params
-      });
+      console.log('🔍 DOCTOR: Fetching studies from:', endpoint, 'with params:', params);
       
       const response = await api.get(endpoint, { params });
-      
       if (response.data.success) {
         const rawStudies = response.data.data || [];
+        
+        // ✅ FORMAT STUDIES BEFORE SETTING STATE (like admin dashboard)
         const formattedStudies = formatStudiesForWorklist(rawStudies);
+        console.log('✅ DOCTOR: Formatted studies:', {
+          raw: rawStudies.length,
+          formatted: formattedStudies.length,
+          sample: formattedStudies[0]
+        });
+        
         setStudies(formattedStudies);
         
-        // ✅ CRITICAL: Update pagination with response data but keep our requested values
-        setPagination({
-          currentPage: requestPage, // Use what we REQUESTED
-          totalPages: response.data.pagination?.totalPages || 1,
-          totalRecords: response.data.pagination?.totalRecords || 0,
-          recordsPerPage: requestLimit, // Use what we REQUESTED
-          hasNextPage: response.data.pagination?.hasNextPage || false,
-          hasPrevPage: response.data.pagination?.hasPrevPage || false
-        });
-        
-        console.log('✅ [Doctor] Studies loaded:', {
-          count: formattedStudies.length,
-          page: requestPage,
-          limit: requestLimit,
-          total: response.data.pagination?.totalRecords
-        });
+        if (response.data.pagination) {
+          setPagination({
+            currentPage: response.data.pagination.currentPage,
+            totalPages: response.data.pagination.totalPages,
+            totalRecords: response.data.pagination.totalRecords,
+            recordsPerPage: response.data.pagination.limit,
+            hasNextPage: response.data.pagination.hasNextPage,
+            hasPrevPage: response.data.pagination.hasPrevPage
+          });
+        }
       }
     } catch (err) {
-      console.error('❌ [Doctor] Error fetching studies:', err);
+      console.error('❌ Error fetching doctor studies:', err);
       setError('Failed to fetch studies.');
       setStudies([]);
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
+  }, [getApiEndpoint, searchFilters, currentView]);
 
-  // ✅ FETCH ANALYTICS (API VALUES)
+  // ✅ UPDATED: FETCH ANALYTICS - 5 categories
   const fetchAnalytics = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
-      console.log('🔍 [Doctor] Fetching analytics with params:', params);
+      console.log('🔍 DOCTOR ANALYTICS: Fetching with params:', params);
       
       const response = await api.get('/doctor/values', { params });
       if (response.data.success) {
         setApiValues({
           total: response.data.total || 0,
           pending: response.data.pending || 0,
-          inprogress: response.data.inprogress || 0,
-          completed: response.data.completed || 0
+          completed: response.data.completed || 0,
+          accepted: response.data.accepted || 0,
+          rejected: response.data.rejected || 0
         });
 
-        console.log('📊 [Doctor] API VALUES UPDATED:', response.data);
+        console.log('📊 DOCTOR API VALUES UPDATED:', {
+          total: response.data.total,
+          pending: response.data.pending,
+          completed: response.data.completed,
+          accepted: response.data.accepted,
+          rejected: response.data.rejected
+        });
       }
     } catch (error) {
       console.error('Error fetching doctor analytics:', error);
-      setApiValues({ total: 0, pending: 0, inprogress: 0, completed: 0 });
+      setApiValues({ total: 0, pending: 0, completed: 0, accepted: 0, rejected: 0 });
     }
   }, [searchFilters]);
 
@@ -197,28 +206,23 @@ const DoctorDashboard = () => {
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
     fetchAnalytics(defaultFilters);
-  }, []); // ✅ Empty deps - only run once on mount
+  }, []);
 
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
     console.log(`🔄 [Doctor] currentView changed to: ${currentView}`);
-    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
+  }, [currentView]);
 
-  // ✅ SIMPLIFIED: Handle page change
+  // ✅ HANDLE PAGE CHANGE
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Doctor] Changing page: ${pagination.currentPage} -> ${newPage}`);
-    
-    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
   }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
-  // ✅ SIMPLIFIED: Handle records per page change
+  // ✅ HANDLE RECORDS PER PAGE CHANGE
   const handleRecordsPerPageChange = useCallback((newLimit) => {
     console.log(`📊 [Doctor] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
-    
-    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
   }, [fetchStudies, searchFilters]);
 
@@ -226,8 +230,6 @@ const DoctorDashboard = () => {
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Doctor] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
-    
-    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchAnalytics(searchParams);
   }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
@@ -235,13 +237,10 @@ const DoctorDashboard = () => {
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Doctor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
-    
-    // ✅ Reset to page 1, keep current limit
     fetchStudies(filters, 1, pagination.recordsPerPage);
     fetchAnalytics(filters);
   }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
   
-  // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Doctor] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
@@ -258,7 +257,6 @@ const DoctorDashboard = () => {
         : [...prev, studyId]
     );
   }, []);
-  console.log(studies)
 
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Doctor] Manual refresh');
@@ -293,27 +291,18 @@ const DoctorDashboard = () => {
 
   const handleUpdateStudyDetails = useCallback(async (formData) => {
     try {
-      console.log('🔄 Updating study details:', formData);
+      const response = await api.put(`/admin/studies/${formData.studyId}/update-details`, formData);
       
-      const response = await api.put(`/doctor/studies/${formData.studyId}/details`, {
-        patientName: formData.patientName,
-        patientAge: formData.patientAge,
-        patientGender: formData.patientGender,
-        studyName: formData.studyName,
-        referringPhysician: formData.referringPhysician,
-        accessionNumber: formData.accessionNumber,
-        clinicalHistory: formData.clinicalHistory
-      });
-
       if (response.data.success) {
         toast.success('Study details updated successfully');
         fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
         fetchAnalytics(searchFilters);
+      } else {
+        toast.error('Failed to update study details');
       }
     } catch (error) {
       console.error('Error updating study details:', error);
-      toast.error(error.response?.data?.message || 'Failed to update study details');
-      throw error;
+      toast.error('Error updating study details');
     }
   }, [fetchStudies, searchFilters, fetchAnalytics, pagination.currentPage, pagination.recordsPerPage]);
 
@@ -335,12 +324,13 @@ const DoctorDashboard = () => {
     }
   ];
 
-  // ✅ UPDATED CATEGORY TABS
+  // ✅ UPDATED: 5 CATEGORY TABS (added accepted and rejected)
   const categoryTabs = [
     { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
     { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Clock },
-    { key: 'inprogress', label: 'In Progress', count: tabCounts.inprogress, icon: AlertCircle },
-    { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 }
+    { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 },
+    { key: 'accepted', label: 'Accepted', count: tabCounts.accepted, icon: CheckCircle },
+    { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: XCircle }
   ];
 
   return (
@@ -388,27 +378,25 @@ const DoctorDashboard = () => {
                     <button
                       key={tab.key}
                       onClick={() => handleViewChange(tab.key)}
-                      className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
-                        currentView === tab.key
-                          ? 'bg-teal-600 text-white shadow-md scale-[1.02]'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
-                      }`}
+                      className={`
+                        flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+                        ${currentView === tab.key
+                          ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md'
+                          : 'bg-white text-slate-600 hover:bg-teal-50 border border-slate-200'
+                        }
+                      `}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <Icon className="w-3 h-3" />
-                        <span className="truncate">{tab.label}</span>
-                        <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
-                          currentView === tab.key 
-                            ? 'bg-white text-teal-600' 
-                            : 'bg-white text-slate-600'
-                        }`}>
-                          {tab.count}
-                        </span>
-                      </div>
-                      
-                      {currentView === tab.key && (
-                        <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
-                      )}
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      <span className={`
+                        ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold
+                        ${currentView === tab.key
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-100 text-slate-700'
+                        }
+                      `}>
+                        {tab.count}
+                      </span>
                     </button>
                   );
                 })}

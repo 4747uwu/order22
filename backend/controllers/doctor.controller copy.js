@@ -390,7 +390,6 @@ const executeStudyQuery = async (queryFilters, limit, page = 1) => {
 };
 
 // ✅ 1. GET DASHBOARD VALUES
-// ✅ UPDATED: GET DASHBOARD VALUES - 5 categories
 export const getValues = async (req, res) => {
     console.log(`🔍 Doctor dashboard: Fetching values with filters: ${JSON.stringify(req.query)}`);
     try {
@@ -398,19 +397,17 @@ export const getValues = async (req, res) => {
         const user = req.user;
         
         if (!user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
 
         const queryFilters = buildDoctorBaseQuery(req, user);
         
         console.log(`🔍 Doctor dashboard query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        // ✅ UPDATED: 4 status categories (pending, completed, accepted, rejected)
         const statusCategories = {
-            pending: ['new_study_received', 'pending_assignment', 'assigned_to_doctor'],
-            completed: ['doctor_opened_report', 'report_in_progress', 'report_drafted', 'report_finalized', 'final_report_downloaded', 'archived'],
-            accepted: ['report_verified'],
-            rejected: ['report_rejected']
+            pending: ['new_study_received', 'pending_assignment'],
+            inprogress: ['assigned_to_doctor', 'doctor_opened_report', 'report_in_progress', 'report_drafted'],
+            completed: ['report_finalized', 'final_report_downloaded', 'archived']
         };
 
         const pipeline = [
@@ -429,23 +426,24 @@ export const getValues = async (req, res) => {
         ]);
 
         if (statusCountsResult.status === 'rejected') {
-            console.error('❌ Status counts query failed');
+            throw new Error(`Status counts query failed: ${statusCountsResult.reason.message}`);
         }
 
-        const statusCounts = statusCountsResult.value || [];
+        const statusCounts = statusCountsResult.value;
         const totalFiltered = totalFilteredResult.status === 'fulfilled' ? totalFilteredResult.value : 0;
 
-        // ✅ UPDATED: Calculate all 4 categories
         let pending = 0;
+        let inprogress = 0;
         let completed = 0;
-        let accepted = 0;
-        let rejected = 0;
 
         statusCounts.forEach(({ _id: status, count }) => {
-            if (statusCategories.pending.includes(status)) pending += count;
-            if (statusCategories.completed.includes(status)) completed += count;
-            if (statusCategories.accepted.includes(status)) accepted += count;
-            if (statusCategories.rejected.includes(status)) rejected += count;
+            if (statusCategories.pending.includes(status)) {
+                pending += count;
+            } else if (statusCategories.inprogress.includes(status)) {
+                inprogress += count;
+            } else if (statusCategories.completed.includes(status)) {
+                completed += count;
+            }
         });
 
         const processingTime = Date.now() - startTime;
@@ -455,9 +453,8 @@ export const getValues = async (req, res) => {
             success: true,
             total: totalFiltered,
             pending,
+            inprogress,
             completed,
-            accepted,
-            rejected,
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
@@ -466,10 +463,12 @@ export const getValues = async (req, res) => {
         };
 
         if (process.env.NODE_ENV === 'development') {
-            response._debug = {
-                statusCounts,
-                queryFilters,
-                statusCategories
+            response.debug = {
+                filtersApplied: queryFilters,
+                rawStatusCounts: statusCounts,
+                userRole: user.role,
+                userId: user._id,
+                organization: user.organizationIdentifier
             };
         }
 
@@ -598,7 +597,6 @@ export const getInProgressStudies = async (req, res) => {
 };
 
 // ✅ 4. GET COMPLETED STUDIES WITH PAGINATION
-// ✅ UPDATED: GET COMPLETED STUDIES - Now includes all completed statuses
 export const getCompletedStudies = async (req, res) => {
     try {
         const startTime = Date.now();
@@ -609,20 +607,10 @@ export const getCompletedStudies = async (req, res) => {
         
         const user = req.user;
         if (!user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
 
-        // ✅ UPDATED: Expanded completed statuses to include all report stages
-        const completedStatuses = [
-            'doctor_opened_report',      // Started reporting
-            'report_in_progress',        // Actively reporting  
-            'report_drafted',            // Draft saved
-            'report_finalized',          // Report finalized
-            'report_verified',           // Verified by verifier
-            'report_rejected',           // Rejected by verifier
-            'final_report_downloaded',   // Downloaded
-            'archived'                   // Archived
-        ];
+        const completedStatuses = ['report_finalized', 'final_report_downloaded', 'archived'];
         const queryFilters = buildDoctorBaseQuery(req, user, completedStatuses);
 
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
@@ -815,121 +803,11 @@ export const createTypist = async (req, res) => {
     }
 };
 
-// ✅ NEW: GET ACCEPTED STUDIES (report_verified)
-export const getAcceptedStudies = async (req, res) => {
-    try {
-        const startTime = Date.now();
-        const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1;
-        
-        console.log(`✅ DOCTOR ACCEPTED: Fetching - Page: ${page}, Limit: ${limit}`);
-        
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
-        }
-
-        const acceptedStatuses = ['report_verified'];
-        const queryFilters = buildDoctorBaseQuery(req, user, acceptedStatuses);
-
-        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
-        const processingTime = Date.now() - startTime;
-        console.log(`✅ DOCTOR ACCEPTED: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
-
-        return res.status(200).json({
-            success: true,
-            count: studies.length,
-            totalRecords: totalStudies,
-            data: studies,
-            pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
-                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
-            },
-            metadata: {
-                category: 'accepted',
-                statusesIncluded: acceptedStatuses,
-                organizationFilter: user.organizationIdentifier,
-                userRole: user.role,
-                processingTime: processingTime
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ DOCTOR ACCEPTED: Error fetching accepted studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching accepted studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-// ✅ NEW: GET REJECTED STUDIES (report_rejected)
-export const getRejectedStudies = async (req, res) => {
-    try {
-        const startTime = Date.now();
-        const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1;
-        
-        console.log(`❌ DOCTOR REJECTED: Fetching - Page: ${page}, Limit: ${limit}`);
-        
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'Unauthorized' });
-        }
-
-        const rejectedStatuses = ['report_rejected'];
-        const queryFilters = buildDoctorBaseQuery(req, user, rejectedStatuses);
-
-        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
-        const processingTime = Date.now() - startTime;
-        console.log(`✅ DOCTOR REJECTED: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
-
-        return res.status(200).json({
-            success: true,
-            count: studies.length,
-            totalRecords: totalStudies,
-            data: studies,
-            pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
-                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
-            },
-            metadata: {
-                category: 'rejected',
-                statusesIncluded: rejectedStatuses,
-                organizationFilter: user.organizationIdentifier,
-                userRole: user.role,
-                processingTime: processingTime
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ DOCTOR REJECTED: Error fetching rejected studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching rejected studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
 export default {
     getValues,
     getPendingStudies,
     getInProgressStudies,
     getCompletedStudies,
-    getAcceptedStudies,     // ✅ NEW
-    getRejectedStudies,     // ✅ NEW
     getAllStudiesForDoctor,
     createTypist
 };

@@ -42,6 +42,8 @@ const ACTION_TYPES = {
     PRIORITY_CHANGED: 'priority_changed',
     STUDY_OPENED: 'study_opened',
     STUDY_VIEWED: 'study_viewed',
+        STUDY_COPIED: 'study_copied',
+
     
     // Administrative
     STUDY_DELETED: 'study_deleted',
@@ -62,9 +64,46 @@ const DicomStudySchema = new mongoose.Schema({
     
     studyInstanceUID: {
         type: String,
-        unique: true,
-        index: { unique: true, background: true } 
+        // unique: true,
+        index: { background: true } 
     },
+
+    copiedFrom: {
+    studyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'DicomStudy'
+    },
+    bharatPacsId: String,
+    organizationIdentifier: String,
+    organizationName: String,
+    copiedAt: Date,
+    copiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    reason: String
+},
+
+copiedTo: [{
+    studyId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'DicomStudy'
+    },
+    bharatPacsId: String,
+    organizationIdentifier: String,
+    organizationName: String,
+    copiedAt: Date,
+    copiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }
+}],
+
+isCopiedStudy: {
+    type: Boolean,
+    default: false,
+    index: { background: true }
+},
     
     organization: {
         type: mongoose.Schema.Types.ObjectId,
@@ -859,6 +898,35 @@ const DicomStudySchema = new mongoose.Schema({
         default: false,
         index: { background: true }
     },
+
+    attachments: [{
+    documentId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Document',
+        required: true
+    },
+    fileName: {
+        type: String,
+        required: true
+    },
+    fileSize: {
+        type: Number,
+        required: true
+    },
+    contentType: {
+        type: String,
+        required: true
+    },
+    uploadedAt: {
+        type: Date,
+        default: Date.now
+    },
+    uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    }
+}],
     
     referringPhysician: {
         name: { type: String, trim: true },

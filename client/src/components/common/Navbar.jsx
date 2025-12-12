@@ -12,8 +12,10 @@ import {
   Building,
   Bell,
   Menu,
-  X
+  X,
+  Copy
 } from 'lucide-react';
+import StudyCopyModal from '../StudyCopy/StudyCopyModal';
 
 const Navbar = ({ 
   title, 
@@ -37,6 +39,7 @@ const Navbar = ({
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [showCopyModal, setShowCopyModal] = useState(false);
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -75,6 +78,18 @@ const Navbar = ({
     logout();
   };
 
+  const handleOpenCopyModal = () => {
+    setShowCopyModal(true);
+  };
+
+  const handleCloseCopyModal = () => {
+    setShowCopyModal(false);
+  };
+
+  const handleCopySuccess = () => {
+    onRefresh?.();
+  };
+
   const filteredOrganizations = availableOrganizations.filter(org =>
     org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     org.identifier.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,6 +120,10 @@ const Navbar = ({
     ? 'Global'
     : availableOrganizations.find(org => org.identifier === currentOrganizationContext)?.displayName?.slice(0, 8) || currentOrganizationContext;
 
+  const currentOrgName = currentOrganizationContext === 'global' || !currentOrganizationContext
+    ? 'Global'
+    : availableOrganizations.find(org => org.identifier === currentOrganizationContext)?.displayName || currentOrganizationContext;
+
   return (
     <>
       {/* ✅ COMPACT NAVBAR - Height reduced from 16 to 12 */}
@@ -134,6 +153,18 @@ const Navbar = ({
             {/* ✅ RIGHT SECTION - More compact */}
             <div className="flex items-center space-x-2">
               
+              {/* ✅ ADD: COPY STUDY BUTTON (Before additional actions) */}
+              {['super_admin', 'admin'].includes(currentUser?.role) && (
+                <button
+                  onClick={handleOpenCopyModal}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                  title="Copy study between organizations"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Study</span>
+                </button>
+              )}
+
               {/* ✅ COMPACT ADDITIONAL ACTIONS */}
               {additionalActions.map((action, index) => (
                 <button
@@ -354,6 +385,20 @@ const Navbar = ({
                 )}
               </div>
               
+              {/* ✅ ADD: Copy Study Button in Mobile Menu */}
+              {['super_admin', 'admin'].includes(currentUser?.role) && (
+                <button
+                  onClick={() => {
+                    handleOpenCopyModal();
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Study</span>
+                </button>
+              )}
+
               {additionalActions.map((action, index) => (
                 <button
                   key={index}
@@ -385,6 +430,15 @@ const Navbar = ({
           </div>
         </div>
       )}
+
+      {/* ✅ ADD: Study Copy Modal */}
+      <StudyCopyModal
+        isOpen={showCopyModal}
+        onClose={handleCloseCopyModal}
+        bharatPacsId="" // Empty means user needs to input
+        currentOrgName={currentOrgName}
+        onSuccess={handleCopySuccess}
+      />
     </>
   );
 };
