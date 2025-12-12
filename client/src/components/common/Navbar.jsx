@@ -154,7 +154,7 @@ const Navbar = ({
             <div className="flex items-center space-x-2">
               
               {/* ✅ ADD: COPY STUDY BUTTON (Before additional actions) */}
-              {['super_admin', 'admin'].includes(currentUser?.role) && (
+              {/* {['super_admin', 'admin'].includes(currentUser?.role) && (
                 <button
                   onClick={handleOpenCopyModal}
                   className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
@@ -163,7 +163,7 @@ const Navbar = ({
                   <Copy className="h-3.5 w-3.5" />
                   <span>Copy Study</span>
                 </button>
-              )}
+              )} */}
 
               {/* ✅ COMPACT ADDITIONAL ACTIONS */}
               {additionalActions.map((action, index) => (
