@@ -214,9 +214,12 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
+  // ✅ INITIAL DATA FETCH - Load saved filters or use defaults
   useEffect(() => {
-    const defaultFilters = {
+    // Try to load saved filters from localStorage
+    const savedFilters = localStorage.getItem('adminDashboardFilters');
+    
+    let defaultFilters = {
       dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
@@ -224,14 +227,41 @@ const Dashboard = () => {
       priority: 'all'
     };
     
+    // If saved filters exist, use them
+    if (savedFilters) {
+      try {
+        defaultFilters = JSON.parse(savedFilters);
+        console.log('📁 [Admin] Loaded saved filters:', defaultFilters);
+      } catch (error) {
+        console.warn('Error loading saved filters:', error);
+      }
+    }
+    
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
     fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
   }, []); // ✅ Empty deps - only run once on mount
 
-  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  // ✅ Save filters whenever they change
   useEffect(() => {
+    if (Object.keys(searchFilters).length > 0) {
+      try {
+        localStorage.setItem('adminDashboardFilters', JSON.stringify(searchFilters));
+        console.log('💾 [Admin] Saved filters to localStorage:', searchFilters);
+      } catch (error) {
+        console.warn('Error saving filters:', error);
+      }
+    }
+  }, [searchFilters]);
+
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES (SINGLE useEffect - Remove duplicate)
+  useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
     console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
     // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
@@ -276,15 +306,8 @@ const Dashboard = () => {
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Admin] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
-    // Note: This will trigger the useEffect below
+    // Note: This will trigger the useEffect above
   }, [currentView]);
-
-  // ✅ Fetch when view changes
-  useEffect(() => {
-    console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
-    // ✅ Reset to page 1, keep current limit
-    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -448,6 +471,7 @@ const Dashboard = () => {
         totalStudies={categoryValues.all}
         currentCategory={currentView}
         theme="admin"
+        initialFilters={searchFilters}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">

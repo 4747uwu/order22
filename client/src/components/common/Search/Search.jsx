@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback,useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { 
@@ -21,7 +21,8 @@ const Search = ({
     totalStudies = 0,
     currentCategory = 'all',
     analytics = null,
-    theme = 'default' // ✅ ADD: Theme support
+    theme = 'default', // ✅ ADD: Theme support
+    initialFilters = null 
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -42,6 +43,17 @@ const Search = ({
     });
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [searchTimeout, setSearchTimeout] = useState(null);
+
+    // ✅ Sync filters when initialFilters prop changes (e.g., loaded from localStorage)
+useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+        console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
+        setFilters(prevFilters => ({
+            ...prevFilters,
+            ...initialFilters
+        }));
+    }
+}, [initialFilters]);
 
     // Check if user is admin or assignor
     const isAdmin = currentUser?.role === 'admin';
