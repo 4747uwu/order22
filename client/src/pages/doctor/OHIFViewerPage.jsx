@@ -36,7 +36,7 @@ const OHIFViewerPage = () => {
         }
 
         if (studyUIDs) {
-          const OHIF_BASE = 'http://165.232.189.64:4000/viewer';
+          const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
           const url = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
           setOhifUrl(url);
           console.log('OHIFViewerPage -> crafted OHIF URL from location.state:', url);
