@@ -170,7 +170,7 @@ const OnlineReportingSystemWithOHIF = () => {
         // ✅ NEW: Build OHIF viewer URL
         if (studyInstanceUID) {
           // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
-          const OHIF_BASE = 'https://viewer.pacs.xcentic.com';
+          const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
           let studyUIDs = '';
           
           if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
