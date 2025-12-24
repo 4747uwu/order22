@@ -119,13 +119,96 @@ const ReportSchema = new mongoose.Schema({
             content: String         // '--Content--'
         },
         
+        // ✅ NEW: Captured images from OHIF viewer
+        capturedImages: [{
+            imageData: {
+                type: String, // Base64 encoded image data
+                required: true
+            },
+            viewportId: {
+                type: String,
+                default: 'viewport-1'
+            },
+            capturedAt: {
+                type: Date,
+                default: Date.now
+            },
+            capturedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            imageMetadata: {
+                width: Number,
+                height: Number,
+                format: {
+                    type: String,
+                    enum: ['png', 'jpeg', 'jpg'],
+                    default: 'png'
+                },
+                fileSize: Number, // in bytes
+                modality: String,
+                seriesDescription: String,
+                instanceNumber: Number
+            },
+            annotations: {
+                type: String,
+                maxlength: 500
+            },
+            displayOrder: {
+                type: Number,
+                default: 0
+            }
+        }],
+        
         // Word count and statistics
         statistics: {
             wordCount: { type: Number, default: 0 },
             characterCount: { type: Number, default: 0 },
-            pageCount: { type: Number, default: 1 }
+            pageCount: { type: Number, default: 1 },
+            imageCount: { type: Number, default: 0 } // ✅ NEW: Track number of images
         }
     },
+
+    // ✅ CAPTURED IMAGES - Store images captured from OHIF viewer
+capturedImages: [{
+    imageData: {
+        type: String, // Base64 encoded image data
+        required: true
+    },
+    viewportId: {
+        type: String,
+        default: 'viewport-1'
+    },
+    capturedAt: {
+        type: Date,
+        default: Date.now
+    },
+    capturedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    imageMetadata: {
+        width: Number,
+        height: Number,
+        format: {
+            type: String,
+            enum: ['png', 'jpeg', 'jpg'],
+            default: 'png'
+        },
+        fileSize: Number, // in bytes
+        modality: String,
+        seriesDescription: String,
+        instanceNumber: Number
+    },
+    annotations: {
+        type: String,
+        maxlength: 500
+    },
+    displayOrder: {
+        type: Number,
+        default: 0
+    }
+}],
     
     // ✅ REPORT METADATA
     reportType: {
@@ -549,7 +632,8 @@ ReportSchema.pre('save', function(next) {
         this.reportContent.statistics = {
             wordCount: plainText ? plainText.split(/\s+/).length : 0,
             characterCount: plainText ? plainText.length : 0,
-            pageCount: this.reportContent.htmlContent.match(/data-page="/g)?.length || 1
+            pageCount: this.reportContent.htmlContent.match(/data-page="/g)?.length || 1,
+            imageCount: this.reportContent.capturedImages?.length || 0 // ✅ NEW
         };
     }
     
@@ -573,6 +657,11 @@ ReportSchema.pre('save', function(next) {
     
     if (this.downloadInfo?.downloadHistory && this.downloadInfo.downloadHistory.length > 100) {
         this.downloadInfo.downloadHistory = this.downloadInfo.downloadHistory.slice(-100);
+    }
+    
+    // ✅ NEW: Limit captured images to prevent document bloat (max 50 images)
+    if (this.reportContent?.capturedImages && this.reportContent.capturedImages.length > 50) {
+        this.reportContent.capturedImages = this.reportContent.capturedImages.slice(-50);
     }
     
     next();

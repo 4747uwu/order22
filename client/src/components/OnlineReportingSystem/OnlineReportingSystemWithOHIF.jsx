@@ -6,13 +6,15 @@ import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
-import { CheckCircle, XCircle, Edit } from 'lucide-react';
+import { CheckCircle, XCircle, Edit, Camera } from 'lucide-react';
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const [capturedImages, setCapturedImages] = useState([]);
+  
   
   // ✅ NEW: Get studyInstanceUID from location state if available
   const passedStudy = location.state?.study;
@@ -385,6 +387,60 @@ const OnlineReportingSystemWithOHIF = () => {
     }
   };
 
+
+  // ✅ NEW: Handle OHIF Image Capture
+  const handleAttachOhifImage = () => {
+    console.log('📸 [Capture] Requesting screenshot from OHIF...');
+    const iframe = document.getElementById('ohif-viewer-iframe'); // We will add this ID below
+    
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*');
+      toast.info('Capturing image from viewer...', { icon: '📸' });
+    } else {
+      toast.error('OHIF Viewer not ready');
+    }
+  };
+
+  // ✅ NEW: Listen for the Image returning from OHIF
+  useEffect(() => {
+    const handleOhifMessage = (event) => {
+      // Security check: Ensure message has data
+      if (!event.data) return;
+
+      if (event.data.action === 'OHIF_IMAGE_CAPTURED') {
+        console.log('📸 [Capture] Received image data from OHIF');
+        const { image, viewportId, metadata } = event.data;
+
+        // ✅ Store image data in state ONLY (do NOT insert into HTML)
+        const imageObj = {
+          imageData: image,
+          viewportId: viewportId || 'viewport-1',
+          capturedAt: new Date().toISOString(),
+          imageMetadata: {
+            format: 'png',
+            ...metadata
+          },
+          displayOrder: capturedImages.length
+        };
+
+        setCapturedImages(prev => [...prev, imageObj]);
+        
+        // ✅ Show success message without inserting into HTML
+        toast.success(`Image captured from ${viewportId}! (${capturedImages.length + 1} images stored)`);
+        
+        console.log('✅ [Capture] Image stored in capturedImages array:', {
+          viewportId,
+          totalImages: capturedImages.length + 1,
+          imageSize: image.length
+        });
+      }
+    };
+
+    window.addEventListener('message', handleOhifMessage);
+    return () => window.removeEventListener('message', handleOhifMessage);
+  }, [capturedImages]); // ✅ Add capturedImages as dependency
+
+
   // ✅ NEW: Template selection handler (add this before handleSaveDraft)
   const handleTemplateSelect = async (template) => {
     if (!template) return;
@@ -453,6 +509,7 @@ const OnlineReportingSystemWithOHIF = () => {
   const handleSaveDraft = async () => {
     console.log('💾 [Draft] Starting draft save');
     console.log('🔍 [Draft] Report content length:', reportContent?.trim()?.length || 0);
+    console.log('🔍 [Draft] Captured images count:', capturedImages.length);
     console.log('🔍 [Draft] Has existing report:', !!reportData.existingReport);
     
     if (!reportContent.trim()) {
@@ -492,7 +549,8 @@ const OnlineReportingSystemWithOHIF = () => {
         placeholdersCount: Object.keys(placeholders).length,
         referringPhysician: referringPhysicianName,
         referringPhysicianType: typeof referringPhysicianName,
-        isUpdate: !!reportData.existingReport
+        isUpdate: !!reportData.existingReport,
+        capturedImagesCount: capturedImages.length // ✅ NEW
       });
 
       const endpoint = `/reports/studies/${studyId}/store-draft`;
@@ -509,6 +567,11 @@ const OnlineReportingSystemWithOHIF = () => {
           templateCategory: selectedTemplate.category,
           templateTitle: selectedTemplate.title
         } : null,
+        // ✅ NEW: Include captured images
+        capturedImages: capturedImages.map(img => ({
+          ...img,
+          capturedBy: currentUser._id
+        })),
         // ✅ NEW: Include existing report info for updates
         existingReportId: reportData.existingReport?.id || null
       });
@@ -654,6 +717,7 @@ const OnlineReportingSystemWithOHIF = () => {
 
   const handleFinalizeReport = async () => {
     console.log('🏁 [Finalize] Starting report finalization');
+    console.log('🔍 [Finalize] Captured images count:', capturedImages.length);
     
     if (!reportContent.trim()) {
       toast.error('Please enter report content to finalize.');
@@ -706,6 +770,7 @@ const OnlineReportingSystemWithOHIF = () => {
         templateName,
         placeholders,
         htmlContent: reportContent,
+        format: exportFormat,
         templateId: selectedTemplate?._id,
         templateInfo: selectedTemplate ? {
           templateId: selectedTemplate._id,
@@ -713,7 +778,11 @@ const OnlineReportingSystemWithOHIF = () => {
           templateCategory: selectedTemplate.category,
           templateTitle: selectedTemplate.title
         } : null,
-        format: exportFormat
+        // ✅ NEW: Include captured images
+        capturedImages: capturedImages.map(img => ({
+          ...img,
+          capturedBy: currentUser._id
+        }))
       });
 
       console.log('📡 [Finalize] Finalize storage response:', {
@@ -978,6 +1047,15 @@ const OnlineReportingSystemWithOHIF = () => {
                   </div>
 
                   <div className="h-6 w-px bg-gray-300"></div>
+
+                  <button
+                    onClick={handleAttachOhifImage}
+                    className="flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                    title="Capture active viewport to report"
+                  >
+                    <Camera className="w-3 h-3" />
+                    <span>Capture</span>
+                  </button>
                   
                   <div className="flex items-center space-x-2">
                     <label className="text-xs font-medium text-gray-700">Layout:</label>
@@ -1195,10 +1273,12 @@ const OnlineReportingSystemWithOHIF = () => {
           <div className="flex-1">
             {ohifViewerUrl ? (
               <iframe
+                id="ohif-viewer-iframe"  // 👈 ADD THIS ID
                 src={ohifViewerUrl}
                 className="w-full h-full border-0"
                 title="OHIF DICOM Viewer"
-                onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully with URL:', ohifViewerUrl)}
+                allow="cross-origin-isolated" // Recommended for shared array buffer
+                onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully')}
                 onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
               />
             ) : (

@@ -1,32 +1,49 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import ReportEditor from './ReportEditorWithOhif';
+import DoctorTemplateDropdown from './DoctorTemplateDropdown';
+import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
+import { CheckCircle, XCircle, Edit, Camera } from 'lucide-react';
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  // ✅ NEW: State for captured images
+const [capturedImages, setCapturedImages] = useState([]);
   
-  console.log('🔍 [OnlineReportingWithOHIF] Component mounted with studyId:', studyId);
+  // ✅ NEW: Get studyInstanceUID from location state if available
+  const passedStudy = location.state?.study;
+  const passedStudyInstanceUID = passedStudy?.studyInstanceUID || passedStudy?.studyInstanceUIDs || null;
   
+  // ✅ DEFINE ALL STATE VARIABLES FIRST (before any usage)
+  const [loading, setLoading] = useState(true);
   const [studyData, setStudyData] = useState(null);
   const [patientData, setPatientData] = useState(null);
   const [templates, setTemplates] = useState({});
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [reportData, setReportData] = useState({});
   const [reportContent, setReportContent] = useState('');
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [exportFormat, setExportFormat] = useState('docx');
-
+  const [ohifViewerUrl, setOhifViewerUrl] = useState('');
+  const [downloadOptions, setDownloadOptions] = useState(null);
+  
+  // ✅ NEW: Verifier-specific states
+  const [verifying, setVerifying] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
+  
   // ✅ UPDATED: Width percentage dropdown instead of drag/drop
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // Percentage
 
-  // 🆕 NEW: Add state for download options
-  const [downloadOptions, setDownloadOptions] = useState(null);
+  // ✅ CHECK IF VERIFIER MODE (after state declarations)
+  const isVerifierMode = searchParams.get('verifierMode') === 'true';
+  const isVerificationMode = searchParams.get('action') === 'verify';
 
   // ✅ Width percentage options
   const widthOptions = [
@@ -64,7 +81,10 @@ const OnlineReportingSystemWithOHIF = () => {
       setReportContent('');
       setSaving(false);
       setFinalizing(false);
+      setVerifying(false);
+      setRejecting(false);
       setExportFormat('docx');
+      setOhifViewerUrl(''); // ✅ Reset OHIF URL
       
       // Load new study data
       initializeReportingSystem();
@@ -113,26 +133,10 @@ const OnlineReportingSystemWithOHIF = () => {
       const [studyInfoResponse, templatesResponse, existingReportResponse] = await Promise.allSettled([
         api.get(studyInfoEndpoint),
         api.get(templatesEndpoint),
-        api.get(existingReportEndpoint) // ✅ Load existing report (specific or latest)
+        api.get(existingReportEndpoint)
       ]);
 
-      // 🔍 DEBUG: Log API responses
-      console.log('📡 [API Response] Study Info Response:', {
-        status: studyInfoResponse.status === 'fulfilled' ? studyInfoResponse.value.status : 'failed',
-        success: studyInfoResponse.status === 'fulfilled' ? studyInfoResponse.value.data?.success : false
-      });
-      
-      console.log('📡 [API Response] Templates Response:', {
-        status: templatesResponse.status === 'fulfilled' ? templatesResponse.value.status : 'failed',
-        success: templatesResponse.status === 'fulfilled' ? templatesResponse.value.data?.success : false
-      });
-
-      console.log('📡 [API Response] Existing Report Response:', {
-        status: existingReportResponse.status === 'fulfilled' ? existingReportResponse.value.status : 'failed',
-        success: existingReportResponse.status === 'fulfilled' ? existingReportResponse.value.data?.success : false
-      });
-
-      // Process study info (existing logic - keep unchanged)
+      // Process study info
       if (studyInfoResponse.status === 'fulfilled' && studyInfoResponse.value.data.success) {
         const data = studyInfoResponse.value.data.data;
         console.log('🔍 Loaded study data:', data);
@@ -148,16 +152,44 @@ const OnlineReportingSystemWithOHIF = () => {
                               studyInfo.studyId ||
                               null;
       
-        const studyInstanceUID = currentStudy.studyInstanceUID || 
+        // ✅ PRIORITY: Use passed studyInstanceUID first, then fetch from API
+        const studyInstanceUID = passedStudyInstanceUID ||
+                              currentStudy.studyInstanceUID || 
                               currentStudy.studyId || 
+                              studyInfo.studyInstanceUID ||
                               studyInfo.studyId ||
                               null;
       
         console.log('🔍 Extracted IDs:', {
           orthancStudyID,
           studyInstanceUID,
+          passedStudyInstanceUID,
           originalStudyId: currentStudy.studyId || studyInfo.studyId
         });
+
+        // ✅ NEW: Build OHIF viewer URL
+        if (studyInstanceUID) {
+          const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
+          let studyUIDs = '';
+          
+          if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
+            studyUIDs = studyInstanceUID.join(',');
+          } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
+            studyUIDs = studyInstanceUID.trim();
+          } else if (orthancStudyID) {
+            studyUIDs = orthancStudyID;
+          }
+          
+          if (studyUIDs) {
+            const viewerUrl = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            setOhifViewerUrl(viewerUrl);
+            console.log('✅ [OHIF] Built viewer URL:', viewerUrl);
+          } else {
+            console.warn('⚠️ [OHIF] No valid StudyInstanceUID to build viewer URL');
+          }
+        } else {
+          console.warn('⚠️ [OHIF] No studyInstanceUID available');
+        }
         
         setStudyData({
           _id: studyId,
@@ -217,11 +249,24 @@ const OnlineReportingSystemWithOHIF = () => {
                              studyInfo.physicians?.referring?.name || 
                              studyInfo.referringPhysician ||
                              'N/A',
-          clinicalHistory: typeof patientInfo.clinicalHistory === 'string' 
-            ? patientInfo.clinicalHistory
-            : patientInfo.clinicalHistory?.clinicalHistory || 
-              data.clinicalHistory ||
-              'No clinical history available'
+           clinicalHistory: (() => {
+            const clinicalHist = patientInfo.clinicalHistory || data.clinicalHistory;
+            
+            // If it's already a string, use it
+            if (typeof clinicalHist === 'string') {
+              return clinicalHist;
+            }
+            
+            // If it's an object, extract the actual clinical history text
+            if (typeof clinicalHist === 'object' && clinicalHist !== null) {
+              return clinicalHist.clinicalHistory || 
+                     clinicalHist.previousInjury || 
+                     clinicalHist.previousSurgery || 
+                     'No clinical history available';
+            }
+            
+            return 'No clinical history available';
+          })()
         });
 
         toast.success(`Loaded study: ${currentStudy.accessionNumber || studyInfo.accessionNumber || studyId}`);
@@ -339,6 +384,116 @@ const OnlineReportingSystemWithOHIF = () => {
     } finally {
       console.log('🏁 [Initialize] Initialization complete, setting loading to false');
       setLoading(false);
+    }
+  };
+
+
+  // ✅ NEW: Handle OHIF Image Capture
+  const handleAttachOhifImage = () => {
+    console.log('📸 [Capture] Requesting screenshot from OHIF...');
+    const iframe = document.getElementById('ohif-viewer-iframe'); // We will add this ID below
+    
+    if (iframe && iframe.contentWindow) {
+      iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*');
+      toast.info('Capturing image from viewer...', { icon: '📸' });
+    } else {
+      toast.error('OHIF Viewer not ready');
+    }
+  };
+
+  // ✅ NEW: Listen for the Image returning from OHIF
+  useEffect(() => {
+    const handleOhifMessage = (event) => {
+      // Security check: Ensure message has data
+      if (!event.data) return;
+
+      if (event.data.action === 'OHIF_IMAGE_CAPTURED') {
+        console.log('📸 [Capture] Received image data from OHIF');
+        const { image, viewportId } = event.data;
+
+        // Create HTML Image tag
+        const imgHtml = `
+          <div class="report-image-container" style="margin: 10px 0; text-align: center;">
+            <img src="${image}" alt="Study Capture ${viewportId}" style="max-width: 100%; border: 1px solid #ccc;" />
+            <p style="font-size: 10px; color: #666; margin-top: 4px;">Captured from ${viewportId}</p>
+          </div>
+          <p>&nbsp;</p>
+        `;
+
+        // Append to current report content
+        setReportContent(prev => (prev || '') + imgHtml);
+        toast.success('Image attached to report!');
+      }
+    };
+
+    window.addEventListener('message', handleOhifMessage);
+    return () => window.removeEventListener('message', handleOhifMessage);
+  }, []);
+
+  // ... rest of your code ...
+
+  // ✅ NEW: Template selection handler (add this before handleSaveDraft)
+  const handleTemplateSelect = async (template) => {
+    if (!template) return;
+    
+    try {
+      console.log('📄 [Template] Loading template:', template.title);
+
+      // Get the full template data
+      const response = await api.get(`/html-templates/${template._id}`);
+      
+      if (!response.data?.success) {
+        throw new Error(response.data?.message || 'Failed to load template');
+      }
+
+      const templateData = response.data.data;
+      console.log('✅ [Template] Template loaded successfully');
+
+      // Prepare placeholders for replacement
+      const placeholders = {
+        '--name--': patientData?.fullName || patientData?.patientName || '[Patient Name]',
+        '--patientid--': patientData?.patientId || '[Patient ID]',
+        '--accessionno--': studyData?.accessionNumber || '[Accession Number]',
+        '--age--': patientData?.age || '[Age]',
+        '--gender--': patientData?.gender || '[Gender]',
+        '--agegender--': `${patientData?.age || '[Age]'} / ${patientData?.gender || '[Gender]'}`,
+        '--referredby--': typeof reportData?.referringPhysician === 'string' 
+          ? reportData.referringPhysician
+          : studyData?.referringPhysician || '[Referring Physician]',
+        '--reporteddate--': studyData?.studyDate 
+          ? new Date(studyData.studyDate).toLocaleDateString() 
+          : new Date().toLocaleDateString(),
+        '--studydate--': studyData?.studyDate 
+          ? new Date(studyData.studyDate).toLocaleDateString() 
+          : '[Study Date]',
+        '--modality--': studyData?.modality || '[Modality]',
+        '--clinicalhistory--': reportData?.clinicalHistory || patientData?.clinicalHistory || '[Clinical History]'
+      };
+
+      // Replace placeholders in template content
+      let processedContent = templateData.htmlContent || '';
+      Object.entries(placeholders).forEach(([placeholder, value]) => {
+        const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        processedContent = processedContent.replace(regex, value);
+      });
+
+      // Set the template and content
+      setSelectedTemplate(templateData);
+      setReportContent(processedContent);
+
+      // Record template usage (non-blocking)
+      try {
+        await api.post(`/html-templates/${template._id}/record-usage`);
+      } catch (usageError) {
+        console.warn('Could not record template usage:', usageError);
+      }
+
+      const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
+      toast.success(`${templateType} template "${template.title}" applied successfully!`);
+      
+    } catch (error) {
+      console.error('❌ [Template] Error loading template:', error);
+      toast.error(`Failed to load template: ${error.message}`);
     }
   };
 
@@ -469,6 +624,81 @@ const OnlineReportingSystemWithOHIF = () => {
     }
   };
 
+  const handleUpdateReport = async () => {
+    console.log('📝 [Verifier Update] Starting report update');
+    console.log('🔍 [Verifier Update] Report content length:', reportContent?.trim()?.length || 0);
+    console.log('🔍 [Verifier Update] Has existing report:', !!reportData.existingReport);
+    
+    if (!reportContent.trim()) {
+      console.error('❌ [Verifier Update] Cannot update empty report');
+      toast.error('Cannot update an empty report.');
+      return;
+    }
+    
+    setSaving(true);
+    
+    try {
+      const currentUser = sessionManager.getCurrentUser();
+      console.log('👤 [Verifier Update] Current user for update:', currentUser);
+      
+      // ✅ NEW: Use verifier-specific update endpoint
+      const endpoint = `/verifier/studies/${studyId}/update-report`;
+      console.log('📡 [Verifier Update] Calling verifier update endpoint:', endpoint);
+      
+      const updatePayload = {
+        htmlContent: reportContent,
+        verificationNotes: 'Report updated during verification process',
+        templateId: selectedTemplate?._id,
+        templateInfo: selectedTemplate ? {
+          templateId: selectedTemplate._id,
+          templateName: selectedTemplate.title,
+          templateCategory: selectedTemplate.category,
+          templateTitle: selectedTemplate.title
+        } : null,
+        // ✅ IMPORTANT: Keep as finalized for verifier workflow
+        maintainFinalizedStatus: true
+      };
+      
+      const response = await api.post(endpoint, updatePayload);
+
+      console.log('📡 [Verifier Update] Update response:', {
+        status: response.status,
+        success: response.data?.success,
+        data: response.data
+      });
+
+      if (response.data.success) {
+        console.log('✅ [Verifier Update] Report updated successfully');
+        
+        toast.success('Report updated successfully!', {
+          duration: 4000,
+          icon: '✏️'  
+        });
+        
+      } else {
+        console.error('❌ [Verifier Update] Update failed:', response.data);
+        throw new Error(response.data.message || 'Failed to update report');
+      }
+
+    } catch (error) {
+      console.error('❌ [Verifier Update] Error updating report:', error);
+      
+      if (error.response?.status === 404) {
+        toast.error('Report not found. Please refresh and try again.');
+      } else if (error.response?.status === 401) {
+        toast.error('Authentication expired. Please log in again.');
+        navigate('/login');
+      } else if (error.response?.status === 403) {
+        toast.error('Access denied. Verifier permissions required.');
+      } else {
+        toast.error(`Failed to update report: ${error.message || 'Unknown error'}`);
+      }
+    } finally {
+      console.log('🏁 [Verifier Update] Update process complete');
+      setSaving(false);
+    }
+  };
+
   const handleFinalizeReport = async () => {
     console.log('🏁 [Finalize] Starting report finalization');
     
@@ -550,6 +780,8 @@ const OnlineReportingSystemWithOHIF = () => {
         const currentUser = sessionManager.getCurrentUser();
         if (currentUser?.role === 'doctor_account') {
           setTimeout(() => navigate('/doctor/dashboard'), 3000);
+        } else if (currentUser?.role === 'verifier') {
+          setTimeout(() => navigate('/verifier/dashboard'), 3000);
         } else {
           setTimeout(() => navigate('/admin/dashboard'), 3000);
         }
@@ -582,12 +814,100 @@ const OnlineReportingSystemWithOHIF = () => {
     }
   };
 
+  // ✅ NEW: Verifier-specific functions
+  const handleVerifyReport = async () => {
+    console.log('✅ [Verify] Starting report verification');
+    
+    if (!reportContent.trim()) {
+      toast.error('Report content is required for verification.');
+      return;
+    }
+
+    const confirmed = window.confirm('Are you sure you want to verify this report? This action cannot be undone.');
+    if (!confirmed) return;
+
+    setVerifying(true);
+    
+    try {
+      const response = await api.post(`/verifier/studies/${studyId}/verify`, {
+        approved: true,
+        verificationNotes: 'Report verified through OHIF + Reporting interface',
+        corrections: [],
+        verificationTimeMinutes: 0 // Calculate if needed
+      });
+
+      if (response.data.success) {
+        toast.success('Report verified successfully!', {
+          duration: 4000,
+          icon: '✅'
+        });
+        
+        // Navigate back to verifier dashboard
+        setTimeout(() => navigate('/verifier/dashboard'), 2000);
+      } else {
+        throw new Error(response.data.message || 'Failed to verify report');
+      }
+
+    } catch (error) {
+      console.error('❌ [Verify] Error verifying report:', error);
+      toast.error(`Failed to verify report: ${error.message}`);
+    } finally {
+      setVerifying(false);
+    }
+  };
+
+  const handleRejectReport = async () => {
+    console.log('❌ [Reject] Starting report rejection');
+    
+    const rejectionReason = prompt('Please provide a reason for rejecting this report:');
+    if (!rejectionReason || !rejectionReason.trim()) {
+      toast.error('Rejection reason is required.');
+      return;
+    }
+
+    const confirmed = window.confirm('Are you sure you want to reject this report?');
+    if (!confirmed) return;
+
+    setRejecting(true);
+    
+    try {
+      const response = await api.post(`/verifier/studies/${studyId}/verify`, {
+        approved: false,
+        verificationNotes: rejectionReason,
+        rejectionReason: rejectionReason,
+        corrections: [],
+        verificationTimeMinutes: 0 // Calculate if needed
+      });
+
+      if (response.data.success) {
+        toast.success('Report rejected successfully!', {
+          duration: 4000,
+          icon: '❌'
+        });
+        
+        // Navigate back to verifier dashboard
+        setTimeout(() => navigate('/verifier/dashboard'), 2000);
+      } else {
+        throw new Error(response.data.message || 'Failed to reject report');
+      }
+
+    } catch (error) {
+      console.error('❌ [Reject] Error rejecting report:', error);
+      toast.error(`Failed to reject report: ${error.message}`);
+    } finally {
+      setRejecting(false);
+    }
+  };
+
   const handleBackToWorklist = () => {
     console.log('🔙 [Navigation] Back to worklist clicked');
     const currentUser = sessionManager.getCurrentUser();
     console.log('👤 [Navigation] Current user for navigation:', currentUser);
     
-    if (currentUser?.role === 'doctor_account') {
+    if (isVerifierMode || currentUser?.role === 'verifier') {
+      console.log('🔍 [Navigation] Navigating to verifier dashboard');
+      navigate('/verifier/dashboard');
+    } else if (currentUser?.role === 'doctor_account') {
       console.log('🩺 [Navigation] Navigating to doctor dashboard');
       navigate('/doctor/dashboard');
     } else if (currentUser?.role === 'admin') {
@@ -606,6 +926,8 @@ const OnlineReportingSystemWithOHIF = () => {
   console.log('📊 [Debug] Current component state:', {
     studyId,
     loading,
+    isVerifierMode,
+    isVerificationMode,
     studyData: studyData ? 'loaded' : 'null',
     patientData: patientData ? 'loaded' : 'null',
     downloadOptions: downloadOptions ? 'loaded' : 'null',
@@ -613,7 +935,9 @@ const OnlineReportingSystemWithOHIF = () => {
     selectedTemplate: selectedTemplate ? selectedTemplate.title : 'none',
     reportContentLength: reportContent?.length || 0,
     saving,
-    finalizing
+    finalizing,
+    verifying,
+    rejecting
   });
 
   if (loading) {
@@ -633,7 +957,7 @@ const OnlineReportingSystemWithOHIF = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       
-      {/* ✅ NEW: Top Control Bar with all controls */}
+      {/* ✅ UPDATED: Top Control Bar with Verifier Controls */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
         <div className="px-3 py-2">
           <div className="flex items-center justify-between gap-4">
@@ -653,113 +977,236 @@ const OnlineReportingSystemWithOHIF = () => {
                   <span className="text-gray-500 ml-2">
                     {studyData?.accessionNumber || studyId?.substring(0, 8) + '...' || ''}
                   </span>
+                  {/* ✅ NEW: Verifier Mode Indicator */}
+                  {isVerifierMode && (
+                    <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded">
+                      VERIFIER MODE
+                    </span>
+                  )}
                 </div>
               </div>
               
-          
-            {/* Study Details */}
-            <div className="flex items-center space-x-3 text-xs text-gray-600">
-              <span>{studyData?.modality || 'N/A'}</span>
-              <span>•</span>
-
-              <span>{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : 'N/A'}</span>
-              <span>•</span>
-
-              {/* ✅ ADDED: Clinical history (truncated) */}
-              <span
-                className="max-w-[28ch] truncate text-gray-700"
-                title={reportData?.clinicalHistory || patientData?.clinicalHistory || 'No clinical history'}
-              >
-                {(() => {
-                  const hist = reportData?.clinicalHistory || patientData?.clinicalHistory || '';
-                  if (!hist) return 'No clinical history';
-                  return hist.length > 80 ? hist.substring(0, 80) + '…' : hist;
-                })()}
-              </span>
-              <span>•</span>
-
-              <span className="text-green-600">{reportContent?.length || 0} chars</span>
+              {/* Study Details */}
+              <div className="flex items-center space-x-3 text-xs text-gray-600">
+                <span>{studyData?.modality || 'N/A'}</span>
+                <span>•</span>
+                <span>{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : 'N/A'}</span>
+                <span>•</span>
+                <span
+                  className="max-w-[28ch] truncate text-gray-700"
+                  title={reportData?.clinicalHistory || patientData?.clinicalHistory || 'No clinical history'}
+                >
+                  {(() => {
+                    const hist = reportData?.clinicalHistory || patientData?.clinicalHistory || '';
+                    if (!hist) return 'No clinical history';
+                    return hist.length > 80 ? hist.substring(0, 80) + '…' : hist;
+                  })()}
+                </span>
+                <span>•</span>
+                <span className="text-green-600">{reportContent?.length || 0} chars</span>
+              </div>
             </div>
-          </div>
 
-            {/* Center Section - Layout & Controls */}
+            {/* ✅ UPDATED: Center Section - Template Dropdowns OR Verifier Controls */}
             <div className="flex items-center space-x-3">
-              
-              {/* Layout Width Dropdown */}
-              <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-gray-700">Layout:</label>
-                <select
-                  value={leftPanelWidth}
-                  onChange={(e) => {
-                    const newWidth = parseInt(e.target.value);
-                    console.log('📏 [UI] Layout width changed:', `${newWidth}% / ${100 - newWidth}%`);
-                    setLeftPanelWidth(newWidth);
-                  }}
-                  className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
-                >
-                  {widthOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            
+              {!isVerifierMode ? (
+                // Normal Template Dropdowns for non-verifiers
+                <>
+                  <div className="flex items-center space-x-2">
+                    <DoctorTemplateDropdown 
+                      onTemplateSelect={handleTemplateSelect}
+                      selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null}
+                    />
+                    <AllTemplateDropdown 
+                      onTemplateSelect={handleTemplateSelect}
+                      selectedTemplate={selectedTemplate}
+                    />
+                  </div>
 
-              {/* Export Format Dropdown */}
-              <div className="flex items-center space-x-2">
-                <label className="text-xs font-medium text-gray-700">Format:</label>
-                <select
-                  value={exportFormat}
-                  onChange={(e) => {
-                    console.log('📄 [UI] Export format changed:', e.target.value);
-                    setExportFormat(e.target.value);
-                  }}
-                  className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-green-400 bg-white"
-                >
-                  <option value="docx">DOCX</option>
-                  <option value="pdf">PDF</option>
-                </select>
-              </div>
+                  <div className="h-6 w-px bg-gray-300"></div>
+
+                  <button
+                    onClick={handleAttachOhifImage}
+                    className="flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                    title="Capture active viewport to report"
+                  >
+                    <Camera className="w-3 h-3" />
+                    <span>Capture</span>
+                  </button>
+                  
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs font-medium text-gray-700">Layout:</label>
+                    <select
+                      value={leftPanelWidth}
+                      onChange={(e) => {
+                        const newWidth = parseInt(e.target.value);
+                        console.log('📏 [UI] Layout width changed:', `${newWidth}% / ${100 - newWidth}%`);
+                        setLeftPanelWidth(newWidth);
+                      }}
+                      className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                    >
+                      {widthOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs font-medium text-gray-700">Format:</label>
+                    <select
+                      value={exportFormat}
+                      onChange={(e) => {
+                        console.log('📄 [UI] Export format changed:', e.target.value);
+                        setExportFormat(e.target.value);
+                      }}
+                      className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-green-400 bg-white"
+                    >
+                      <option value="docx">DOCX</option>
+                      <option value="pdf">PDF</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                // ✅ NEW: Ultra-Compact Verifier Controls
+                <>
+                  <div className="flex items-center space-x-2">
+                    <label className="text-xs font-medium text-purple-700">Layout:</label>
+                    <select
+                      value={leftPanelWidth}
+                      onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))}
+                      className="px-1.5 py-0.5 text-xs border border-purple-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
+                    >
+                      {widthOptions.map(option => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="h-6 w-px bg-purple-300"></div>
+
+                  {/* ✅ NEW: Ultra-Compact Verifier Action Buttons */}
+                  <div className="flex items-center space-x-1">
+                  
+                    {/* Update Report */}
+                    <button
+                      onClick={() => {
+                        console.log('📝 [Verifier] Update report clicked');
+                        handleUpdateReport(); // ✅ Use new verifier-specific function
+                      }}
+                      disabled={saving || !reportContent.trim()}
+                      className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Update Report"
+                    >
+                      {saving ? (
+                        <div className="flex items-center space-x-1">
+                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                          <span>Updating</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <Edit className="w-3 h-3" />
+                          <span>Update</span>
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Reject Report */}
+                    <button
+                      onClick={() => {
+                        console.log('❌ [Verifier] Reject report clicked');
+                        handleRejectReport();
+                      }}
+                      disabled={rejecting}
+                      className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Reject Report"
+                    >
+                      {rejecting ? (
+                        <div className="flex items-center space-x-1">
+                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                          <span>Rejecting</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <XCircle className="w-3 h-3" />
+                          <span>Reject</span>
+                        </div>
+                      )}
+                    </button>
+
+                    {/* Verify Report */}
+                    <button
+                      onClick={() => {
+                        console.log('✅ [Verifier] Verify report clicked');
+                        handleVerifyReport();
+                      }}
+                      disabled={verifying || !reportContent.trim()}
+                      className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      title="Verify Report"
+                    >
+                      {verifying ? (
+                        <div className="flex items-center space-x-1">
+                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                          <span>Verifying</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-1">
+                          <CheckCircle className="w-3 h-3" />
+                          <span>Verify</span>
+                        </div>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Right Section - Action Buttons */}
             <div className="flex items-center space-x-2">
-              
-              <button
-                onClick={() => {
-                  console.log('💾 [UI] Save draft button clicked');
-                  handleSaveDraft();
-                }}
-                disabled={saving || !reportContent.trim()}
-                className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? (
-                  <span className="flex items-center gap-1">
-                    <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
-                    Saving...
-                  </span>
-                ) : (
-                  'Save Draft'
-                )}
-              </button>
-              
-              <button
-                onClick={() => {
-                  console.log('🏁 [UI] Finalize report button clicked');
-                  handleFinalizeReport();
-                }}
-                disabled={finalizing || !reportContent.trim()}
-                className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {finalizing ? (
-                  <span className="flex items-center gap-1">
-                    <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                    Finalizing...
-                  </span>
-                ) : (
-                  `Finalize as ${exportFormat.toUpperCase()}`
-                )}
-              </button>
+            
+              {!isVerifierMode && (
+                <>
+                  <button
+                    onClick={() => {
+                      console.log('💾 [UI] Save draft button clicked');
+                      handleSaveDraft();
+                    }}
+                    disabled={saving || !reportContent.trim()}
+                    className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {saving ? (
+                      <span className="flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
+                        Saving...
+                      </span>
+                    ) : (
+                      'Save Draft'
+                    )}
+                  </button>
+                  
+                  <button
+                    onClick={() => {
+                      console.log('🏁 [UI] Finalize report button clicked');
+                      handleFinalizeReport();
+                    }}
+                    disabled={finalizing || !reportContent.trim()}
+                    className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {finalizing ? (
+                      <span className="flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                        Finalizing...
+                      </span>
+                    ) : (
+                      `Finalize as ${exportFormat.toUpperCase()}`
+                    )}
+                  </button>
+                </>
+              )}
 
               <button
                 onClick={() => {
@@ -768,40 +1215,67 @@ const OnlineReportingSystemWithOHIF = () => {
                 }}
                 className="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
               >
-                Back to Dashboard
+                {isVerifierMode ? 'Back to Verifier' : 'Back to Dashboard'}
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ UPDATED: Main Content Area - No Headers */}
+      {/* ✅ NEW: Verifier Mode Status Bar */}
+      {isVerifierMode && (
+        <div className="flex-shrink-0 bg-purple-50 border-b border-purple-200 px-3 py-1">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-3 text-purple-700">
+              <span className="font-medium">🔍 Verification Mode Active</span>
+              <span>•</span>
+              <span>Patient: {patientData?.fullName || 'Loading...'}</span>
+              <span>•</span>
+              <span>Study: {studyData?.accessionNumber || 'Loading...'}</span>
+            </div>
+            <div className="flex items-center space-x-2 text-purple-600">
+              <span>Report Status: {studyData?.workflowStatus || 'Unknown'}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Main Content Area */}
       <div className="flex-1 flex">
         
-        {/* ✅ LEFT PANEL - OHIF Viewer (No Header) */}
+        {/* LEFT PANEL - OHIF Viewer */}
         <div 
           className="bg-black border-r border-gray-200 flex flex-col"
           style={{ width: `${leftPanelWidth}%` }}
         >
-          {/* OHIF Iframe - Full Height */}
           <div className="flex-1">
-            <iframe
-              src="http://64.227.187.164:4000/"
-              className="w-full h-full border-0"
-              title="OHIF DICOM Viewer"
-              onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully')}
-              onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
-            />
+            {ohifViewerUrl ? (
+              <iframe
+                id="ohif-viewer-iframe"  // 👈 ADD THIS ID
+                src={ohifViewerUrl}
+                className="w-full h-full border-0"
+                title="OHIF DICOM Viewer"
+                allow="cross-origin-isolated" // Recommended for shared array buffer
+                onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully')}
+                onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-white">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                  <p className="text-sm">Loading OHIF viewer...</p>
+                  <p className="text-xs text-gray-400 mt-2">Waiting for StudyInstanceUID...</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* ✅ RIGHT PANEL - Report Editor (No Header) */}
+        {/* RIGHT PANEL - Report Editor */}
         <div 
           className="bg-white flex flex-col"
           style={{ width: `${100 - leftPanelWidth}%` }}
         >
-          
-          {/* Report Editor Content - Full Height */}
           <div className="flex-1 min-h-0">
             <ReportEditor
               content={reportContent}
@@ -813,6 +1287,30 @@ const OnlineReportingSystemWithOHIF = () => {
           </div>
         </div>
       </div>
+
+      {/* ✅ NEW: Selected Template Indicator */}
+      {selectedTemplate && (
+        <div className="fixed bottom-4 right-4 z-40 bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-xs">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0 mr-2">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                📋 {selectedTemplate.title}
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {selectedTemplate.templateScope === 'global' ? 'Global Template' : 'Personal Template'}
+              </p>
+            </div>
+            <button
+              onClick={() => setSelectedTemplate(null)}
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ✅ COMPACT: Show existing report notification */}
       {reportData.existingReport && (

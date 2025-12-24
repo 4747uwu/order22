@@ -13,7 +13,8 @@ export const storeDraftReport = async (req, res) => {
             placeholders, 
             htmlContent,
             templateId,
-            templateInfo 
+            templateInfo,
+            capturedImages = [] // ✅ NEW: Accept captured images
         } = req.body;
 
         console.log(req.body)
@@ -27,7 +28,8 @@ export const storeDraftReport = async (req, res) => {
             templateName,
             contentLength: htmlContent?.length || placeholders?.['--Content--']?.length || 0,
             hasTemplateInfo: !!templateInfo,
-            hasPlaceholders: !!placeholders
+            hasPlaceholders: !!placeholders,
+            capturedImagesCount: capturedImages.length // ✅ NEW
         });
 
         // Validate required data
@@ -199,10 +201,17 @@ export const storeDraftReport = async (req, res) => {
                         templateTitle: templateName || 'Draft Report'
                     },
                     placeholders: placeholders || {},
+                    // ✅ NEW: Include captured images
+                    capturedImages: capturedImages.map((img, index) => ({
+                        ...img,
+                        capturedBy: currentUser._id,
+                        displayOrder: img.displayOrder ?? index
+                    })),
                     statistics: {
                         wordCount: reportContent.split(/\s+/).length,
                         characterCount: reportContent.length,
-                        pageCount: 1
+                        pageCount: 1,
+                        imageCount: capturedImages.length // ✅ NEW
                     }
                 },
                 
@@ -401,7 +410,8 @@ export const storeFinalizedReport = async (req, res) => {
             htmlContent,
             templateId,
             templateInfo,
-            format = 'docx'
+            format = 'docx',
+            capturedImages = [] // ✅ NEW: Accept captured images
         } = req.body;
 
         console.log(req.body)
@@ -416,7 +426,8 @@ export const storeFinalizedReport = async (req, res) => {
             format,
             contentLength: htmlContent?.length || placeholders?.['--Content--']?.length || 0,
             hasTemplateInfo: !!templateInfo,
-            hasPlaceholders: !!placeholders
+            hasPlaceholders: !!placeholders,
+            capturedImagesCount: capturedImages.length // ✅ NEW
         });
 
         // Validate required data
@@ -588,6 +599,12 @@ export const storeFinalizedReport = async (req, res) => {
                         templateTitle: templateName || 'Finalized Report'
                     },
                     placeholders: placeholders || {},
+                    // ✅ NEW: Include captured images
+                    capturedImages: capturedImages.map((img, index) => ({
+                        ...img,
+                        capturedBy: currentUser._id,
+                        displayOrder: img.displayOrder ?? index
+                    })),
                     statistics: {
                         wordCount: reportContent.split(/\s+/).length,
                         characterCount: reportContent.length,

@@ -16,7 +16,6 @@ import {
   Copy
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
-import DoctorProfileModal from '../doctor/DoctorProfileModal'; // ✅ ADD THIS IMPORT
 
 const Navbar = ({ 
   title, 
@@ -41,7 +40,6 @@ const Navbar = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD THIS STATE
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -92,19 +90,6 @@ const Navbar = ({
     onRefresh?.();
   };
 
-  // ✅ ADD THIS FUNCTION
-  const handleOpenProfileModal = () => {
-    setShowProfileModal(true);
-    setShowProfileDropdown(false); // Close dropdown when opening modal
-  };
-
-  // ✅ ADD THIS FUNCTION
-  const handleProfileSuccess = (updatedProfile) => {
-    console.log('Profile updated:', updatedProfile);
-    // Optionally refresh data if needed
-    onRefresh?.();
-  };
-
   const filteredOrganizations = availableOrganizations.filter(org =>
     org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     org.identifier.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -126,10 +111,7 @@ const Navbar = ({
       'admin': 'bg-gray-800 text-white',
       'owner': 'bg-gray-700 text-white',
       'lab_staff': 'bg-gray-600 text-white',
-      'doctor_account': 'bg-gray-500 text-white',
-      'radiologist': 'bg-teal-600 text-white',
-      'verifier': 'bg-purple-600 text-white',
-      'typist': 'bg-blue-600 text-white'
+      'doctor_account': 'bg-gray-500 text-white'
     };
     return colors[role] || 'bg-gray-400 text-white';
   };
@@ -141,9 +123,6 @@ const Navbar = ({
   const currentOrgName = currentOrganizationContext === 'global' || !currentOrganizationContext
     ? 'Global'
     : availableOrganizations.find(org => org.identifier === currentOrganizationContext)?.displayName || currentOrganizationContext;
-
-  // ✅ CHECK IF USER CAN ACCESS PROFILE MODAL (doctors and radiologists)
-  const canAccessProfileModal = ['doctor_account', 'radiologist'].includes(currentUser?.role);
 
   return (
     <>
@@ -174,6 +153,18 @@ const Navbar = ({
             {/* ✅ RIGHT SECTION - More compact */}
             <div className="flex items-center space-x-2">
               
+              {/* ✅ ADD: COPY STUDY BUTTON (Before additional actions) */}
+              {/* {['super_admin', 'admin'].includes(currentUser?.role) && (
+                <button
+                  onClick={handleOpenCopyModal}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                  title="Copy study between organizations"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Study</span>
+                </button>
+              )} */}
+
               {/* ✅ COMPACT ADDITIONAL ACTIONS */}
               {additionalActions.map((action, index) => (
                 <button
@@ -357,17 +348,10 @@ const Navbar = ({
 
                     {/* Menu Items */}
                     <div className="py-1">
-                      {/* ✅ UPDATED: Profile Settings - Only show for doctors/radiologists */}
-                      {canAccessProfileModal && (
-                        <button 
-                          onClick={handleOpenProfileModal}
-                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
-                        >
-                          <User className="h-3.5 w-3.5" />
-                          <span>Profile Settings</span>
-                        </button>
-                      )}
-                      
+                      <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2">
+                        <User className="h-3.5 w-3.5" />
+                        <span>Profile Settings</span>
+                      </button>
                       <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2">
                         <Settings className="h-3.5 w-3.5" />
                         <span>Account Settings</span>
@@ -401,6 +385,20 @@ const Navbar = ({
                 )}
               </div>
               
+              {/* ✅ ADD: Copy Study Button in Mobile Menu */}
+              {['super_admin', 'admin'].includes(currentUser?.role) && (
+                <button
+                  onClick={() => {
+                    handleOpenCopyModal();
+                    setShowMobileMenu(false);
+                  }}
+                  className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Study</span>
+                </button>
+              )}
+
               {additionalActions.map((action, index) => (
                 <button
                   key={index}
@@ -441,15 +439,6 @@ const Navbar = ({
         currentOrgName={currentOrgName}
         onSuccess={handleCopySuccess}
       />
-
-      {/* ✅ ADD: Doctor Profile Modal */}
-      {canAccessProfileModal && (
-        <DoctorProfileModal
-          isOpen={showProfileModal}
-          onClose={() => setShowProfileModal(false)}
-          onSuccess={handleProfileSuccess}
-        />
-      )}
     </>
   );
 };
