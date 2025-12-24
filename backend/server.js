@@ -75,7 +75,9 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://portal.xcentic.in',
         'http://ai.starradiology.com',
         'http://157.245.86.199',
-        'http://165.232.189.64'
+        'http://165.232.189.64',
+                         'https://pacs.xcentic.com'
+
                // ✅ Local HTTPS testing
       ]
     : [
@@ -90,7 +92,8 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://portal.xcentic.in',
         'http://ai.starradiology.com',
         'http://157.245.86.199',
-                'http://165.232.189.64'
+                'http://165.232.189.64',
+                 'https://pacs.xcentic.com'
 
       ];
 
