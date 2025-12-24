@@ -170,7 +170,7 @@ const OnlineReportingSystemWithOHIF = () => {
         // ✅ NEW: Build OHIF viewer URL
         if (studyInstanceUID) {
           // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
-          const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
+          const OHIF_BASE = '/ohif-proxy';    
           let studyUIDs = '';
           
           if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
@@ -182,7 +182,7 @@ const OnlineReportingSystemWithOHIF = () => {
           }
           
           if (studyUIDs) {
-            const viewerUrl = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            const viewerUrl = `${OHIF_BASE}/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
             setOhifViewerUrl(viewerUrl);
             console.log('✅ [OHIF] Built viewer URL:', viewerUrl);
           } else {
