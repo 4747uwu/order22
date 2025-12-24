@@ -11,15 +11,14 @@ class SessionManager {
     setSession(token, user, expiresIn, organizationContext = null) {
       const expiresAt = new Date(Date.now() + this.parseExpiration(expiresIn)).getTime();
       
-      // ✅ CHANGED: Use localStorage instead of sessionStorage (persists across tabs/domains)
-      localStorage.setItem(this.TOKEN_KEY, token);
-      localStorage.setItem(this.USER_KEY, JSON.stringify(user));
-      localStorage.setItem(this.EXPIRES_KEY, expiresAt.toString());
+      sessionStorage.setItem(this.TOKEN_KEY, token);
+      sessionStorage.setItem(this.USER_KEY, JSON.stringify(user));
+      sessionStorage.setItem(this.EXPIRES_KEY, expiresAt.toString());
       
       if (organizationContext) {
-        localStorage.setItem(this.ORG_CONTEXT_KEY, organizationContext);
+        sessionStorage.setItem(this.ORG_CONTEXT_KEY, organizationContext);
       } else {
-        localStorage.removeItem(this.ORG_CONTEXT_KEY);
+        sessionStorage.removeItem(this.ORG_CONTEXT_KEY);
       }
       
       console.log('✅ Session stored:', { user: user.email, context: organizationContext });
@@ -28,11 +27,10 @@ class SessionManager {
     // Get session data with organization context
     getSession() {
       try {
-        // ✅ CHANGED: Use localStorage instead of sessionStorage
-        const token = localStorage.getItem(this.TOKEN_KEY);
-        const userStr = localStorage.getItem(this.USER_KEY);
-        const expiresAt = localStorage.getItem(this.EXPIRES_KEY);
-        const organizationContext = localStorage.getItem(this.ORG_CONTEXT_KEY);
+        const token = sessionStorage.getItem(this.TOKEN_KEY);
+        const userStr = sessionStorage.getItem(this.USER_KEY);
+        const expiresAt = sessionStorage.getItem(this.EXPIRES_KEY);
+        const organizationContext = sessionStorage.getItem(this.ORG_CONTEXT_KEY);
 
         if (!token || !userStr || !expiresAt) {
           return null;
@@ -59,11 +57,10 @@ class SessionManager {
   
     // Clear session data
     clearSession() {
-      // ✅ CHANGED: Use localStorage instead of sessionStorage
-      localStorage.removeItem(this.TOKEN_KEY);
-      localStorage.removeItem(this.USER_KEY);
-      localStorage.removeItem(this.EXPIRES_KEY);
-      localStorage.removeItem(this.ORG_CONTEXT_KEY);
+      sessionStorage.removeItem(this.TOKEN_KEY);
+      sessionStorage.removeItem(this.USER_KEY);
+      sessionStorage.removeItem(this.EXPIRES_KEY);
+      sessionStorage.removeItem(this.ORG_CONTEXT_KEY);
       console.log('🗑️ Session cleared');
     }
   

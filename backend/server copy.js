@@ -107,7 +107,7 @@ app.use(cors({
             callback(new Error(`Not allowed by CORS: ${origin}`));
         }
     },
-    credentials: true,  // ✅ Already set - good!
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
         'Content-Type', 
@@ -117,7 +117,7 @@ app.use(cors({
         'Origin',
         'Cache-Control'
     ],
-    exposedHeaders: ['Content-Disposition', 'Authorization'], // ✅ Expose Authorization header
+    exposedHeaders: ['Content-Disposition'],
     maxAge: 86400
 }));
 
@@ -175,6 +175,11 @@ app.use('/api/html-templates', htmlTemplateRoutes);
 app.use('/api/lab', labRoutes);
 app.use('/api/download', downloadRoutes);
 app.use('/api/study-copy', studyCopyRoutes);
+// ...existing code...
+
+
+// ...existing code...
+
 app.use('/api/study-notes', studyNotesRoutes); // ✅ ADD THIS LINE
 
 // ...existing code...
