@@ -78,14 +78,8 @@ const ReportEditor = ({ content, onChange }) => {
       hasEditor: !!contentEditableRef.current,
       lastTranscript: lastTranscriptRef.current,
       isDifferent: transcript !== lastTranscriptRef.current,
-      listening: listening
+      willInsert: !!(transcript && contentEditableRef.current && transcript !== lastTranscriptRef.current)
     });
-
-    // Only process if we're actively listening
-    if (!listening) {
-      console.log('🎤 [Voice Effect] Skipped: Not listening');
-      return;
-    }
 
     if (transcript && contentEditableRef.current && transcript !== lastTranscriptRef.current) {
       console.log('🎤 [Voice Insert] Starting transcript insertion:', {
@@ -145,14 +139,11 @@ const ReportEditor = ({ content, onChange }) => {
           console.log('🎤 [Voice Insert] New range created and added to selection');
         }
         
-        // 🔧 FIX: Add space before if needed (for word boundaries)
-        const needsLeadingSpace = previousLength > 0 && !transcript[previousLength - 1]?.match(/\s/);
-        const textToInsert = (needsLeadingSpace ? ' ' : '') + newText;
-        
+        // Insert ONLY the new text with space
+        const textToInsert = newText + ' ';
         console.log('🎤 [Voice Insert] Attempting to insert text:', {
           textToInsert,
           textLength: textToInsert.length,
-          needsLeadingSpace,
           beforeContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 50)
         });
 
@@ -164,36 +155,37 @@ const ReportEditor = ({ content, onChange }) => {
             afterContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 100),
             newContentLength: contentEditableRef.current.innerHTML.length
           });
-          
-          // 🔧 FIX: Call onChange to update parent, but don't trigger re-render loop
-          onChange(contentEditableRef.current.innerHTML);
-          
         } catch (error) {
           console.error('🎤 [Voice Insert] ERROR during execCommand:', error);
         }
         
+        // Update the content
+        console.log('🎤 [Voice Insert] Calling onChange with new content');
+        onChange(contentEditableRef.current.innerHTML);
         console.log('🎤 [Voice Insert] Insertion complete');
       } else {
         console.log('🎤 [Voice Insert] Skipped: No new text to insert (whitespace only)');
       }
+    } else {
+      if (!transcript) {
+        console.log('🎤 [Voice Effect] Skipped: No transcript');
+      } else if (!contentEditableRef.current) {
+        console.log('🎤 [Voice Effect] Skipped: No editor ref');
+      } else if (transcript === lastTranscriptRef.current) {
+        console.log('🎤 [Voice Effect] Skipped: Transcript unchanged');
+      }
     }
-  }, [transcript, listening]); // 🔧 FIX: Removed onChange from dependencies to prevent loops
+  }, [transcript, onChange]);
 
-  // 🔧 FIX: Update content effect to not interfere during voice recording
+  // When content prop changes, update the editor's view
   useEffect(() => {
-    // Don't update content from props while actively recording
-    if (listening) {
-      console.log('📝 [Content Update] Skipped: Voice recording in progress');
-      return;
-    }
-    
     if (contentEditableRef.current && content !== contentEditableRef.current.innerHTML) {
       contentEditableRef.current.innerHTML = content || '';
       console.log('📝 [Content Update] Editor content updated from props:', {
         contentLength: content?.length || 0
       });
     }
-  }, [content, listening]); // 🔧 FIX: Added listening as dependency
+  }, [content]);
 
   // Toggle voice recognition
   const toggleVoiceRecognition = () => {
@@ -205,29 +197,13 @@ const ReportEditor = ({ content, onChange }) => {
     if (listening) {
       console.log('🎤 [Voice Toggle] Stopping voice recognition');
       SpeechRecognition.stopListening();
-      
-      // Don't reset transcript immediately - let it finish
-      console.log('🎤 [Voice Toggle] Voice recognition stopped');
-      
+      // Reset the last transcript when stopping
+      setTimeout(() => {
+        console.log('🎤 [Voice Toggle] Resetting last transcript');
+        lastTranscriptRef.current = '';
+      }, 100);
     } else {
       console.log('🎤 [Voice Toggle] Starting voice recognition');
-      
-      // 🔧 FIX: Focus editor BEFORE starting
-      if (contentEditableRef.current) {
-        contentEditableRef.current.focus();
-        console.log('🎤 [Voice Toggle] Editor focused before starting');
-        
-        // Move cursor to end
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(contentEditableRef.current);
-        range.collapse(false); // false means collapse to end
-        selection.removeAllRanges();
-        selection.addRange(range);
-        console.log('🎤 [Voice Toggle] Cursor moved to end');
-      }
-      
-      // Reset transcript and tracking
       resetTranscript();
       lastTranscriptRef.current = '';
       
