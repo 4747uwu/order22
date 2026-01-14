@@ -25,6 +25,7 @@ const ReportEditor = ({ content, onChange }) => {
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const lastTranscriptRef = useRef('');
+  const [isRecording, setIsRecording] = useState(false); // Local state for UI
 
   // Voice to Text functionality
   const {
@@ -199,18 +200,26 @@ const ReportEditor = ({ content, onChange }) => {
   const toggleVoiceRecognition = () => {
     console.log('🎤 [Voice Toggle] Toggle button clicked:', {
       currentListening: listening,
-      willStart: !listening
+      currentIsRecording: isRecording,
+      willStart: !isRecording
     });
 
-    if (listening) {
+    if (isRecording || listening) {
       console.log('🎤 [Voice Toggle] Stopping voice recognition');
+      
+      // Update UI immediately
+      setIsRecording(false);
+      
+      // Stop the actual recognition
       SpeechRecognition.stopListening();
       
-      // Don't reset transcript immediately - let it finish
       console.log('🎤 [Voice Toggle] Voice recognition stopped');
       
     } else {
       console.log('🎤 [Voice Toggle] Starting voice recognition');
+      
+      // Update UI immediately
+      setIsRecording(true);
       
       // 🔧 FIX: Focus editor BEFORE starting
       if (contentEditableRef.current) {
@@ -221,7 +230,7 @@ const ReportEditor = ({ content, onChange }) => {
         const selection = window.getSelection();
         const range = document.createRange();
         range.selectNodeContents(contentEditableRef.current);
-        range.collapse(false); // false means collapse to end
+        range.collapse(false);
         selection.removeAllRanges();
         selection.addRange(range);
         console.log('🎤 [Voice Toggle] Cursor moved to end');
@@ -239,9 +248,19 @@ const ReportEditor = ({ content, onChange }) => {
         console.log('🎤 [Voice Toggle] startListening called successfully');
       } catch (error) {
         console.error('🎤 [Voice Toggle] ERROR starting listening:', error);
+        // Revert UI state if start fails
+        setIsRecording(false);
       }
     }
   };
+
+  // Sync local state with actual listening state
+  useEffect(() => {
+    if (!listening && isRecording) {
+      console.log('🎤 [Voice Sync] Recognition stopped externally, syncing UI state');
+      setIsRecording(false);
+    }
+  }, [listening, isRecording]);
 
   // 🐛 DEBUG: Monitor editor focus
   useEffect(() => {
@@ -600,7 +619,7 @@ const ReportEditor = ({ content, onChange }) => {
               tooltip="Toggle Ruler"
             >
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm2 0v2h2V6H4zm3 0v2h2V6H7zm3 0v2h2V6h-2zm3 0v2h2V6h-2z"/>
+                <path d="M2 6a2 2 0 002-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm2 0v2h2V6H4zm3 0v2h2V6H7zm3 0v2h2V6h-2zm3 0v2h2V6h-2z"/>
               </svg>
             </ToolbarButton>
 
@@ -645,9 +664,9 @@ const ReportEditor = ({ content, onChange }) => {
             {browserSupportsSpeechRecognition && (
               <ToolbarButton 
                 onClick={toggleVoiceRecognition} 
-                active={listening}
-                tooltip={listening ? "Stop Voice Input" : "Start Voice Input"}
-                className={listening ? 'animate-pulse' : ''}
+                active={isRecording} // Changed from listening to isRecording
+                tooltip={isRecording ? "Stop Voice Input" : "Start Voice Input"}
+                className={isRecording ? 'animate-pulse' : ''} // Changed from listening to isRecording
               >
                 <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd"/>
@@ -684,7 +703,7 @@ const ReportEditor = ({ content, onChange }) => {
             </div>
 
             {/* Voice Status Indicator */}
-            {listening && (
+            {isRecording && (
               <div className="flex items-center gap-1 bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium animate-pulse">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <circle cx="10" cy="10" r="4"/>
