@@ -79,12 +79,13 @@ const ReportEditor = ({ content, onChange }) => {
       hasEditor: !!contentEditableRef.current,
       lastTranscript: lastTranscriptRef.current,
       isDifferent: transcript !== lastTranscriptRef.current,
-      listening: listening
+      listening: listening,
+      isRecording: isRecording // Add this to logs
     });
 
-    // Only process if we're actively listening
-    if (!listening) {
-      console.log('🎤 [Voice Effect] Skipped: Not listening');
+    // 🔧 FIX: Check isRecording instead of listening - immediate response
+    if (!isRecording) {
+      console.log('🎤 [Voice Effect] Skipped: Not recording (isRecording=false)');
       return;
     }
 
@@ -96,9 +97,9 @@ const ReportEditor = ({ content, onChange }) => {
         newLength: transcript.length
       });
 
-      // 🔧 FIX: Calculate only the NEW text to insert
+      // Calculate only the NEW text to insert
       const previousLength = lastTranscriptRef.current.length;
-      const newText = transcript.substring(previousLength); // Get only the new part
+      const newText = transcript.substring(previousLength);
       
       console.log('🎤 [Voice Insert] Calculated new text to insert:', {
         previousLength,
@@ -178,7 +179,7 @@ const ReportEditor = ({ content, onChange }) => {
         console.log('🎤 [Voice Insert] Skipped: No new text to insert (whitespace only)');
       }
     }
-  }, [transcript, listening]); // 🔧 FIX: Removed onChange from dependencies to prevent loops
+  }, [transcript, isRecording]); // 🔧 FIX: Changed from listening to isRecording
 
   // 🔧 FIX: Update content effect to not interfere during voice recording
   useEffect(() => {
