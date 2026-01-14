@@ -13,8 +13,8 @@ const OnlineReportingSystemWithOHIF = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  // ✅ NEW: State for captured images
-const [capturedImages, setCapturedImages] = useState([]);
+  const [capturedImages, setCapturedImages] = useState([]);
+  
   
   // ✅ NEW: Get studyInstanceUID from location state if available
   const passedStudy = location.state?.study;
@@ -41,9 +41,16 @@ const [capturedImages, setCapturedImages] = useState([]);
   // ✅ UPDATED: Width percentage dropdown instead of drag/drop
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // Percentage
 
+  // ✅ FIXED: Get current user and check accountRoles
+  const currentUser = sessionManager.getCurrentUser();
+  const userRoles = currentUser?.accountRoles || [currentUser?.role];
+  const hasRole = (role) => userRoles.includes(role);
+
   // ✅ CHECK IF VERIFIER MODE (after state declarations)
-  const isVerifierMode = searchParams.get('verifierMode') === 'true';
-  const isVerificationMode = searchParams.get('action') === 'verify';
+  const isVerifierMode = searchParams.get('verifierMode') === 'true' || 
+                         searchParams.get('verifier') === 'true' ||
+                         searchParams.get('action') === 'verify' ||
+                         hasRole('verifier');
 
   // ✅ Width percentage options
   const widthOptions = [
@@ -169,7 +176,8 @@ const [capturedImages, setCapturedImages] = useState([]);
 
         // ✅ NEW: Build OHIF viewer URL
         if (studyInstanceUID) {
-          const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
+          // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
+          const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
           let studyUIDs = '';
           
           if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
@@ -409,28 +417,37 @@ const [capturedImages, setCapturedImages] = useState([]);
 
       if (event.data.action === 'OHIF_IMAGE_CAPTURED') {
         console.log('📸 [Capture] Received image data from OHIF');
-        const { image, viewportId } = event.data;
+        const { image, viewportId, metadata } = event.data;
 
-        // Create HTML Image tag
-        const imgHtml = `
-          <div class="report-image-container" style="margin: 10px 0; text-align: center;">
-            <img src="${image}" alt="Study Capture ${viewportId}" style="max-width: 100%; border: 1px solid #ccc;" />
-            <p style="font-size: 10px; color: #666; margin-top: 4px;">Captured from ${viewportId}</p>
-          </div>
-          <p>&nbsp;</p>
-        `;
+        // ✅ Store image data in state ONLY (do NOT insert into HTML)
+        const imageObj = {
+          imageData: image,
+          viewportId: viewportId || 'viewport-1',
+          capturedAt: new Date().toISOString(),
+          imageMetadata: {
+            format: 'png',
+            ...metadata
+          },
+          displayOrder: capturedImages.length
+        };
 
-        // Append to current report content
-        setReportContent(prev => (prev || '') + imgHtml);
-        toast.success('Image attached to report!');
+        setCapturedImages(prev => [...prev, imageObj]);
+        
+        // ✅ Show success message without inserting into HTML
+        toast.success(`Image captured from ${viewportId}! (${capturedImages.length + 1} images stored)`);
+        
+        console.log('✅ [Capture] Image stored in capturedImages array:', {
+          viewportId,
+          totalImages: capturedImages.length + 1,
+          imageSize: image.length
+        });
       }
     };
 
     window.addEventListener('message', handleOhifMessage);
     return () => window.removeEventListener('message', handleOhifMessage);
-  }, []);
+  }, [capturedImages]); // ✅ Add capturedImages as dependency
 
-  // ... rest of your code ...
 
   // ✅ NEW: Template selection handler (add this before handleSaveDraft)
   const handleTemplateSelect = async (template) => {
@@ -500,6 +517,7 @@ const [capturedImages, setCapturedImages] = useState([]);
   const handleSaveDraft = async () => {
     console.log('💾 [Draft] Starting draft save');
     console.log('🔍 [Draft] Report content length:', reportContent?.trim()?.length || 0);
+    console.log('🔍 [Draft] Captured images count:', capturedImages.length);
     console.log('🔍 [Draft] Has existing report:', !!reportData.existingReport);
     
     if (!reportContent.trim()) {
@@ -539,7 +557,8 @@ const [capturedImages, setCapturedImages] = useState([]);
         placeholdersCount: Object.keys(placeholders).length,
         referringPhysician: referringPhysicianName,
         referringPhysicianType: typeof referringPhysicianName,
-        isUpdate: !!reportData.existingReport
+        isUpdate: !!reportData.existingReport,
+        capturedImagesCount: capturedImages.length // ✅ NEW
       });
 
       const endpoint = `/reports/studies/${studyId}/store-draft`;
@@ -556,6 +575,11 @@ const [capturedImages, setCapturedImages] = useState([]);
           templateCategory: selectedTemplate.category,
           templateTitle: selectedTemplate.title
         } : null,
+        // ✅ NEW: Include captured images
+        capturedImages: capturedImages.map(img => ({
+          ...img,
+          capturedBy: currentUser._id
+        })),
         // ✅ NEW: Include existing report info for updates
         existingReportId: reportData.existingReport?.id || null
       });
@@ -701,6 +725,7 @@ const [capturedImages, setCapturedImages] = useState([]);
 
   const handleFinalizeReport = async () => {
     console.log('🏁 [Finalize] Starting report finalization');
+    console.log('🔍 [Finalize] Captured images count:', capturedImages.length);
     
     if (!reportContent.trim()) {
       toast.error('Please enter report content to finalize.');
@@ -753,6 +778,7 @@ const [capturedImages, setCapturedImages] = useState([]);
         templateName,
         placeholders,
         htmlContent: reportContent,
+        format: exportFormat,
         templateId: selectedTemplate?._id,
         templateInfo: selectedTemplate ? {
           templateId: selectedTemplate._id,
@@ -760,7 +786,11 @@ const [capturedImages, setCapturedImages] = useState([]);
           templateCategory: selectedTemplate.category,
           templateTitle: selectedTemplate.title
         } : null,
-        format: exportFormat
+        // ✅ NEW: Include captured images
+        capturedImages: capturedImages.map(img => ({
+          ...img,
+          capturedBy: currentUser._id
+        }))
       });
 
       console.log('📡 [Finalize] Finalize storage response:', {
@@ -899,21 +929,28 @@ const [capturedImages, setCapturedImages] = useState([]);
     }
   };
 
-  const handleBackToWorklist = () => {
+   const handleBackToWorklist = () => {
     console.log('🔙 [Navigation] Back to worklist clicked');
     const currentUser = sessionManager.getCurrentUser();
-    console.log('👤 [Navigation] Current user for navigation:', currentUser);
+    const userRoles = currentUser?.accountRoles || [currentUser?.role];
+    const hasRole = (role) => userRoles.includes(role);
     
-    if (isVerifierMode || currentUser?.role === 'verifier') {
+    console.log('👤 [Navigation] Current user roles for navigation:', userRoles);
+    
+    // ✅ FIXED: Check accountRoles array instead of just role
+    if (isVerifierMode || hasRole('verifier')) {
       console.log('🔍 [Navigation] Navigating to verifier dashboard');
       navigate('/verifier/dashboard');
-    } else if (currentUser?.role === 'doctor_account') {
+    } else if (hasRole('assignor')) {
+      console.log('📋 [Navigation] Navigating to assignor dashboard');
+      navigate('/assignor/dashboard');
+    } else if (hasRole('radiologist') || hasRole('doctor_account')) {
       console.log('🩺 [Navigation] Navigating to doctor dashboard');
       navigate('/doctor/dashboard');
-    } else if (currentUser?.role === 'admin') {
+    } else if (hasRole('admin')) {
       console.log('👑 [Navigation] Navigating to admin dashboard');
       navigate('/admin/dashboard');
-    } else if (currentUser?.role === 'lab_staff') {
+    } else if (hasRole('lab_staff')) {
       console.log('🧪 [Navigation] Navigating to lab dashboard');
       navigate('/lab/dashboard');
     } else {
@@ -921,13 +958,12 @@ const [capturedImages, setCapturedImages] = useState([]);
       navigate('/login');
     }
   };
-
   // Final debug log
   console.log('📊 [Debug] Current component state:', {
     studyId,
     loading,
-    isVerifierMode,
-    isVerificationMode,
+    // isVerifierMode,
+    // isVerificationMode,
     studyData: studyData ? 'loaded' : 'null',
     patientData: patientData ? 'loaded' : 'null',
     downloadOptions: downloadOptions ? 'loaded' : 'null',

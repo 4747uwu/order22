@@ -305,7 +305,7 @@ isCopiedStudy: {
         },
         performedByRole: {
             type: String,
-            enum: ['admin', 'doctor_account', 'radiologist', 'verifier', 'lab_staff', 'technician', 'system']
+            enum: ['admin', 'assignor', 'doctor_account', 'radiologist', 'verifier', 'lab_staff', 'technician', 'system']
         },
         performedAt: {
             type: Date,

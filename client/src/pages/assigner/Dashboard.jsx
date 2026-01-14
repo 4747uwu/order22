@@ -2,16 +2,32 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
+import UnifiedWorklistTable from '../../components/common/WorklistTable/UnifiedWorklistTable.jsx';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
 import { RefreshCw, UserCheck, Users2, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
+import { resolveUserVisibleColumns } from '../../utils/columnResolver';
 
 const AssignerDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   
+  // ✅ RESOLVE VISIBLE COLUMNS ONCE
+  const visibleColumns = useMemo(() => {
+    return resolveUserVisibleColumns(currentUser);
+  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+  console.log('🎯 Dashboard Visible Columns:', {
+    total: visibleColumns.length,
+    columns: visibleColumns,
+    user: {
+      primaryRole: currentUser?.primaryRole,
+      accountRoles: currentUser?.accountRoles,
+      visibleColumns: currentUser?.visibleColumns
+    }
+  });
+
   // ✅ PAGINATION STATE - Single source of truth
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -456,21 +472,23 @@ const AssignerDashboard = () => {
           </div>
 
           <div className="flex-1 min-h-0">
-            <WorklistTable
+            <UnifiedWorklistTable
               studies={studies}
               loading={loading}
-              columnConfig={columnConfig}
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
-              onAssignDoctor={(study) => console.log('Assign doctor:', study._id)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
-              userRole={currentUser?.role || 'assignor'}
+              // userRole={currentUser?.role || 'assignor'}
               pagination={pagination}
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
+              // ✅ PASS RESOLVED COLUMNS
+              visibleColumns={visibleColumns}
+              userRole={currentUser?.primaryRole || currentUser?.role || 'assignor'}
+              userRoles={currentUser?.accountRoles?.length > 0 ? currentUser?.accountRoles : [currentUser?.role || 'assignor']}
             />
           </div>
         </div>

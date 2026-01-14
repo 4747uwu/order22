@@ -394,7 +394,7 @@ export const getRejectedStudies = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Enhanced verify report with proper workflow transitions
+// ✅ UPDATED: Enhanced verify report with admin/assignor bypass for workflow state checks
 export const verifyReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -407,8 +407,16 @@ export const verifyReport = async (req, res) => {
         } = req.body;
         const user = req.user;
 
-        if (!user || user.role !== 'verifier') {
-            return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
+        // ✅ MULTI-ROLE: Check if user has verifier role in accountRoles
+        const userRoles = user?.accountRoles || [user?.role];
+        const hasVerifierRole = userRoles.includes('verifier');
+        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
+
+        if (!hasVerifierRole && !hasAdminRole) {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied: Verifier, Admin, or Assignor role required' 
+            });
         }
 
         if (!mongoose.Types.ObjectId.isValid(studyId)) {
@@ -425,29 +433,37 @@ export const verifyReport = async (req, res) => {
                 return res.status(404).json({ success: false, message: 'Study not found' });
             }
 
-            // ✅ VERIFY ACCESS: Check if verifier can access this study
-            const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
-                user.roleConfig.assignedRadiologists.some(radiologistId => 
-                    study.assignment?.some(assignment => 
-                        assignment.assignedTo?.toString() === radiologistId.toString()
-                    )
-                );
+            // ✅ ADMIN BYPASS: Skip access checks for admin/assignor roles
+            if (!hasAdminRole) {
+                // ✅ VERIFY ACCESS: Check if verifier can access this study
+                const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
+                    user.roleConfig.assignedRadiologists.some(radiologistId => 
+                        study.assignment?.some(assignment => 
+                            assignment.assignedTo?.toString() === radiologistId.toString()
+                        )
+                    );
 
-            if (!hasAccess) {
-                await session.abortTransaction();
-                return res.status(403).json({ 
-                    success: false, 
-                    message: 'Access denied: Study not assigned to your radiologists' 
-                });
+                if (!hasAccess) {
+                    await session.abortTransaction();
+                    return res.status(403).json({ 
+                        success: false, 
+                        message: 'Access denied: Study not assigned to your radiologists' 
+                    });
+                }
             }
 
-            // ✅ VERIFY STUDY STATE: Must be in correct state for verification
-            if (!['report_finalized', 'report_drafted', 'verification_in_progress'].includes(study.workflowStatus)) {
-                await session.abortTransaction();
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Study is not in a state that can be verified' 
-                });
+            // ✅ ADMIN BYPASS: Skip workflow state check for admin/assignor roles
+            if (!hasAdminRole) {
+                // ✅ VERIFY STUDY STATE: Must be in correct state for verification
+                if (!['report_finalized', 'report_drafted', 'verification_in_progress'].includes(study.workflowStatus)) {
+                    await session.abortTransaction();
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Study is not in a state that can be verified. Current status: ${study.workflowStatus}` 
+                    });
+                }
+            } else {
+                console.log(`✅ ADMIN BYPASS: User ${user.fullName} (${userRoles.join(', ')}) bypassing workflow state check`);
             }
 
             // ✅ BUILD UPDATE: Prepare verification update
@@ -465,11 +481,9 @@ export const verifyReport = async (req, res) => {
             // ✅ HANDLE REJECTION: Add rejection details
             if (!approved) {
                 updateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
+                
                 if (corrections && corrections.length > 0) {
-                    updateData['reportInfo.verificationInfo.corrections'] = corrections.map(correction => ({
-                        ...correction,
-                        correctedAt: now
-                    }));
+                    updateData['reportInfo.verificationInfo.corrections'] = corrections;
                 }
             }
 
@@ -487,7 +501,7 @@ export const verifyReport = async (req, res) => {
                     status: approved ? 'report_verified' : 'report_rejected',
                     changedAt: now,
                     changedBy: user._id,
-                    note: `Report ${approved ? 'verified' : 'rejected'} by ${user.fullName}`
+                    note: `Report ${approved ? 'verified' : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`
                 }
             };
 
@@ -498,26 +512,33 @@ export const verifyReport = async (req, res) => {
                 { session, new: true }
             ).populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role');
 
-            // ✅ UPDATE VERIFIER STATS
-            try {
-                const verifierProfile = await Verifier.findOne({ 
-                    userAccount: user._id 
-                }).session(session);
-
-                if (verifierProfile) {
-                    await verifierProfile.updateVerificationStats({
-                        verificationTimeMinutes: verificationTimeMinutes || 0,
-                        approved
-                    });
+            // ✅ UPDATE VERIFIER STATS (only if user is actual verifier)
+            // ✅ UPDATE VERIFIER STATS (only if user is actual verifier)
+if (hasVerifierRole) {
+    try {
+        const VerifierModel = mongoose.model('Verifier');
+        await VerifierModel.findOneAndUpdate(
+            { userAccount: user._id }, // ✅ FIXED: Use 'userAccount' instead of 'userId'
+            { 
+                $inc: { 
+                    'verificationStats.totalReportsVerified': 1,
+                    'verificationStats.reportsVerifiedToday': 1,
+                    'verificationStats.reportsVerifiedThisMonth': 1
+                },
+                $set: {
+                    'verificationStats.lastVerificationAt': now
                 }
-            } catch (statsError) {
-                console.warn('⚠️ Failed to update verifier stats:', statsError);
-                // Don't fail the main transaction for stats update
-            }
+            },
+            { upsert: false, session } // ✅ FIXED: Set upsert to false since verifier should already exist
+        );
+    } catch (statsError) {
+        console.log('⚠️ Could not update verifier stats:', statsError.message);
+    }
+}
 
             await session.commitTransaction();
 
-            console.log(`✅ VERIFICATION: Study ${studyId} ${approved ? 'verified' : 'rejected'} by ${user.fullName}`);
+            console.log(`✅ VERIFICATION: Study ${studyId} ${approved ? 'verified' : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`);
 
             res.status(200).json({
                 success: true,
@@ -527,10 +548,12 @@ export const verifyReport = async (req, res) => {
                     workflowStatus: approved ? 'report_verified' : 'report_rejected',
                     verificationStatus: approved ? 'verified' : 'rejected',
                     verifiedBy: user.fullName,
+                    verifiedByRoles: userRoles,
                     verifiedAt: now,
                     verificationNotes,
                     corrections: !approved ? corrections : undefined,
-                    rejectionReason: !approved ? rejectionReason : undefined
+                    rejectionReason: !approved ? rejectionReason : undefined,
+                    adminBypass: hasAdminRole
                 }
             });
 

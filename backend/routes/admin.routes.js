@@ -6,7 +6,8 @@ import {
     getPendingStudies, 
     getInProgressStudies, 
     getCompletedStudies, 
-    getAllStudiesForAdmin 
+    getAllStudiesForAdmin ,
+    getOrganizationLabs
 } from '../controllers/admin.controller.js';
 
 import {
@@ -17,7 +18,8 @@ import {
     updateDoctor,
     updateLab,
     deleteDoctor,
-    deleteLab
+    deleteLab,
+    
 } from '../controllers/adminCRUD.controller.js';
 
 
@@ -31,7 +33,8 @@ import {
     switchUserRole,
     toggleUserStatus,
     resetUserPassword,
-    deleteUser
+    deleteUser,
+    
 } from '../controllers/adminUserManagement.controller.js';
 
 
@@ -96,6 +99,10 @@ router.put('/manage-users/:userId/role', protect, switchUserRole);
 router.put('/manage-users/:userId/status', protect, toggleUserStatus);
 router.post('/manage-users/:userId/reset-password', protect, resetUserPassword);
 router.delete('/manage-users/:userId', protect, deleteUser);
+
+
+//to get all the labs 
+router.get('/labs', protect, getOrganizationLabs);
 
 // ✅ SYSTEM OVERVIEW ROUTES
 router.get('/system-overview', 

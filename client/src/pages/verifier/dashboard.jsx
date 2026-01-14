@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import WorklistTable from '../../components/common/WorklistTable/verifierWorklistTable'; // ✅ Use verifier-specific table
+import UnifiedWorklistTable from '../../components/common/WorklistTable/UnifiedWorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
 import { 
@@ -15,8 +15,30 @@ import {
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 
+// ✅ UTILITY: Resolve visible columns from user object
+const resolveUserVisibleColumns = (user) => {
+  if (!user) return [];
+  
+  // ✅ Primary source: visibleColumns array (from database)
+  if (user.visibleColumns && Array.isArray(user.visibleColumns)) {
+    return user.visibleColumns;
+  }
+  
+  return [];
+};
+
 const VerifierDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
+  
+  // ✅ PAGINATION STATE - Single source of truth
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
+  });
   
   // State management
   const [studies, setStudies] = useState([]);
@@ -25,6 +47,7 @@ const VerifierDashboard = () => {
   const [searchFilters, setSearchFilters] = useState({});
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
+  const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
   // ✅ SIMPLIFIED: Only 3 status categories
   const [apiValues, setApiValues] = useState({
@@ -42,7 +65,39 @@ const VerifierDashboard = () => {
     rejected: apiValues.rejected
   }), [apiValues]);
 
-  // ✅ SIMPLIFIED: Verifier-specific column configuration
+  // ✅ COMPUTE visible columns from user
+  const visibleColumns = useMemo(() => {
+    return resolveUserVisibleColumns(currentUser);
+  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+  // ✅ GET USER ROLES for UnifiedWorklistTable
+  const userRoles = useMemo(() => {
+    if (!currentUser) return [];
+    
+    // Multi-role support: use accountRoles array if available
+    if (currentUser.accountRoles && Array.isArray(currentUser.accountRoles)) {
+      return currentUser.accountRoles;
+    }
+    
+    // Fallback to single role
+    if (currentUser.role) {
+      return [currentUser.role];
+    }
+    
+    return [];
+  }, [currentUser?.accountRoles, currentUser?.role]);
+
+  console.log('🎯 Verifier Dashboard Visible Columns:', {
+    total: visibleColumns.length,
+    columns: visibleColumns,
+    user: {
+      primaryRole: currentUser?.primaryRole,
+      accountRoles: currentUser?.accountRoles,
+      visibleColumns: currentUser?.visibleColumns
+    }
+  });
+
+  // ✅ SIMPLIFIED: Verifier-specific column configuration (kept for localStorage compatibility)
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: true, order: 1, label: 'Select' },
     workflowStatus: { visible: true, order: 2, label: 'Status' },
@@ -97,13 +152,20 @@ const VerifierDashboard = () => {
     }
   }, [currentView]);
 
-  const fetchStudies = useCallback(async (filters = {}) => {
+  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
+  const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
+    
+    const requestPage = page !== null ? page : pagination.currentPage;
+    const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
+    
     try {
       const endpoint = getApiEndpoint();
       const params = { 
-        ...filters, 
+        ...filters,
+        page: requestPage,
+        limit: requestLimit,
         category: currentView === 'all' ? undefined : currentView 
       };
       
@@ -112,13 +174,27 @@ const VerifierDashboard = () => {
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
         const rawStudies = response.data.data || [];
-        console.log('📦 VERIFIER: Raw studies received:', rawStudies.length);
         
+        // ✅ FORMAT STUDIES BEFORE SETTING STATE
         const formattedStudies = formatStudiesForWorklist(rawStudies);
-        console.log('✨ VERIFIER: Formatted studies:', formattedStudies.length);
-        console.log(rawStudies)
+        console.log('✅ VERIFIER: Formatted studies:', {
+          raw: rawStudies.length,
+          formatted: formattedStudies.length,
+          sample: formattedStudies[0]
+        });
         
         setStudies(formattedStudies);
+        
+        if (response.data.pagination) {
+          setPagination({
+            currentPage: response.data.pagination.currentPage,
+            totalPages: response.data.pagination.totalPages,
+            totalRecords: response.data.pagination.totalRecords,
+            recordsPerPage: response.data.pagination.limit,
+            hasNextPage: response.data.pagination.hasNextPage,
+            hasPrevPage: response.data.pagination.hasPrevPage
+          });
+        }
       }
     } catch (err) {
       console.error('❌ Error fetching verifier studies:', err);
@@ -127,7 +203,7 @@ const VerifierDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, currentView]);
+  }, [getApiEndpoint, currentView, pagination.currentPage, pagination.recordsPerPage]);
 
   // ✅ SIMPLIFIED: Fetch analytics for 3 categories
   const fetchAnalytics = useCallback(async (filters = {}) => {
@@ -156,16 +232,31 @@ const VerifierDashboard = () => {
     }
   }, [searchFilters]);
 
+  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
   useEffect(() => {
-    fetchStudies(searchFilters);
-    fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics]);
+    const defaultFilters = {
+      dateFilter: 'today',
+      dateType: 'createdAt',
+      modality: 'all',
+      priority: 'all'
+    };
+    
+    setSearchFilters(defaultFilters);
+    fetchStudies(defaultFilters, 1, 50);
+    fetchAnalytics(defaultFilters);
+  }, []);
+
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  useEffect(() => {
+    console.log(`🔄 [Verifier] currentView changed to: ${currentView}`);
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]);
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
     intervalRef.current = setInterval(() => {
       console.log('🔄 Auto-refreshing verifier dashboard data...');
-      fetchStudies(searchFilters);
+      fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
       fetchAnalytics(searchFilters);
     }, 5 * 60 * 1000);
 
@@ -174,47 +265,39 @@ const VerifierDashboard = () => {
         clearInterval(intervalRef.current);
       }
     };
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+
+  // ✅ HANDLE PAGE CHANGE
+  const handlePageChange = useCallback((newPage) => {
+    console.log(`📄 [Verifier] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
+  }, [fetchStudies, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+
+  // ✅ HANDLE RECORDS PER PAGE CHANGE
+  const handleRecordsPerPageChange = useCallback((newLimit) => {
+    console.log(`📊 [Verifier] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    fetchStudies(searchFilters, 1, newLimit);
+  }, [fetchStudies, searchFilters]);
 
   const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 VERIFIER SEARCH: New search params:', searchParams);
+    console.log('🔍 [Verifier] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
     fetchAnalytics(searchParams);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
-    console.log('🔍 VERIFIER FILTER CHANGE:', filters);
+    console.log('🔍 [Verifier] FILTER CHANGE:', filters);
     setSearchFilters(filters);
+    fetchStudies(filters, 1, pagination.recordsPerPage);
     fetchAnalytics(filters);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
   
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 VERIFIER TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`📊 [Verifier] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
     setSelectedStudies([]);
-    
-    setSearchFilters(prevFilters => {
-      const preservedFilters = {
-        dateFilter: prevFilters.dateFilter,
-        dateType: prevFilters.dateType,
-        customDateFrom: prevFilters.customDateFrom,
-        customDateTo: prevFilters.customDateTo,
-        modality: prevFilters.modality,
-        labId: prevFilters.labId,
-        priority: prevFilters.priority,
-        radiologist: prevFilters.radiologist,
-        limit: prevFilters.limit,
-        category: view === 'all' ? undefined : view
-      };
-      
-      const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
-      );
-      
-      fetchAnalytics(cleanedFilters);
-      return cleanedFilters;
-    });
-  }, [currentView, fetchAnalytics]);
+  }, [currentView]);
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -229,18 +312,35 @@ const VerifierDashboard = () => {
   }, []);
 
   const handleRefresh = useCallback(() => {
-    console.log('🔄 VERIFIER MANUAL REFRESH');
-    fetchStudies(searchFilters);
+    console.log('🔄 [Verifier] MANUAL REFRESH');
+    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
     fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
-  // ✅ NEW: Handle verification completion
+  // ✅ Handle verification completion
   const handleVerifyComplete = useCallback(() => {
     // Refresh data after verification
-    fetchStudies(searchFilters);
+    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
     fetchAnalytics(searchFilters);
     toast.success('Study verification completed');
-  }, [fetchStudies, fetchAnalytics, searchFilters]);
+  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+
+  const handleUpdateStudyDetails = useCallback(async (formData) => {
+    try {
+      const response = await api.put(`/admin/studies/${formData.studyId}/update-details`, formData);
+      
+      if (response.data.success) {
+        toast.success('Study details updated successfully');
+        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+        fetchAnalytics(searchFilters);
+      } else {
+        toast.error('Failed to update study details');
+      }
+    } catch (error) {
+      console.error('Error updating study details:', error);
+      toast.error('Error updating study details');
+    }
+  }, [fetchStudies, searchFilters, fetchAnalytics, pagination.currentPage, pagination.recordsPerPage]);
 
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
@@ -280,7 +380,9 @@ const VerifierDashboard = () => {
     apiValues,
     tabCounts,
     currentView,
-    searchFilters
+    searchFilters,
+    visibleColumns: visibleColumns.length,
+    userRoles
   });
 
   return (
@@ -305,45 +407,58 @@ const VerifierDashboard = () => {
       <div className="flex-1 min-h-0 p-0 px-0">
         <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">
           
-          <div className="flex items-center justify-between px-4 py-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 rounded-t-lg">
             <div className="flex items-center space-x-3">
-              <h2 className="text-sm font-bold text-black uppercase tracking-wide flex items-center space-x-2">
+              <h2 className="text-xs font-bold text-black uppercase tracking-wider flex items-center space-x-2">
                 <Shield className="w-4 h-4" />
                 <span>VERIFICATION WORKLIST</span>
               </h2>
-              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded border">
-                {studies.length} reports loaded
+              <span className="text-[10px] text-gray-600 bg-white px-2 py-0.5 rounded-md font-medium">
+                {studies.length} loaded
               </span>
               {selectedStudies.length > 0 && (
-                <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                <span className="text-[10px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md font-medium border border-blue-200">
                   {selectedStudies.length} selected
                 </span>
               )}
             </div>
 
-            {/* ✅ SIMPLIFIED: Only 3 tabs */}
-            <div className="flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
-              {[
-                { key: 'all', label: 'All Reports', count: tabCounts.all, icon: FileText },
-                { key: 'verified', label: 'Verified', count: tabCounts.verified, icon: CheckCircle },
-                { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: XCircle }
-              ].map((tab) => {
-                const Icon = tab.icon;
-                return (
-                  <button
-                    key={tab.key}
-                    onClick={() => handleViewChange(tab.key)}
-                    className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-r border-gray-300 last:border-r-0 transition-colors ${
-                      currentView === tab.key
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white text-gray-700 hover:bg-gray-100'
-                    }`}
-                  >
-                    <Icon size={14} />
-                    {tab.label} ({tab.count})
-                  </button>
-                );
-              })}
+            {/* ✅ SIMPLIFIED: Only 3 tabs with modern styling */}
+            <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
+              <div className="flex items-center gap-1.5 min-w-max">
+                {[
+                  { key: 'all', label: 'All Reports', count: tabCounts.all, icon: FileText },
+                  { key: 'verified', label: 'Verified', count: tabCounts.verified, icon: CheckCircle },
+                  { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: XCircle }
+                ].map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleViewChange(tab.key)}
+                      className={`
+                        flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
+                        ${currentView === tab.key
+                          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md'
+                          : 'bg-white text-slate-600 hover:bg-blue-50 border border-slate-200'
+                        }
+                      `}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label}</span>
+                      <span className={`
+                        ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold
+                        ${currentView === tab.key
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-100 text-slate-700'
+                        }
+                      `}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
             
             <div className="flex items-center space-x-2">
@@ -356,15 +471,22 @@ const VerifierDashboard = () => {
           </div>
 
           <div className="flex-1 min-h-0">
-            <WorklistTable
+            <UnifiedWorklistTable
               studies={studies}
               loading={loading}
-              columnConfig={columnConfig}
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
-              onVerifyComplete={handleVerifyComplete}
+              availableAssignees={availableAssignees}
+              onUpdateStudyDetails={handleUpdateStudyDetails}
+              pagination={pagination}
+              onPageChange={handlePageChange}
+              onRecordsPerPageChange={handleRecordsPerPageChange}
+              // ✅ MULTI-ROLE PROPS
+              visibleColumns={visibleColumns}
+              userRole={currentUser?.primaryRole || currentUser?.role || 'verifier'}
+              userRoles={userRoles}
             />
           </div>
         </div>

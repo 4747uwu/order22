@@ -61,24 +61,34 @@ export const AuthProvider = ({ children }) => {
       
       if (res.data.success) {
         const { user, token, expiresIn, organizationContext, redirectTo } = res.data;
+        const visibleColumns  = res.data.user.visibleColumns;
+        console.log('🔍 Login response received for:', res.data);
         
-        // Store session with organization context
-        sessionManager.setSession(token, user, expiresIn, organizationContext);
-        setCurrentUser(user);
+        // ✅ Merge visibleColumns into user object before storing
+        const enrichedUser = {
+          ...user,
+          visibleColumns: visibleColumns || []
+        };
+        
+        // Store session with organization context and enriched user data
+        sessionManager.setSession(token, enrichedUser, expiresIn, organizationContext);
+        setCurrentUser(enrichedUser);
         setCurrentOrganizationContext(organizationContext);
         
         console.log('✅ Login successful:', {
-          role: user.role,
+          role: enrichedUser.role,
           organization: organizationContext,
-          redirectTo
+          redirectTo,
+          visibleColumns: enrichedUser.visibleColumns // ✅ Log to verify
         });
+        console.log(res.data)
         
         // Load available organizations for super admin
-        if (user.role === 'super_admin') {
+        if (enrichedUser.role === 'super_admin') {
           await loadAvailableOrganizations();
         }
         
-        return { user, redirectTo };
+        return { user: enrichedUser, redirectTo };
       } else {
         throw new Error(res.data.message || 'Login failed');
       }

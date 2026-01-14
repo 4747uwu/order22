@@ -102,7 +102,12 @@ export const loginUser = async (req, res) => {
             isLoggedIn: true,
             organizationIdentifier: user.organizationIdentifier,
             lastLoginAt: user.lastLoginAt,
-            loginCount: user.loginCount
+            loginCount: user.loginCount,
+            // ✅ ADD NEW FIELDS
+            visibleColumns: user.visibleColumns || [],
+            accountRoles: user.accountRoles || [],
+            primaryRole: user.primaryRole || user.role,
+            linkedLabs: user.linkedLabs || []
         };
 
         // Add organization data for non-super admin users
@@ -268,6 +273,12 @@ export const getMe = async (req, res) => {
                 activeLabs: labCount
             };
         }
+
+        // ✅ Ensure new fields are included
+        if (!userPayload.visibleColumns) userPayload.visibleColumns = [];
+        if (!userPayload.accountRoles) userPayload.accountRoles = [];
+        if (!userPayload.primaryRole) userPayload.primaryRole = userPayload.role;
+        if (!userPayload.linkedLabs) userPayload.linkedLabs = [];
 
         res.status(200).json({
             success: true,

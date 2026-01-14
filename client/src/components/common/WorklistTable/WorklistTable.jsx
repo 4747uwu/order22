@@ -13,6 +13,8 @@ import DownloadOptions from '../DownloadOptions/DownloadOptions';
 import StudyDocumentsManager  from '../../StudyDocuments/StudyDocumentsManager';  // ✅ NEW IMPORT
 import api from '../../../services/api'
 import TableFooter from './TableFooter';
+import { useAuth } from '../../../hooks/useAuth';
+import { getAllColumns } from '../../../constants/worklistColumns';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -332,7 +334,8 @@ const StudyRow = ({
   onShowTimeline,
   onToggleLock,
   onShowDocuments,
-  userRole
+  userRole,
+  isColumnVisible
 }) => {
 
     const navigate = useNavigate();
@@ -450,282 +453,319 @@ const StudyRow = ({
 
   return (
     <tr className={rowClasses}>
-      {/* BP ID */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
-            {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
-          </span>
-          <button
-            onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
-          </button>
-        </div>
-      </td>
-
-      {/* SUB CENTER */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '130px' }}>
-        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
-          {study.centerName || '-'}
-        </div>
-      </td>
-
-      {/* TRACK CASE */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '50px' }}>
-        <button
-          onClick={() => onShowTimeline?.(study)}
-          className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
-          title="View Timeline"
-        >
-          <Clock className="w-4 h-4 text-gray-700" />
-        </button>
-      </td>
-
-      {/* PT NAME / UHID */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '160px' }}>
-        <button 
-          className="w-full text-left hover:underline decoration-gray-900"
-          onClick={() => onPatienIdClick?.(study.patientId, study)}
-        >
-          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
-            {study.patientName || '-'}
-            {isUrgent && <span className="text-rose-500">●</span>}
-          </div>
-          <div className="text-[10px] text-slate-500 truncate">
-            UHID: {study.patientId || '-'}
-          </div>
-        </button>
-      </td>
-
-      {/* AGE/SEX */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
-        <div className="text-xs font-medium text-slate-700">
-          {study.ageGender !== 'N/A' ? study.ageGender : 
-           study.patientAge && study.patientSex ? 
-           `${study.patientAge}/${study.patientSex.charAt(0)}` : '-'}
-        </div>
-      </td>
-
-      {/* MODALITY */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
-        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
-          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
-        }`}>
-          {study.modality || '-'}
-        </span>
-      </td>
-
-      {/* EYE BUTTON - View Only */}
-      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '60px' }}>
-        <button
-          onClick={handleViewOnlyClick}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-          title="View Images Only (No Locking)"
-        >
-          <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-        </button>
-      </td>
-
-      {/* DOWNLOAD + OHIF REPORTING */}
-      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '150px' }}>
-        <div className="flex items-center justify-center gap-1.5">
-          <button
-            ref={downloadButtonRef}
-            onClick={handleDownloadClick}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-            title="Download Options"
-          >
-            <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-          </button>
-
-          <button
-            onClick={handleOHIFReporting}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-all group hover:scale-110"
-            title="Report + OHIF Viewer"
-          >
-            <Monitor className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-          </button>
-        </div>
-      </td>
-
-      {/* STUDY / SERIES / IMAGES */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '90px' }}>
-        <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
-        <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-      </td>
-
-      {/* PT ID / ACC NO */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '110px' }}>
-        <div className="text-[11px] text-slate-700 truncate">ID: {study.patientId || '-'}</div>
-        <div className="text-[10px] text-slate-500 truncate">Acc: {study.accessionNumber || '-'}</div>
-      </td>
-
-      {/* REFERRAL DOCTOR */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '600px' }}>
-        <div className="text-xs text-slate-700 truncate" title={study.referralNumber}>
-          {study.referralNumber !== 'N/A' ? study.referralNumber : '-'}
-        </div>
-      </td>
-
-      {/* CLINICAL HISTORY */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '750px' }}>
-        <div 
-          className="text-xs text-slate-700 leading-relaxed" 
-          style={{
-            whiteSpace: 'normal',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word'
-          }}
-        >
-           {study.clinicalHistory || '-'}
-         </div>
-
-         <div className="flex items-center gap-4 mt-3">
-          <button
-           onClick={() => onEditPatient?.(study)}
-           className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
-         >
-           <Edit className="w-4 h-4" />
-           Edit
-         </button>
-
-          <button
-            onClick={() => onShowDocuments?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
-              hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
-          >
-            <Paperclip className={`w-4 h-4 ${
-              hasAttachments ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-            
-            {hasAttachments && study.attachments.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                {study.attachments.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => onShowStudyNotes?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-              hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
-          >
-            <MessageSquare className={`w-4 h-4 ${
-              hasNotes ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-          </button>
-         </div>
-       </td>
-
-      {/* STUDY DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
-        <div className="text-[10px] text-slate-500">{study.studyTime || '-'}</div>
-      </td>
-
-      {/* UPLOAD DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
-        <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
-      </td>
-
-      {/* RADIOLOGIST */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
-        <div className="relative">
-          <input
-            ref={assignInputRef}
-            type="text"
-            value={assignInputValue}
-            onChange={(e) => setAssignInputValue(e.target.value)}
-            onFocus={handleAssignInputFocus}
-            onBlur={() => {
-              setTimeout(() => {
-                if (!showAssignmentModal) {
-                  setInputFocused(false);
-                }
-              }, 200);
-            }}
-            placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
-            disabled={isLocked}
-            className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
-              isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
-              isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
-              'bg-white border-slate-200 hover:border-slate-300'
-            }`}
-          />
-          {isAssigned && !inputFocused && !isLocked && (
-            <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
-          )}
-          {isLocked && (
-            <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
-          )}
-        </div>
-      </td>
-
-      {/* CASE STATUS */}
-      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '140px' }}>
-        <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
-          {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
-        </span>
-      </td>
-
-      {/* PRINT REPORT */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-b border-slate-200" style={{ width: '90px' }}>
-        <div className="text-xs text-slate-600">
-          {study.printCount > 0 ? (
-            <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
-              <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
-              {study.printCount}
+      {/* ✅ XCENTIC ID */}
+      {isColumnVisible('bharatPacsId') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+          <div className="flex items-center justify-center gap-1.5">
+            <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
+              {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
             </span>
-          ) : (
-            <span className="text-slate-400">No prints</span>
-          )}
-        </div>
-      </td>
+            <button
+              onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
+              className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+            >
+              <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+            </button>
+          </div>
+        </td>
+      )}
 
-      {/* ACTION */}
-      <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: '200px' }}>
-        <div className="flex items-center justify-center gap-1.5">
+      {/* ✅ SUB CENTER */}
+      {isColumnVisible('centerName') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '130px' }}>
+          <div className="text-xs text-slate-600 truncate" title={study.centerName}>
+            {study.centerName || '-'}
+          </div>
+        </td>
+      )}
+
+      {/* ✅ TIMELINE */}
+      {isColumnVisible('timeline') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '50px' }}>
           <button
-            ref={downloadButtonRef}
-            onClick={handleDownloadClick}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-            title="Download Options"
+            onClick={() => onShowTimeline?.(study)}
+            className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
+            title="View Timeline"
           >
-            <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <Clock className="w-4 h-4 text-gray-700" />
           </button>
+        </td>
+      )}
 
-          <button
-            onClick={handleLockToggle}
-            disabled={togglingLock}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-              togglingLock ? 'opacity-50 cursor-not-allowed' : 
-              isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
-            }`}
-            title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
+      {/* ✅ PATIENT NAME / UHID */}
+      {isColumnVisible('patientName') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '160px' }}>
+          <button 
+            className="w-full text-left hover:underline decoration-gray-900"
+            onClick={() => onPatienIdClick?.(study.patientId, study)}
           >
-            {isLocked ? (
-              <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
-            ) : (
-              <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
+            <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
+              {study.patientName || '-'}
+              {isUrgent && <span className="text-rose-500">●</span>}
+            </div>
+            <div className="text-[10px] text-slate-500 truncate">
+              UHID: {study.patientId || '-'}
+            </div>
+          </button>
+        </td>
+      )}
+
+      {/* ✅ AGE / SEX */}
+      {isColumnVisible('ageGender') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
+          <div className="text-xs font-medium text-slate-700">
+            {study.ageGender !== 'N/A' ? study.ageGender : 
+             study.patientAge && study.patientSex ? 
+             `${study.patientAge}/${study.patientSex.charAt(0)}` : '-'}
+          </div>
+        </td>
+      )}
+
+      {/* ✅ MODALITY */}
+      {isColumnVisible('modality') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
+            isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
+          }`}>
+            {study.modality || '-'}
+          </span>
+        </td>
+      )}
+
+      {/* ✅ VIEW ONLY */}
+      {isColumnVisible('viewOnly') && (
+        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '60px' }}>
+          <button
+            onClick={handleViewOnlyClick}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+            title="View Images Only (No Locking)"
+          >
+            <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+          </button>
+        </td>
+      )}
+
+      {/* ✅ DOWNLOAD + VIEWER */}
+      {isColumnVisible('downloadViewer') && (
+        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '150px' }}>
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              ref={downloadButtonRef}
+              onClick={handleDownloadClick}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+              title="Download Options"
+            >
+              <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            </button>
+
+            <button
+              onClick={handleOHIFReporting}
+              className="p-2 hover:bg-gray-200 rounded-lg transition-all group hover:scale-110"
+              title="Report + OHIF Viewer"
+            >
+              <Monitor className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            </button>
+          </div>
+        </td>
+      )}
+
+      {/* ✅ STUDY / SERIES / IMAGES */}
+      {isColumnVisible('studySeriesImages') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '90px' }}>
+          <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
+          <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+        </td>
+      )}
+
+      {/* ✅ PATIENT ID / ACCESSION */}
+      {isColumnVisible('patientIdAccession') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '110px' }}>
+          <div className="text-[11px] text-slate-700 truncate">ID: {study.patientId || '-'}</div>
+          <div className="text-[10px] text-slate-500 truncate">Acc: {study.accessionNumber || '-'}</div>
+        </td>
+      )}
+
+      {/* ✅ REFERRAL DOCTOR */}
+      {isColumnVisible('referralDoctor') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '600px' }}>
+          <div className="text-xs text-slate-700 truncate" title={study.referralNumber}>
+            {study.referralNumber !== 'N/A' ? study.referralNumber : '-'}
+          </div>
+        </td>
+      )}
+
+      {/* ✅ CLINICAL HISTORY */}
+      {isColumnVisible('clinicalHistory') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '750px' }}>
+          <div 
+            className="text-xs text-slate-700 leading-relaxed" 
+            style={{
+              whiteSpace: 'normal',
+              overflowWrap: 'break-word',
+              wordBreak: 'break-word'
+            }}
+          >
+             {study.clinicalHistory || '-'}
+           </div>
+
+           <div className="flex items-center gap-4 mt-3">
+            <button
+             onClick={() => onEditPatient?.(study)}
+             className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
+           >
+             <Edit className="w-4 h-4" />
+             Edit
+           </button>
+
+            <button
+              onClick={() => onShowDocuments?.(study._id)}
+              className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
+                hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
+              }`}
+              title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
+            >
+              <Paperclip className={`w-4 h-4 ${
+                hasAttachments ? 'text-gray-900' : 'text-slate-400'
+              } group-hover:text-gray-900`} />
+              
+              {hasAttachments && study.attachments.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+                  {study.attachments.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => onShowStudyNotes?.(study._id)}
+              className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+                hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
+              }`}
+              title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
+            >
+              <MessageSquare className={`w-4 h-4 ${
+                hasNotes ? 'text-gray-900' : 'text-slate-400'
+              } group-hover:text-gray-900`} />
+            </button>
+           </div>
+         </td>
+      )}
+
+      {/* ✅ STUDY DATE/TIME */}
+      {isColumnVisible('studyDateTime') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
+          <div className="text-[10px] text-slate-500">{study.studyTime || '-'}</div>
+        </td>
+      )}
+
+      {/* ✅ UPLOAD DATE/TIME */}
+      {isColumnVisible('uploadDateTime') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
+          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
+          <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
+        </td>
+      )}
+
+      {/* ✅ RADIOLOGIST */}
+      {isColumnVisible('assignedRadiologist') && (
+        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
+          <div className="relative">
+            <input
+              ref={assignInputRef}
+              type="text"
+              value={assignInputValue}
+              onChange={(e) => setAssignInputValue(e.target.value)}
+              onFocus={handleAssignInputFocus}
+              onBlur={() => {
+                setTimeout(() => {
+                  if (!showAssignmentModal) {
+                    setInputFocused(false);
+                    setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
+                  }
+                }, 200);
+              }}
+              placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
+              disabled={isLocked}
+              className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
+                isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
+                isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
+                'bg-white border-slate-200 hover:border-slate-300'
+              }`}
+            />
+            {isAssigned && !inputFocused && !isLocked && (
+              <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
             )}
-          </button>
+            {isLocked && (
+              <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
+            )}
+          </div>
+        </td>
+      )}
 
-          <button
-            onClick={() => onViewReport?.(study)}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-            title="View Report"
-          >
-            <FileText className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-          </button>
-        </div>
-      </td>
+      {/* ✅ STATUS */}
+      {isColumnVisible('status') && (
+        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '140px' }}>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
+            {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
+          </span>
+        </td>
+      )}
+
+      {/* ✅ PRINT COUNT */}
+      {isColumnVisible('printCount') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-b border-slate-200" style={{ width: '90px' }}>
+          <div className="text-xs text-slate-600">
+            {study.printCount > 0 ? (
+              <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
+                <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
+                {study.printCount}
+              </span>
+            ) : (
+              <span className="text-slate-400">No prints</span>
+            )}
+          </div>
+        </td>
+      )}
+
+      {/* ✅ ACTIONS */}
+      {isColumnVisible('actions') && (
+        <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: '200px' }}>
+          <div className="flex items-center justify-center gap-1.5">
+            <button
+              ref={downloadButtonRef}
+              onClick={handleDownloadClick}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+              title="Download Options"
+            >
+              <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            </button>
+
+            <button
+              onClick={handleLockToggle}
+              disabled={togglingLock}
+              className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+                togglingLock ? 'opacity-50 cursor-not-allowed' : 
+                isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
+              }`}
+              title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
+            >
+              {isLocked ? (
+                <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
+              ) : (
+                <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
+              )}
+            </button>
+
+            <button
+              onClick={() => onViewReport?.(study)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+              title="View Report"
+            >
+              <FileText className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            </button>
+          </div>
+        </td>
+      )}
 
       {showDownloadOptions && (
         <DownloadOptions
@@ -750,7 +790,7 @@ const StudyRow = ({
   );
 };
 
-// ✅ UPDATED MAIN TABLE - Black & White Theme
+// ✅ UPDATED MAIN TABLE - Black & White Theme with Column Visibility
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
@@ -775,7 +815,24 @@ const WorklistTable = ({
   onPageChange,
   onRecordsPerPageChange
 }) => {
+  // ✅ GET USER'S VISIBLE COLUMNS
+  const { currentUser } = useAuth();
+  const userVisibleColumns = currentUser?.visibleColumns || [];
   
+  // ✅ HELPER FUNCTION TO CHECK COLUMN VISIBILITY
+  const isColumnVisible = (columnId) => {
+    // If user has no column preferences, show all columns (backward compatibility)
+    if (userVisibleColumns.length === 0) return true;
+    
+    // Check if column is in user's visible columns
+    return userVisibleColumns.includes(columnId);
+  };
+
+  // ✅ LOG FOR DEBUGGING
+  useEffect(() => {
+    console.log('👁️ User Visible Columns:', userVisibleColumns);
+  }, [userVisibleColumns]);
+
   const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
   const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
   const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
@@ -865,72 +922,108 @@ const WorklistTable = ({
     <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border-2 border-gray-300">
       <div className="flex-1 overflow-x-auto overflow-y-auto">
         <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
-          {/* ✅ BLACK & WHITE HEADER */}
+          {/* ✅ BLACK & WHITE HEADER WITH CONDITIONAL VISIBILITY */}
           <thead className="sticky top-0 z-10">
             <tr className="text-white text-xs font-bold bg-gradient-to-r from-gray-800 via-gray-900 to-black shadow-lg">
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                <div className="flex items-center justify-center gap-1.5">
-                  <span>Xcentic ID</span>
-                </div>
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '130px' }}>
-                SUB<br/>CENTER
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '50px' }}>
-                <Clock className="w-4 h-4 mx-auto" />
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '160px' }}>
-                PT NAME /<br/>UHID
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px' }}>
-                AGE/<br/>SEX
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px', minWidth: '110px' }}>
-                MOD
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '60px' }}>
-                <Eye className="w-4 h-4 mx-auto" />
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '150px' }}>
-                <div className="flex items-center justify-center gap-2">
-                  <Download className="w-4 h-4" />
-                  <Monitor className="w-4 h-4" />
-                </div>
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
-                STUDY /<br/>SERIES / IMAGES
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '110px' }}>
-                PT ID/<br/>ACC. NO.
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '900px' }}>
-                REFERRAL<br/>DOCTOR
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '1000px', minWidth: '300px' }}>
-                CLINICAL<br/>HISTORY
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                STUDY<br/>DATE/TIME
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                UPLOAD<br/>DATE/TIME
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
-                RADIOLOGIST
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
-                STATUS
-              </th>
-              <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
-                PRINT<br/>REPORT
-              </th>
-              <th className="px-3 py-4 text-center" style={{ width: '200px' }}>
-                <div className="flex items-center justify-center gap-2">
-                  <Download className="w-4 h-4" />
-                  <Lock className="w-4 h-4" />
-                  <MessageSquare className="w-4 h-4" />
-                </div>
-              </th>
+              {isColumnVisible('bharatPacsId') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+                  <div className="flex items-center justify-center gap-1.5">
+                    <span>Xcentic ID</span>
+                  </div>
+                </th>
+              )}
+              {isColumnVisible('centerName') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '130px' }}>
+                  SUB<br/>CENTER
+                </th>
+              )}
+              {isColumnVisible('timeline') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '50px' }}>
+                  <Clock className="w-4 h-4 mx-auto" />
+                </th>
+              )}
+              {isColumnVisible('patientName') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '160px' }}>
+                  PT NAME /<br/>UHID
+                </th>
+              )}
+              {isColumnVisible('ageGender') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px' }}>
+                  AGE/<br/>SEX
+                </th>
+              )}
+              {isColumnVisible('modality') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px', minWidth: '110px' }}>
+                  MOD
+                </th>
+              )}
+              {isColumnVisible('viewOnly') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '60px' }}>
+                  <Eye className="w-4 h-4 mx-auto" />
+                </th>
+              )}
+              {isColumnVisible('downloadViewer') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '150px' }}>
+                  <div className="flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    <Monitor className="w-4 h-4" />
+                  </div>
+                </th>
+              )}
+              {isColumnVisible('studySeriesImages') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
+                  STUDY /<br/>SERIES / IMAGES
+                </th>
+              )}
+              {isColumnVisible('patientIdAccession') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '110px' }}>
+                  PT ID/<br/>ACC. NO.
+                </th>
+              )}
+              {isColumnVisible('referralDoctor') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '900px' }}>
+                  REFERRAL<br/>DOCTOR
+                </th>
+              )}
+              {isColumnVisible('clinicalHistory') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '1000px', minWidth: '300px' }}>
+                  CLINICAL<br/>HISTORY
+                </th>
+              )}
+              {isColumnVisible('studyDateTime') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+                  STUDY<br/>DATE/TIME
+                </th>
+              )}
+              {isColumnVisible('uploadDateTime') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
+                  UPLOAD<br/>DATE/TIME
+                </th>
+              )}
+              {isColumnVisible('assignedRadiologist') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
+                  RADIOLOGIST
+                </th>
+              )}
+              {isColumnVisible('status') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
+                  STATUS
+                </th>
+              )}
+              {isColumnVisible('printCount') && (
+                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
+                  PRINT<br/>REPORT
+                </th>
+              )}
+              {isColumnVisible('actions') && (
+                <th className="px-3 py-4 text-center" style={{ width: '200px' }}>
+                  <div className="flex items-center justify-center gap-2">
+                    <Download className="w-4 h-4" />
+                    <Lock className="w-4 h-4" />
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                </th>
+              )}
             </tr>
           </thead>
 
@@ -955,6 +1048,8 @@ const WorklistTable = ({
                 onToggleLock={handleToggleStudyLock}
                 onShowDocuments={handleShowDocuments}
                 userRole={userRole}
+                // ✅ Pass visibility checker to row
+                isColumnVisible={isColumnVisible}
               />
             ))}
           </tbody>

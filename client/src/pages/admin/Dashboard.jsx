@@ -5,7 +5,7 @@ import Search from '../../components/common/Search/Search';
 import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
-import { RefreshCw, Plus, Shield, Database } from 'lucide-react';
+import { RefreshCw, Plus, Shield, Database, Palette } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
@@ -434,6 +434,13 @@ const Dashboard = () => {
       onClick: handleCreateStudy,
       variant: 'success',
       tooltip: 'Create a new study'
+    },
+    {
+      label: 'Branding',
+      icon: Palette, // Import from lucide-react
+      onClick: () => navigate('/admin/branding'),
+      variant: 'secondary',
+      tooltip: 'Configure report branding'
     }
   ];
 

@@ -81,6 +81,15 @@ export const loginUser = async (req, res) => {
         };
         const token = generateToken(tokenPayload);
 
+        // Set cookie with token
+        res.cookie('auth_token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in prod
+            sameSite: 'None',  // ✅ Allow cross-origin requests
+            maxAge: 24 * 60 * 60 * 1000, // 24 hours
+            path: '/'
+        });
+
         // Prepare user response data
         const userResponseData = {
             _id: user._id,
@@ -148,7 +157,7 @@ export const loginUser = async (req, res) => {
             message: 'Login successful.',
             user: userResponseData,
             token: token,
-            expiresIn: process.env.JWT_EXPIRES_IN || '1h',
+            expiresIn: '24h',
             organizationContext: organizationContext,
             redirectTo: getDashboardRouteForRole(user.role) // Helper function to determine redirect
         });

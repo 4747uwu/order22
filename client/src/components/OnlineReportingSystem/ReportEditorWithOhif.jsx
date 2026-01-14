@@ -1,26 +1,243 @@
 import React from 'react';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
 
 const ReportEditor = ({ content, onChange }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [paginatedContent, setPaginatedContent] = useState('');
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [fontSize, setFontSize] = useState('11pt');
   const [fontFamily, setFontFamily] = useState('Arial');
   const [showWordCount, setShowWordCount] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
+  const [lineSpacing, setLineSpacing] = useState('1.4');
+  const [showRuler, setShowRuler] = useState(true);
   const [activeTools, setActiveTools] = useState({
     bold: false,
     italic: false,
-    underline: false
+    underline: false,
+    strikethrough: false,
+    subscript: false,
+    superscript: false
   });
   const contentEditableRef = useRef(null);
+  const [showFindReplace, setShowFindReplace] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceText, setReplaceText] = useState('');
+  const lastTranscriptRef = useRef('');
+
+  // Voice to Text functionality
+  const {
+    transcript,
+    listening,
+    resetTranscript,
+    browserSupportsSpeechRecognition
+  } = useSpeechRecognition();
+
+  // 🐛 DEBUG: Log speech recognition initialization
+  useEffect(() => {
+    console.log('🎤 [Voice Init] Speech Recognition Status:', {
+      browserSupported: browserSupportsSpeechRecognition,
+      SpeechRecognitionAvailable: !!SpeechRecognition,
+      listening,
+      transcript,
+      transcriptLength: transcript?.length || 0
+    });
+  }, []);
+
+  // 🐛 DEBUG: Log listening state changes
+  useEffect(() => {
+    console.log('🎤 [Voice State] Listening state changed:', {
+      listening,
+      transcript,
+      transcriptLength: transcript?.length || 0,
+      lastTranscript: lastTranscriptRef.current,
+      lastTranscriptLength: lastTranscriptRef.current?.length || 0
+    });
+  }, [listening]);
+
+  // 🐛 DEBUG: Log transcript changes
+  useEffect(() => {
+    console.log('🎤 [Voice Transcript] Transcript changed:', {
+      transcript,
+      transcriptLength: transcript?.length || 0,
+      lastTranscript: lastTranscriptRef.current,
+      lastTranscriptLength: lastTranscriptRef.current?.length || 0,
+      areEqual: transcript === lastTranscriptRef.current,
+      editorExists: !!contentEditableRef.current,
+      editorContent: contentEditableRef.current?.innerHTML?.substring(0, 100)
+    });
+  }, [transcript]);
+
+  // Insert transcript into editor when it changes
+  useEffect(() => {
+    console.log('🎤 [Voice Effect] Transcript effect triggered:', {
+      hasTranscript: !!transcript,
+      transcriptValue: transcript,
+      transcriptLength: transcript?.length || 0,
+      hasEditor: !!contentEditableRef.current,
+      lastTranscript: lastTranscriptRef.current,
+      isDifferent: transcript !== lastTranscriptRef.current,
+      willInsert: !!(transcript && contentEditableRef.current && transcript !== lastTranscriptRef.current)
+    });
+
+    if (transcript && contentEditableRef.current && transcript !== lastTranscriptRef.current) {
+      console.log('🎤 [Voice Insert] Starting transcript insertion:', {
+        oldTranscript: lastTranscriptRef.current,
+        newTranscript: transcript,
+        oldLength: lastTranscriptRef.current.length,
+        newLength: transcript.length
+      });
+
+      // 🔧 FIX: Calculate only the NEW text to insert
+      const previousLength = lastTranscriptRef.current.length;
+      const newText = transcript.substring(previousLength); // Get only the new part
+      
+      console.log('🎤 [Voice Insert] Calculated new text to insert:', {
+        previousLength,
+        newText,
+        newTextLength: newText.length
+      });
+
+      // Update the last transcript BEFORE inserting
+      lastTranscriptRef.current = transcript;
+      
+      // Only insert if there's actually new text
+      if (newText.trim()) {
+        // Focus the editor first
+        contentEditableRef.current.focus();
+        console.log('🎤 [Voice Insert] Editor focused');
+        
+        // Get current selection
+        const selection = window.getSelection();
+        console.log('🎤 [Voice Insert] Selection info:', {
+          rangeCount: selection.rangeCount,
+          isCollapsed: selection.isCollapsed,
+          anchorNode: selection.anchorNode?.nodeName,
+          focusNode: selection.focusNode?.nodeName
+        });
+
+        let range;
+        
+        if (selection.rangeCount > 0) {
+          range = selection.getRangeAt(0);
+          console.log('🎤 [Voice Insert] Using existing range:', {
+            startContainer: range.startContainer?.nodeName,
+            startOffset: range.startOffset,
+            endContainer: range.endContainer?.nodeName,
+            endOffset: range.endOffset,
+            collapsed: range.collapsed
+          });
+        } else {
+          // If no selection, create one at the end
+          console.log('🎤 [Voice Insert] No existing range, creating new one at end');
+          range = document.createRange();
+          range.selectNodeContents(contentEditableRef.current);
+          range.collapse(false);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          console.log('🎤 [Voice Insert] New range created and added to selection');
+        }
+        
+        // Insert ONLY the new text with space
+        const textToInsert = newText + ' ';
+        console.log('🎤 [Voice Insert] Attempting to insert text:', {
+          textToInsert,
+          textLength: textToInsert.length,
+          beforeContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 50)
+        });
+
+        try {
+          // Use insertHTML to properly insert the text
+          const success = document.execCommand('insertHTML', false, textToInsert);
+          console.log('🎤 [Voice Insert] execCommand result:', {
+            success,
+            afterContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 100),
+            newContentLength: contentEditableRef.current.innerHTML.length
+          });
+        } catch (error) {
+          console.error('🎤 [Voice Insert] ERROR during execCommand:', error);
+        }
+        
+        // Update the content
+        console.log('🎤 [Voice Insert] Calling onChange with new content');
+        onChange(contentEditableRef.current.innerHTML);
+        console.log('🎤 [Voice Insert] Insertion complete');
+      } else {
+        console.log('🎤 [Voice Insert] Skipped: No new text to insert (whitespace only)');
+      }
+    } else {
+      if (!transcript) {
+        console.log('🎤 [Voice Effect] Skipped: No transcript');
+      } else if (!contentEditableRef.current) {
+        console.log('🎤 [Voice Effect] Skipped: No editor ref');
+      } else if (transcript === lastTranscriptRef.current) {
+        console.log('🎤 [Voice Effect] Skipped: Transcript unchanged');
+      }
+    }
+  }, [transcript, onChange]);
 
   // When content prop changes, update the editor's view
   useEffect(() => {
     if (contentEditableRef.current && content !== contentEditableRef.current.innerHTML) {
       contentEditableRef.current.innerHTML = content || '';
+      console.log('📝 [Content Update] Editor content updated from props:', {
+        contentLength: content?.length || 0
+      });
     }
   }, [content]);
+
+  // Toggle voice recognition
+  const toggleVoiceRecognition = () => {
+    console.log('🎤 [Voice Toggle] Toggle button clicked:', {
+      currentListening: listening,
+      willStart: !listening
+    });
+
+    if (listening) {
+      console.log('🎤 [Voice Toggle] Stopping voice recognition');
+      SpeechRecognition.stopListening();
+      // Reset the last transcript when stopping
+      setTimeout(() => {
+        console.log('🎤 [Voice Toggle] Resetting last transcript');
+        lastTranscriptRef.current = '';
+      }, 100);
+    } else {
+      console.log('🎤 [Voice Toggle] Starting voice recognition');
+      resetTranscript();
+      lastTranscriptRef.current = '';
+      
+      try {
+        SpeechRecognition.startListening({ 
+          continuous: true, 
+          language: 'en-US' 
+        });
+        console.log('🎤 [Voice Toggle] startListening called successfully');
+      } catch (error) {
+        console.error('🎤 [Voice Toggle] ERROR starting listening:', error);
+      }
+    }
+  };
+
+  // 🐛 DEBUG: Monitor editor focus
+  useEffect(() => {
+    if (contentEditableRef.current) {
+      const handleFocus = () => {
+        console.log('📝 [Editor] Editor gained focus');
+      };
+      const handleBlur = () => {
+        console.log('📝 [Editor] Editor lost focus');
+      };
+      
+      contentEditableRef.current.addEventListener('focus', handleFocus);
+      contentEditableRef.current.addEventListener('blur', handleBlur);
+      
+      return () => {
+        contentEditableRef.current?.removeEventListener('focus', handleFocus);
+        contentEditableRef.current?.removeEventListener('blur', handleBlur);
+      };
+    }
+  }, []);
 
   // Process content for multi-page preview
   const processContentForPreview = useCallback((htmlContent) => {
@@ -49,6 +266,9 @@ const ReportEditor = ({ content, onChange }) => {
   }, [content, isPreviewMode, processContentForPreview]);
 
   const handleContentChange = (e) => {
+    console.log('📝 [Editor] Content changed via input event:', {
+      newContentLength: e.target.innerHTML.length
+    });
     onChange(e.target.innerHTML);
     updateToolStates();
   };
@@ -58,7 +278,10 @@ const ReportEditor = ({ content, onChange }) => {
     setActiveTools({
       bold: document.queryCommandState('bold'),
       italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline')
+      underline: document.queryCommandState('underline'),
+      strikethrough: document.queryCommandState('strikeThrough'),
+      subscript: document.queryCommandState('subscript'),
+      superscript: document.queryCommandState('superscript')
     });
   };
 
@@ -71,34 +294,84 @@ const ReportEditor = ({ content, onChange }) => {
 
   // Enhanced style application
   const applyStyle = (style, value) => {
-    document.execCommand('styleWithCSS', false, true);
-    document.execCommand(style, false, value);
-    document.execCommand('styleWithCSS', false, false);
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const span = document.createElement('span');
+      span.style[style] = value;
+      try {
+        range.surroundContents(span);
+      } catch (e) {
+        document.execCommand('styleWithCSS', false, true);
+        document.execCommand(style, false, value);
+        document.execCommand('styleWithCSS', false, false);
+      }
+    }
     contentEditableRef.current?.focus();
     updateToolStates();
   };
 
   // Word count functionality
   const getWordCount = () => {
-    if (!content) return { words: 0, characters: 0 };
-    const text = content.replace(/<[^>]*>/g, '').trim();
-    const words = text ? text.split(/\s+/).length : 0;
+    const text = contentEditableRef.current?.innerText || '';
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
     const characters = text.length;
-    return { words, characters };
+    const charactersNoSpaces = text.replace(/\s/g, '').length;
+    return { words, characters, charactersNoSpaces };
   };
 
   // Page count
   const getPageCount = () => {
-    if (!content) return 0;
-    const matches = content.match(/data-page="/g);
-    return matches ? matches.length : 1;
+    const pages = document.querySelectorAll('.report-page, .report-page-preview');
+    return pages.length || 1;
+  };
+
+  // Find and replace functionality
+  const handleFind = () => {
+    if (!findText) return;
+    window.find(findText);
+  };
+
+  const handleReplace = () => {
+    if (!findText || !replaceText) return;
+    const content = contentEditableRef.current?.innerHTML || '';
+    const updatedContent = content.replace(new RegExp(findText, 'g'), replaceText);
+    if (contentEditableRef.current) {
+      contentEditableRef.current.innerHTML = updatedContent;
+      onChange(updatedContent);
+    }
+  };
+
+  // Insert table
+  const insertTable = (rows = 2, cols = 2) => {
+    let tableHTML = '<table style="border-collapse: collapse; width: 100%; margin: 10px 0;"><tbody>';
+    for (let i = 0; i < rows; i++) {
+      tableHTML += '<tr>';
+      for (let j = 0; j < cols; j++) {
+        tableHTML += '<td style="border: 1px solid #ddd; padding: 8px; min-width: 50px;">&nbsp;</td>';
+      }
+      tableHTML += '</tr>';
+    }
+    tableHTML += '</tbody></table>';
+    document.execCommand('insertHTML', false, tableHTML);
+  };
+
+  // Insert horizontal line
+  const insertHorizontalLine = () => {
+    document.execCommand('insertHTML', false, '<hr style="border: none; border-top: 1px solid #ddd; margin: 15px 0;">');
+  };
+
+  // Insert page break
+  const insertPageBreak = () => {
+    const pageBreakHTML = '<div style="page-break-after: always; border-top: 2px dashed #999; margin: 20px 0; padding: 10px 0; text-align: center; color: #999; font-size: 10pt;">--- Page Break ---</div>';
+    document.execCommand('insertHTML', false, pageBreakHTML);
   };
 
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.ctrlKey || e.metaKey) {
-        switch (e.key) {
+        switch(e.key.toLowerCase()) {
           case 'b':
             e.preventDefault();
             applyCommand('bold');
@@ -111,31 +384,40 @@ const ReportEditor = ({ content, onChange }) => {
             e.preventDefault();
             applyCommand('underline');
             break;
-          case 'Enter':
-            if (e.shiftKey) {
-              e.preventDefault();
-              setIsPreviewMode(!isPreviewMode);
-            }
+          case 'f':
+            e.preventDefault();
+            setShowFindReplace(!showFindReplace);
+            break;
+          case 'p':
+            e.preventDefault();
+            setIsPreviewMode(!isPreviewMode);
             break;
         }
       }
+      
+      if (e.ctrlKey && e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        setIsPreviewMode(!isPreviewMode);
+      }
     };
 
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewMode]);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPreviewMode, showFindReplace]);
 
-  const ToolbarButton = ({ onClick, active, children, tooltip, className = "" }) => (
+  const ToolbarButton = ({ onClick, active, children, tooltip, className = "", disabled = false }) => (
     <button
       onClick={onClick}
       title={tooltip}
+      disabled={disabled}
       className={`
-        flex items-center justify-center px-1.5 py-1 rounded text-xs
-        transition-all duration-150 hover:scale-105
+        flex items-center justify-center px-2 py-1 rounded text-sm font-medium
+        transition-all duration-150
         ${active 
-          ? 'bg-green-600 text-white shadow-sm' 
-          : 'bg-white text-gray-700 hover:bg-green-50 border border-gray-200 hover:border-green-300'
+          ? 'bg-blue-100 text-blue-700 border border-blue-300' 
+          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
         }
+        ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}
         ${className}
       `}
     >
@@ -144,93 +426,81 @@ const ReportEditor = ({ content, onChange }) => {
   );
 
   const ToolbarSeparator = () => (
-    <div className="w-px h-5 bg-gray-200 mx-1"></div>
+    <div className="w-px h-5 bg-gray-300 mx-1"></div>
+  );
+
+  const ToolbarGroup = ({ children, label }) => (
+    <div className="flex flex-col items-center">
+      <div className="flex items-center gap-0.5 bg-gray-50 rounded p-0.5">
+        {children}
+      </div>
+      {label && <span className="text-[9px] text-gray-500 mt-0.5">{label}</span>}
+    </div>
   );
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-br from-green-50 to-emerald-50">
+    <div className={`flex flex-col h-screen transition-all duration-300 bg-gray-100 ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       
-      {/* ✅ ULTRA COMPACT Toolbar */}
-      <div className="flex-shrink-0 border-b border-green-200 bg-white shadow-sm">
+      {/* Compact Toolbar - MS Word Style */}
+      <div className="flex-shrink-0 border-b shadow-sm bg-white border-gray-200">
         
-        {/* Single Compact Row */}
-        <div className="px-2 py-1 flex items-center gap-1 text-xs">
+        {/* First Row - Main Formatting Toolbar */}
+        <div className="px-3 py-1.5 flex flex-wrap items-center gap-1.5 border-b border-gray-200">
           
-          {/* Mode Toggle - Ultra Compact */}
-          <div className="flex bg-green-100 rounded-md p-0.5">
-            <button
-              onClick={() => setIsPreviewMode(false)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all duration-150 ${
-                !isPreviewMode 
-                  ? 'bg-white text-green-700 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+          {/* Font Group */}
+          <ToolbarGroup label="Font">
+            <select
+              value={fontFamily}
+              onChange={(e) => {
+                setFontFamily(e.target.value);
+                applyCommand('fontName', e.target.value);
+              }}
+              className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs hover:border-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setIsPreviewMode(true)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-all duration-150 ${
-                isPreviewMode 
-                  ? 'bg-white text-green-700 shadow-sm' 
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
+              <option value="Arial">Arial</option>
+              <option value="Times New Roman">Times New Roman</option>
+              <option value="Courier New">Courier New</option>
+              <option value="Verdana">Verdana</option>
+              <option value="Georgia">Georgia</option>
+              <option value="Calibri">Calibri</option>
+              <option value="Cambria">Cambria</option>
+              <option value="Helvetica">Helvetica</option>
+            </select>
+
+            <select
+              value={fontSize}
+              onChange={(e) => {
+                setFontSize(e.target.value);
+                applyStyle('fontSize', e.target.value);
+              }}
+              className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs hover:border-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 w-14"
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </button>
-          </div>
+              <option value="8pt">8</option>
+              <option value="9pt">9</option>
+              <option value="10pt">10</option>
+              <option value="11pt">11</option>
+              <option value="12pt">12</option>
+              <option value="14pt">14</option>
+              <option value="16pt">16</option>
+              <option value="18pt">18</option>
+              <option value="20pt">20</option>
+              <option value="24pt">24</option>
+              <option value="28pt">28</option>
+              <option value="36pt">36</option>
+            </select>
+          </ToolbarGroup>
 
           <ToolbarSeparator />
 
-          {/* Font Controls - Compact */}
-          <select
-            value={fontFamily}
-            onChange={(e) => {
-              setFontFamily(e.target.value);
-              applyCommand('fontName', e.target.value);
-            }}
-            className="px-1 py-0.5 bg-white border border-gray-200 rounded text-xs hover:border-green-300 focus:ring-1 focus:ring-green-400 focus:border-green-400"
-          >
-            <option value="Arial">Arial</option>
-            <option value="Times New Roman">Times</option>
-            <option value="Courier New">Courier</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Georgia">Georgia</option>
-          </select>
-
-          <select
-            value={fontSize}
-            onChange={(e) => {
-              setFontSize(e.target.value);
-              applyStyle('fontSize', e.target.value);
-            }}
-            className="px-1 py-0.5 bg-white border border-gray-200 rounded text-xs hover:border-green-300 focus:ring-1 focus:ring-green-400 focus:border-green-400"
-          >
-            <option value="8pt">8pt</option>
-            <option value="9pt">9pt</option>
-            <option value="10pt">10pt</option>
-            <option value="11pt">11pt</option>
-            <option value="12pt">12pt</option>
-            <option value="14pt">14pt</option>
-            <option value="16pt">16pt</option>
-            <option value="18pt">18pt</option>
-          </select>
-
-          <ToolbarSeparator />
-
-          {/* Formatting Tools - Ultra Compact */}
-          <div className="flex items-center gap-0.5">
+          {/* Text Formatting Group */}
+          <ToolbarGroup label="Format">
             <ToolbarButton 
               onClick={() => applyCommand('bold')} 
               active={activeTools.bold}
               tooltip="Bold (Ctrl+B)"
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5 4a1 1 0 011-1h3a3 3 0 110 6h-1v2h1a3 3 0 110 6H6a1 1 0 01-1-1V4zm3 1H7v4h1a1 1 0 100-2V5zm-1 6v4h1a1 1 0 100-2v-2H7z" clipRule="evenodd" />
+              <svg className="w-3.5 h-3.5 font-bold" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M3 5a1 1 0 011-1h5a3 3 0 110 6H4v3h6a3 3 0 110 6H4a1 1 0 01-1-1V5zm3 1v4h3a1 1 0 100-2H6zm0 6v4h4a1 1 0 100-2H6z"/>
               </svg>
             </ToolbarButton>
 
@@ -239,8 +509,8 @@ const ReportEditor = ({ content, onChange }) => {
               active={activeTools.italic}
               tooltip="Italic (Ctrl+I)"
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M8.5 3.5A1.5 1.5 0 0110 2h4a1.5 1.5 0 011.5 1.5v.5a.5.5 0 01-1 0v-.5a.5.5 0 00-.5-.5h-4a.5.5 0 00-.5.5v13a.5.5 0 00.5.5h4a.5.5 0 00.5-.5v-.5a.5.5 0 011 0v.5A1.5 1.5 0 0114 18h-4a1.5 1.5 0 01-1.5-1.5v-13z"/>
+              <svg className="w-3.5 h-3.5 italic" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M10 3a1 1 0 011 1v5h3a1 1 0 110 2h-3v5a1 1 0 11-2 0v-5H6a1 1 0 110-2h3V4a1 1 0 011-1z"/>
               </svg>
             </ToolbarButton>
 
@@ -249,433 +519,518 @@ const ReportEditor = ({ content, onChange }) => {
               active={activeTools.underline}
               tooltip="Underline (Ctrl+U)"
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v8a5 5 0 1010 0V3a1 1 0 112 0v8a7 7 0 11-14 0V3a1 1 0 011-1zm2 14a1 1 0 100 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M4 2a1 1 0 011 1v8a5 5 0 1010 0V3a1 1 0 112 0v8a7 7 0 11-14 0V3a1 1 0 011-1zm2 14a1 1 0 100 2h8a1 1 0 100-2H6z"/>
               </svg>
             </ToolbarButton>
 
-            {/* Color Picker - Compact */}
             <div className="relative">
-              <label className="flex items-center justify-center px-1.5 py-1 bg-white border border-gray-200 rounded hover:bg-green-50 cursor-pointer transition-colors">
-                <svg className="w-3 h-3 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v11a3 3 0 106 0V4a2 2 0 00-2-2H4z" clipRule="evenodd" />
+              <label className="flex items-center justify-center px-2 py-1 bg-white border border-gray-200 rounded hover:bg-gray-50 cursor-pointer">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M4 2a2 2 0 00-2 2v11a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4z"/>
                 </svg>
                 <input 
                   type="color" 
                   onChange={(e) => applyCommand('foreColor', e.target.value)} 
                   className="absolute inset-0 opacity-0 cursor-pointer" 
+                  title="Text Color"
                 />
               </label>
             </div>
-          </div>
+          </ToolbarGroup>
 
           <ToolbarSeparator />
 
-          {/* Alignment Tools - Compact */}
-          <div className="flex items-center gap-0.5">
+          {/* Alignment Group */}
+          <ToolbarGroup label="Align">
             <ToolbarButton onClick={() => applyCommand('justifyLeft')} tooltip="Align Left">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z"/>
               </svg>
             </ToolbarButton>
 
-            <ToolbarButton onClick={() => applyCommand('justifyCenter')} tooltip="Center">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1h3a1 1 0 110 2h-3v2h3a1 1 0 110 2h-3v2h3a1 1 0 110 2h-3v1a1 1 0 11-2 0v-1H6a1 1 0 110-2h3V10H6a1 1 0 110-2h3V6H6a1 1 0 110-2h3V3a1 1 0 011-1z" clipRule="evenodd" />
-              </svg>
-            </ToolbarButton>
+            
 
             <ToolbarButton onClick={() => applyCommand('justifyRight')} tooltip="Align Right">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M17 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1zm0 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1z" clipRule="evenodd" />
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M17 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1zm0 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1z"/>
               </svg>
             </ToolbarButton>
-          </div>
+
+            <ToolbarButton onClick={() => applyCommand('justifyFull')} tooltip="Justify">
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/>
+              </svg>
+            </ToolbarButton>
+          </ToolbarGroup>
+
+          
 
           <ToolbarSeparator />
 
-          {/* List Tools - Compact */}
-          <div className="flex items-center gap-0.5">
-            <ToolbarButton onClick={() => applyCommand('insertUnorderedList')} tooltip="Bullet List">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 4a1 1 0 000 2h.01a1 1 0 100-2H3zm2.5 2A1.5 1.5 0 107 4v.01A1.5 1.5 0 005.5 6zM3 8a1 1 0 100 2h.01a1 1 0 100-2H3zm2.5 2A1.5 1.5 0 107 8v.01A1.5 1.5 0 005.5 10z" clipRule="evenodd" />
+          {/* View Tools */}
+          <ToolbarGroup label="View">
+            <ToolbarButton 
+              onClick={() => setShowRuler(!showRuler)} 
+              active={showRuler}
+              tooltip="Toggle Ruler"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 6a2 2 0 012-2h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zm2 0v2h2V6H4zm3 0v2h2V6H7zm3 0v2h2V6h-2zm3 0v2h2V6h-2z"/>
               </svg>
             </ToolbarButton>
 
-            <ToolbarButton onClick={() => applyCommand('insertOrderedList')} tooltip="Numbered List">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3z" clipRule="evenodd" />
+            <button
+              onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))}
+              className="px-1.5 py-0.5 bg-white border border-gray-300 rounded hover:bg-gray-50 text-xs"
+              title="Zoom Out"
+            >
+              −
+            </button>
+            <span className="text-xs font-medium min-w-[2rem] text-center bg-white border-t border-b border-gray-300 py-0.5">{zoomLevel}%</span>
+            <button
+              onClick={() => setZoomLevel(Math.min(200, zoomLevel + 10))}
+              className="px-1.5 py-0.5 bg-white border border-gray-300 rounded hover:bg-gray-50 text-xs"
+              title="Zoom In"
+            >
+              +
+            </button>
+
+            <ToolbarButton 
+              onClick={() => setShowWordCount(!showWordCount)} 
+              active={showWordCount}
+              tooltip="Word Count"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+                <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z"/>
               </svg>
             </ToolbarButton>
-          </div>
 
-          {/* Right Side Controls - Ultra Compact */}
-          <div className="ml-auto flex items-center gap-1">
-            
-            {/* Zoom Control - Compact */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))}
-                className="p-0.5 hover:bg-green-100 rounded"
-                title="Zoom Out"
+            <ToolbarButton 
+              onClick={() => setShowFindReplace(!showFindReplace)} 
+              active={showFindReplace}
+              tooltip="Find & Replace (Ctrl+F)"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z"/>
+              </svg>
+            </ToolbarButton>
+
+            {/* Voice to Text Button */}
+            {browserSupportsSpeechRecognition && (
+              <ToolbarButton 
+                onClick={toggleVoiceRecognition} 
+                active={listening}
+                tooltip={listening ? "Stop Voice Input" : "Start Voice Input"}
+                className={listening ? 'animate-pulse' : ''}
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM13 10h-6" />
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clipRule="evenodd"/>
                 </svg>
+              </ToolbarButton>
+            )}
+          </ToolbarGroup>
+        </div>
+
+        {/* Second Row - View Mode Toggle */}
+        <div className="flex items-center justify-between px-3 py-1">
+          <div className="flex items-center gap-2">
+            <div className="flex bg-gray-100 rounded-lg p-0.5">
+              <button
+                onClick={() => setIsPreviewMode(false)}
+                className={`px-3 py-0.5 rounded text-xs font-medium transition-all ${
+                  !isPreviewMode 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Edit
               </button>
-              <span className="text-xs font-medium min-w-[2rem] text-center text-green-700">{zoomLevel}%</span>
               <button
-                onClick={() => setZoomLevel(Math.min(200, zoomLevel + 10))}
-                className="p-0.5 hover:bg-green-100 rounded"
-                title="Zoom In"
+                onClick={() => setIsPreviewMode(true)}
+                className={`px-3 py-0.5 rounded text-xs font-medium transition-all ${
+                  isPreviewMode 
+                    ? 'bg-white text-blue-600 shadow-sm' 
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
               >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" />
-                </svg>
+                Preview
               </button>
             </div>
 
-            <ToolbarSeparator />
-
-            {/* Word Count Toggle - Compact */}
-            <button
-              onClick={() => setShowWordCount(!showWordCount)}
-              className={`px-1.5 py-1 rounded text-xs transition-colors ${
-                showWordCount ? 'bg-green-100 text-green-700' : 'hover:bg-green-50'
-              }`}
-              title="Toggle Word Count"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </button>
-
-            {/* Status Info - Ultra Compact */}
-            {showWordCount && (
-              <div className="flex items-center gap-2 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                <span>{getWordCount().words}w</span>
-                <span>{getWordCount().characters}c</span>
+            {/* Voice Status Indicator */}
+            {listening && (
+              <div className="flex items-center gap-1 bg-red-100 text-red-700 px-2 py-0.5 rounded text-xs font-medium animate-pulse">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <circle cx="10" cy="10" r="4"/>
+                </svg>
+                Recording... {transcript && `"${transcript.substring(0, 30)}${transcript.length > 30 ? '...' : ''}"`}
               </div>
             )}
+          </div>
 
-            {isPreviewMode && (
-              <div className="flex items-center gap-1 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                <span>{getPageCount()}pg</span>
+          <button
+            onClick={() => setIsFullscreen(!isFullscreen)}
+            className="p-1 hover:bg-gray-100 rounded"
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {isFullscreen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              )}
+            </svg>
+          </button>
+        </div>
+
+        {/* Ruler */}
+        {showRuler && !isPreviewMode && (
+          <div className="h-5 bg-gradient-to-b from-gray-50 to-gray-100 border-t border-b border-gray-300 relative overflow-hidden">
+            <div className="absolute inset-0 flex items-end px-4" style={{ width: '21cm', margin: '0 auto' }}>
+              {[...Array(21)].map((_, i) => (
+                <div key={i} className="flex-1 border-l border-gray-400 h-2 relative">
+                  {i % 5 === 0 && (
+                    <span className="absolute -top-2.5 -left-1 text-[8px] text-gray-600">{i}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Find & Replace Panel */}
+        {showFindReplace && (
+          <div className="px-3 py-1.5 bg-yellow-50 border-t border-yellow-200 flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Find..."
+              value={findText}
+              onChange={(e) => setFindText(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <input
+              type="text"
+              placeholder="Replace with..."
+              value={replaceText}
+              onChange={(e) => setReplaceText(e.target.value)}
+              className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+            <button
+              onClick={handleFind}
+              className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+            >
+              Find
+            </button>
+            <button
+              onClick={handleReplace}
+              className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700"
+            >
+              Replace All
+            </button>
+            <button
+              onClick={() => setShowFindReplace(false)}
+              className="ml-auto p-0.5 hover:bg-yellow-100 rounded"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"/>
+              </svg>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Status Bar - MS Word Style */}
+      {(showWordCount || isPreviewMode) && (
+        <div className="flex-shrink-0 px-3 py-1 border-b text-xs flex items-center justify-between bg-white border-gray-200 text-gray-600">
+          <div className="flex items-center gap-4">
+            {showWordCount && (
+              <>
+                <span>Page {getPageCount()}</span>
+                <span>Words: {getWordCount().words}</span>
+                <span>Characters (no spaces): {getWordCount().charactersNoSpaces}</span>
+                <span>Characters (with spaces): {getWordCount().characters}</span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span>Language: English (US)</span>
+          </div>
+        </div>
+      )}
+
+      {/* Editor Container - MS Word Style */}
+      <div className="flex-1 overflow-auto" style={{ 
+        background: '#e1e1e1',
+      }}>
+        <style dangerouslySetInnerHTML={{ __html: documentStyles }} />
+        
+        <div className="min-h-full py-6 px-4 flex justify-center">
+          <div 
+            className="editor-wrapper"
+            style={{ 
+              transform: `scale(${zoomLevel / 100})`,
+              transformOrigin: 'top center',
+              transition: 'transform 0.2s ease'
+            }}
+          >
+            {isPreviewMode ? (
+              <div className="preview-container-wrapper">
+                <div 
+                  className="multi-page-preview"
+                  dangerouslySetInnerHTML={{ __html: paginatedContent || content }} 
+                />
               </div>
+            ) : (
+              <div
+                ref={contentEditableRef}
+                contentEditable
+                className="report-editor ms-word-page"
+                style={{ 
+                  lineHeight: lineSpacing,
+                }}
+                onInput={handleContentChange}
+                onMouseUp={updateToolStates}
+                onKeyUp={updateToolStates}
+                suppressContentEditableWarning={true}
+              />
             )}
           </div>
         </div>
-      </div>
-
-      {/* Editor & Preview Area - Compact */}
-      <div className="flex-1 overflow-auto" style={{ 
-        background: '#f8fffe',
-        padding: '10px'
-      }}>
-        <style dangerouslySetInnerHTML={{ __html: documentStyles }} />
-        {isPreviewMode ? (
-          <div className="preview-container" style={{ transform: `scale(${zoomLevel / 100})`, transformOrigin: 'top center' }}>
-            <div 
-              className="multi-page-preview"
-              dangerouslySetInnerHTML={{ __html: paginatedContent || content }} 
-            />
-          </div>
-        ) : (
-          <div
-            ref={contentEditableRef}
-            contentEditable
-            className="report-editor bg-white shadow-lg mx-auto transition-all duration-300"
-            style={{ 
-              width: '21cm', 
-              minHeight: '29.7cm', 
-              padding: '1.5cm',
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top center',
-              borderRadius: '6px'
-            }}
-            onInput={handleContentChange}
-            onMouseUp={updateToolStates}
-            onKeyUp={updateToolStates}
-            suppressContentEditableWarning={true}
-          />
-        )}
       </div>
     </div>
   );
 };
 
-// Enhanced styles with green theme
+// Enhanced MS Word-like styles with A4 page breaks
 const documentStyles = `
-  /* Base editor styles with green theme */
-  .report-editor {
-    font-family: Arial, sans-serif;
-    line-height: 1.4;
-    color: #000;
-    font-size: 11pt;
+  /* MS Word Page Style - A4 Size */
+  .ms-word-page {
+    width: 21cm;
+    min-height: 29.7cm;
+    max-height: 29.7cm;
+    padding: 2cm 2.5cm; /* Top/Bottom: 2cm, Left/Right: 2.5cm */
+    margin: 0 auto 15px auto;
     background: white;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    font-family: Arial, sans-serif;
+    font-size: 11pt;
+    color: #000;
     outline: none;
     box-sizing: border-box;
-    border-radius: 6px;
-    box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
-    transition: all 0.3s ease;
-    border: 1px solid rgba(34, 197, 94, 0.1);
-  }
-  
-  .report-editor:focus {
-    box-shadow: 0 8px 32px rgba(34, 197, 94, 0.15), 0 0 0 2px rgba(34, 197, 94, 0.3);
-    border-color: rgba(34, 197, 94, 0.3);
+    position: relative;
+    overflow: hidden;
   }
 
-  /* Green-themed preview container */
-  .preview-container {
-    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-    padding: 15px;
-    min-height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
+  .ms-word-page:focus {
+    box-shadow: 0 0 10px rgba(0,0,0,0.15), 0 0 0 1px rgba(59, 130, 246, 0.3);
   }
 
-  /* Enhanced multi-page preview */
+  /* Editor wrapper for zoom */
+  .editor-wrapper {
+    display: inline-block;
+    min-width: 21cm;
+  }
+
+  /* Preview container */
+  .preview-container-wrapper {
+    width: 21cm;
+    margin: 0 auto;
+  }
+
   .multi-page-preview {
     width: 21cm;
-    max-width: 21cm;
-    margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 30px;
+    gap: 15px;
   }
 
-  /* Modern page styling with green accents */
+  /* Page styling for preview - A4 Size */
   .report-page, .report-page-preview {
     background: white;
     width: 21cm;
     min-height: 29.7cm;
-    padding: 0;
-    margin: 0;
-    box-shadow: 
-      0 15px 35px rgba(34, 197, 94, 0.08),
-      0 5px 15px rgba(0,0,0,0.05);
+    max-height: 29.7cm;
+    padding: 2cm 2.5cm;
+    margin: 0 auto 15px auto;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
     box-sizing: border-box;
     position: relative;
     page-break-after: always;
     display: block;
     font-family: Arial, sans-serif;
     font-size: 11pt;
-    line-height: 1.4;
     color: #000;
-    border-radius: 6px;
     overflow: hidden;
-    transition: all 0.3s ease;
-    border: 1px solid rgba(34, 197, 94, 0.1);
   }
 
   .report-page:hover, .report-page-preview:hover {
-    box-shadow: 
-      0 20px 40px rgba(34, 197, 94, 0.12),
-      0 8px 20px rgba(0,0,0,0.08);
-    transform: translateY(-1px);
+    box-shadow: 0 0 15px rgba(0,0,0,0.15);
   }
 
   .report-page:last-child, .report-page-preview:last-child {
     page-break-after: auto;
   }
 
-  /* Enhanced patient table with green theme */
+  /* Patient info table - Enhanced */
   .page-header-table, .patient-info-table {
-    width: calc(100% - 2.5cm);
+    width: 100%;
     border-collapse: collapse;
-    margin: 2.5rem 1.25cm 1rem 1.25cm;
+    margin: 1rem 0;
     font-size: 10pt;
-    border-radius: 6px;
-    overflow: hidden;
-    box-shadow: 0 2px 8px rgba(34, 197, 94, 0.1);
+    border: 1px solid #333;
   }
 
   .page-header-table td, .patient-info-table td {
-    border: 1px solid #d1fae5;
+    border: 1px solid #333;
     padding: 8px 10px;
     vertical-align: top;
-    transition: background-color 0.2s ease;
   }
 
   .page-header-table td:nth-child(1),
   .page-header-table td:nth-child(3),
   .patient-info-table td:nth-child(1),
   .patient-info-table td:nth-child(3) {
-    background: linear-gradient(135deg, #a7f3d0 0%, #6ee7b7 100%);
+    background: linear-gradient(135deg, #6EE4F5 0%, #5DD4E4 100%);
     font-weight: 600;
     width: 22%;
-    color: #064e3b;
+    color: #000;
   }
 
   .page-header-table td:nth-child(2),
   .page-header-table td:nth-child(4),
   .patient-info-table td:nth-child(2),
   .patient-info-table td:nth-child(4) {
-    background-color: #f0fdf4;
+    background-color: #fff;
     width: 28%;
   }
 
-  /* Modern content area */
+  /* Content area */
   .content-flow-area {
-    margin: 0 1.25cm;
+    margin: 1rem 0;
     padding: 0;
-    max-height: none;
-    overflow: visible;
   }
 
-  /* Enhanced signature section with green theme */
+  /* Signature section - Enhanced */
   .signature-section {
-    margin: 1.25rem 1.25cm 1.25cm 1.25cm;
-    text-align: left;
+    margin-top: 2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #ddd;
     font-size: 10pt;
-    line-height: 1.3;
-    border-top: 2px solid #d1fae5;
-    padding-top: 1.25rem;
     page-break-inside: avoid;
-    background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
-    padding: 1.25rem;
-    border-radius: 6px;
-    margin-top: 1.5rem;
   }
 
   .doctor-name {
     font-weight: 700;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
     font-size: 12pt;
-    color: #064e3b;
+    color: #000;
   }
 
   .doctor-specialization,
   .doctor-license {
-    margin: 3px 0;
+    margin: 4px 0;
     font-size: 10pt;
-    color: #166534;
+    color: #333;
   }
 
   .signature-image {
-    width: 80px;
-    height: 40px;
-    margin: 8px 0;
+    width: 100px;
+    height: 50px;
+    margin: 10px 0;
     object-fit: contain;
-    border-radius: 3px;
   }
 
-  /* Modern text styles with green accents */
+  /* Typography */
   p { 
-    margin: 6px 0; 
+    margin: 8px 0; 
     font-size: 11pt;
-    line-height: 1.5;
-    color: #374151;
+    line-height: inherit;
   }
   
   h1, h2, h3 { 
     font-weight: 700; 
     text-decoration: underline; 
-    margin: 15px 0 10px 0; 
+    margin: 16px 0 8px 0; 
     page-break-after: avoid;
-    color: #064e3b;
   }
-  h1 { font-size: 15pt; line-height: 1.3; }
-  h2 { font-size: 13pt; line-height: 1.3; }
-  h3 { font-size: 11pt; line-height: 1.3; }
+  h1 { font-size: 16pt; }
+  h2 { font-size: 14pt; }
+  h3 { font-size: 12pt; }
   
   ul, ol { 
-    padding-left: 20px; 
+    padding-left: 24px; 
     margin: 8px 0; 
   }
   li { 
-    margin: 3px 0; 
-    font-size: 11pt;
-    line-height: 1.4;
+    margin: 4px 0; 
   }
-  strong { font-weight: 700; color: #064e3b; }
+  strong { font-weight: 700; }
+  em { font-style: italic; }
   u { text-decoration: underline; }
 
-  /* Green-themed page break indicators */
+  /* Tables in content */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 10px 0;
+  }
+
+  td, th {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+  }
+
+  th {
+    background-color: #f2f2f2;
+    font-weight: 600;
+  }
+
+  /* Page break indicator */
   div[style*="page-break-after: always"] {
-    height: 3px;
-    margin: 25px 1.25cm;
-    border-top: 2px dashed #22c55e;
-    background: linear-gradient(90deg, transparent 0%, #22c55e 50%, transparent 100%);
+    height: 0;
+    margin: 20px 0;
+    border-top: 2px dashed #999;
     position: relative;
-    border-radius: 2px;
   }
 
   div[style*="page-break-after: always"]:after {
-    content: "PAGE BREAK";
+    content: "--- Page Break ---";
     position: absolute;
     top: -10px;
     left: 50%;
     transform: translateX(-50%);
-    background: linear-gradient(135deg, #22c55e, #16a34a);
-    color: white;
-    font-size: 8pt;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-weight: 600;
-    box-shadow: 0 2px 6px rgba(34, 197, 94, 0.3);
+    background: white;
+    color: #999;
+    font-size: 9pt;
+    padding: 0 10px;
   }
 
-  /* Enhanced page numbering with green theme */
+  /* Page numbering */
   .report-page::after, .report-page-preview::after {
     content: "Page " attr(data-page);
     position: absolute;
     bottom: 1cm;
-    right: 1.25cm;
-    font-size: 9pt;
-    color: #166534;
-    font-weight: 500;
-    background: rgba(240, 253, 244, 0.9);
-    padding: 3px 6px;
-    border-radius: 3px;
-    backdrop-filter: blur(3px);
+    right: 2.5cm;
+    font-size: 10pt;
+    color: #666;
   }
 
-  .report-page::before, .report-page-preview::before {
-    content: "Page " attr(data-page);
-    position: absolute;
-    top: -30px;
-    left: 0;
-    font-size: 10px;
-    color: #064e3b;
-    background: linear-gradient(135deg, #dcfce7, #bbf7d0);
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-weight: 600;
-    border: 1px solid #22c55e;
-    box-shadow: 0 2px 4px rgba(34, 197, 94, 0.2);
-  }
-
+  /* Print styles */
   @media print {
-    .preview-container { 
-      background: white; 
-      padding: 0; 
-    }
-    
-    .multi-page-preview {
-      gap: 0;
-    }
-    
-    .report-page, .report-page-preview { 
+    .ms-word-page,
+    .report-page, 
+    .report-page-preview { 
       margin: 0; 
       box-shadow: none; 
       page-break-after: always;
-      border-radius: 0;
-      border: none;
     }
     
-    .report-page:last-child, .report-page-preview:last-child { 
+    .report-page:last-child, 
+    .report-page-preview:last-child { 
       page-break-after: auto; 
-    }
-    
-    .report-page::before, .report-page-preview::before,
-    .report-page::after, .report-page-preview::after {
-      display: none;
     }
     
     div[style*="page-break-after: always"] {
@@ -683,12 +1038,44 @@ const documentStyles = `
       border: none;
       height: 0;
       margin: 0;
-      background: none;
     }
     
     div[style*="page-break-after: always"]:after {
       display: none;
     }
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 6px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+
+  /* Pulse animation for recording */
+  @keyframes pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  .animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   }
 `;
 

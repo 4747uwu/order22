@@ -20,10 +20,21 @@ import {
     Crown,
     Zap,
     Star,
-    CrownIcon
+    CrownIcon,
+    Columns,
+    Building2
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+
+// ✅ IMPORT NEW COMPONENTS
+import ColumnSelector from '../../components/common/ColumnSelector';
+import MultiAccountRoleSelector from '../../components/admin/MultiAccountRoleSelector';
+import LabSelector from '../../components/common/LabSelector';
+import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
+// import api from '../../services/api';
+import sessionManager from '../../services/sessionManager'; // ✅ ADD THIS
+// import toast from 'react-hot-toast';
 
 const CreateUser = () => {
     const navigate = useNavigate();
@@ -42,7 +53,12 @@ const CreateUser = () => {
         password: '',
         username: '',
         role: '',
-        organizationType: 'teleradiology_company'
+        organizationType: 'teleradiology_company',
+        // ✅ NEW: Three feature fields
+        visibleColumns: [],
+        accountRoles: [],
+        primaryRole: '',
+        linkedLabs: []
     });
     
     // Role-specific configuration
@@ -59,30 +75,90 @@ const CreateUser = () => {
         }
     });
 
+    // ✅ NEW: State for multi-role setup
+    const [useMultiRole, setUseMultiRole] = useState(false);
+
     // Fetch available roles on component mount
     useEffect(() => {
         fetchAvailableRoles();
         fetchUsers();
     }, []);
 
+    // ✅ REMOVED: Auto-updating columns useEffect that was causing issues
+    // Columns will be set by ColumnSelector component itself
+
+    // ✅ FIXED: Only sync when toggle changes, not when roles change
+    useEffect(() => {
+        if (!useMultiRole && formData.role) {
+            // When switching from multi to single, sync accountRoles
+            setFormData(prev => ({
+                ...prev,
+                accountRoles: [formData.role],
+                primaryRole: formData.role
+            }));
+        }
+    }, [useMultiRole]); // ✅ Only depend on useMultiRole toggle
+
     const fetchAvailableRoles = async () => {
         try {
+            setLoading(true);
+            
+            // ✅ Fetch roles
             const endpoint = currentUser?.role === 'admin' 
                 ? '/admin/user-management/available-roles'
                 : '/group/user-management/available-roles';
                 
             const response = await api.get(endpoint);
-            console.log(response)
+            console.log('Roles response:', response);
+            
             if (response.data.success) {
-                setAvailableRoles(response.data.data);
+                let rolesData = response.data.data;
+                
+                // ✅ NEW: Fetch labs for the organization using api service
+                try {
+                    const labsResponse = await api.get('/admin/labs');
+                    console.log('Labs response:', labsResponse);
+                    
+                    if (labsResponse.data.success) {
+                        // ✅ FIXED: Ensure rolesData is an object before adding labs
+                        if (typeof rolesData !== 'object' || Array.isArray(rolesData)) {
+                            rolesData = { roles: rolesData };
+                        }
+                        
+                        // ✅ Add labs to the rolesData object
+                        rolesData.labs = labsResponse.data.data || [];
+                        
+                        console.log('✅ Labs added to rolesData:', {
+                            labsCount: rolesData.labs?.length || 0,
+                            labs: rolesData.labs
+                        });
+                    }
+                } catch (labError) {
+                    console.error('❌ Error fetching labs:', labError);
+                    // ✅ Ensure rolesData has labs property even if fetch fails
+                    if (typeof rolesData !== 'object' || Array.isArray(rolesData)) {
+                        rolesData = { roles: rolesData, labs: [] };
+                    } else {
+                        rolesData.labs = [];
+                    }
+                }
+                
+                setAvailableRoles(rolesData);
+                
+                console.log('✅ Available roles and labs set:', {
+                    rolesDataStructure: Object.keys(rolesData),
+                    hasLabs: 'labs' in rolesData,
+                    labsCount: rolesData.labs?.length || 0,
+                    fullData: rolesData
+                });
             }
         } catch (error) {
-            console.error('Error fetching available roles:', error);
+            console.error('❌ Error fetching available roles:', error);
             
             // ✅ FALLBACK: If API fails, provide default roles based on user type
             const defaultRoles = currentUser?.role === 'admin' 
                 ? {
-                    // Admin can create all roles including group_id
+                    labs: [], // ✅ Include empty labs array in fallback
                     group_id: {
                         name: 'Group ID',
                         description: 'Create and manage other user roles including Assignor, Radiologist, Verifier, etc.'
@@ -121,7 +197,7 @@ const CreateUser = () => {
                     }
                 }
                 : {
-                    // Group ID can create all roles except group_id (to prevent circular creation)
+                    labs: [], // ✅ Include empty labs array in fallback
                     assignor: {
                         name: 'Assignor',
                         description: 'Assign cases to radiologists and verifiers, manage workload distribution'
@@ -158,6 +234,8 @@ const CreateUser = () => {
                 
             setAvailableRoles(defaultRoles);
             toast.error('Failed to fetch available roles - using defaults');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -202,6 +280,59 @@ const CreateUser = () => {
                 [key]: value
             }
         }));
+    };
+
+    // ✅ NEW: Handle column toggle
+    const handleColumnToggle = (columnId) => {
+        setFormData(prev => {
+            const isSelected = prev.visibleColumns.includes(columnId);
+            return {
+                ...prev,
+                visibleColumns: isSelected
+                    ? prev.visibleColumns.filter(id => id !== columnId)
+                    : [...prev.visibleColumns, columnId]
+            };
+        });
+    };
+
+    // ✅ NEW: Handle select/clear all columns
+    const handleSelectAllColumns = (columns) => {
+        setFormData(prev => ({ ...prev, visibleColumns: columns }));
+    };
+
+    // ✅ NEW: Handle multi-role toggle
+    const handleMultiRoleToggle = (roleKey) => {
+        setFormData(prev => {
+            const isSelected = prev.accountRoles.includes(roleKey);
+            const newRoles = isSelected
+                ? prev.accountRoles.filter(r => r !== roleKey)
+                : [...prev.accountRoles, roleKey];
+
+            // If removing the primary role, set a new one
+            let newPrimaryRole = prev.primaryRole;
+            if (isSelected && prev.primaryRole === roleKey) {
+                newPrimaryRole = newRoles[0] || '';
+            }
+
+            return {
+                ...prev,
+                accountRoles: newRoles,
+                primaryRole: newPrimaryRole || newRoles[0] || ''
+            };
+        });
+    };
+
+    // ✅ NEW: Handle lab toggle
+    const handleLabToggle = (labId) => {
+        setFormData(prev => {
+            const isSelected = prev.linkedLabs.some(lab => lab.labId === labId);
+            return {
+                ...prev,
+                linkedLabs: isSelected
+                    ? prev.linkedLabs.filter(lab => lab.labId !== labId)
+                    : [...prev.linkedLabs, { labId, permissions: { canViewStudies: true, canAssignStudies: false } }]
+            };
+        });
     };
 
     // Get role-specific configuration component
@@ -342,8 +473,18 @@ const CreateUser = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        if (!formData.fullName || !formData.email || !formData.password || !formData.role) {
+        if (!formData.fullName || !formData.email || !formData.password) {
             toast.error('Please fill in all required fields');
+            return;
+        }
+
+        if (!useMultiRole && !formData.role) {
+            toast.error('Please select a role');
+            return;
+        }
+
+        if (useMultiRole && formData.accountRoles.length === 0) {
+            toast.error('Please select at least one role');
             return;
         }
 
@@ -358,7 +499,13 @@ const CreateUser = () => {
         try {
             const submissionData = {
                 ...formData,
-                roleConfig: roleConfig
+                roleConfig: roleConfig,
+                // ✅ Include multi-role data if enabled
+                ...(useMultiRole && {
+                    role: formData.primaryRole,
+                    accountRoles: formData.accountRoles,
+                    primaryRole: formData.primaryRole
+                })
             };
 
             const endpoint = currentUser?.role === 'admin' 
@@ -368,7 +515,7 @@ const CreateUser = () => {
             const response = await api.post(endpoint, submissionData);
 
             if (response.data.success) {
-                toast.success(`${formData.role.replace('_', ' ').toUpperCase()} created successfully!`);
+                toast.success(`User created successfully!`);
                 const redirectPath = currentUser?.role === 'admin' 
                     ? '/admin/dashboard'
                     : '/group/dashboard';
@@ -408,6 +555,15 @@ const CreateUser = () => {
         return currentUser?.role === 'admin' ? '/admin/dashboard' : '/group/dashboard';
     };
 
+    // ✅ NEW: Check if role needs lab linking
+    const shouldShowLabSelector = () => {
+        const rolesNeedingLabs = ['assignor', 'admin', 'group_id', 'receptionist'];
+        if (useMultiRole) {
+            return formData.accountRoles.some(role => rolesNeedingLabs.includes(role));
+        }
+        return rolesNeedingLabs.includes(formData.role);
+    };
+
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
             {/* Header */}
@@ -431,7 +587,7 @@ const CreateUser = () => {
             </div>
 
             {/* Main Content */}
-            <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+            <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
                 <form onSubmit={handleSubmit} className="space-y-8">
                     
                     {/* Basic Information */}
@@ -520,64 +676,144 @@ const CreateUser = () => {
                         </div>
                     </div>
 
-                    {/* Role Selection */}
+                    {/* ✅ FEATURE 2: Multi-Account Role Setup */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                <Shield className="w-5 h-5 text-purple-600" />
-                                <span>Role Selection</span>
-                            </h3>
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                                    <Shield className="w-5 h-5 text-purple-600" />
+                                    <span>Role Configuration</span>
+                                </h3>
+                                <label className="flex items-center space-x-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={useMultiRole}
+                                        onChange={(e) => setUseMultiRole(e.target.checked)}
+                                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                    />
+                                    <span className="text-sm font-medium text-gray-700">Enable Multi-Role</span>
+                                </label>
+                            </div>
                         </div>
                         
                         <div className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {Object.entries(availableRoles).map(([roleKey, roleData]) => {
-                                    const roleDisplay = getRoleDisplay(roleKey);
-                                    const isSelected = formData.role === roleKey;
-                                    
-                                    return (
-                                        <div
-                                            key={roleKey}
-                                            onClick={() => handleInputChange({ target: { name: 'role', value: roleKey } })}
-                                            className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                                                isSelected 
-                                                    ? 'border-blue-500 bg-blue-50 shadow-md' 
-                                                    : 'border-gray-200 hover:border-gray-300'
-                                            }`}
-                                        >
-                                            <div className="flex items-start space-x-3">
-                                                <div className={`p-2 rounded-lg ${roleDisplay.bg}`}>
-                                                    <div className={roleDisplay.color}>
-                                                        {roleDisplay.icon}
+                            {useMultiRole ? (
+                                <MultiAccountRoleSelector
+                                    availableRoles={availableRoles}
+                                    selectedRoles={formData.accountRoles}
+                                    primaryRole={formData.primaryRole}
+                                    onRoleToggle={handleMultiRoleToggle}
+                                    onPrimaryRoleChange={(role) => setFormData(prev => ({ ...prev, primaryRole: role }))}
+                                />
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {Object.entries(availableRoles).map(([roleKey, roleData]) => {
+                                        const roleDisplay = getRoleDisplay(roleKey);
+                                        const isSelected = formData.role === roleKey;
+                                        
+                                        return (
+                                            <div
+                                                key={roleKey}
+                                                onClick={() => handleInputChange({ target: { name: 'role', value: roleKey } })}
+                                                className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
+                                                    isSelected 
+                                                        ? 'border-blue-500 bg-blue-50 shadow-md' 
+                                                        : 'border-gray-200 hover:border-gray-300'
+                                                }`}
+                                            >
+                                                <div className="flex items-start space-x-3">
+                                                    <div className={`p-2 rounded-lg ${roleDisplay.bg}`}>
+                                                        <div className={roleDisplay.color}>
+                                                            {roleDisplay.icon}
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="text-sm font-semibold text-gray-900 mb-1">
+                                                            {roleData.name}
+                                                            {roleKey === 'group_id' && (
+                                                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
+                                                                    <Crown className="w-3 h-3 mr-1" />
+                                                                    Creator
+                                                                </span>
+                                                            )}
+                                                        </h4>
+                                                        <p className="text-xs text-gray-600 leading-relaxed">
+                                                            {roleData.description}
+                                                        </p>
                                                     </div>
                                                 </div>
-                                                <div className="flex-1">
-                                                    <h4 className="text-sm font-semibold text-gray-900 mb-1">
-                                                        {roleData.name}
-                                                        {roleKey === 'group_id' && (
-                                                            <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                                                <Crown className="w-3 h-3 mr-1" />
-                                                                Creator
-                                                            </span>
-                                                        )}
-                                                    </h4>
-                                                    <p className="text-xs text-gray-600 leading-relaxed">
-                                                        {roleData.description}
-                                                    </p>
-                                                </div>
+                                                
+                                                {isSelected && (
+                                                    <div className="absolute top-2 right-2">
+                                                        <CheckCircle className="w-5 h-5 text-blue-500" />
+                                                    </div>
+                                                )}
                                             </div>
-                                            
-                                            {isSelected && (
-                                                <div className="absolute top-2 right-2">
-                                                    <CheckCircle className="w-5 h-5 text-blue-500" />
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
+
+                    {/* ✅ FEATURE 1: Column-based Restriction */}
+                    {(formData.role || formData.accountRoles.length > 0) && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-gray-200">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                                    <Columns className="w-5 h-5 text-teal-600" />
+                                    <span>Visible Columns Configuration</span>
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    Select which columns this user can see in their worklist
+                                </p>
+                            </div>
+                            
+                            <div className="p-6">
+                                <ColumnSelector
+                                    selectedColumns={formData.visibleColumns}
+                                    onColumnToggle={handleColumnToggle}
+                                    onSelectAll={(columns) => handleSelectAllColumns(columns)}
+                                    onClearAll={() => handleSelectAllColumns([])}
+                                    userRoles={useMultiRole ? formData.accountRoles : [formData.role]}
+                                    formData={formData}
+                                    setFormData={setFormData}
+                                    useMultiRole={useMultiRole}
+                                />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ✅ FEATURE 3: Lab/Center Linking */}
+                    {shouldShowLabSelector() && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="px-6 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-gray-200">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                                    <Building2 className="w-5 h-5 text-orange-600" />
+                                    <span>Lab/Center Access</span>
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    Select which labs/centers this user can access
+                                </p>
+                            </div>
+                            
+                            <div className="p-6">
+                                <LabSelector
+    selectedLabs={formData.linkedLabs.map(lab => lab.labId)}
+    onLabToggle={handleLabToggle}
+    onSelectAll={(labIds) => setFormData(prev => ({ 
+        ...prev, 
+        linkedLabs: labIds.map(labId => ({ 
+            labId, 
+            permissions: { canViewStudies: true, canAssignStudies: false } 
+        })) 
+    }))}
+    onClearAll={() => setFormData(prev => ({ ...prev, linkedLabs: [] }))}
+    availableLabs={availableRoles.labs || []}
+/>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Role-Specific Configuration */}
                     {getRoleSpecificConfig() && (
@@ -585,7 +821,7 @@ const CreateUser = () => {
                             <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
                                 <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
                                     <Settings className="w-5 h-5 text-green-600" />
-                                    <span>Role Configuration</span>
+                                    <span>Advanced Role Configuration</span>
                                 </h3>
                             </div>
                             
@@ -596,7 +832,14 @@ const CreateUser = () => {
                     )}
 
                     {/* Submit Button */}
-                    <div className="flex justify-end">
+                    <div className="flex justify-end space-x-4">
+                        <button
+                            type="button"
+                            onClick={() => navigate(getBackPath())}
+                            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-300"
+                        >
+                            Cancel
+                        </button>
                         <button
                             type="submit"
                             disabled={loading}

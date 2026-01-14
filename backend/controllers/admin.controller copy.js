@@ -371,18 +371,22 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ ENHANCED: Execute study query with comprehensive population
-const executeStudyQuery = async (queryFilters, limit) => {
+const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     try {
+        const skip = (page - 1) * limit;
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
-        // ✅ COMPREHENSIVE POPULATION - includes Organization for BharatPacs workflow
         const studies = await DicomStudy.find(queryFilters)
             // Core references
             .populate('organization', 'name identifier contactEmail contactPhone address')
             .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
             .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
             
+            // ✅ ADD ATTACHMENTS POPULATION
+    .populate('attachments.documentId', 'fileName fileSize contentType uploadedAt')
+    .populate('attachments.uploadedBy', 'fullName email role')
+
+    
             // Assignment references
             .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
             .populate('assignment.assignedBy', 'fullName firstName lastName email role')
@@ -403,12 +407,13 @@ const executeStudyQuery = async (queryFilters, limit) => {
             .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
             
             .sort({ createdAt: -1 })
+            .skip(skip)
             .limit(limit)
-            .lean(); // ✅ Keep lean for performance
+            .lean();
 
-        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}`);
+        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies (page ${page}), Total: ${totalStudies}`);
 
-        return { studies, totalStudies };
+        return { studies, totalStudies, currentPage: page };
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
         throw error;
@@ -560,8 +565,9 @@ export const getPendingStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
         
-        console.log('🟡 PENDING: Fetching pending studies for multi-tenant system');
+        console.log(`🟡 PENDING: Fetching - Page: ${page}, Limit: ${limit}`);
         
         const user = req.user;
         if (!user) {
@@ -573,10 +579,11 @@ export const getPendingStudies = async (req, res) => {
         
         console.log(`🔍 PENDING query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
-        console.log(`✅ PENDING: Completed in ${processingTime}ms`);
+        console.log(`✅ PENDING: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
         return res.status(200).json({
             success: true,
@@ -584,12 +591,12 @@ export const getPendingStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: 1,
+                currentPage: currentPage,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
                 limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
             },
             metadata: {
                 category: 'pending',
@@ -614,6 +621,9 @@ export const getInProgressStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
+        
+        console.log(`🔵 IN-PROGRESS: Fetching - Page: ${page}, Limit: ${limit}`);
         
         const user = req.user;
         if (!user) {
@@ -628,9 +638,11 @@ export const getInProgressStudies = async (req, res) => {
         ];
         const queryFilters = buildBaseQuery(req, user, inProgressStatuses);
 
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
+        console.log(`✅ IN-PROGRESS: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
         return res.status(200).json({
             success: true,
@@ -638,12 +650,12 @@ export const getInProgressStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: 1,
+                currentPage: currentPage,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
                 limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
             },
             metadata: {
                 category: 'inprogress',
@@ -668,6 +680,9 @@ export const getCompletedStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
+        
+        console.log(`🟢 COMPLETED: Fetching - Page: ${page}, Limit: ${limit}`);
         
         const user = req.user;
         if (!user) {
@@ -677,9 +692,11 @@ export const getCompletedStudies = async (req, res) => {
         const completedStatuses = ['final_report_downloaded', 'archived'];
         const queryFilters = buildBaseQuery(req, user, completedStatuses);
 
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
+        console.log(`✅ COMPLETED: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
         return res.status(200).json({
             success: true,
@@ -687,12 +704,12 @@ export const getCompletedStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: 1,
+                currentPage: currentPage,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
                 limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
             },
             metadata: {
                 category: 'completed',
@@ -708,77 +725,6 @@ export const getCompletedStudies = async (req, res) => {
         res.status(500).json({ 
             success: false, 
             message: 'Server error fetching completed studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-export const getAllStudiesForAdmin = async (req, res) => {
-    try {
-        const startTime = Date.now();
-        const limit = parseInt(req.query.limit) || 20;
-        
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
-
-        // Determine workflow statuses based on category
-        let workflowStatuses = null;
-        if (req.query.category && req.query.category !== 'all') {
-            const statusMap = {
-                'pending': ['new_study_received', 'pending_assignment'],
-                'inprogress': [
-                    'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
-                    'report_finalized', 'report_drafted', 'report_uploaded', 
-                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
-                    'report_rejected'
-                ],
-                'completed': ['final_report_downloaded', 'archived']
-            };
-            workflowStatuses = statusMap[req.query.category];
-        }
-
-        const queryFilters = buildBaseQuery(req, user, workflowStatuses);
-
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-
-        const processingTime = Date.now() - startTime;
-
-        return res.status(200).json({
-            success: true,
-            count: studies.length,
-            totalRecords: totalStudies,
-            data: studies,
-            pagination: {
-                currentPage: 1,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
-            },
-            metadata: {
-                category: req.query.category || 'all',
-                statusesIncluded: workflowStatuses || 'all',
-                organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
-                userRole: user.role,
-                processingTime: processingTime,
-                appliedFilters: {
-                    modality: req.query.modality || 'all',
-                    labId: req.query.labId || 'all',
-                    priority: req.query.priority || 'all',
-                    search: req.query.search || null,
-                    dateType: req.query.dateType || 'createdAt'
-                }
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ ALL STUDIES: Error fetching studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching studies.',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
     }
@@ -924,11 +870,12 @@ export const getCategoryValues = async (req, res) => {
     }
 };
 
-// ✅ NEW: Category-specific endpoints
+// ✅ FIX: Get studies by category WITH PAGINATION
 export const getStudiesByCategory = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
         const { category } = req.params;
         
         const user = req.user;
@@ -936,11 +883,11 @@ export const getStudiesByCategory = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User not authenticated' });
         }
 
-        console.log(`🔍 [${category.toUpperCase()}] Fetching studies for category`);
+        console.log(`🔍 [${category.toUpperCase()}] Fetching studies - Page: ${page}, Limit: ${limit}`);
 
         const queryFilters = buildBaseQuery(req, user);
         
-        // ✅ CATEGORY-SPECIFIC FILTERS
+        // Category-specific filters...
         switch (category) {
             case 'created':
                 queryFilters.currentCategory = 'CREATED';
@@ -984,10 +931,11 @@ export const getStudiesByCategory = async (req, res) => {
 
         console.log(`🔍 [${category.toUpperCase()}] query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
+        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
-        console.log(`✅ [${category.toUpperCase()}]: Completed in ${processingTime}ms`);
+        console.log(`✅ [${category.toUpperCase()}]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
         return res.status(200).json({
             success: true,
@@ -995,12 +943,12 @@ export const getStudiesByCategory = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: 1,
+                currentPage: currentPage,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
                 limit: limit,
-                hasNextPage: totalStudies > limit,
-                hasPrevPage: false
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
             },
             metadata: {
                 category: category,
@@ -1020,6 +968,122 @@ export const getStudiesByCategory = async (req, res) => {
     }
 };
 
+// ✅ FIX: Get all studies WITH PAGINATION
+export const getAllStudiesForAdmin = async (req, res) => {
+    try {
+        const startTime = Date.now();
+        const limit = parseInt(req.query.limit) || 50;
+        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
+        
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'User not authenticated' });
+        }
+
+        console.log(`🔍 [ALL STUDIES] Fetching - Page: ${page}, Limit: ${limit}`);
+
+        // Determine workflow statuses based on category
+        let workflowStatuses = null;
+        if (req.query.category && req.query.category !== 'all') {
+            const statusMap = {
+                'pending': ['new_study_received', 'pending_assignment'],
+                'inprogress': [
+                    'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
+                    'report_finalized', 'report_drafted', 'report_uploaded', 
+                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+                    'report_rejected'
+                ],
+                'completed': ['final_report_downloaded', 'archived']
+            };
+            workflowStatuses = statusMap[req.query.category];
+        }
+
+        const queryFilters = buildBaseQuery(req, user, workflowStatuses);
+
+        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
+        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
+
+        const processingTime = Date.now() - startTime;
+        console.log(`✅ [ALL STUDIES]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
+
+        return res.status(200).json({
+            success: true,
+            count: studies.length,
+            totalRecords: totalStudies,
+            data: studies,
+            pagination: {
+                currentPage: currentPage,
+                totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies,
+                limit: limit,
+                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
+                hasPrevPage: currentPage > 1
+            },
+            metadata: {
+                category: req.query.category || 'all',
+                statusesIncluded: workflowStatuses || 'all',
+                organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
+                userRole: user.role,
+                processingTime: processingTime,
+                appliedFilters: {
+                    modality: req.query.modality || 'all',
+                    labId: req.query.labId || 'all',
+                    priority: req.query.priority || 'all',
+                    search: req.query.search || null,
+                    dateType: req.query.dateType || 'createdAt'
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ ALL STUDIES: Error fetching studies:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error fetching studies.',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+// backend/controllers/admin.controller.js (or create new file if needed)
+
+// ✅ GET ALL LABS IN ORGANIZATION
+export const getOrganizationLabs = async (req, res) => {
+    try {
+        const userRole = req.user.role;
+        const orgIdentifier = req.user.organizationIdentifier;
+
+        // Build query based on role
+        let query = { isActive: true };
+        
+        if (userRole !== 'super_admin') {
+            query.organizationIdentifier = orgIdentifier;
+        }
+
+        const labs = await Lab.find(query)
+            .populate('organization', 'name displayName identifier')
+            .select('name identifier contactPerson contactEmail settings isActive')
+            .sort({ name: 1 })
+            .lean();
+
+        console.log(`✅ Found ${labs.length} labs for organization ${orgIdentifier || 'all'}`);
+
+        res.json({
+            success: true,
+            data: labs,
+            count: labs.length
+        });
+
+    } catch (error) {
+        console.error('❌ Get organization labs error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch labs'
+        });
+    }
+};
+
 export default {
     getValues,
     getCategoryValues, // ✅ NEW
@@ -1027,5 +1091,6 @@ export default {
     getPendingStudies,
     getInProgressStudies,
     getCompletedStudies,
-    getAllStudiesForAdmin
+    getAllStudiesForAdmin,
+    getOrganizationLabs
 };

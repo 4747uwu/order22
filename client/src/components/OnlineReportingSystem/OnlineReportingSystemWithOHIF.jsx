@@ -41,9 +41,16 @@ const OnlineReportingSystemWithOHIF = () => {
   // ✅ UPDATED: Width percentage dropdown instead of drag/drop
   const [leftPanelWidth, setLeftPanelWidth] = useState(60); // Percentage
 
+  // ✅ FIXED: Get current user and check accountRoles
+  const currentUser = sessionManager.getCurrentUser();
+  const userRoles = currentUser?.accountRoles || [currentUser?.role];
+  const hasRole = (role) => userRoles.includes(role);
+
   // ✅ CHECK IF VERIFIER MODE (after state declarations)
-  const isVerifierMode = searchParams.get('verifierMode') === 'true';
-  const isVerificationMode = searchParams.get('action') === 'verify';
+  const isVerifierMode = searchParams.get('verifierMode') === 'true' || 
+                         searchParams.get('verifier') === 'true' ||
+                         searchParams.get('action') === 'verify' ||
+                         hasRole('verifier');
 
   // ✅ Width percentage options
   const widthOptions = [
@@ -922,21 +929,28 @@ const OnlineReportingSystemWithOHIF = () => {
     }
   };
 
-  const handleBackToWorklist = () => {
+   const handleBackToWorklist = () => {
     console.log('🔙 [Navigation] Back to worklist clicked');
     const currentUser = sessionManager.getCurrentUser();
-    console.log('👤 [Navigation] Current user for navigation:', currentUser);
+    const userRoles = currentUser?.accountRoles || [currentUser?.role];
+    const hasRole = (role) => userRoles.includes(role);
     
-    if (isVerifierMode || currentUser?.role === 'verifier') {
+    console.log('👤 [Navigation] Current user roles for navigation:', userRoles);
+    
+    // ✅ FIXED: Check accountRoles array instead of just role
+    if (isVerifierMode || hasRole('verifier')) {
       console.log('🔍 [Navigation] Navigating to verifier dashboard');
       navigate('/verifier/dashboard');
-    } else if (currentUser?.role === 'doctor_account') {
+    } else if (hasRole('assignor')) {
+      console.log('📋 [Navigation] Navigating to assignor dashboard');
+      navigate('/assignor/dashboard');
+    } else if (hasRole('radiologist') || hasRole('doctor_account')) {
       console.log('🩺 [Navigation] Navigating to doctor dashboard');
       navigate('/doctor/dashboard');
-    } else if (currentUser?.role === 'admin') {
+    } else if (hasRole('admin')) {
       console.log('👑 [Navigation] Navigating to admin dashboard');
       navigate('/admin/dashboard');
-    } else if (currentUser?.role === 'lab_staff') {
+    } else if (hasRole('lab_staff')) {
       console.log('🧪 [Navigation] Navigating to lab dashboard');
       navigate('/lab/dashboard');
     } else {
@@ -944,13 +958,12 @@ const OnlineReportingSystemWithOHIF = () => {
       navigate('/login');
     }
   };
-
   // Final debug log
   console.log('📊 [Debug] Current component state:', {
     studyId,
     loading,
-    isVerifierMode,
-    isVerificationMode,
+    // isVerifierMode,
+    // isVerificationMode,
     studyData: studyData ? 'loaded' : 'null',
     patientData: patientData ? 'loaded' : 'null',
     downloadOptions: downloadOptions ? 'loaded' : 'null',

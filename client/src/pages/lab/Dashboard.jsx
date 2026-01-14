@@ -4,12 +4,14 @@ import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
 import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
 import api from '../../services/api';
-import { RefreshCw, Building } from 'lucide-react';
+import { RefreshCw, Building, Palette } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
+import { useNavigate } from 'react-router-dom';
 
 const LabDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
+  const navigate = useNavigate();
   
   // State management
   const [studies, setStudies] = useState([]);
@@ -241,6 +243,15 @@ const LabDashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Add to the Navbar or create a settings button */}
+      <button
+        onClick={() => navigate('/lab/branding')}
+        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+      >
+        <Palette className="w-4 h-4" />
+        Branding
+      </button>
     </div>
   );
 };

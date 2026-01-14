@@ -1,6 +1,7 @@
 import User from '../models/userModel.js';
 import Organization from '../models/organisation.js';
 import mongoose from 'mongoose';
+import { determinePrimaryRole } from '../constant/role.js';
 
 // Add this helper function at the top of your userManagement.controller.js
 const sanitizeRoleConfig = (roleConfig, role) => {
@@ -27,14 +28,27 @@ const sanitizeRoleConfig = (roleConfig, role) => {
     const arrayFields = [
         'assignedRadiologists',
         'assignableUsers',
-        'allowedPatients'
+        'allowedPatients',
+        'assignedLabs' // ✅ NEW: Add assignedLabs
     ];
 
     arrayFields.forEach(field => {
         if (sanitized[field] && !Array.isArray(sanitized[field])) {
-            sanitized[field] = [];
+            sanitized[field] = [sanitized[field]];
         }
     });
+
+    // ✅ NEW: Ensure labAccessMode has valid value
+    if (role === 'assignor') {
+        if (!['all', 'selected', 'none'].includes(sanitized.labAccessMode)) {
+            sanitized.labAccessMode = 'all'; // Default to 'all'
+        }
+        
+        // If mode is not 'selected', clear assignedLabs
+        if (sanitized.labAccessMode !== 'selected') {
+            sanitized.assignedLabs = [];
+        }
+    }
 
     // Role-specific validation and defaults
     switch (role) {
@@ -163,13 +177,47 @@ export const createUserWithRole = async (req, res) => {
         try {
             sanitizedRoleConfig = sanitizeRoleConfig(roleConfig, role);
         } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message
+            console.error('❌ Error sanitizing role config:', error);
+            sanitizedRoleConfig = {};
+        }
+
+        // Prepare optional fields from request
+        const { visibleColumns = [], accountRoles = [], primaryRole = '', linkedLabs = [] } = req.body;
+
+        // ✅ AUTO-DETERMINE PRIMARY ROLE based on hierarchy
+        let finalPrimaryRole = primaryRole;
+        if (Array.isArray(accountRoles) && accountRoles.length > 0) {
+            finalPrimaryRole = primaryRole || accountRoles[0];
+        } else {
+            finalPrimaryRole = role;
+        }
+
+        // Basic validation for linkedLabs structure (optional)
+        const sanitizedLinkedLabs = Array.isArray(linkedLabs)
+          ? linkedLabs.map(l => {
+              if (typeof l === 'string') {
+                  return { labId: l, permissions: { canViewStudies: true, canAssignStudies: false } };
+              }
+              return {
+                  labId: l.labId,
+                  permissions: l.permissions || { canViewStudies: true, canAssignStudies: false }
+              };
+          }).filter(l => l.labId)
+          : [];
+
+        // ✅ NEW: For assignor role, populate roleConfig.assignedLabs from linkedLabs
+        if (role === 'assignor' || (accountRoles && accountRoles.includes('assignor'))) {
+            sanitizedRoleConfig.assignedLabs = sanitizedLinkedLabs.map(l => l.labId);
+            // ✅ FIXED: Always set labAccessMode based on linkedLabs, override any previous value
+            sanitizedRoleConfig.labAccessMode = sanitizedLinkedLabs.length > 0 ? 'selected' : 'all';
+            
+            console.log('🔐 Assignor lab access configured:', {
+                assignedLabsCount: sanitizedRoleConfig.assignedLabs.length,
+                labAccessMode: sanitizedRoleConfig.labAccessMode
             });
         }
 
-        // Create new user
+        // Create new user (include new feature fields)
         const newUser = new User({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
@@ -177,13 +225,20 @@ export const createUserWithRole = async (req, res) => {
             email: email.toLowerCase().trim(),
             password: password,
             fullName: fullName.trim(),
-            role: role,
+            role: role, // Keep original role for backward compatibility
             hierarchy: {
                 createdBy: req.user._id,
                 parentUser: req.user._id,
                 organizationType: organizationType
             },
-            roleConfig: sanitizedRoleConfig, // Use sanitized config
+            roleConfig: sanitizedRoleConfig,
+            // ✅ NEW fields with hierarchy-based primary role:
+            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns.map(String) : [],
+            accountRoles: Array.isArray(accountRoles) && accountRoles.length > 0 
+              ? accountRoles.map(String) 
+              : [role], // Default to main role if no accountRoles provided
+            primaryRole: finalPrimaryRole, // ✅ HIERARCHY-BASED
+            linkedLabs: sanitizedLinkedLabs,
             createdBy: req.user._id,
             isActive: true
         });

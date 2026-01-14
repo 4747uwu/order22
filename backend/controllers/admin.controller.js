@@ -317,6 +317,30 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         console.log(`🏢 Multi-tenant filter applied for organization: ${user.organizationIdentifier}`);
     }
 
+    // ✅ NEW: ASSIGNOR LAB FILTERING - Apply before other filters
+    if (user.role === 'assignor' || user.primaryRole === 'assignor') {
+        const assignorLabAccessMode = user.roleConfig?.labAccessMode || 'all';
+        const assignedLabs = user.roleConfig?.assignedLabs || [];
+
+        console.log('🔍 [Assignor Lab Filter in Admin Controller]:', {
+            userId: user._id,
+            userName: user.fullName,
+            labAccessMode: assignorLabAccessMode,
+            assignedLabsCount: assignedLabs.length,
+            assignedLabs: assignedLabs
+        });
+
+        if (assignorLabAccessMode === 'selected' && assignedLabs.length > 0) {
+            queryFilters.sourceLab = { $in: assignedLabs };
+            console.log(`✅ Lab filtering applied: Assignor can only see studies from ${assignedLabs.length} lab(s)`);
+        } else if (assignorLabAccessMode === 'none') {
+            // Block all studies
+            queryFilters.sourceLab = { $in: [] };
+            console.log(`🚫 Lab access mode: none - No studies will be shown`);
+        }
+        // If 'all' mode, no additional filtering needed
+    }
+
     // 🔧 WORKFLOW STATUS: Apply status filter if provided
     if (workflowStatuses && workflowStatuses.length > 0) {
         queryFilters.workflowStatus = workflowStatuses.length === 1 ? workflowStatuses[0] : { $in: workflowStatuses };
@@ -1045,6 +1069,45 @@ export const getAllStudiesForAdmin = async (req, res) => {
     }
 };
 
+
+// backend/controllers/admin.controller.js (or create new file if needed)
+
+// ✅ GET ALL LABS IN ORGANIZATION
+export const getOrganizationLabs = async (req, res) => {
+    try {
+        const userRole = req.user.role;
+        const orgIdentifier = req.user.organizationIdentifier;
+
+        // Build query based on role
+        let query = { isActive: true };
+        
+        if (userRole !== 'super_admin') {
+            query.organizationIdentifier = orgIdentifier;
+        }
+
+        const labs = await Lab.find(query)
+            .populate('organization', 'name displayName identifier')
+            .select('name identifier contactPerson contactEmail settings isActive')
+            .sort({ name: 1 })
+            .lean();
+
+        console.log(`✅ Found ${labs.length} labs for organization ${orgIdentifier || 'all'}`);
+
+        res.json({
+            success: true,
+            data: labs,
+            count: labs.length
+        });
+
+    } catch (error) {
+        console.error('❌ Get organization labs error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch labs'
+        });
+    }
+};
+
 export default {
     getValues,
     getCategoryValues, // ✅ NEW
@@ -1052,5 +1115,6 @@ export default {
     getPendingStudies,
     getInProgressStudies,
     getCompletedStudies,
-    getAllStudiesForAdmin
+    getAllStudiesForAdmin,
+    getOrganizationLabs
 };

@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import DoctorWorklistTable from '../../components/common/WorklistTable/doctorWorklistTable';
+import UnifiedWorklistTable from '../../components/common/WorklistTable/UnifiedWorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import CreateTypistModal from '../../components/doctor/CreateTypistModal';
 import api from '../../services/api';
@@ -17,6 +17,18 @@ import {
   XCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
+// ✅ UTILITY: Resolve visible columns from user object
+const resolveUserVisibleColumns = (user) => {
+  if (!user) return [];
+  
+  // ✅ Primary source: visibleColumns array (from database)
+  if (user.visibleColumns && Array.isArray(user.visibleColumns)) {
+    return user.visibleColumns;
+  }
+  
+  return [];
+};
 
 const DoctorDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
@@ -40,6 +52,7 @@ const DoctorDashboard = () => {
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [showTypistModal, setShowTypistModal] = useState(false);
+  const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
   // ✅ UPDATED: API VALUES STATE - 5 categories (pending, completed, accepted, rejected)
   const [apiValues, setApiValues] = useState({
@@ -59,7 +72,29 @@ const DoctorDashboard = () => {
     rejected: apiValues.rejected
   }), [apiValues]);
 
-  // Column configuration (doctor-specific)
+  // ✅ COMPUTE visible columns from user
+  const visibleColumns = useMemo(() => {
+    return resolveUserVisibleColumns(currentUser);
+  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+  // ✅ GET USER ROLES for UnifiedWorklistTable
+  const userRoles = useMemo(() => {
+    if (!currentUser) return [];
+    
+    // Multi-role support: use accountRoles array if available
+    if (currentUser.accountRoles && Array.isArray(currentUser.accountRoles)) {
+      return currentUser.accountRoles;
+    }
+    
+    // Fallback to single role
+    if (currentUser.role) {
+      return [currentUser.role];
+    }
+    
+    return [];
+  }, [currentUser?.accountRoles, currentUser?.role]);
+
+  // ✅ OLD: Column configuration (no longer needed, but kept for reference)
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: false, order: 1, label: 'Select' },
     bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
@@ -161,7 +196,7 @@ const DoctorDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView]);
+  }, [getApiEndpoint, pagination.currentPage, pagination.recordsPerPage]);
 
   // ✅ UPDATED: FETCH ANALYTICS - 5 categories
   const fetchAnalytics = useCallback(async (filters = {}) => {
@@ -218,7 +253,7 @@ const DoctorDashboard = () => {
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Doctor] Changing page: ${pagination.currentPage} -> ${newPage}`);
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
-  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
+  }, [fetchStudies, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
   // ✅ HANDLE RECORDS PER PAGE CHANGE
   const handleRecordsPerPageChange = useCallback((newLimit) => {
@@ -413,14 +448,22 @@ const DoctorDashboard = () => {
           </div>
 
           <div className="flex-1 min-h-0">
-            <DoctorWorklistTable
+            <UnifiedWorklistTable
               studies={studies}
               loading={loading}
+              selectedStudies={selectedStudies}
+              onSelectAll={handleSelectAll}
+              onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
+              availableAssignees={availableAssignees}
               onUpdateStudyDetails={handleUpdateStudyDetails}
               pagination={pagination}
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
+              // ✅ MULTI-ROLE PROPS
+              visibleColumns={visibleColumns}
+              userRole={currentUser?.primaryRole || currentUser?.role || 'radiologist'}
+              userRoles={userRoles}
             />
           </div>
         </div>

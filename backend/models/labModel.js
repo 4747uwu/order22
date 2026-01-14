@@ -98,7 +98,38 @@ const LabSchema = new mongoose.Schema({
             type: Boolean,
             default: true
         }
-    }]
+    }],
+    
+    // ✅ UPDATED: Report Branding Settings (Base64 storage in MongoDB)
+    reportBranding: {
+        headerImage: {
+            url: { type: String, default: '' }, // Base64 data URL: data:image/png;base64,...
+            width: { type: Number, default: 0 },
+            height: { type: Number, default: 0 },
+            size: { type: Number, default: 0 }, // Size in bytes
+            updatedAt: { type: Date },
+            updatedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            }
+        },
+        footerImage: {
+            url: { type: String, default: '' }, // Base64 data URL: data:image/png;base64,...
+            width: { type: Number, default: 0 },
+            height: { type: Number, default: 0 },
+            size: { type: Number, default: 0 }, // Size in bytes
+            updatedAt: { type: Date },
+            updatedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            }
+        },
+        showHeader: { type: Boolean, default: true },
+        showFooter: { type: Boolean, default: true },
+        // Aspect ratios for validation (width:height)
+        headerAspectRatio: { type: Number, default: 5 }, // 15cm:3cm = 5:1
+        footerAspectRatio: { type: Number, default: 5 }
+    }
 }, { 
     timestamps: true,
     collection: 'labs'
