@@ -257,9 +257,17 @@ const ReportEditor = ({ content, onChange }) => {
 
   // Sync local state with actual listening state
   useEffect(() => {
+    // Only sync when listening stops (not when it hasn't started)
+    // If listening is false but we think we're recording, stop recording
     if (!listening && isRecording) {
       console.log('🎤 [Voice Sync] Recognition stopped externally, syncing UI state');
       setIsRecording(false);
+    }
+    // 🔧 FIX: If listening is true but we're not recording, start recording
+    // This handles the case where listening starts after we set isRecording=true
+    if (listening && !isRecording) {
+      console.log('🎤 [Voice Sync] Recognition started externally, syncing UI state');
+      setIsRecording(true);
     }
   }, [listening, isRecording]);
 
