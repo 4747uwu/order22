@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import { 
@@ -22,7 +22,14 @@ import {
     Star,
     CrownIcon,
     Columns,
-    Building2
+    Building2,
+    Stethoscope,  // ✅ ADD THIS
+    Phone,        // ✅ ADD THIS
+    Award,        // ✅ ADD THIS
+    Upload,       // ✅ ADD THIS
+    Image,        // ✅ ADD THIS
+    X,            // ✅ ADD THIS
+    AlertCircle   // ✅ ADD THIS (if not already there)
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -45,21 +52,34 @@ const CreateUser = () => {
     const [availableRoles, setAvailableRoles] = useState({});
     const [users, setUsers] = useState([]);
     const [showPassword, setShowPassword] = useState(false);
+
+    // ✅ NEW: Signature image state for radiologist
+const fileInputRef = useRef(null);
+const [signatureImage, setSignatureImage] = useState(null);
+const [signaturePreview, setSignaturePreview] = useState(null);
     
     // Form data
     const [formData, setFormData] = useState({
-        fullName: '',
-        email: '',
-        password: '',
-        username: '',
-        role: '',
-        organizationType: 'teleradiology_company',
-        // ✅ NEW: Three feature fields
-        visibleColumns: [],
-        accountRoles: [],
-        primaryRole: '',
-        linkedLabs: []
-    });
+    fullName: '',
+    email: '',
+    password: '',
+    username: '',
+    role: '',
+    organizationType: 'teleradiology_company',
+    // ✅ NEW: Three feature fields
+    visibleColumns: [],
+    accountRoles: [],
+    primaryRole: '',
+    linkedLabs: [],
+    requireReportVerification: true,
+    // ✅ NEW: Radiologist-specific fields
+    specialization: '',
+    licenseNumber: '',
+    department: '',
+    qualifications: [],
+    yearsOfExperience: '',
+    contactPhoneOffice: ''
+});
     
     // Role-specific configuration
     const [roleConfig, setRoleConfig] = useState({
@@ -335,6 +355,79 @@ const CreateUser = () => {
         });
     };
 
+    // ✅ NEW: Handle qualifications array for radiologist
+const handleQualificationChange = (index, value) => {
+    const newQualifications = [...formData.qualifications];
+    newQualifications[index] = value;
+    setFormData(prev => ({
+        ...prev,
+        qualifications: newQualifications
+    }));
+};
+
+const addQualification = () => {
+    setFormData(prev => ({
+        ...prev,
+        qualifications: [...prev.qualifications, '']
+    }));
+};
+
+const removeQualification = (index) => {
+    setFormData(prev => ({
+        ...prev,
+        qualifications: prev.qualifications.filter((_, i) => i !== index)
+    }));
+};
+
+// ✅ NEW: Signature handling for radiologist
+const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size must be less than 5MB');
+        return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+        toast.error('Please upload an image file');
+        return;
+    }
+
+    setSignatureImage(file);
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        setSignaturePreview(reader.result);
+    };
+    reader.readAsDataURL(file);
+};
+
+const removeSignature = () => {
+    setSignatureImage(null);
+    setSignaturePreview(null);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+    }
+};
+
+const convertImageToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
+
+// ✅ NEW: Check if radiologist role is selected
+const isRadiologistSelected = () => {
+    if (useMultiRole) {
+        return formData.accountRoles.includes('radiologist');
+    }
+    return formData.role === 'radiologist';
+};
+
     // Get role-specific configuration component
     const getRoleSpecificConfig = () => {
         if (!formData.role) return null;
@@ -470,65 +563,87 @@ const CreateUser = () => {
     };
 
     // Handle form submission
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
-        if (!formData.fullName || !formData.email || !formData.password) {
-            toast.error('Please fill in all required fields');
-            return;
+        const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.fullName || !formData.email || !formData.password) {
+        toast.error('Please fill in all required fields');
+        return;
+    }
+
+    if (!useMultiRole && !formData.role) {
+        toast.error('Please select a role');
+        return;
+    }
+
+    if (useMultiRole && formData.accountRoles.length === 0) {
+        toast.error('Please select at least one role');
+        return;
+    }
+
+    // Role-specific validation
+    if (formData.role === 'typist' && !roleConfig.linkedRadiologist) {
+        toast.error('Please select a radiologist for the typist');
+        return;
+    }
+
+    // ✅ NEW: Radiologist validation
+    if (isRadiologistSelected() && !formData.specialization) {
+        toast.error('Please enter specialization for radiologist');
+        return;
+    }
+
+    setLoading(true);
+
+    try {
+        // ✅ NEW: Convert signature to base64 if uploaded
+        let signatureBase64 = null;
+        if (signatureImage) {
+            signatureBase64 = await convertImageToBase64(signatureImage);
         }
 
-        if (!useMultiRole && !formData.role) {
-            toast.error('Please select a role');
-            return;
+        const submissionData = {
+            ...formData,
+            roleConfig: roleConfig,
+            requireReportVerification: formData.requireReportVerification,
+            // ✅ NEW: Include radiologist-specific data
+            ...(isRadiologistSelected() && {
+                specialization: formData.specialization,
+                licenseNumber: formData.licenseNumber,
+                department: formData.department,
+                qualifications: formData.qualifications.filter(q => q.trim()),
+                yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : undefined,
+                contactPhoneOffice: formData.contactPhoneOffice,
+                signatureImageData: signatureBase64
+            }),
+            // ✅ Include multi-role data if enabled
+            ...(useMultiRole && {
+                role: formData.primaryRole,
+                accountRoles: formData.accountRoles,
+                primaryRole: formData.primaryRole
+            })
+        };
+
+        const endpoint = currentUser?.role === 'admin' 
+            ? '/admin/user-management/create'
+            : '/group/user-management/create';
+
+        const response = await api.post(endpoint, submissionData);
+
+        if (response.data.success) {
+            toast.success(`User created successfully!`);
+            const redirectPath = currentUser?.role === 'admin' 
+                ? '/admin/dashboard'
+                : '/group/dashboard';
+            navigate(redirectPath);
         }
-
-        if (useMultiRole && formData.accountRoles.length === 0) {
-            toast.error('Please select at least one role');
-            return;
-        }
-
-        // Role-specific validation
-        if (formData.role === 'typist' && !roleConfig.linkedRadiologist) {
-            toast.error('Please select a radiologist for the typist');
-            return;
-        }
-
-        setLoading(true);
-
-        try {
-            const submissionData = {
-                ...formData,
-                roleConfig: roleConfig,
-                // ✅ Include multi-role data if enabled
-                ...(useMultiRole && {
-                    role: formData.primaryRole,
-                    accountRoles: formData.accountRoles,
-                    primaryRole: formData.primaryRole
-                })
-            };
-
-            const endpoint = currentUser?.role === 'admin' 
-                ? '/admin/user-management/create'
-                : '/group/user-management/create';
-
-            const response = await api.post(endpoint, submissionData);
-
-            if (response.data.success) {
-                toast.success(`User created successfully!`);
-                const redirectPath = currentUser?.role === 'admin' 
-                    ? '/admin/dashboard'
-                    : '/group/dashboard';
-                navigate(redirectPath);
-            }
-        } catch (error) {
-            console.error('Error creating user:', error);
-            toast.error(error.response?.data?.message || 'Failed to create user');
-        } finally {
-            setLoading(false);
-        }
-    };
-
+    } catch (error) {
+        console.error('Error creating user:', error);
+        toast.error(error.response?.data?.message || 'Failed to create user');
+    } finally {
+        setLoading(false);
+    }
+};
     // Get role icon and color
     const getRoleDisplay = (roleKey) => {
         const roleIcons = {
@@ -827,6 +942,265 @@ const CreateUser = () => {
                             
                             <div className="p-6">
                                 {getRoleSpecificConfig()}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ✅ NEW: Radiologist Professional Details */}
+{isRadiologistSelected() && (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-200">
+            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                <Stethoscope className="w-5 h-5 text-indigo-600" />
+                <span>Radiologist Professional Details</span>
+            </h3>
+            <p className="text-sm text-gray-600 mt-1">
+                Medical credentials and professional information
+            </p>
+        </div>
+        
+        <div className="p-6 space-y-6">
+            {/* Specialization & License */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Specialization <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                        <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="text"
+                            value={formData.specialization}
+                            onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="e.g., Radiology, Neuroradiology"
+                            required={isRadiologistSelected()}
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        License Number
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.licenseNumber}
+                        onChange={(e) => setFormData(prev => ({ ...prev, licenseNumber: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Medical license number"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Department
+                    </label>
+                    <input
+                        type="text"
+                        value={formData.department}
+                        onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="Department name"
+                    />
+                </div>
+
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Years of Experience
+                    </label>
+                    <input
+                        type="number"
+                        value={formData.yearsOfExperience}
+                        onChange={(e) => setFormData(prev => ({ ...prev, yearsOfExperience: e.target.value }))}
+                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="0"
+                        min="0"
+                    />
+                </div>
+
+                <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Office Phone
+                    </label>
+                    <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                        <input
+                            type="tel"
+                            value={formData.contactPhoneOffice}
+                            onChange={(e) => setFormData(prev => ({ ...prev, contactPhoneOffice: e.target.value }))}
+                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="+1 (555) 123-4567"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {/* Qualifications */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Qualifications
+                </label>
+                <div className="space-y-2">
+                    {formData.qualifications.map((qual, index) => (
+                        <div key={index} className="flex space-x-2">
+                            <input
+                                type="text"
+                                value={qual}
+                                onChange={(e) => handleQualificationChange(index, e.target.value)}
+                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                placeholder="e.g., MD, MBBS, Fellowship in Radiology"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => removeQualification(index)}
+                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    ))}
+                    <button
+                        type="button"
+                        onClick={addQualification}
+                        className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center space-x-2"
+                    >
+                        <UserPlus className="w-4 h-4" />
+                        <span>Add Qualification</span>
+                    </button>
+                </div>
+            </div>
+
+            {/* Digital Signature */}
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center space-x-2">
+                    <Award className="w-4 h-4 text-purple-600" />
+                    <span>Digital Signature (Optional)</span>
+                </label>
+                
+                {!signaturePreview ? (
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-indigo-400 transition-colors">
+                        <div className="text-center">
+                            <Upload className="mx-auto w-10 h-10 text-gray-400 mb-3" />
+                            <h4 className="text-sm font-medium text-gray-700 mb-1">
+                                Upload Signature Image
+                            </h4>
+                            <p className="text-xs text-gray-500 mb-3">
+                                PNG, JPG up to 5MB
+                            </p>
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                onChange={handleSignatureUpload}
+                                className="hidden"
+                                id="signature-upload"
+                            />
+                            <label
+                                htmlFor="signature-upload"
+                                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer transition-colors"
+                            >
+                                <Image className="w-4 h-4 mr-2" />
+                                Choose Image
+                            </label>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50">
+                        <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-center space-x-2">
+                                <CheckCircle className="w-5 h-5 text-indigo-600" />
+                                <span className="text-sm font-medium text-indigo-900">
+                                    Signature Uploaded
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={removeSignature}
+                                className="text-indigo-600 hover:text-indigo-800 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 flex items-center justify-center">
+                            <img
+                                src={signaturePreview}
+                                alt="Signature preview"
+                                className="max-h-32 object-contain"
+                            />
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    </div>
+)}
+
+                    {/* ✅ FEATURE 4: Report Verification Toggle for Radiologist */}
+                    {((formData.role === 'radiologist' && !useMultiRole) || 
+                      (useMultiRole && formData.accountRoles.includes('radiologist'))) && (
+                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
+                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
+                                    <Shield className="w-5 h-5 text-green-600" />
+                                    <span>Report Verification Settings</span>
+                                </h3>
+                                <p className="text-sm text-gray-600 mt-1">
+                                    Configure whether reports need verification before completion
+                                </p>
+                            </div>
+                            
+                            <div className="p-6">
+                                <label className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                    <div className="flex-1">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="font-medium text-gray-900">Require Report Verification</div>
+                                            <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                                formData.requireReportVerification 
+                                                    ? 'bg-green-100 text-green-800' 
+                                                    : 'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                {formData.requireReportVerification ? 'ENABLED' : 'DISABLED'}
+                                            </div>
+                                        </div>
+                                        <div className="text-sm text-gray-500 mt-1">
+                                            When enabled, all finalized reports must be verified by a verifier before being marked as complete
+                                        </div>
+                                    </div>
+                                    <div className="relative ml-4">
+                                        <input
+                                            type="checkbox"
+                                            checked={formData.requireReportVerification}
+                                            onChange={(e) => setFormData(prev => ({ 
+                                                ...prev, 
+                                                requireReportVerification: e.target.checked 
+                                            }))}
+                                            className="sr-only"
+                                        />
+                                        <div className={`block w-14 h-8 rounded-full transition ${
+                                            formData.requireReportVerification ? 'bg-green-500' : 'bg-gray-300'
+                                        }`}></div>
+                                        <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${
+                                            formData.requireReportVerification ? 'transform translate-x-6' : ''
+                                        }`}></div>
+                                    </div>
+                                </label>
+
+                                {formData.requireReportVerification && (
+                                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div className="flex items-start space-x-2">
+                                            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+                                            <div className="text-sm text-blue-800">
+                                                <strong>Verification Workflow:</strong>
+                                                <ul className="list-disc ml-4 mt-2 space-y-1">
+                                                    <li>Reports will be sent to verification queue after finalization</li>
+                                                    <li>A verifier must review and approve the report</li>
+                                                    <li>Only verified reports will be marked as "Completed"</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

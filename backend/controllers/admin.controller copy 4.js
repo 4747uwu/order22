@@ -331,12 +331,9 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         });
 
         if (assignorLabAccessMode === 'selected' && assignedLabs.length > 0) {
-            queryFilters.sourceLab = { $in: assignedLabs };
-            console.log(`✅ Lab filtering applied: Assignor can only see studies from ${assignedLabs.length} lab(s)`);
+            queryFilters.sourceLab = { $in: assignedLabs.map(id => new mongoose.Types.ObjectId(id)) };
         } else if (assignorLabAccessMode === 'none') {
-            // Block all studies
-            queryFilters.sourceLab = { $in: [] };
-            console.log(`🚫 Lab access mode: none - No studies will be shown`);
+            queryFilters.sourceLab = null;
         }
         // If 'all' mode, no additional filtering needed
     }
@@ -366,7 +363,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         ];
     }
 
-    // 🔬 MODALITY FILTERING
+    // 🔬 MODALITY FILTERING - Single or Multiple
     if (req.query.modality && req.query.modality !== 'all') {
         queryFilters.$or = [
             { modality: req.query.modality },
@@ -374,7 +371,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         ];
     }
 
-    // 🏥 LAB FILTERING (within organization)
+    // 🏥 LAB FILTERING (within organization) - Old single select
     if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
         queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
     }
@@ -392,7 +389,115 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         }
     }
 
-    return queryFilters;
+  // ✅ NEW: RADIOLOGIST MULTI-SELECT FILTER
+// When filtering by radiologists, we need to check the assignment array
+if (req.query.radiologists) {
+    let radiologistIds = [];
+    
+    // Handle both array and comma-separated string formats
+    if (Array.isArray(req.query.radiologists)) {
+        radiologistIds = req.query.radiologists;
+    } else if (typeof req.query.radiologists === 'string') {
+        // Single value or comma-separated
+        radiologistIds = req.query.radiologists.includes(',') 
+            ? req.query.radiologists.split(',').map(id => id.trim()).filter(Boolean)
+            : [req.query.radiologists];
+    }
+    
+    console.log('🔍 [Radiologist Filter - Raw]:', {
+        rawParam: req.query.radiologists,
+        isArray: Array.isArray(req.query.radiologists),
+        parsedIds: radiologistIds
+    });
+    
+    if (radiologistIds.length > 0) {
+        // Convert to ObjectIds and validate
+        const validObjectIds = radiologistIds
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+        
+        if (validObjectIds.length > 0) {
+            // Query the assignment array to find studies assigned to these radiologists
+            queryFilters['assignment.assignedTo'] = { $in: validObjectIds };
+            
+            console.log('✅ [Radiologist Filter Applied]:', {
+                radiologistCount: validObjectIds.length,
+                radiologistIds: validObjectIds.map(id => id.toString()),
+                filter: queryFilters['assignment.assignedTo']
+            });
+        } else {
+            console.warn('⚠️ [Radiologist Filter] No valid ObjectIds found');
+        }
+    }
+}
+
+// ✅ NEW: LAB/CENTER MULTI-SELECT FILTER
+// When filtering by labs, we need to check the sourceLab field
+if (req.query.labs) {
+    let labIds = [];
+    
+    // Handle both array and comma-separated string formats
+    if (Array.isArray(req.query.labs)) {
+        labIds = req.query.labs;
+    } else if (typeof req.query.labs === 'string') {
+        // Single value or comma-separated
+        labIds = req.query.labs.includes(',')
+            ? req.query.labs.split(',').map(id => id.trim()).filter(Boolean)
+            : [req.query.labs];
+    }
+    
+    console.log('🔍 [Lab Filter - Raw]:', {
+        rawParam: req.query.labs,
+        isArray: Array.isArray(req.query.labs),
+        parsedIds: labIds
+    });
+    
+    if (labIds.length > 0) {
+        // Convert to ObjectIds and validate
+        const validObjectIds = labIds
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+        
+        if (validObjectIds.length > 0) {
+            // Check if there's already a sourceLab filter from assignor restrictions
+            if (queryFilters.sourceLab && queryFilters.sourceLab.$in) {
+                // Find intersection of assignor's labs and selected labs
+                const assignorLabIds = queryFilters.sourceLab.$in.map(id => id.toString());
+                const selectedLabIds = validObjectIds.map(id => id.toString());
+                const intersection = assignorLabIds.filter(id => selectedLabIds.includes(id));
+                
+                console.log('🔍 [Lab Filter - Intersection with Assignor]:', {
+                    assignorLabs: assignorLabIds,
+                    selectedLabs: selectedLabIds,
+                    intersection: intersection
+                });
+                
+                if (intersection.length > 0) {
+                    queryFilters.sourceLab = { $in: intersection.map(id => new mongoose.Types.ObjectId(id)) };
+                } else {
+                    // No intersection, return empty results
+                    console.warn('⚠️ [Lab Filter] No intersection between assignor labs and selected labs');
+                    queryFilters.sourceLab = null; // This will return no results
+                }
+            } else {
+                // No assignor restriction, apply selected labs directly
+                queryFilters.sourceLab = { $in: validObjectIds };
+            }
+            
+            console.log('✅ [Lab Filter Applied]:', {
+                labCount: validObjectIds.length,
+                labIds: validObjectIds.map(id => id.toString()),
+                finalFilter: queryFilters.sourceLab
+            });
+        } else {
+            console.warn('⚠️ [Lab Filter] No valid ObjectIds found');
+        }
+    }
+}
+
+console.log('🎯 [Final Query Filters]:', JSON.stringify(queryFilters, null, 2));
+
+return queryFilters;
 };
 
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {

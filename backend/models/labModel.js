@@ -75,7 +75,18 @@ const LabSchema = new mongoose.Schema({
             enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
             default: 'NORMAL'
         },
-        maxConcurrentStudies: { type: Number, default: 100 }
+        maxConcurrentStudies: { type: Number, default: 100 },
+        // ✅ NEW: Verification Mode Toggle
+        requireReportVerification: { 
+            type: Boolean, 
+            default: true, // By default, reports need verification
+            description: 'If true, finalized reports go to verifier. If false, they go directly to completed.'
+        },
+        verificationEnabledAt: { type: Date },
+        verificationEnabledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        }
     },
     
     // ✅ NEW: Staff management

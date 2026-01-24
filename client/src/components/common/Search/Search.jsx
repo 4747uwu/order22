@@ -1,4 +1,4 @@
-import React, { useState, useCallback,useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { 
@@ -11,8 +11,13 @@ import {
     Building,
     Users,
     Shield,
-    Crown
+    Crown,
+    Clock,
+    Play,
+    Pause
 } from 'lucide-react';
+import MultiSelect from '../MultiSelect';
+import api from '../../../services/api';
 
 const Search = ({ 
     onSearch, 
@@ -21,11 +26,26 @@ const Search = ({
     totalStudies = 0,
     currentCategory = 'all',
     analytics = null,
-    theme = 'default', // ✅ ADD: Theme support
-    initialFilters = null 
+    theme = 'default',
+    initialFilters = null,
+    onRefresh // ✅ NEW: Callback for manual refresh
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    
+    // ✅ NEW: Auto-refresh state
+    const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
+        const saved = localStorage.getItem('autoRefreshEnabled');
+        return saved ? JSON.parse(saved) : false;
+    });
+    
+    const [refreshInterval, setRefreshInterval] = useState(() => {
+        const saved = localStorage.getItem('refreshInterval');
+        return saved ? parseInt(saved) : 5;
+    });
+    
+    const [lastRefreshTime, setLastRefreshTime] = useState(Date.now());
+    const [timeUntilRefresh, setTimeUntilRefresh] = useState(refreshInterval * 60);
     
     // State management
     const [searchTerm, setSearchTerm] = useState('');
@@ -39,33 +59,92 @@ const Search = ({
         dateType: 'createdAt',
         customDateFrom: '',
         customDateTo: '',
-        limit: 50
+        limit: 50,
+        radiologists: [],
+        labs: []
     });
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [searchTimeout, setSearchTimeout] = useState(null);
+    const [radiologistOptions, setRadiologistOptions] = useState([]);
+    const [labOptions, setLabOptions] = useState([]);
 
-    // ✅ Sync filters when initialFilters prop changes (e.g., loaded from localStorage)
-useEffect(() => {
-    if (initialFilters && Object.keys(initialFilters).length > 0) {
-        console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
-        setFilters(prevFilters => ({
-            ...prevFilters,
-            ...initialFilters
-        }));
-    }
-}, [initialFilters]);
+    // ✅ Sync filters when initialFilters prop changes
+    useEffect(() => {
+        if (initialFilters && Object.keys(initialFilters).length > 0) {
+            console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
+            
+            setFilters(prevFilters => ({
+                ...prevFilters,
+                ...initialFilters
+            }));
+            
+            if (initialFilters.search) {
+                setSearchTerm(initialFilters.search);
+            } else {
+                setSearchTerm('');
+            }
+        }
+    }, [initialFilters]);
+
+    // ✅ NEW: Auto-refresh timer effect
+    useEffect(() => {
+        if (!autoRefreshEnabled) {
+            setTimeUntilRefresh(refreshInterval * 60);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - lastRefreshTime) / 1000);
+            const remaining = (refreshInterval * 60) - elapsed;
+            
+            if (remaining <= 0) {
+                console.log('🔄 [Search] Auto-refresh triggered');
+                setLastRefreshTime(Date.now());
+                setTimeUntilRefresh(refreshInterval * 60);
+                onRefresh?.();
+            } else {
+                setTimeUntilRefresh(remaining);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [autoRefreshEnabled, refreshInterval, lastRefreshTime, onRefresh]);
+
+    // ✅ NEW: Save auto-refresh settings to localStorage
+    useEffect(() => {
+        localStorage.setItem('autoRefreshEnabled', JSON.stringify(autoRefreshEnabled));
+    }, [autoRefreshEnabled]);
+
+    useEffect(() => {
+        localStorage.setItem('refreshInterval', refreshInterval.toString());
+    }, [refreshInterval]);
+
+    // ✅ NEW: Format countdown timer
+    const formatCountdown = (seconds) => {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    // ✅ NEW: Refresh interval options
+    const refreshIntervalOptions = [
+        { value: 2, label: '2 min' },
+        { value: 3, label: '3 min' },
+        { value: 5, label: '5 min' },
+        { value: 10, label: '10 min' },
+        { value: 15, label: '15 min' }
+    ];
 
     // Check if user is admin or assignor
     const isAdmin = currentUser?.role === 'admin';
     const isAssignor = currentUser?.role === 'assignor';
-    const isGreenTheme = theme === 'adminn'; // ✅ Green theme for admin
+    const isGreenTheme = theme === 'adminn';
 
     // Check user permissions for creating entities
     const canCreateDoctor = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
     const canCreateLab = ['super_admin', 'admin'].includes(currentUser?.role);
     const canCreateUser = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
 
-    // ✅ ENHANCED: Extended date options
     const dateOptions = [
         { value: 'today', label: 'Today' },
         { value: 'yesterday', label: 'Yesterday' },
@@ -84,7 +163,6 @@ useEffect(() => {
         { value: 'custom', label: 'Custom Range' }
     ];
 
-    // ✅ THEME COLORS
     const themeColors = isGreenTheme ? {
         primary: 'teal-600',
         primaryHover: 'teal-700',
@@ -115,26 +193,56 @@ useEffect(() => {
             clearTimeout(searchTimeout);
         }
         
+        if (value === '' || value.trim() === '') {
+            const searchParams = { ...filters };
+            delete searchParams.search;
+            
+            Object.keys(searchParams).forEach(key => {
+                if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
+                    delete searchParams[key];
+                }
+            });
+            
+            console.log('🗑️ [Search] CLEARING SEARCH TERM:', searchParams);
+            onSearch?.(searchParams);
+            onFilterChange?.(searchParams);
+            return;
+        }
+        
         const newTimeout = setTimeout(() => {
             handleSearch(value);
         }, 300);
         
         setSearchTimeout(newTimeout);
-    }, [searchTimeout]);
+    }, [searchTimeout, filters, onSearch, onFilterChange]);
 
     // Execute search
     const handleSearch = useCallback((term = searchTerm) => {
-        const searchParams = {
-            search: term.trim() || undefined,
-            ...filters
-        };
+        const searchParams = { ...filters };
+        
+        if (term && term.trim()) {
+            searchParams.search = term.trim();
+        }
+        
+        if (filters.radiologists && filters.radiologists.length > 0) {
+            searchParams.radiologists = filters.radiologists;
+        }
+        
+        if (filters.labs && filters.labs.length > 0) {
+            searchParams.labs = filters.labs;
+        }
         
         Object.keys(searchParams).forEach(key => {
-            if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
+            const value = searchParams[key];
+            if (value === '' || value === 'all' || value === undefined) {
+                delete searchParams[key];
+            }
+            if (Array.isArray(value) && value.length === 0) {
                 delete searchParams[key];
             }
         });
         
+        console.log('🔍 [Search] Executing search with params:', searchParams);
         onSearch?.(searchParams);
     }, [searchTerm, filters, onSearch]);
 
@@ -143,26 +251,41 @@ useEffect(() => {
         const newFilters = { ...filters, [key]: value };
         setFilters(newFilters);
         
-        const searchParams = {
-            search: searchTerm.trim() || undefined,
-            ...newFilters
-        };
+        const searchParams = { ...newFilters };
+        
+        if (searchTerm && searchTerm.trim()) {
+            searchParams.search = searchTerm.trim();
+        }
+        
+        if (newFilters.radiologists && newFilters.radiologists.length > 0) {
+            searchParams.radiologists = newFilters.radiologists;
+        }
+        
+        if (newFilters.labs && newFilters.labs.length > 0) {
+            searchParams.labs = newFilters.labs;
+        }
         
         Object.keys(searchParams).forEach(key => {
-            if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
+            const value = searchParams[key];
+            if (value === '' || value === 'all' || value === undefined) {
+                delete searchParams[key];
+            }
+            if (Array.isArray(value) && value.length === 0) {
                 delete searchParams[key];
             }
         });
         
+        console.log('🔍 [Search] Filter changed:', { key, value, params: searchParams });
         onSearch?.(searchParams);
-        onFilterChange?.(newFilters);
+        onFilterChange?.(searchParams);
     }, [filters, searchTerm, onSearch, onFilterChange]);
 
     // Clear all filters
     const clearAllFilters = useCallback(() => {
+        console.log('🗑️ [Search] CLEARING ALL FILTERS');
+        
         setSearchTerm('');
         const defaultFilters = {
-            category: 'all',
             modality: 'all',
             labId: 'all',
             priority: 'all',
@@ -171,16 +294,41 @@ useEffect(() => {
             dateType: 'createdAt',
             customDateFrom: '',
             customDateTo: '',
-            limit: 50
+            limit: 50,
+            radiologists: [],
+            labs: []
         };
         setFilters(defaultFilters);
-        onSearch?.(defaultFilters);
-        onFilterChange?.(defaultFilters);
+        
+        const cleanFilters = { ...defaultFilters };
+        delete cleanFilters.search;
+        
+        onSearch?.(cleanFilters);
+        onFilterChange?.(cleanFilters);
     }, [onSearch, onFilterChange]);
 
-    const handleRefresh = useCallback(() => {
-        handleSearch();
-    }, [handleSearch]);
+    const handleRefreshClick = useCallback(() => {
+        setLastRefreshTime(Date.now());
+        setTimeUntilRefresh(refreshInterval * 60);
+        onRefresh?.();
+    }, [onRefresh, refreshInterval]);
+
+    // ✅ NEW: Toggle auto-refresh
+    const handleToggleAutoRefresh = useCallback(() => {
+        const newState = !autoRefreshEnabled;
+        setAutoRefreshEnabled(newState);
+        if (newState) {
+            setLastRefreshTime(Date.now());
+            setTimeUntilRefresh(refreshInterval * 60);
+        }
+    }, [autoRefreshEnabled, refreshInterval]);
+
+    // ✅ NEW: Change refresh interval
+    const handleRefreshIntervalChange = useCallback((newInterval) => {
+        setRefreshInterval(newInterval);
+        setLastRefreshTime(Date.now());
+        setTimeUntilRefresh(newInterval * 60);
+    }, []);
 
     // Admin action handlers
     const handleCreateDoctor = useCallback(() => {
@@ -214,12 +362,33 @@ useEffect(() => {
 
     const hasActiveFilters = searchTerm || Object.values(filters).some(v => v !== 'all' && v !== 'today' && v !== 'createdAt' && v !== '' && v !== 50);
 
+    // Fetch filter options for radiologists and labs
+    useEffect(() => {
+        const fetchFilterOptions = async () => {
+            try {
+                const radResponse = await api.get('/admin/filters/radiologists');
+                if (radResponse.data.success) {
+                    setRadiologistOptions(radResponse.data.data);
+                }
+
+                const labResponse = await api.get('/admin/filters/labs');
+                if (labResponse.data.success) {
+                    setLabOptions(labResponse.data.data);
+                }
+            } catch (error) {
+                console.error('Error fetching filter options:', error);
+            }
+        };
+
+        fetchFilterOptions();
+    }, []);
+
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
-            {/* ✅ MAIN SEARCH ROW */}
+            {/* MAIN SEARCH ROW */}
             <div className="flex items-center gap-2">
                 
-                {/* ✅ SEARCH INPUT */}
+                {/* SEARCH INPUT */}
                 <div className="flex-1 relative max-w-md">
                     <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
                     <input
@@ -239,7 +408,7 @@ useEffect(() => {
                     )}
                 </div>
 
-                {/* ✅ QUICK FILTERS */}
+                {/* QUICK FILTERS */}
                 <div className="flex items-center gap-1">
                     <select
                         value={filters.modality}
@@ -265,7 +434,22 @@ useEffect(() => {
                         ))}
                     </select>
 
-                    {/* ASSIGNOR-SPECIFIC FILTER */}
+                    <MultiSelect
+                        options={radiologistOptions}
+                        selected={filters.radiologists}
+                        onChange={(selected) => handleFilterChange('radiologists', selected)}
+                        placeholder="Radiologist"
+                        className="min-w-32"
+                    />
+
+                    <MultiSelect
+                        options={labOptions}
+                        selected={filters.labs}
+                        onChange={(selected) => handleFilterChange('labs', selected)}
+                        placeholder="Center"
+                        className="min-w-32"
+                    />
+
                     {isAssignor && (
                         <select
                             value={filters.assigneeRole}
@@ -279,9 +463,8 @@ useEffect(() => {
                     )}
                 </div>
 
-                {/* ✅ ENHANCED: TIME FILTERS WITH MORE OPTIONS */}
+                {/* TIME FILTERS */}
                 <div className="flex items-center gap-1">
-                    {/* Quick date buttons for most common options */}
                     {['Today', 'Yesterday', '7 Days', '30 Days'].map((period) => {
                         const isActive = 
                             (period === 'Today' && filters.dateFilter === 'today') ||
@@ -298,10 +481,7 @@ useEffect(() => {
                         return (
                             <button
                                 key={period}
-                                onClick={() => {
-                                    console.log(`🔍 [Search] QUICK DATE FILTER: ${period} -> ${value}`);
-                                    handleFilterChange('dateFilter', value);
-                                }}
+                                onClick={() => handleFilterChange('dateFilter', value)}
                                 className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
                                     isActive
                                         ? isGreenTheme 
@@ -317,14 +497,10 @@ useEffect(() => {
                         );
                     })}
                     
-                    {/* ✅ ENHANCED: More options dropdown */}
                     <div className="relative">
                         <select
                             value={filters.dateFilter || 'today'}
-                            onChange={(e) => {
-                                console.log(`🔍 [Search] DROPDOWN DATE FILTER: ${e.target.value}`);
-                                handleFilterChange('dateFilter', e.target.value);
-                            }}
+                            onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
                             className={`px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700 focus:ring-teal-500 focus:border-teal-500' : 'text-gray-700 focus:ring-black focus:border-black'} focus:outline-none focus:ring-1 min-w-20`}
                         >
                             <option value="">All Time</option>
@@ -340,8 +516,6 @@ useEffect(() => {
                 {/* ADMIN BUTTONS */}
                 {(canCreateDoctor || canCreateLab || canCreateUser) && (
                     <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border}`}>
-                        
-                        {/* Manage Users Button */}
                         {isAdmin && (
                             <button
                                 onClick={() => navigate('/admin/user-management')}
@@ -353,7 +527,6 @@ useEffect(() => {
                             </button>
                         )}
                         
-                        {/* Create User Button */}
                         {canCreateUser && (
                             <button
                                 onClick={handleCreateUser}
@@ -365,7 +538,6 @@ useEffect(() => {
                             </button>
                         )}
                         
-                        {/* Create Doctor Button */}
                         {canCreateDoctor && (
                             <button
                                 onClick={handleCreateDoctor}
@@ -377,7 +549,6 @@ useEffect(() => {
                             </button>
                         )}
                         
-                        {/* Create Lab Button */}
                         {canCreateLab && (
                             <button
                                 onClick={handleCreateLab}
@@ -391,7 +562,7 @@ useEffect(() => {
                     </div>
                 )}
 
-                {/* ASSIGNOR ANALYTICS DISPLAY */}
+                {/* ASSIGNOR ANALYTICS */}
                 {isAssignor && analytics && (
                     <div className={`flex items-center gap-2 pl-2 border-l border-${themeColors.border}`}>
                         <div className="text-xs">
@@ -408,6 +579,45 @@ useEffect(() => {
                         </div>
                     </div>
                 )}
+
+                {/* ✅ NEW: AUTO-REFRESH CONTROLS */}
+                <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border}`}>
+                    {/* Refresh interval selector */}
+                    <select
+                        value={refreshInterval}
+                        onChange={(e) => handleRefreshIntervalChange(parseInt(e.target.value))}
+                        className={`px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-gray-500'}`}
+                        title="Auto-refresh interval"
+                    >
+                        {refreshIntervalOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+
+                    {/* Auto-refresh toggle */}
+                    <button
+                        onClick={handleToggleAutoRefresh}
+                        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                            autoRefreshEnabled
+                                ? isGreenTheme
+                                    ? 'bg-teal-600 text-white border-teal-600 hover:bg-teal-700'
+                                    : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
+                                : isGreenTheme
+                                    ? 'bg-white text-teal-700 border-teal-300 hover:bg-teal-50'
+                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        }`}
+                        title={autoRefreshEnabled ? 'Auto-refresh enabled' : 'Auto-refresh disabled'}
+                    >
+                        {autoRefreshEnabled ? <Play size={12} /> : <Pause size={12} />}
+                        {autoRefreshEnabled && (
+                            <span className="font-mono text-[10px]">
+                                {formatCountdown(timeUntilRefresh)}
+                            </span>
+                        )}
+                    </button>
+                </div>
 
                 {/* ACTION BUTTONS */}
                 <div className="flex items-center gap-1">
@@ -439,12 +649,12 @@ useEffect(() => {
                         </button>
                     )}
 
-                    {/* Refresh Button */}
+                    {/* Manual Refresh Button */}
                     <button
-                        onClick={handleRefresh}
+                        onClick={handleRefreshClick}
                         disabled={loading}
                         className={`p-1.5 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded transition-colors disabled:opacity-50`}
-                        title="Refresh"
+                        title="Manual refresh"
                     >
                         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                     </button>
@@ -458,12 +668,11 @@ useEffect(() => {
                 </div>
             </div>
 
-            {/* ✅ ADVANCED FILTERS PANEL */}
+            {/* ADVANCED FILTERS PANEL */}
             {showAdvanced && (
                 <div className={`mt-2.5 pt-2.5 border-t border-${themeColors.borderLight}`}>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                         
-                        {/* Date Range Selector */}
                         <div className="col-span-2">
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Range
@@ -482,7 +691,6 @@ useEffect(() => {
                             </select>
                         </div>
 
-                        {/* Date Type */}
                         <div>
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Type
@@ -497,7 +705,6 @@ useEffect(() => {
                             </select>
                         </div>
 
-                        {/* Custom Date Range */}
                         {filters.dateFilter === 'custom' && (
                             <>
                                 <div>
@@ -525,7 +732,6 @@ useEffect(() => {
                             </>
                         )}
 
-                        {/* Lab Selector */}
                         <div>
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Lab
@@ -536,11 +742,9 @@ useEffect(() => {
                                 className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="all">All Labs</option>
-                                {/* Add lab options dynamically */}
                             </select>
                         </div>
 
-                        {/* Results Per Page */}
                         <div>
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Per Page

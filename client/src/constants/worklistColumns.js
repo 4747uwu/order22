@@ -1,8 +1,8 @@
-// ✅ WORKLIST COLUMN DEFINITIONS - ALIGNED WITH ACTUAL TABLE STRUCTURE
-// This file defines all available columns for different user roles in worklist tables
+// ✅ WORKLIST COLUMN DEFINITIONS - STANDARDIZED WITH UNIFIED COLUMNS
+import { getDefaultColumnsForUser } from './unifiedWorklistColumns';
 
 export const WORKLIST_COLUMNS = {
-  // ✅ ACTIONS & SELECTION (Always visible)
+  // 1. SELECTION
   SELECTION: {
     id: 'selection',
     label: 'Select',
@@ -12,32 +12,34 @@ export const WORKLIST_COLUMNS = {
     alwaysVisible: true
   },
   
-  ACTIONS: {
-    id: 'actions',
-    label: 'Actions',
-    description: 'Available actions (download, lock, report)',
-    category: 'actions',
-    defaultVisible: true,
-    alwaysVisible: true
-  },
-
-  // ✅ ASSIGNOR TABLE COLUMNS (from actual WorklistTable.jsx)
+  // 2. BHARAT PACS ID
   BHARAT_PACS_ID: {
     id: 'bharatPacsId',
-    label: 'Xcentic ID',
+    label: 'Bharat PACS ID',
     description: 'Unique study identifier',
     category: 'study',
     defaultVisible: true
   },
 
+  // 3. ORGANIZATION
+  ORGANIZATION: {
+    id: 'organization',
+    label: 'Organization',
+    description: 'Organization name',
+    category: 'lab',
+    defaultVisible: true
+  },
+
+  // 4. CENTER NAME
   CENTER_NAME: {
     id: 'centerName',
-    label: 'Sub Center',
+    label: 'Center Name',
     description: 'Sub-center or lab location',
     category: 'lab',
     defaultVisible: true
   },
 
+  // 5. TIMELINE
   TIMELINE: {
     id: 'timeline',
     label: 'Timeline',
@@ -46,14 +48,16 @@ export const WORKLIST_COLUMNS = {
     defaultVisible: true
   },
 
+  // 6. PATIENT NAME / UHID
   PATIENT_NAME: {
     id: 'patientName',
-    label: 'Patient Name',
-    description: 'Full name of the patient',
+    label: 'PT Name / UHID',
+    description: 'Patient name and UHID',
     category: 'patient',
     defaultVisible: true
   },
 
+  // 7. AGE/SEX
   AGE_GENDER: {
     id: 'ageGender',
     label: 'Age/Sex',
@@ -62,54 +66,52 @@ export const WORKLIST_COLUMNS = {
     defaultVisible: true
   },
 
+  // 8. MODALITY
   MODALITY: {
     id: 'modality',
     label: 'Modality',
-    description: 'Imaging modality (CT, MRI, X-Ray, etc.)',
+    description: 'Imaging modality',
     category: 'study',
     defaultVisible: true
   },
 
+  // 9. VIEW ONLY
   VIEW_ONLY: {
     id: 'viewOnly',
     label: 'View',
-    description: 'View images only (no locking)',
+    description: 'View images only',
     category: 'actions',
     defaultVisible: true
   },
 
-  DOWNLOAD_VIEWER: {
-    id: 'downloadViewer',
-    label: 'Download/Viewer',
-    description: 'Download and OHIF viewer options',
-    category: 'actions',
-    defaultVisible: true
-  },
-
+  // 10. SERIES/IMAGES
   STUDY_SERIES_IMAGES: {
     id: 'studySeriesImages',
-    label: 'Study/Series/Images',
-    description: 'Study description and counts',
+    label: 'Series/Images',
+    description: 'Study series and image counts',
     category: 'study',
     defaultVisible: true
   },
 
-  PATIENT_ID_ACCESSION: {
-    id: 'patientIdAccession',
-    label: 'Patient ID / Acc. No.',
-    description: 'Patient ID and accession number',
+  // 11. PATIENT ID
+  PATIENT_ID: {
+    id: 'patientId',
+    label: 'PT ID',
+    description: 'Patient identifier',
     category: 'patient',
-    defaultVisible: false
+    defaultVisible: true
   },
 
+  // 12. REFERRAL DOCTOR
   REFERRAL_DOCTOR: {
     id: 'referralDoctor',
     label: 'Referral Doctor',
-    description: 'Referring physician name',
+    description: 'Referring physician',
     category: 'physician',
     defaultVisible: true
   },
 
+  // 13. CLINICAL HISTORY
   CLINICAL_HISTORY: {
     id: 'clinicalHistory',
     label: 'Clinical History',
@@ -118,22 +120,25 @@ export const WORKLIST_COLUMNS = {
     defaultVisible: true
   },
 
+  // 14. STUDY DATE/TIME
   STUDY_DATE_TIME: {
     id: 'studyDateTime',
     label: 'Study Date/Time',
-    description: 'When the study was performed',
+    description: 'When study was performed',
     category: 'timing',
     defaultVisible: true
   },
 
+  // 15. UPLOAD DATE/TIME
   UPLOAD_DATE_TIME: {
     id: 'uploadDateTime',
     label: 'Upload Date/Time',
-    description: 'When the study was uploaded',
+    description: 'When study was uploaded',
     category: 'timing',
-    defaultVisible: false
+    defaultVisible: true
   },
 
+  // 16. RADIOLOGIST
   ASSIGNED_RADIOLOGIST: {
     id: 'assignedRadiologist',
     label: 'Radiologist',
@@ -142,6 +147,16 @@ export const WORKLIST_COLUMNS = {
     defaultVisible: true
   },
 
+  // 17. LOCK/UNLOCK
+  STUDY_LOCK: {
+    id: 'studyLock',
+    label: 'Lock/Unlock',
+    description: 'Study lock status',
+    category: 'workflow',
+    defaultVisible: true
+  },
+
+  // 18. STATUS
   STATUS: {
     id: 'status',
     label: 'Status',
@@ -150,198 +165,45 @@ export const WORKLIST_COLUMNS = {
     defaultVisible: true
   },
 
+  // 19. PRINT REPORT
   PRINT_COUNT: {
     id: 'printCount',
-    label: 'Print Count',
-    description: 'Number of times report printed',
+    label: 'Print Report',
+    description: 'Print report count',
     category: 'report',
     defaultVisible: false
   },
 
-  // ✅ ADDITIONAL COMMON COLUMNS
-  STUDY_DATE: {
-    id: 'studyDate',
-    label: 'Study Date',
-    description: 'Date of the study',
-    category: 'timing',
-    defaultVisible: true
-  },
-
-  PRIORITY: {
-    id: 'priority',
-    label: 'Priority',
-    description: 'Study priority level (Urgent/Normal)',
-    category: 'workflow',
-    defaultVisible: true
-  },
-
+  // 20. VERIFIED BY
   ASSIGNED_VERIFIER: {
     id: 'assignedVerifier',
-    label: 'Verifier',
-    description: 'Assigned verifier name',
+    label: 'Verified By',
+    description: 'Verifier name',
     category: 'assignment',
-    defaultVisible: false
-  },
-
-  LAB_NAME: {
-    id: 'labName',
-    label: 'Lab/Center',
-    description: 'Laboratory or center name',
-    category: 'lab',
     defaultVisible: true
   },
 
-  TAT: {
-    id: 'tat',
-    label: 'TAT',
-    description: 'Turnaround time',
+  // 21. VERIFIED DATE/TIME
+  VERIFIED_DATE_TIME: {
+    id: 'verifiedDateTime',
+    label: 'Verified Date/Time',
+    description: 'When report was verified',
     category: 'timing',
     defaultVisible: true
   },
 
-  // ✅ DOCTOR TABLE SPECIFIC COLUMNS
-  PATIENT_ID: {
-    id: 'patientId',
-    label: 'Patient ID',
-    description: 'Unique patient identifier',
-    category: 'patient',
-    defaultVisible: true
-  },
-
-  PATIENT_AGE: {
-    id: 'patientAge',
-    label: 'Age',
-    description: 'Patient age',
-    category: 'patient',
-    defaultVisible: true
-  },
-
-  PATIENT_GENDER: {
-    id: 'patientGender',
-    label: 'Gender',
-    description: 'Patient gender',
-    category: 'patient',
-    defaultVisible: true
-  },
-
-  ACCESSION_NUMBER: {
-    id: 'accessionNumber',
-    label: 'Accession Number',
-    description: 'Study accession number',
-    category: 'study',
-    defaultVisible: false
-  },
-
-  REFERRING_PHYSICIAN: {
-    id: 'referringPhysician',
-    label: 'Referring Physician',
-    description: 'Doctor who referred the patient',
-    category: 'physician',
-    defaultVisible: true
-  },
-
-  REPORT_STATUS: {
-    id: 'reportStatus',
-    label: 'Report Status',
-    description: 'Status of the report',
-    category: 'report',
-    defaultVisible: true
+  // 22. ACTIONS
+  ACTIONS: {
+    id: 'actions',
+    label: 'Actions',
+    description: 'Available actions',
+    category: 'actions',
+    defaultVisible: true,
+    alwaysVisible: true
   }
 };
 
-// ✅ DEFAULT COLUMN SETS BY ROLE - USING ACTUAL TABLE COLUMN IDs
-export const DEFAULT_COLUMNS_BY_ROLE = {
-  assignor: [
-    'selection',
-    'bharatPacsId',
-    'centerName',
-    'timeline',
-    'patientName',
-    'ageGender',
-    'modality',
-    'viewOnly',
-    'downloadViewer',
-    'studySeriesImages',
-    'patientIdAccession',
-    'referralDoctor',
-    'clinicalHistory',
-    'studyDateTime',
-    'uploadDateTime',
-    'assignedRadiologist',
-    'status',
-    'printCount',
-    'actions'
-  ],
-
-  radiologist: [
-    'patientName',
-    'patientAge',
-    'patientGender',
-    'studyDate',
-    'modality',
-    'priority',
-    'status',
-    'referringPhysician',
-    'clinicalHistory',
-    'reportStatus',
-    'actions'
-  ],
-
-  verifier: [
-    'patientName',
-    'patientAge',
-    'patientGender',
-    'studyDate',
-    'modality',
-    'priority',
-    'assignedRadiologist',
-    'reportStatus',
-    'actions'
-  ],
-
-  admin: [
-    'selection',
-    'bharatPacsId',
-    'centerName',
-    'timeline',
-    'patientName',
-    'ageGender',
-    'modality',
-    'viewOnly',
-    'downloadViewer',
-    'studySeriesImages',
-    'referralDoctor',
-    'clinicalHistory',
-    'studyDateTime',
-    'assignedRadiologist',
-    'status',
-    'actions'
-  ],
-
-  super_admin: [
-    'selection',
-    'bharatPacsId',
-    'centerName',
-    'timeline',
-    'patientName',
-    'ageGender',
-    'modality',
-    'viewOnly',
-    'downloadViewer',
-    'studySeriesImages',
-    'patientIdAccession',
-    'referralDoctor',
-    'clinicalHistory',
-    'studyDateTime',
-    'uploadDateTime',
-    'assignedRadiologist',
-    'status',
-    'printCount',
-    'actions'
-  ]
-};
-
-// ✅ COLUMN CATEGORIES FOR GROUPED UI
+// ✅ COLUMN CATEGORIES
 export const COLUMN_CATEGORIES = {
   patient: {
     label: 'Patient Information',
@@ -395,9 +257,10 @@ export const COLUMN_CATEGORIES = {
   }
 };
 
-// ✅ HELPER FUNCTIONS
-export const getDefaultColumnsForRole = (role) => {
-  return DEFAULT_COLUMNS_BY_ROLE[role] || DEFAULT_COLUMNS_BY_ROLE.assignor;
+// ✅ USE UNIFIED DEFAULTS
+export const getDefaultColumnsForRole = (roles = []) => {
+  if (roles.length === 0) return [];
+  return getDefaultColumnsForUser(roles);
 };
 
 export const getColumnsByCategory = (category) => {
@@ -416,3 +279,5 @@ export const isColumnAlwaysVisible = (columnId) => {
   const column = getColumnById(columnId);
   return column?.alwaysVisible || false;
 };
+
+

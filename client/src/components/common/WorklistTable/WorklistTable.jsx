@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText } from 'lucide-react';
-// ✅ Import modals
-import {  Monitor, Eye,  } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -10,11 +8,13 @@ import ReportModal from '../ReportModal/ReportModal';
 import StudyNotesComponent from '../StudyNotes/StudyNotesComponent';
 import TimelineModal from '../TimelineModal';
 import DownloadOptions from '../DownloadOptions/DownloadOptions';
-import StudyDocumentsManager  from '../../StudyDocuments/StudyDocumentsManager';  // ✅ NEW IMPORT
-import api from '../../../services/api'
-import TableFooter from './TableFooter';
+import StudyDocumentsManager from '../../StudyDocuments/StudyDocumentsManager';
+import api from '../../../services/api';
 import { useAuth } from '../../../hooks/useAuth';
-import { getAllColumns } from '../../../constants/worklistColumns';
+import { useColumnResizing } from '../../../hooks/useColumnResizing';
+import ResizableTableHeader from './ResizableTableHeader';
+import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColumns';
+import RevertModal from '../../../components/RevertModal.jsx';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -28,6 +28,13 @@ const getStatusColor = (status) => {
       return 'bg-gray-200 text-gray-800 border border-gray-400';
     case 'report_drafted':
     case 'report_finalized':
+      return 'bg-blue-100 text-blue-700 border border-blue-200';
+    case 'verification_in_progress':
+      return 'bg-yellow-100 text-yellow-700 border border-yellow-200';
+    case 'report_verified':
+      return 'bg-green-100 text-green-700 border border-green-200';
+    case 'report_rejected':
+      return 'bg-red-100 text-red-700 border border-red-200';
     case 'final_report_downloaded':
       return 'bg-gray-800 text-white border border-gray-900';
     default:
@@ -44,6 +51,9 @@ const formatWorkflowStatus = (status) => {
     case 'report_in_progress': return 'In Progress';
     case 'report_drafted': return 'Drafted';
     case 'report_finalized': return 'Finalized';
+    case 'verification_in_progress': return 'Verifying';
+    case 'report_verified': return 'Verified';
+    case 'report_rejected': return 'Rejected';
     case 'final_report_downloaded': return 'Completed';
     default: return status || 'Unknown';
   }
@@ -62,18 +72,29 @@ const formatDate = (dateString) => {
   }
 };
 
-const formatTime = (dateString) => {
-  if (!dateString) return '';
+const formatTime = (value) => {
+  if (value === null || value === undefined || value === '') return '';
+
   try {
-    return new Date(dateString).toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false
-    });
+    const str = String(value).trim();
+    const clean = str.split('.')[0]; // remove fractional seconds
+
+    // Accept HHMM or HHMMSS
+    if (!/^\d{4,6}$/.test(clean)) return '';
+
+    const hh = clean.slice(0, 2);
+    const mm = clean.slice(2, 4);
+
+    // Basic validation
+    if (+hh > 23 || +mm > 59) return '';
+
+    return `${hh}:${mm}`;
   } catch {
     return '';
   }
 };
+
+
 
 const copyToClipboard = (text, label = 'ID') => {
   navigator.clipboard.writeText(text).then(() => {
@@ -87,65 +108,7 @@ const copyToClipboard = (text, label = 'ID') => {
   });
 };
 
-// ✅ ACTION DROPDOWN COMPONENT
-const ActionDropdown = ({ study, onViewReport, onShowStudyNotes, onViewStudy }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition-all flex items-center gap-1.5 w-full justify-center shadow-sm hover:shadow"
-      >
-        <span>Actions</span>
-        <svg className="w-3.5 h-3.5 transition-transform" style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-      
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-[9998]" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-200 z-[9999] overflow-hidden">
-            <div className="py-1">
-              <button
-                onClick={() => { onViewStudy?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                View Study
-              </button>
-              
-              <button
-                onClick={() => { onViewReport?.(study); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                View Report
-              </button>
-              
-              <button
-                onClick={() => { onShowStudyNotes?.(study._id); setIsOpen(false); }}
-                className="flex items-center w-full px-4 py-2.5 text-sm text-slate-700 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-              >
-                <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                </svg>
-                Study Notes
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
-// ✅ PATIENT EDIT MODAL - Black & White Theme
+// ✅ PATIENT EDIT MODAL
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     patientName: '',
@@ -316,7 +279,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   );
 };
 
-// ✅ UPDATED STUDY ROW - Black & White Theme
+// ✅ STUDY ROW - ALL COLUMNS VISIBLE WITH DYNAMIC WIDTHS
 const StudyRow = ({ 
   study, 
   index,
@@ -334,15 +297,20 @@ const StudyRow = ({
   onShowTimeline,
   onToggleLock,
   onShowDocuments,
-  userRole,
-  isColumnVisible
-}) => {
+  onShowRevertModal,
 
-    const navigate = useNavigate();
+  userRole,
+  userRoles = [],
+  getColumnWidth
+}) => {
+  const navigate = useNavigate();
+  console.log(study)
   
   const assignInputRef = useRef(null);
+  const verifierInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
   const [assignInputValue, setAssignInputValue] = useState('');
+  const [verifierInputValue, setVerifierInputValue] = useState('');
   const [showAssignmentModal, setShowAssignmentModal] = useState(false);
   const [assignmentModalPosition, setAssignmentModalPosition] = useState(null);
   const [inputFocused, setInputFocused] = useState(false);
@@ -356,23 +324,34 @@ const StudyRow = ({
   const isLocked = study?.isLocked || false;
   const hasNotes = study.hasStudyNotes === true || (study.discussions && study.discussions.length > 0);
   const hasAttachments = study.attachments && study.attachments.length > 0;
-  const canToggleLock = userRole === 'admin' || userRole === 'assignor';
+  const canToggleLock = userRoles.includes('admin') || userRoles.includes('assignor') || userRole === 'admin' || userRole === 'assignor';
+  const isRejected = study.workflowStatus === 'report_rejected';
+  const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
 
-  // ✅ SYNC INPUT VALUE WITH RADIOLOGIST NAME (ONLY WHEN NOT FOCUSED)
+  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+
   useEffect(() => {
     if (!inputFocused && !showAssignmentModal) {
-      // Only show radiologist name when input is NOT focused
       setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
     }
   }, [isAssigned, study.radiologist, inputFocused, showAssignmentModal]);
+
+  useEffect(() => {
+    if (study.verifier) {
+      setVerifierInputValue(
+        typeof study.verifier === 'string' 
+          ? study.verifier 
+          : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || ''
+      );
+    }
+  }, [study.verifier]);
 
   const rowClasses = `${
     isSelected ? 'bg-gray-100 border-l-2 border-l-gray-900' : 
     isAssigned ? 'bg-gray-50' : 
     index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} hover:bg-gray-100 transition-all duration-200 border-b border-slate-100`;
+  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} ${isRejected ? 'border-l-4 border-l-rose-600' : ''} hover:bg-gray-100 transition-all duration-200 border-b border-slate-100`;
 
-  // ✅ FIX: Clear input value when modal opens to show ALL radiologists
   const handleAssignInputFocus = (e) => {
     if (isLocked) {
       toast.error(`Locked by ${study.studyLock?.lockedByName}`, { icon: '🔒' });
@@ -395,7 +374,6 @@ const StudyRow = ({
     }
   };
 
-  // ✅ FIX: Reset input value when modal closes
   const handleCloseAssignmentModal = () => {
     setShowAssignmentModal(false);
     setInputFocused(false);
@@ -407,7 +385,6 @@ const StudyRow = ({
     handleCloseAssignmentModal();
   };
 
-  // ✅ Handle download button click
   const handleDownloadClick = (e) => {
     e.stopPropagation();
     if (downloadButtonRef.current) {
@@ -420,16 +397,14 @@ const StudyRow = ({
     }
   };
 
-   const handleViewOnlyClick = (e) => {
-  e.stopPropagation();
-  navigate(`/doctor/viewer/${study._id}`, {
-    state: { study }
-  });
-};
-
+  const handleViewOnlyClick = (e) => {
+    e.stopPropagation();
+    navigate(`/doctor/viewer/${study._id}`, {
+      state: { study }
+    });
+  };
 
   const handleOHIFReporting = () => {
-    console.log('🟢 OHIF + Reporting:', study._id);
     navigate(`/online-reporting/${study._id}?openOHIF=true`, {
       state: { 
         study: study,
@@ -438,8 +413,12 @@ const StudyRow = ({
     });
   };
 
- const handleLockToggle = async (e) => {
+  const handleLockToggle = async (e) => {
     e.stopPropagation();
+    if (!canToggleLock) {
+      toast.error('You do not have permission to lock/unlock studies');
+      return;
+    }
     setTogglingLock(true);
     try {
       await onToggleLock(study._id, !isLocked);
@@ -453,319 +432,497 @@ const StudyRow = ({
 
   return (
     <tr className={rowClasses}>
-      {/* ✅ XCENTIC ID */}
-      {isColumnVisible('bharatPacsId') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-          <div className="flex items-center justify-center gap-1.5">
-            <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
-              {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
-            </span>
-            <button
-              onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-              className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-            >
-              <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
-            </button>
-          </div>
-        </td>
-      )}
+      {/* 1. SELECTION CHECKBOX */}
+      <td className="px-2 py-3 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('selection')}px` }}>
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={() => onSelectStudy(study._id)}
+          className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
+        />
+      </td>
 
-      {/* ✅ SUB CENTER */}
-      {isColumnVisible('centerName') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '130px' }}>
-          <div className="text-xs text-slate-600 truncate" title={study.centerName}>
-            {study.centerName || '-'}
-          </div>
-        </td>
-      )}
-
-      {/* ✅ TIMELINE */}
-      {isColumnVisible('timeline') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '50px' }}>
-          <button
-            onClick={() => onShowTimeline?.(study)}
-            className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
-            title="View Timeline"
-          >
-            <Clock className="w-4 h-4 text-gray-700" />
-          </button>
-        </td>
-      )}
-
-      {/* ✅ PATIENT NAME / UHID */}
-      {isColumnVisible('patientName') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '160px' }}>
-          <button 
-            className="w-full text-left hover:underline decoration-gray-900"
-            onClick={() => onPatienIdClick?.(study.patientId, study)}
-          >
-            <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
-              {study.patientName || '-'}
-              {isUrgent && <span className="text-rose-500">●</span>}
-            </div>
-            <div className="text-[10px] text-slate-500 truncate">
-              UHID: {study.patientId || '-'}
-            </div>
-          </button>
-        </td>
-      )}
-
-      {/* ✅ AGE / SEX */}
-      {isColumnVisible('ageGender') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
-          <div className="text-xs font-medium text-slate-700">
-            {study.ageGender !== 'N/A' ? study.ageGender : 
-             study.patientAge && study.patientSex ? 
-             `${study.patientAge}/${study.patientSex.charAt(0)}` : '-'}
-          </div>
-        </td>
-      )}
-
-      {/* ✅ MODALITY */}
-      {isColumnVisible('modality') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '70px' }}>
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
-            isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
-          }`}>
-            {study.modality || '-'}
+      {/* 2. BHARAT PACS ID */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+        <div className="flex items-center justify-center gap-1.5">
+          <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
+            {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
           </span>
-        </td>
-      )}
-
-      {/* ✅ VIEW ONLY */}
-      {isColumnVisible('viewOnly') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '60px' }}>
           <button
-            onClick={handleViewOnlyClick}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-            title="View Images Only (No Locking)"
+            onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
+            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
           >
-            <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
           </button>
-        </td>
-      )}
+        </div>
+      </td>
 
-      {/* ✅ DOWNLOAD + VIEWER */}
-      {isColumnVisible('downloadViewer') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '150px' }}>
-          <div className="flex items-center justify-center gap-1.5">
-            <button
-              ref={downloadButtonRef}
-              onClick={handleDownloadClick}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-              title="Download Options"
-            >
-              <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-            </button>
+      {/* 3. ORGANIZATION */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
+        <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
+          {study.organizationName || '-'}
+        </div>
+      </td>
 
-            <button
-              onClick={handleOHIFReporting}
-              className="p-2 hover:bg-gray-200 rounded-lg transition-all group hover:scale-110"
-              title="Report + OHIF Viewer"
-            >
-              <Monitor className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-            </button>
+      {/* 4. CENTER NAME */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
+        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
+          {study.centerName || '-'}
+        </div>
+      </td>
+
+      {/* //location */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
+        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
+          {study?.location || '-'}
+        </div>
+      </td>
+
+      {/* 5. TIMELINE */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('timeline')}px` }}>
+        <button
+          onClick={() => onShowTimeline?.(study)}
+          className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
+          title="View Timeline"
+        >
+          <Clock className="w-4 h-4 text-gray-700" />
+        </button>
+      </td>
+
+      {/* 6. PATIENT NAME / UHID */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientName')}px` }}>
+        <button 
+          className="w-full text-left hover:underline decoration-gray-900"
+          onClick={() => onPatienIdClick?.(study.patientId, study)}
+        >
+          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
+            {study.patientName || '-'}
+            {isUrgent && <span className="text-rose-500">●</span>}
+            {isRejected && <span className="text-rose-600" title={`Rejected: ${rejectionReason}`}>🚫</span>}
           </div>
-        </td>
-      )}
-
-      {/* ✅ STUDY / SERIES / IMAGES */}
-      {isColumnVisible('studySeriesImages') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '90px' }}>
-          <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
-          <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-        </td>
-      )}
-
-      {/* ✅ PATIENT ID / ACCESSION */}
-      {isColumnVisible('patientIdAccession') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '110px' }}>
-          <div className="text-[11px] text-slate-700 truncate">ID: {study.patientId || '-'}</div>
-          <div className="text-[10px] text-slate-500 truncate">Acc: {study.accessionNumber || '-'}</div>
-        </td>
-      )}
-
-      {/* ✅ REFERRAL DOCTOR */}
-      {isColumnVisible('referralDoctor') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '600px' }}>
-          <div className="text-xs text-slate-700 truncate" title={study.referralNumber}>
-            {study.referralNumber !== 'N/A' ? study.referralNumber : '-'}
+          <div className="text-[10px] text-slate-500 truncate">
+            UHID: {study.patientId || '-'}
           </div>
-        </td>
-      )}
+        </button>
+      </td>
 
-      {/* ✅ CLINICAL HISTORY */}
-      {isColumnVisible('clinicalHistory') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '750px' }}>
-          <div 
-            className="text-xs text-slate-700 leading-relaxed" 
-            style={{
-              whiteSpace: 'normal',
-              overflowWrap: 'break-word',
-              wordBreak: 'break-word'
-            }}
+      {/* 7. AGE/SEX */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ageGender')}px` }}>
+        <div className="text-xs font-medium text-slate-700">
+          {study.ageGender !== 'N/A' ? study.ageGender : 
+           study.patientAge && study.patientSex ? 
+           `${study.patientAge}/${study.patientSex.charAt(0)}` : 
+           study.patientAge && study.patientGender ?
+           `${study.patientAge}/${study.patientGender.charAt(0)}` : '-'}
+        </div>
+      </td>
+
+      {/* 8. MODALITY */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('modality')}px` }}>
+        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
+          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
+        }`}>
+          {study.modality || '-'}
+        </span>
+      </td>
+
+      {/* 9. VIEW */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+        <button
+          onClick={handleViewOnlyClick}
+          className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+          title="View Images Only (No Locking)"
+        >
+          <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+        </button>
+      </td>
+
+      {/* 10. SERIES/IMAGES */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
+        <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
+        <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+      </td>
+
+      {/* 11. PATIENT ID */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientId')}px` }}>
+        <button 
+          className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline"
+          onClick={() => onPatienIdClick?.(study.patientId, study)}
+        >
+          {study.patientId || study.patientInfo?.patientID || 'N/A'}
+        </button>
+      </td>
+
+      {/* 12. REFERRAL DOCTOR */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
+        <div className="text-xs text-slate-700 truncate" title={study.referralNumber || study.referringPhysician}>
+          {study.referralNumber || study.referringPhysician || '-'}
+        </div>
+      </td>
+
+      {/* 13. CLINICAL HISTORY */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+        <div 
+          className="text-xs text-slate-700 leading-relaxed" 
+          style={{
+            whiteSpace: 'normal',
+            overflowWrap: 'break-word',
+            wordBreak: 'break-word'
+          }}
+        >
+          {study.clinicalHistory || '-'}
+        </div>
+
+        <div className="flex items-center gap-4 mt-3">
+          <button
+            onClick={() => onEditPatient?.(study)}
+            className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
           >
-             {study.clinicalHistory || '-'}
-           </div>
+            <Edit className="w-4 h-4" />
+            Edit
+          </button>
 
-           <div className="flex items-center gap-4 mt-3">
-            <button
-             onClick={() => onEditPatient?.(study)}
-             className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
-           >
-             <Edit className="w-4 h-4" />
-             Edit
-           </button>
-
-            <button
-              onClick={() => onShowDocuments?.(study._id)}
-              className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
-                hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
-              }`}
-              title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
-            >
-              <Paperclip className={`w-4 h-4 ${
-                hasAttachments ? 'text-gray-900' : 'text-slate-400'
-              } group-hover:text-gray-900`} />
-              
-              {hasAttachments && study.attachments.length > 0 && (
-                <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                  {study.attachments.length}
-                </span>
-              )}
-            </button>
-
-            <button
-              onClick={() => onShowStudyNotes?.(study._id)}
-              className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-                hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
-              }`}
-              title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
-            >
-              <MessageSquare className={`w-4 h-4 ${
-                hasNotes ? 'text-gray-900' : 'text-slate-400'
-              } group-hover:text-gray-900`} />
-            </button>
-           </div>
-         </td>
-      )}
-
-      {/* ✅ STUDY DATE/TIME */}
-      {isColumnVisible('studyDateTime') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
-          <div className="text-[10px] text-slate-500">{study.studyTime || '-'}</div>
-        </td>
-      )}
-
-      {/* ✅ UPLOAD DATE/TIME */}
-      {isColumnVisible('uploadDateTime') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: '100px' }}>
-          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
-          <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
-        </td>
-      )}
-
-      {/* ✅ RADIOLOGIST */}
-      {isColumnVisible('assignedRadiologist') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
-          <div className="relative">
-            <input
-              ref={assignInputRef}
-              type="text"
-              value={assignInputValue}
-              onChange={(e) => setAssignInputValue(e.target.value)}
-              onFocus={handleAssignInputFocus}
-              onBlur={() => {
-                setTimeout(() => {
-                  if (!showAssignmentModal) {
-                    setInputFocused(false);
-                    setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
-                  }
-                }, 200);
-              }}
-              placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
-              disabled={isLocked}
-              className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
-                isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
-                isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
-                'bg-white border-slate-200 hover:border-slate-300'
-              }`}
-            />
-            {isAssigned && !inputFocused && !isLocked && (
-              <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
+          <button
+            onClick={() => onShowDocuments?.(study._id)}
+            className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
+              hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
+            }`}
+            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
+          >
+            <Paperclip className={`w-4 h-4 ${
+              hasAttachments ? 'text-gray-900' : 'text-slate-400'
+            } group-hover:text-gray-900`} />
+            
+            {hasAttachments && study.attachments.length > 0 && (
+              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+                {study.attachments.length}
+              </span>
             )}
-            {isLocked && (
-              <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
-            )}
-          </div>
-        </td>
-      )}
+          </button>
 
-      {/* ✅ STATUS */}
-      {isColumnVisible('status') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: '140px' }}>
+          <button
+            onClick={() => onShowStudyNotes?.(study._id)}
+            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+              hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
+            }`}
+            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
+          >
+            <MessageSquare className={`w-4 h-4 ${
+              hasNotes ? 'text-gray-900' : 'text-slate-400'
+            } group-hover:text-gray-900`} />
+          </button>
+        </div>
+      </td>
+
+      {/* 14. STUDY DATE/TIME */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
+        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
+        <div className="text-[10px] text-slate-500">{formatTime(study.studyTime) || '-'}</div>
+      </td>
+
+      {/* 15. UPLOAD DATE/TIME */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
+        <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
+      </td>
+
+      {/* 16. RADIOLOGIST */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+        <div className="relative">
+          <input
+            ref={assignInputRef}
+            type="text"
+            value={assignInputValue}
+            onChange={(e) => setAssignInputValue(e.target.value)}
+            onFocus={handleAssignInputFocus}
+            onBlur={() => {
+              setTimeout(() => {
+                if (!showAssignmentModal) {
+                  setInputFocused(false);
+                  setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
+                }
+              }, 200);
+            }}
+            placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
+            disabled={isLocked}
+            className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
+              isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
+              isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
+              'bg-white border-slate-200 hover:border-slate-300'
+            }`}
+          />
+          {isAssigned && !inputFocused && !isLocked && (
+            <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
+          )}
+          {isLocked && (
+            <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
+          )}
+        </div>
+      </td>
+
+      {/* 17. LOCK/UNLOCK TOGGLE */}
+      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('studyLock')}px` }}>
+        <button
+          onClick={handleLockToggle}
+          disabled={togglingLock || !canToggleLock}
+          className={`p-2 rounded-lg transition-all group hover:scale-110 ${
+            togglingLock ? 'opacity-50 cursor-not-allowed' : 
+            !canToggleLock ? 'opacity-30 cursor-not-allowed' :
+            isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
+          }`}
+          title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
+        >
+          {isLocked ? (
+            <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
+          ) : (
+            <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
+          )}
+        </button>
+      </td>
+
+      {/* 18. STATUS - WITH DATE/TIME */}
+      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('status')}px` }}>
+        <div className="flex flex-col items-center gap-1">
           <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
             {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
           </span>
-        </td>
-      )}
+          {study.statusHistory && study.statusHistory.length > 0 && (() => {
+            const currentStatusEntry = study.statusHistory
+              .slice()
+              .reverse()
+              .find(entry => entry.status === study.workflowStatus);
+            
+            if (currentStatusEntry && currentStatusEntry.changedAt) {
+              return (
+                <div className="text-[9px] text-slate-500">
+                  {formatDate(currentStatusEntry.changedAt)} {formatTime(currentStatusEntry.changedAt)}
+                </div>
+              );
+            }
+            return null;
+          })()}
+        </div>
+      </td>
 
-      {/* ✅ PRINT COUNT */}
-      {isColumnVisible('printCount') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-b border-slate-200" style={{ width: '90px' }}>
-          <div className="text-xs text-slate-600">
-            {study.printCount > 0 ? (
-              <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
-                <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
-                {study.printCount}
-              </span>
-            ) : (
-              <span className="text-slate-400">No prints</span>
-            )}
+      {/* 19. PRINT COUNT */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
+        <div className="text-xs text-slate-600">
+          {study.printCount > 0 ? (
+            <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium">
+              <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
+              {study.printCount}
+            </span>
+          ) : (
+            <span className="text-slate-400">No prints</span>
+          )}
+        </div>
+      </td>
+
+        <td className="px-3 py-3.5 border-r border-slate-200" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
+        {isRejected ? (
+          <div className="flex items-start gap-2">
+            <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+            <div 
+              className="text-xs text-rose-700 leading-relaxed font-medium" 
+              style={{
+                whiteSpace: 'normal',
+                overflowWrap: 'break-word',
+                wordBreak: 'break-word'
+              }}
+              title={rejectionReason}
+            >
+              {study.verificationNotes || rejectionReason}
+            </div>
           </div>
-        </td>
-      )}
+        ) : (
+          <div className="text-xs text-slate-400 text-center">-</div>
+        )}
+      </td>
 
-      {/* ✅ ACTIONS */}
-      {isColumnVisible('actions') && (
-        <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: '200px' }}>
-          <div className="flex items-center justify-center gap-1.5">
-            <button
-              ref={downloadButtonRef}
-              onClick={handleDownloadClick}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-              title="Download Options"
-            >
-              <Download className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-            </button>
+      {/* 20. VERIFIED BY */}
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
+        <div className="text-xs text-slate-700 truncate">
+          {typeof study.verifier === 'string' 
+            ? study.verifier 
+            : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}
+        </div>
+      </td>
 
-            <button
-              onClick={handleLockToggle}
-              disabled={togglingLock}
-              className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-                togglingLock ? 'opacity-50 cursor-not-allowed' : 
-                isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
-              }`}
-              title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
-            >
-              {isLocked ? (
-                <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
-              ) : (
-                <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
+      {/* 21. VERIFIED DATE/TIME */}
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+        <div className="text-[11px] font-medium text-slate-800">
+          {formatDate(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
+        </div>
+        <div className="text-[10px] text-slate-500">
+          {formatTime(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
+        </div>
+      </td>
+
+            
+      {/* 22. ACTIONS - ALL ADMIN OPTIONS */}
+     <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: `${getColumnWidth('actions')}px` }}>
+        <div className="flex items-center justify-center gap-1.5 flex-wrap">
+          {/* ADMIN/ASSIGNOR GETS ALL OPTIONS */}
+          {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor') || userAccountRoles.includes('super_admin')) && (
+            <>
+              {/* Download Button */}
+              <button
+                ref={downloadButtonRef}
+                onClick={handleDownloadClick}
+                className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
+                title="Download Options"
+              >
+                <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+              </button>
+
+              {/* OHIF + Reporting Button */}
+              <button
+                onClick={handleOHIFReporting}
+                className="p-2 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110"
+                title="OHIF + Reporting"
+              >
+                <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+              </button>
+
+              {/* View Report Button */}
+              <button
+                onClick={() => onViewReport?.(study)}
+                className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
+                title="View Report"
+              >
+                <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+              </button>
+
+              {/* DICOM Viewer Button */}
+              <button
+                onClick={() => {
+                  const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
+                  window.open(ohifUrl, '_blank');
+                }}
+                className="p-2 hover:bg-indigo-50 rounded-lg transition-all group hover:scale-110"
+                title="DICOM Viewer"
+              >
+                <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
+              </button>
+
+              {/* Share Button */}
+              <button
+                onClick={() => {
+                  const shareUrl = `${window.location.origin}/study/${study._id}`;
+                  navigator.clipboard.writeText(shareUrl);
+                  toast.success('Study link copied to clipboard!');
+                }}
+                className="p-2 hover:bg-sky-50 rounded-lg transition-all group hover:scale-110"
+                title="Share Study"
+              >
+                <Share2 className="w-4 h-4 text-sky-600 group-hover:text-sky-700" />
+              </button>
+
+              {/* Verify Button */}
+              {/* <button 
+                className="px-2.5 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm" 
+                title="Verify Report"
+                onClick={handleOHIFReporting}
+              >
+                Verify
+              </button> */}
+
+              {/* Status Icons */}
+              {/* {study.workflowStatus === 'report_verified' && (
+                <div className="p-1 text-green-600" title="Verified">
+                  <CheckCircle className="w-4 h-4 fill-current" />
+                </div>
               )}
-            </button>
 
-            <button
-              onClick={() => onViewReport?.(study)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-              title="View Report"
-            >
-              <FileText className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-            </button>
-          </div>
-        </td>
-      )}
+              {study.workflowStatus === 'report_rejected' && (
+                <div className="p-1 text-red-600" title="Rejected">
+                  <XCircle className="w-4 h-4 fill-current" />
+                </div>
+              )} */}
+            </>
+          )}
+
+            {(userRoles.includes('admin') || userRoles.includes('super_admin')) && 
+            ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus) && (
+                <button
+                    onClick={() => handleShowRevertModal(study)}
+                    className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 transition-colors"
+                    title="Revert to Radiologist"
+                >
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Revert</span>
+                </button>
+            )}
+
+          {/* RADIOLOGIST ACTIONS */}
+          {userAccountRoles.includes('radiologist') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
+            <>
+              <button
+                onClick={handleOHIFReporting}
+                className="p-2 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110"
+                title="OHIF + Reporting"
+              >
+                <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+              </button>
+
+              <button
+                onClick={() => onViewReport?.(study)}
+                className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
+                title="View Report"
+              >
+                <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+              </button>
+            </>
+          )}
+
+          {/* VERIFIER ACTIONS */}
+          {userAccountRoles.includes('verifier') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
+            <>
+              <button 
+                className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" 
+                title="View Report"
+                onClick={() => onViewReport?.(study)}
+              >
+                <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+              </button>
+
+              <button 
+                className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" 
+                title="DICOM Viewer"
+                onClick={() => {
+                  const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
+                  window.open(ohifUrl, '_blank');
+                }}
+              >
+                <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+              </button>
+
+              <button 
+                className="px-2.5 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm" 
+                title="Open OHIF + Reporting for Verification"
+                onClick={handleOHIFReporting}
+              >
+                Verify
+              </button>
+
+              {/* {study.workflowStatus === 'report_verified' && (
+                <div className="p-1 text-green-600" title="Verified">
+                  <CheckCircle className="w-4 h-4 fill-current" />
+                </div>
+              )}
+
+              {study.workflowStatus === 'report_rejected' && (
+                <div className="p-1 text-red-600" title="Rejected">
+                  <XCircle className="w-4 h-4 fill-current" />
+                </div>
+              )} */}
+            </>
+          )}
+
+          {/* FALLBACK ACTION */}
+          
+        </div>
+      </td>
 
       {showDownloadOptions && (
         <DownloadOptions
@@ -790,7 +947,82 @@ const StudyRow = ({
   );
 };
 
-// ✅ UPDATED MAIN TABLE - Black & White Theme with Column Visibility
+// ✅ TABLE FOOTER
+const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, displayedRecords, loading }) => {
+  const { currentPage, totalPages, totalRecords, recordsPerPage, hasNextPage, hasPrevPage } = pagination;
+  const recordsPerPageOptions = [10, 25, 50, 100];
+
+  const startRecord = totalRecords === 0 ? 0 : ((currentPage - 1) * recordsPerPage) + 1;
+  const endRecord = Math.min(currentPage * recordsPerPage, totalRecords);
+
+  return (
+    <div className="sticky bottom-0 bg-gradient-to-r from-gray-50 to-gray-100 border-t-2 border-gray-300 px-4 py-3 flex items-center justify-between shadow-lg">
+      <div className="flex items-center space-x-4">
+        <span className="text-sm text-gray-700 font-medium">
+          Showing <span className="font-bold text-gray-900">{startRecord}</span> to{' '}
+          <span className="font-bold text-gray-900">{endRecord}</span> of{' '}
+          <span className="font-bold text-gray-900">{totalRecords}</span> records
+        </span>
+
+        <div className="flex items-center space-x-2">
+          <label htmlFor="recordsPerPage" className="text-sm text-gray-700 font-medium">
+            Show:
+          </label>
+          <select
+            id="recordsPerPage"
+            value={recordsPerPage}
+            onChange={(e) => onRecordsPerPageChange(Number(e.target.value))}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          >
+            {recordsPerPageOptions.map((option) => (
+              <option key={option} value={option}>{option} per page</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={!hasPrevPage}
+          className={`p-2 rounded-lg transition-all ${
+            hasPrevPage ? 'bg-gray-800 hover:bg-black text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-700 font-medium">Page</span>
+          <input
+            type="number"
+            min="1"
+            max={totalPages}
+            value={currentPage}
+            onChange={(e) => {
+              const page = parseInt(e.target.value);
+              if (page >= 1 && page <= totalPages) onPageChange(page);
+            }}
+            className="w-16 px-2 py-1.5 text-center text-sm border border-gray-300 rounded-lg bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
+          />
+          <span className="text-sm text-gray-700 font-medium">of {totalPages}</span>
+        </div>
+
+        <button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={!hasNextPage}
+          className={`p-2 rounded-lg transition-all ${
+            hasNextPage ? 'bg-gray-800 hover:bg-black text-white' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+          }`}
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ✅ MAIN WORKLIST TABLE - ALL COLUMNS, NO RESTRICTIONS, RESIZABLE
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
@@ -803,6 +1035,7 @@ const WorklistTable = ({
   onAssignmentSubmit,
   onUpdateStudyDetails,
   userRole = 'viewer',
+  userRoles = [],
   onToggleStudyLock,
   pagination = {
     currentPage: 1,
@@ -813,33 +1046,25 @@ const WorklistTable = ({
     hasPrevPage: false
   },
   onPageChange,
-  onRecordsPerPageChange
+  onRecordsPerPageChange,
+  headerColor
 }) => {
-  // ✅ GET USER'S VISIBLE COLUMNS
-  const { currentUser } = useAuth();
-  const userVisibleColumns = currentUser?.visibleColumns || [];
-  
-  // ✅ HELPER FUNCTION TO CHECK COLUMN VISIBILITY
-  const isColumnVisible = (columnId) => {
-    // If user has no column preferences, show all columns (backward compatibility)
-    if (userVisibleColumns.length === 0) return true;
-    
-    // Check if column is in user's visible columns
-    return userVisibleColumns.includes(columnId);
-  };
+  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
-  // ✅ LOG FOR DEBUGGING
-  useEffect(() => {
-    console.log('👁️ User Visible Columns:', userVisibleColumns);
-  }, [userVisibleColumns]);
+  // ✅ ADD COLUMN RESIZING HOOK
+  const { columnWidths, getColumnWidth, handleColumnResize, resetColumnWidths } = useColumnResizing(
+    `admin-worklist-widths`,
+    []
+  );
 
-  const [assignmentModal, setAssignmentModal] = useState({ show: false, study: null });
   const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
   const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
   const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
   const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
   const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
+
+  const [revertModal, setRevertModal] = useState({ show: false, study: null });
 
   const handleShowTimeline = useCallback((study) => {
     setTimelineModal({ show: true, studyId: study._id, studyData: study });
@@ -865,6 +1090,16 @@ const WorklistTable = ({
     handleShowDetailedView(study._id);
   }, [handleShowDetailedView]);
 
+  const handleShowRevertModal = useCallback((study) => {
+  setRevertModal({ show: true, study });
+}, []);
+
+const handleRevertSuccess = useCallback(() => {
+  setRevertModal({ show: false, study: null });
+  // Optionally refresh the study list
+  window.location.reload();
+}, []);
+
   const handleEditPatient = useCallback((study) => {
     setPatientEditModal({ show: true, study });
   }, []);
@@ -878,12 +1113,9 @@ const WorklistTable = ({
     setDocumentsModal({ show: true, studyId });
   }, []);
 
-   const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
+  const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
     try {
-      const response = await api.post(`/admin/toggle-study-lock/${studyId}`, {
-        shouldLock
-      });
-
+      const response = await api.post(`/admin/toggle-study-lock/${studyId}`, { shouldLock });
       if (response.data.success) {
         onToggleStudyLock?.(studyId, shouldLock);
       } else {
@@ -921,109 +1153,266 @@ const WorklistTable = ({
   return (
     <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border-2 border-gray-300">
       <div className="flex-1 overflow-x-auto overflow-y-auto">
-        <table className="min-w-full border-collapse" style={{ fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' }}>
-          {/* ✅ BLACK & WHITE HEADER WITH CONDITIONAL VISIBILITY */}
+        <table 
+          className="border-collapse" 
+          style={{ 
+            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+            tableLayout: 'fixed',
+            width: '100%',
+            minWidth: 'max-content'
+          }}
+        >
+          {/* ✅ DYNAMIC COLORED HEADER WITH RESIZABLE COLUMNS - ALL COLUMNS */}
           <thead className="sticky top-0 z-10">
-            <tr className="text-white text-xs font-bold bg-gradient-to-r from-gray-800 via-gray-900 to-black shadow-lg">
-              {isColumnVisible('bharatPacsId') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                  <div className="flex items-center justify-center gap-1.5">
-                    <span>Xcentic ID</span>
-                  </div>
-                </th>
-              )}
-              {isColumnVisible('centerName') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '130px' }}>
-                  SUB<br/>CENTER
-                </th>
-              )}
-              {isColumnVisible('timeline') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '50px' }}>
-                  <Clock className="w-4 h-4 mx-auto" />
-                </th>
-              )}
-              {isColumnVisible('patientName') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '160px' }}>
-                  PT NAME /<br/>UHID
-                </th>
-              )}
-              {isColumnVisible('ageGender') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px' }}>
-                  AGE/<br/>SEX
-                </th>
-              )}
-              {isColumnVisible('modality') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '70px', minWidth: '110px' }}>
-                  MOD
-                </th>
-              )}
-              {isColumnVisible('viewOnly') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '60px' }}>
-                  <Eye className="w-4 h-4 mx-auto" />
-                </th>
-              )}
-              {isColumnVisible('downloadViewer') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '150px' }}>
-                  <div className="flex items-center justify-center gap-2">
-                    <Download className="w-4 h-4" />
-                    <Monitor className="w-4 h-4" />
-                  </div>
-                </th>
-              )}
-              {isColumnVisible('studySeriesImages') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
-                  STUDY /<br/>SERIES / IMAGES
-                </th>
-              )}
-              {isColumnVisible('patientIdAccession') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '110px' }}>
-                  PT ID/<br/>ACC. NO.
-                </th>
-              )}
-              {isColumnVisible('referralDoctor') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '900px' }}>
-                  REFERRAL<br/>DOCTOR
-                </th>
-              )}
-              {isColumnVisible('clinicalHistory') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '1000px', minWidth: '300px' }}>
-                  CLINICAL<br/>HISTORY
-                </th>
-              )}
-              {isColumnVisible('studyDateTime') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                  STUDY<br/>DATE/TIME
-                </th>
-              )}
-              {isColumnVisible('uploadDateTime') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '100px' }}>
-                  UPLOAD<br/>DATE/TIME
-                </th>
-              )}
-              {isColumnVisible('assignedRadiologist') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '190px', minWidth: '190px', maxWidth: '190px' }}>
-                  RADIOLOGIST
-                </th>
-              )}
-              {isColumnVisible('status') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '140px', minWidth: '140px', maxWidth: '140px' }}>
-                  STATUS
-                </th>
-              )}
-              {isColumnVisible('printCount') && (
-                <th className="px-3 py-4 text-center border-r border-gray-700" style={{ width: '90px' }}>
-                  PRINT<br/>REPORT
-                </th>
-              )}
-              {isColumnVisible('actions') && (
-                <th className="px-3 py-4 text-center" style={{ width: '200px' }}>
-                  <div className="flex items-center justify-center gap-2">
-                    <Download className="w-4 h-4" />
-                    <Lock className="w-4 h-4" />
-                    <MessageSquare className="w-4 h-4" />
-                  </div>
-                </th>
-              )}
+            <tr className={`text-xs font-bold bg-gradient-to-r ${headerColor?.gradient || 'from-gray-800 via-gray-900 to-black'} ${headerColor?.textColor || 'text-white'} shadow-lg`}>
+              {/* 1. SELECTION */}
+              <ResizableTableHeader
+                columnId="selection"
+                label=""
+                width={getColumnWidth('selection')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.maxWidth}
+              >
+                <input
+                  type="checkbox"
+                  checked={studies.length > 0 && selectedStudies.length === studies.length}
+                  onChange={(e) => onSelectAll?.(e.target.checked)}
+                  className="w-4 h-4 rounded border-white/30"
+                />
+              </ResizableTableHeader>
+              
+              {/* 2. BHARAT PACS ID */}
+              <ResizableTableHeader
+                columnId="bharatPacsId"
+                label={<>BHARAT<br/>PACS ID</>}
+                width={getColumnWidth('bharatPacsId')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
+              />
+              
+              {/* 3. ORGANIZATION */}
+              <ResizableTableHeader
+                columnId="organization"
+                label="ORGANIZATION"
+                width={getColumnWidth('organization')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
+              />
+              
+              {/* 4. CENTER NAME */}
+              <ResizableTableHeader
+                columnId="centerName"
+                label={<>CENTER<br/>NAME</>}
+                width={getColumnWidth('centerName')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+              />
+
+              <ResizableTableHeader
+                columnId="centerName"
+                label={<>Location<br/>NAME</>}
+                width={getColumnWidth('centerName')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+              />
+
+              {/* 5. TIMELINE */}
+              <ResizableTableHeader
+                columnId="timeline"
+                label=""
+                width={getColumnWidth('timeline')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}
+              >
+                <Clock className="w-4 h-4 mx-auto" />
+              </ResizableTableHeader>
+
+              {/* 6. PATIENT NAME / UHID */}
+              <ResizableTableHeader
+                columnId="patientName"
+                label={<>PT NAME /<br/>UHID</>}
+                width={getColumnWidth('patientName')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth}
+              />
+
+              {/* 7. AGE/SEX */}
+              <ResizableTableHeader
+                columnId="ageGender"
+                label={<>AGE/<br/>SEX</>}
+                width={getColumnWidth('ageGender')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth}
+              />
+
+              {/* 8. MODALITY */}
+              <ResizableTableHeader
+                columnId="modality"
+                label="MODALITY"
+                width={getColumnWidth('modality')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth}
+              />
+
+              {/* 9. VIEW */}
+              <ResizableTableHeader
+                columnId="viewOnly"
+                label=""
+                width={getColumnWidth('viewOnly')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}
+              >
+                <Eye className="w-4 h-4 mx-auto" />
+              </ResizableTableHeader>
+
+              {/* 10. SERIES/IMAGES */}
+              <ResizableTableHeader
+                columnId="studySeriesImages"
+                label={<>SERIES/<br/>IMAGES</>}
+                width={getColumnWidth('studySeriesImages')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth}
+              />
+
+              {/* 11. PT ID */}
+              <ResizableTableHeader
+                columnId="patientId"
+                label="PT ID"
+                width={getColumnWidth('patientId')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth}
+              />
+
+              {/* 12. REFERRAL DOCTOR */}
+              <ResizableTableHeader
+                columnId="referralDoctor"
+                label={<>REFERRAL<br/>DOCTOR</>}
+                width={getColumnWidth('referralDoctor')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth}
+              />
+
+              {/* 13. CLINICAL HISTORY */}
+              <ResizableTableHeader
+                columnId="clinicalHistory"
+                label={<>CLINICAL<br/>HISTORY</>}
+                width={getColumnWidth('clinicalHistory')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth}
+              />
+
+              {/* 14. STUDY DATE/TIME */}
+              <ResizableTableHeader
+                columnId="studyDateTime"
+                label={<>STUDY<br/>DATE/TIME</>}
+                width={getColumnWidth('studyDateTime')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth}
+              />
+
+              {/* 15. UPLOAD DATE/TIME */}
+              <ResizableTableHeader
+                columnId="uploadDateTime"
+                label={<>UPLOAD<br/>DATE/TIME</>}
+                width={getColumnWidth('uploadDateTime')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth}
+              />
+
+              {/* 16. RADIOLOGIST */}
+              <ResizableTableHeader
+                columnId="assignedRadiologist"
+                label="RADIOLOGIST"
+                width={getColumnWidth('assignedRadiologist')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth}
+              />
+
+              {/* 17. LOCK/UNLOCK */}
+              <ResizableTableHeader
+                columnId="studyLock"
+                label={<>LOCK/<br/>UNLOCK</>}
+                width={getColumnWidth('studyLock')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth}
+              />
+
+              {/* 18. STATUS */}
+              <ResizableTableHeader
+                columnId="status"
+                label="STATUS"
+                width={getColumnWidth('status')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth}
+              />
+
+              {/* 19. PRINT REPORT */}
+              <ResizableTableHeader
+                columnId="printCount"
+                label={<>PRINT<br/>REPORT</>}
+                width={getColumnWidth('printCount')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.maxWidth}
+              />
+
+               <ResizableTableHeader
+              columnId="rejectionReason"
+              label="Rejection Reason"
+              width={getColumnWidth('rejectionReason')}
+              minWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.minWidth}
+              maxWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.maxWidth}
+              onResize={handleColumnResize}
+            />
+
+              {/* 20. VERIFIED BY */}
+              <ResizableTableHeader
+                columnId="assignedVerifier"
+                label={<>VERIFIED<br/>BY</>}
+                width={getColumnWidth('assignedVerifier')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.maxWidth}
+              />
+
+              {/* 21. VERIFIED DATE/TIME */}
+              <ResizableTableHeader
+                columnId="verifiedDateTime"
+                label={<>VERIFIED<br/>DATE/TIME</>}
+                width={getColumnWidth('verifiedDateTime')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.maxWidth}
+              />
+
+              {/* 22. ACTIONS */}
+              <ResizableTableHeader
+                columnId="actions"
+                label="ACTIONS"
+                width={getColumnWidth('actions')}
+                onResize={handleColumnResize}
+                minWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.minWidth}
+                maxWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.maxWidth}
+              />
             </tr>
           </thead>
 
@@ -1047,9 +1436,11 @@ const WorklistTable = ({
                 onShowTimeline={handleShowTimeline}
                 onToggleLock={handleToggleStudyLock}
                 onShowDocuments={handleShowDocuments}
+                onShowRevertModal={handleShowRevertModal} // ✅ ADD THIS
+
                 userRole={userRole}
-                // ✅ Pass visibility checker to row
-                isColumnVisible={isColumnVisible}
+                userRoles={userAccountRoles}
+                getColumnWidth={getColumnWidth}
               />
             ))}
           </tbody>
@@ -1058,10 +1449,7 @@ const WorklistTable = ({
 
       {studies.length > 0 && (
         <TableFooter
-          currentPage={pagination.currentPage}
-          totalPages={pagination.totalPages}
-          totalRecords={pagination.totalRecords}
-          recordsPerPage={pagination.recordsPerPage}
+          pagination={pagination}
           onPageChange={onPageChange}
           onRecordsPerPageChange={onRecordsPerPageChange}
           displayedRecords={studies.length}
@@ -1069,6 +1457,7 @@ const WorklistTable = ({
         />
       )}
 
+      {/* MODALS */}
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
       {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
       {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
@@ -1081,6 +1470,15 @@ const WorklistTable = ({
           onClose={() => setDocumentsModal({ show: false, studyId: null })}
         />
       )}
+      {/* ✅ ADD REVERT MODAL */}
+{revertModal.show && (
+  <RevertModal
+    isOpen={revertModal.show}
+    study={revertModal.study}
+    onClose={() => setRevertModal({ show: false, study: null })}
+    onSuccess={handleRevertSuccess}
+  />
+)}
     </div>
   );
 };

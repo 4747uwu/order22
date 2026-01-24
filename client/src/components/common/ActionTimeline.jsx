@@ -1,5 +1,10 @@
-import React, { useMemo } from 'react';
-import { Upload, FileText, UserCheck, Lock, Unlock, CheckCircle, XCircle, Clock, FileCheck, Printer, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { 
+  Upload, FileText, UserCheck, Lock, Unlock, 
+  CheckCircle, XCircle, Clock, FileCheck, Printer, 
+  AlertCircle, RefreshCw, Users, FileWarning 
+} from 'lucide-react';
+import api from '../../services/api';
 
 const formatSmallDate = (iso) => {
   if (!iso) return '-';
@@ -13,215 +18,274 @@ const formatSmallDate = (iso) => {
   }
 };
 
-const getActionIcon = (actionType) => {
-  const iconProps = { className: "w-3 h-3", strokeWidth: 2 };
+const getStatusIcon = (status) => {
+  const iconProps = { className: "w-3.5 h-3.5", strokeWidth: 2 };
   
-  switch (actionType) {
-    case 'study_uploaded':
-    case 'study_received':
-      return <Upload {...iconProps} />;
-    case 'history_created':
-    case 'history_updated':
-      return <FileText {...iconProps} />;
-    case 'study_assigned':
-    case 'study_reassigned':
-      return <UserCheck {...iconProps} />;
-    case 'study_locked':
-      return <Lock {...iconProps} />;
-    case 'study_unlocked':
-      return <Unlock {...iconProps} />;
-    case 'report_finalized':
-    case 'report_verified':
-      return <CheckCircle {...iconProps} />;
-    case 'report_rejected':
-      return <XCircle {...iconProps} />;
-    case 'report_started':
-    case 'report_drafted':
-      return <FileCheck {...iconProps} />;
-    case 'report_printed':
-    case 'report_reprinted':
-      return <Printer {...iconProps} />;
-    default:
-      return <Clock {...iconProps} />;
-  }
+  if (!status) return <Clock {...iconProps} />;
+  
+  if (status.includes('uploaded') || status.includes('received')) 
+    return <Upload {...iconProps} />;
+  if (status.includes('assigned') || status.includes('reassigned')) 
+    return <UserCheck {...iconProps} />;
+  if (status.includes('cleared')) 
+    return <Users {...iconProps} />;
+  if (status.includes('locked')) 
+    return <Lock {...iconProps} />;
+  if (status.includes('unlocked')) 
+    return <Unlock {...iconProps} />;
+  if (status.includes('finalized') || status.includes('verified')) 
+    return <CheckCircle {...iconProps} />;
+  if (status.includes('rejected')) 
+    return <XCircle {...iconProps} />;
+  if (status.includes('report') || status.includes('draft')) 
+    return <FileCheck {...iconProps} />;
+  if (status.includes('print')) 
+    return <Printer {...iconProps} />;
+  
+  return <Clock {...iconProps} />;
 };
 
-const getActionColor = (actionType) => {
-  if (!actionType) return { bg: 'bg-gray-100', text: 'text-gray-700', dot: 'bg-gray-400' };
+const getStatusColor = (status) => {
+  if (!status) return { 
+    bg: 'bg-slate-50/50', 
+    text: 'text-slate-600', 
+    dot: 'bg-slate-300',
+    border: 'border-slate-200'
+  };
   
-  if (actionType.includes('uploaded') || actionType.includes('received')) 
-    return { bg: 'bg-blue-50', text: 'text-blue-700', dot: 'bg-blue-500' };
-  if (actionType.includes('assigned') || actionType.includes('reassigned')) 
-    return { bg: 'bg-green-50', text: 'text-green-700', dot: 'bg-green-500' };
-  if (actionType.includes('locked')) 
-    return { bg: 'bg-red-50', text: 'text-red-700', dot: 'bg-red-500' };
-  if (actionType.includes('unlocked')) 
-    return { bg: 'bg-orange-50', text: 'text-orange-700', dot: 'bg-orange-500' };
-  if (actionType.includes('finalized') || actionType.includes('verified')) 
-    return { bg: 'bg-indigo-50', text: 'text-indigo-700', dot: 'bg-indigo-500' };
-  if (actionType.includes('history') || actionType.includes('notes')) 
-    return { bg: 'bg-yellow-50', text: 'text-yellow-700', dot: 'bg-yellow-500' };
-  if (actionType.includes('print')) 
-    return { bg: 'bg-purple-50', text: 'text-purple-700', dot: 'bg-purple-500' };
+  if (status.includes('uploaded') || status.includes('received')) 
+    return { 
+      bg: 'bg-blue-50/50', 
+      text: 'text-blue-600', 
+      dot: 'bg-blue-400',
+      border: 'border-blue-200'
+    };
+  if (status.includes('assigned')) 
+    return { 
+      bg: 'bg-emerald-50/50', 
+      text: 'text-emerald-600', 
+      dot: 'bg-emerald-400',
+      border: 'border-emerald-200'
+    };
+  if (status.includes('cleared')) 
+    return { 
+      bg: 'bg-amber-50/50', 
+      text: 'text-amber-600', 
+      dot: 'bg-amber-400',
+      border: 'border-amber-200'
+    };
+  if (status.includes('locked')) 
+    return { 
+      bg: 'bg-red-50/50', 
+      text: 'text-red-600', 
+      dot: 'bg-red-400',
+      border: 'border-red-200'
+    };
+  if (status.includes('unlocked')) 
+    return { 
+      bg: 'bg-orange-50/50', 
+      text: 'text-orange-600', 
+      dot: 'bg-orange-400',
+      border: 'border-orange-200'
+    };
+  if (status.includes('finalized') || status.includes('verified')) 
+    return { 
+      bg: 'bg-indigo-50/50', 
+      text: 'text-indigo-600', 
+      dot: 'bg-indigo-400',
+      border: 'border-indigo-200'
+    };
+  if (status.includes('rejected')) 
+    return { 
+      bg: 'bg-rose-50/50', 
+      text: 'text-rose-600', 
+      dot: 'bg-rose-400',
+      border: 'border-rose-200'
+    };
+  if (status.includes('report') || status.includes('draft')) 
+    return { 
+      bg: 'bg-violet-50/50', 
+      text: 'text-violet-600', 
+      dot: 'bg-violet-400',
+      border: 'border-violet-200'
+    };
+  if (status.includes('print')) 
+    return { 
+      bg: 'bg-purple-50/50', 
+      text: 'text-purple-600', 
+      dot: 'bg-purple-400',
+      border: 'border-purple-200'
+    };
   
-  return { bg: 'bg-gray-50', text: 'text-gray-700', dot: 'bg-gray-400' };
+  return { 
+    bg: 'bg-slate-50/50', 
+    text: 'text-slate-600', 
+    dot: 'bg-slate-300',
+    border: 'border-slate-200'
+  };
 };
 
-const formatActionLabel = (actionType = '') => {
-  if (!actionType) return 'Action';
+const formatStatusLabel = (status = '') => {
+  if (!status) return 'Status Update';
   
   const labels = {
     study_uploaded: 'Study Uploaded',
-    study_received: 'Study Received',
-    metadata_extracted: 'Metadata Extracted',
-    history_created: 'History Added',
-    history_updated: 'History Updated',
-    clinical_notes_added: 'Notes Added',
-    study_assigned: 'Assigned',
+    new_study_received: 'Study Received',
+    assignments_cleared: 'Assignments Cleared',
+    assigned_to_doctor: 'Assigned to Radiologist',
     study_reassigned: 'Reassigned',
-    assignment_accepted: 'Assignment Accepted',
-    study_locked: 'Locked',
+    study_locked: 'Locked for Reporting',
     study_unlocked: 'Unlocked',
     report_started: 'Report Started',
     report_drafted: 'Draft Saved',
-    report_finalized: 'Finalized',
-    report_verified: 'Verified',
-    report_rejected: 'Rejected',
-    report_printed: 'Printed',
-    report_reprinted: 'Reprinted',
+    report_finalized: 'Report Finalized',
+    report_verified: 'Report Verified',
+    report_rejected: 'Report Rejected',
+    report_printed: 'Report Printed',
     status_changed: 'Status Changed',
     priority_changed: 'Priority Changed'
   };
   
-  return labels[actionType] || actionType.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  return labels[status] || status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 };
 
-const ActionTimeline = ({ study = {}, maxItems = 3, compact = true }) => {
-  const timelineEntries = useMemo(() => {
-    const entries = [];
+const ActionTimeline = ({ studyId, maxItems = 5 }) => {
+  const [timeline, setTimeline] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-    // ✅ FIRST CHECKPOINT: Study Upload
-    entries.push({
-      id: `upload-${study._id}`,
-      type: 'upload',
-      actionType: 'study_uploaded',
-      label: 'Study Uploaded',
-      time: study.createdAt || study.uploadDate,
-      actor: study.uploadedByName || study.createdByName || 'System',
-      subtitle: study.centerName || study.organizationName || study.sourceLab?.name || '-',
-      meta: {
-        center: study.centerName,
-        organization: study.organizationName,
-        modality: study.modality,
-        series: study.seriesCount,
-        instances: study.instanceCount
-      }
-    });
+  useEffect(() => {
+    if (!studyId) {
+      setTimeline([]);
+      setLoading(false);
+      return;
+    }
 
-    // ✅ ACTION LOG ENTRIES - Sort by date descending
-    const logs = Array.isArray(study.actionLog) ? [...study.actionLog] : [];
-    logs.sort((a, b) => {
-      const ta = a.performedAt ? new Date(a.performedAt).getTime() : 0;
-      const tb = b.performedAt ? new Date(b.performedAt).getTime() : 0;
-      return tb - ta; // Most recent first
-    });
-
-    logs.forEach((log, idx) => {
-      entries.push({
-        id: `action-${idx}-${study._id}`,
-        type: 'action',
-        actionType: log.actionType,
-        label: formatActionLabel(log.actionType),
-        time: log.performedAt,
-        actor: log.performedByName || log.targetUserName || 'Unknown',
-        subtitle: log.targetUserName || log.performedByName || '',
-        note: log.notes || '',
-        meta: {
-          category: log.actionCategory,
-          role: log.performedByRole,
-          assignmentInfo: log.assignmentInfo,
-          printInfo: log.printInfo,
-          historyInfo: log.historyInfo
+    const fetchTimeline = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const response = await api.get(`/admin/study/${studyId}/status-history`);
+        
+        if (response.data.success) {
+          setTimeline(response.data.timeline || []);
+        } else {
+          setError('Failed to load timeline');
         }
-      });
-    });
+      } catch (err) {
+        console.error('Error fetching status history:', err);
+        setError('Error loading timeline');
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    return entries;
-  }, [study]);
+    fetchTimeline();
+  }, [studyId]);
 
-  const visibleEntries = timelineEntries.slice(0, maxItems);
-  const remainingCount = timelineEntries.length - maxItems;
-
-  if (compact) {
+  if (loading) {
     return (
-      <div className="w-full">
-        <div className="flex flex-col gap-1.5">
-          {visibleEntries.map((entry, index) => {
-            const colors = getActionColor(entry.actionType);
-            const icon = getActionIcon(entry.actionType);
-            
-            return (
-              <div
-                key={entry.id}
-                className="flex items-start gap-1.5 group"
-                title={`${entry.label}\n${formatSmallDate(entry.time)}\n${entry.actor}\n${entry.note || ''}`}
-              >
-                {/* Timeline line and dot */}
-                <div className="flex flex-col items-center flex-shrink-0 mt-0.5">
-                  <div className={`w-2 h-2 rounded-full ${colors.dot} ring-2 ring-white`} />
-                  {index < visibleEntries.length - 1 && (
-                    <div className="w-0.5 h-4 bg-gray-200" />
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-1">
-                    <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${colors.bg}`}>
-                      <div className={colors.text}>
-                        {icon}
-                      </div>
-                      <span className={`text-[9px] font-medium ${colors.text} truncate`}>
-                        {entry.label}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div className="text-[8px] text-gray-500 mt-0.5 truncate">
-                    {formatSmallDate(entry.time)}
-                  </div>
-                  
-                  {entry.subtitle && (
-                    <div className="text-[8px] text-gray-600 truncate">
-                      {entry.subtitle}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-
-          {remainingCount > 0 && (
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full bg-gray-300" />
-              <button
-                className="text-[9px] text-blue-600 hover:text-blue-800 hover:underline"
-                onClick={() => {
-                  console.log('Show full timeline for study:', study._id);
-                  // This will be handled by parent component
-                }}
-              >
-                +{remainingCount} more action{remainingCount !== 1 ? 's' : ''}
-              </button>
-            </div>
-          )}
-        </div>
+      <div className="w-full p-3 flex items-center justify-center">
+        <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+        <span className="ml-2 text-xs text-slate-500">Loading timeline...</span>
       </div>
     );
   }
 
-  // Non-compact view (not used in table, only in modal)
-  return null;
+  if (error) {
+    return (
+      <div className="w-full p-3 flex items-center justify-center text-xs text-rose-600">
+        <AlertCircle className="w-3.5 h-3.5 mr-1.5" />
+        {error}
+      </div>
+    );
+  }
+
+  if (timeline.length === 0) {
+    return (
+      <div className="w-full p-3 flex items-center justify-center text-xs text-slate-500">
+        <FileWarning className="w-3.5 h-3.5 mr-1.5" />
+        No timeline data available
+      </div>
+    );
+  }
+
+  const visibleEntries = timeline.slice(0, maxItems);
+  const remainingCount = timeline.length - maxItems;
+
+  return (
+    <div className="w-full py-2">
+      <div className="flex flex-col gap-2">
+        {visibleEntries.map((entry, index) => {
+          const colors = getStatusColor(entry.status);
+          const icon = getStatusIcon(entry.status);
+          
+          return (
+            <div
+              key={entry._id}
+              className="flex items-start gap-2 group"
+            >
+              {/* Timeline line and dot */}
+              <div className="flex flex-col items-center flex-shrink-0 mt-1">
+                <div className={`w-2.5 h-2.5 rounded-full ${colors.dot} ring-2 ring-white shadow-sm`} />
+                {index < visibleEntries.length - 1 && (
+                  <div className="w-px h-full min-h-[20px] bg-slate-200" />
+                )}
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 min-w-0 pb-1">
+                <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md border ${colors.bg} ${colors.border}`}>
+                  <div className={colors.text}>
+                    {icon}
+                  </div>
+                  <span className={`text-[10px] font-medium ${colors.text}`}>
+                    {formatStatusLabel(entry.status)}
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[9px] text-slate-500 font-medium">
+                    {formatSmallDate(entry.changedAt)}
+                  </span>
+                  {entry.changedByName && entry.changedByName !== 'System' && (
+                    <>
+                      <span className="text-[9px] text-slate-400">•</span>
+                      <span className="text-[9px] text-slate-600">
+                        {entry.changedByName}
+                      </span>
+                    </>
+                  )}
+                </div>
+                
+                {entry.note && (
+                  <div className="text-[9px] text-slate-500 mt-0.5 line-clamp-2">
+                    {entry.note}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {remainingCount > 0 && (
+          <div className="flex items-center gap-2 ml-4 mt-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+            <button
+              className="text-[10px] text-blue-600 hover:text-blue-700 hover:underline font-medium"
+              onClick={() => {
+                console.log('Show full timeline for study:', studyId);
+                // This will be handled by parent component
+              }}
+            >
+              +{remainingCount} more update{remainingCount !== 1 ? 's' : ''}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 export default ActionTimeline;

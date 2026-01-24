@@ -12,31 +12,32 @@ import {
     FileText,
     Upload,
     Save,
-    AlertCircle,
     CheckCircle,
     ChevronRight,
     ChevronLeft,
-    Heart,
     Shield,
-    Zap,
-    Star,
-    Sparkles,
-    Award,
     Image,
-    X
+    X,
+    Award,
+    Eye,
+    EyeOff,
+    Sparkles,
+    Columns
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import ColumnSelector from '../../components/common/ColumnSelector';
+import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
 
 const CreateDoctor = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     const fileInputRef = useRef(null);
     
-    // Multi-step form state
+    // Form state
     const [currentStep, setCurrentStep] = useState(1);
     const [loading, setLoading] = useState(false);
-    const [formSubmitted, setFormSubmitted] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     
     // Form data
     const [formData, setFormData] = useState({
@@ -49,80 +50,28 @@ const CreateDoctor = () => {
         department: '',
         qualifications: [],
         yearsOfExperience: '',
-        contactPhoneOffice: ''
+        contactPhoneOffice: '',
+        requireReportVerification: true,
+        visibleColumns: [] // ✅ NEW: Column selection
     });
 
     // Signature image state
     const [signatureImage, setSignatureImage] = useState(null);
     const [signaturePreview, setSignaturePreview] = useState(null);
 
-    // Enhanced slideshow data with animations
-    const slides = [
-        {
-            title: "Welcome to Doctor Registration",
-            subtitle: "Create a new doctor account with comprehensive profile management",
-            icon: <UserPlus className="w-20 h-20 text-white drop-shadow-lg" />,
-            features: ["Secure account creation", "Digital signature support", "Professional profile management"],
-            gradient: "from-blue-600 via-purple-600 to-indigo-700",
-            accent: "text-blue-200",
-            bgPattern: "opacity-10 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.1)_1px,transparent_1px)] bg-[length:20px_20px]"
-        },
-        {
-            title: "Comprehensive Profiles",
-            subtitle: "Build detailed doctor profiles with specializations and credentials",
-            icon: <Stethoscope className="w-20 h-20 text-white drop-shadow-lg" />,
-            features: ["Specialization tracking", "License management", "Qualification records"],
-            gradient: "from-emerald-600 via-teal-600 to-cyan-700",
-            accent: "text-emerald-200",
-            bgPattern: "opacity-10 bg-[radial-gradient(circle_at_25%_25%,rgba(255,255,255,0.1)_2px,transparent_2px)] bg-[length:30px_30px]"
-        },
-        {
-            title: "Digital Signatures",
-            subtitle: "Upload and store digital signatures for report authentication",
-            icon: <Upload className="w-20 h-20 text-white drop-shadow-lg" />,
-            features: ["Image upload support", "High-resolution storage", "Secure authentication"],
-            gradient: "from-purple-600 via-pink-600 to-rose-700",
-            accent: "text-purple-200",
-            bgPattern: "opacity-10 bg-[linear-gradient(45deg,rgba(255,255,255,0.1)_25%,transparent_25%)] bg-[length:20px_20px]"
-        },
-        {
-            title: "Seamless Integration",
-            subtitle: "Doctors integrate directly into your organization's workflow",
-            icon: <Award className="w-20 h-20 text-white drop-shadow-lg" />,
-            features: ["Instant activation", "Role-based access", "Organization binding"],
-            gradient: "from-orange-600 via-red-600 to-pink-700",
-            accent: "text-orange-200",
-            bgPattern: "opacity-10 bg-[conic-gradient(from_0deg,rgba(255,255,255,0.1),transparent_120deg,rgba(255,255,255,0.1)_240deg,transparent)]"
-        }
-    ];
-
-    const [currentSlide, setCurrentSlide] = useState(0);
-
-    // Auto-advance slideshow with pause on hover
-    const [isPaused, setIsPaused] = useState(false);
-    
+    // ✅ NEW: Initialize default columns for radiologist role
     React.useEffect(() => {
-        if (isPaused) return;
-        
-        const timer = setInterval(() => {
-            setCurrentSlide((prev) => (prev + 1) % slides.length);
-        }, 5000);
-        return () => clearInterval(timer);
-    }, [slides.length, isPaused]);
+        const defaultCols = getDefaultColumnsForRole(['radiologist']);
+        setFormData(prev => ({ ...prev, visibleColumns: defaultCols }));
+    }, []);
 
-    // Handle input changes with animation feedback
+    // Handle input changes
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
+        const { name, value, type, checked } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: value
+            [name]: type === 'checkbox' ? checked : value
         }));
-        
-        // Add a subtle pulse animation to the input
-        e.target.classList.add('animate-pulse');
-        setTimeout(() => {
-            e.target.classList.remove('animate-pulse');
-        }, 200);
     };
 
     // Handle qualifications array
@@ -149,40 +98,49 @@ const CreateDoctor = () => {
         }));
     };
 
-    // ✅ SIGNATURE IMAGE HANDLING
+    // ✅ NEW: Column selection handlers
+    const handleColumnToggle = (columnId) => {
+        setFormData(prev => {
+            const isSelected = prev.visibleColumns.includes(columnId);
+            return {
+                ...prev,
+                visibleColumns: isSelected
+                    ? prev.visibleColumns.filter(id => id !== columnId)
+                    : [...prev.visibleColumns, columnId]
+            };
+        });
+    };
+
+    const handleSelectAllColumns = (columns) => {
+        setFormData(prev => ({ ...prev, visibleColumns: columns }));
+    };
+
+    const handleClearAllColumns = () => {
+        setFormData(prev => ({ ...prev, visibleColumns: [] }));
+    };
+
+    // Signature handling
     const handleSignatureUpload = (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            toast.error('Please select a valid image file');
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Image size must be less than 5MB');
             return;
         }
 
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-            toast.error('Image size should be less than 5MB');
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload an image file');
             return;
         }
 
         setSignatureImage(file);
-
-        // Create preview
+        
         const reader = new FileReader();
-        reader.onload = (e) => {
-            setSignaturePreview(e.target.result);
+        reader.onloadend = () => {
+            setSignaturePreview(reader.result);
         };
         reader.readAsDataURL(file);
-
-        // Add upload animation
-        const uploadArea = document.querySelector('.signature-upload-area');
-        if (uploadArea) {
-            uploadArea.classList.add('animate-bounce');
-            setTimeout(() => {
-                uploadArea.classList.remove('animate-bounce');
-            }, 1000);
-        }
     };
 
     const removeSignature = () => {
@@ -196,71 +154,59 @@ const CreateDoctor = () => {
     const convertImageToBase64 = (file) => {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
-            reader.onload = () => resolve(reader.result);
+            reader.onloadend = () => resolve(reader.result);
             reader.onerror = reject;
             reader.readAsDataURL(file);
         });
     };
 
-    // Form validation with enhanced feedback
+    // Form validation
     const validateStep = (step) => {
-        switch (step) {
-            case 1:
-                return formData.fullName && formData.email && formData.password;
-            case 2:
-                return formData.specialization;
-            case 3:
-                return true; // Signature is optional
-            default:
-                return true;
+        if (step === 1) {
+            return formData.fullName && formData.email && formData.password && formData.specialization;
         }
+        return true;
     };
 
-    // Enhanced form submission with success animation
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
-        if (!validateStep(3)) {
-            toast.error('Please complete all required fields');
+    // Form submission
+    const handleCreateDoctor = async () => {
+        if (!validateStep(1)) {
+            toast.error('Please fill in all required fields');
             return;
         }
 
         setLoading(true);
 
         try {
-            const submissionData = {
-                ...formData,
-                yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : 0,
-                qualifications: formData.qualifications.filter(q => q.trim() !== '')
+            let signatureBase64 = null;
+            if (signatureImage) {
+                signatureBase64 = await convertImageToBase64(signatureImage);
+            }
+
+            const payload = {
+                fullName: formData.fullName.trim(),
+                email: formData.email.trim(),
+                password: formData.password,
+                username: formData.username?.trim() || formData.email.split('@')[0],
+                specialization: formData.specialization.trim(),
+                licenseNumber: formData.licenseNumber?.trim(),
+                department: formData.department?.trim(),
+                qualifications: formData.qualifications.filter(q => q.trim()),
+                yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : undefined,
+                contactPhoneOffice: formData.contactPhoneOffice?.trim(),
+                signatureImageData: signatureBase64,
+                requireReportVerification: formData.requireReportVerification,
+                visibleColumns: formData.visibleColumns // ✅ NEW: Include columns
             };
 
-            // Add signature data if present
-            if (signatureImage) {
-                const base64Signature = await convertImageToBase64(signatureImage);
-                submissionData.signature = base64Signature;
-                submissionData.signatureMetadata = {
-                    format: 'base64',
-                    mimeType: signatureImage.type,
-                    width: 0, // Will be set by backend
-                    height: 0, // Will be set by backend
-                    originalName: signatureImage.name,
-                    originalSize: signatureImage.size
-                };
-            }
-
-            const response = await api.post('/admin/admin-crud/doctors', submissionData);
+            const response = await api.post('/admin/admin-crud/doctors', payload);
 
             if (response.data.success) {
-                setFormSubmitted(true);
                 toast.success('Doctor created successfully!');
-                
-                // Delay navigation for success animation
-                setTimeout(() => {
-                    navigate('/admin/dashboard');
-                }, 2000);
+                navigate('/admin/dashboard');
             }
         } catch (error) {
-            console.error('Error creating doctor:', error);
+            console.error('Create doctor error:', error);
             toast.error(error.response?.data?.message || 'Failed to create doctor');
         } finally {
             setLoading(false);
@@ -269,9 +215,9 @@ const CreateDoctor = () => {
 
     const nextStep = () => {
         if (validateStep(currentStep)) {
-            setCurrentStep(prev => Math.min(prev + 1, 3));
+            setCurrentStep(prev => Math.min(prev + 1, 4)); // ✅ Updated to 4 steps
         } else {
-            toast.error('Please complete all required fields before proceeding');
+            toast.error('Please fill in all required fields');
         }
     };
 
@@ -280,485 +226,458 @@ const CreateDoctor = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex relative overflow-hidden">
-            {/* Animated background elements */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-4 -right-4 w-72 h-72 bg-blue-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
-                <div className="absolute -bottom-8 -left-4 w-72 h-72 bg-purple-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-2000"></div>
-                <div className="absolute top-1/2 left-1/2 w-72 h-72 bg-pink-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob animation-delay-4000"></div>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+            {/* Floating background elements */}
+            <div className="fixed inset-0 overflow-hidden pointer-events-none">
+                <div className="absolute top-20 left-20 w-72 h-72 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+                <div className="absolute top-40 right-20 w-72 h-72 bg-purple-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+                <div className="absolute -bottom-8 left-1/2 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-4000"></div>
             </div>
 
-            {/* ✅ LEFT SIDE - ENHANCED SLIDESHOW */}
-            <div 
-                className={`hidden lg:flex lg:w-1/2 bg-gradient-to-br ${slides[currentSlide].gradient} relative overflow-hidden transition-all duration-1000 ease-in-out`}
-                onMouseEnter={() => setIsPaused(true)}
-                onMouseLeave={() => setIsPaused(false)}
-            >
-                {/* Dynamic background pattern */}
-                <div className={`absolute inset-0 ${slides[currentSlide].bgPattern} transition-all duration-1000`}></div>
-                
-                {/* Animated overlay */}
-                <div className="absolute inset-0 bg-black bg-opacity-20"></div>
-                
-                {/* Floating particles */}
-                <div className="absolute inset-0">
-                    {[...Array(6)].map((_, i) => (
-                        <div
-                            key={i}
-                            className="absolute animate-float"
-                            style={{
-                                left: `${20 + i * 15}%`,
-                                top: `${30 + (i % 2) * 40}%`,
-                                animationDelay: `${i * 0.5}s`,
-                                animationDuration: `${3 + i * 0.5}s`
-                            }}
-                        >
-                            <Sparkles className="w-4 h-4 text-white opacity-30" />
+            <div className="relative min-h-screen flex items-center justify-center p-4">
+                <div className="w-full max-w-4xl">
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg mb-4">
+                            <Stethoscope className="w-8 h-8 text-white" />
                         </div>
-                    ))}
-                </div>
-                
-                {/* Slideshow Content */}
-                <div className="relative z-10 flex flex-col justify-center items-center text-white p-12">
-                    <div className="text-center max-w-md transform transition-all duration-700 ease-out">
-                        {/* Animated icon */}
-                        <div className="mb-8 flex justify-center transform transition-all duration-700 hover:scale-110">
-                            <div className="relative">
-                                {slides[currentSlide].icon}
-                                <div className="absolute inset-0 animate-ping opacity-30">
-                                    {slides[currentSlide].icon}
-                                </div>
-                            </div>
+                        <h1 className="text-3xl font-bold text-slate-800 mb-2">Create Doctor Profile</h1>
+                        <p className="text-slate-600">Add a new radiologist to your organization</p>
+                    </div>
+
+                    {/* Progress Steps */}
+                    <div className="mb-8">
+                        <div className="flex items-center justify-center space-x-4">
+                            {[
+                                { step: 1, label: 'Account', icon: User },
+                                { step: 2, label: 'Profile', icon: Stethoscope },
+                                { step: 3, label: 'Signature', icon: Award },
+                                { step: 4, label: 'Columns', icon: Columns } // ✅ NEW STEP
+                            ].map(({ step, label, icon: Icon }, index) => (
+                                <React.Fragment key={step}>
+                                    <div className="flex flex-col items-center">
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                                            currentStep >= step
+                                                ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg'
+                                                : 'bg-white text-slate-400 border-2 border-slate-200'
+                                        }`}>
+                                            <Icon className="w-6 h-6" />
+                                        </div>
+                                        <span className={`text-xs mt-2 font-medium ${
+                                            currentStep >= step ? 'text-blue-600' : 'text-slate-400'
+                                        }`}>
+                                            {label}
+                                        </span>
+                                    </div>
+                                    {index < 3 && (
+                                        <div className={`w-16 h-1 rounded transition-all ${
+                                            currentStep > step ? 'bg-gradient-to-r from-blue-500 to-indigo-600' : 'bg-slate-200'
+                                        }`} />
+                                    )}
+                                </React.Fragment>
+                            ))}
                         </div>
-                        
-                        {/* Animated title */}
-                        <h1 className="text-5xl font-black mb-6 leading-tight tracking-tight transform transition-all duration-700 translate-y-0">
-                            {slides[currentSlide].title}
-                        </h1>
-                        
-                        {/* Animated subtitle */}
-                        <p className={`text-xl mb-8 ${slides[currentSlide].accent} leading-relaxed font-medium transform transition-all duration-700 delay-100`}>
-                            {slides[currentSlide].subtitle}
-                        </p>
-                        
-                        {/* Animated features */}
-                        <div className="space-y-4">
-                            {slides[currentSlide].features.map((feature, index) => (
-                                <div 
-                                    key={index} 
-                                    className="flex items-center justify-center space-x-3 transform transition-all duration-500"
-                                    style={{ 
-                                        animationDelay: `${200 + index * 100}ms`,
-                                        transform: 'translateX(0)'
-                                    }}
-                                >
-                                    <div className="relative">
-                                        <CheckCircle className="w-6 h-6 text-green-300" />
-                                        <div className="absolute inset-0 animate-pulse opacity-50">
-                                            <CheckCircle className="w-6 h-6 text-green-300" />
+                    </div>
+
+                    {/* Form Card */}
+                    <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
+                        <form onSubmit={(e) => e.preventDefault()}>
+                            {/* Step 1: Account Details */}
+                            {currentStep === 1 && (
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-blue-100 rounded-lg">
+                                            <User className="w-5 h-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-800">Account Details</h2>
+                                            <p className="text-sm text-slate-600">Basic login credentials</p>
                                         </div>
                                     </div>
-                                    <span className={`${slides[currentSlide].accent} font-medium text-lg`}>
-                                        {feature}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    
-                    {/* Enhanced slide indicators */}
-                    <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex space-x-3">
-                        {slides.map((_, index) => (
-                            <button
-                                key={index}
-                                onClick={() => setCurrentSlide(index)}
-                                className={`relative transition-all duration-300 ${
-                                    currentSlide === index 
-                                        ? 'w-8 h-3 bg-white rounded-full' 
-                                        : 'w-3 h-3 bg-white bg-opacity-40 rounded-full hover:bg-opacity-60'
-                                }`}
-                            >
-                                {currentSlide === index && (
-                                    <div className="absolute inset-0 bg-white rounded-full animate-pulse"></div>
-                                )}
-                            </button>
-                        ))}
-                    </div>
-                    
-                    {/* Enhanced navigation arrows */}
-                    <button 
-                        onClick={() => setCurrentSlide((prev) => (prev - 1 + slides.length) % slides.length)}
-                        className="absolute left-6 top-1/2 transform -translate-y-1/2 p-3 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30 transition-all duration-300 hover:scale-110 backdrop-blur-sm"
-                    >
-                        <ChevronLeft className="w-6 h-6" />
-                    </button>
-                    <button 
-                        onClick={() => setCurrentSlide((prev) => (prev + 1) % slides.length)}
-                        className="absolute right-6 top-1/2 transform -translate-y-1/2 p-3 rounded-full bg-white bg-opacity-20 hover:bg-opacity-30 transition-all duration-300 hover:scale-110 backdrop-blur-sm"
-                    >
-                        <ChevronRight className="w-6 h-6" />
-                    </button>
-                </div>
-            </div>
 
-            {/* ✅ RIGHT SIDE - ENHANCED FORM */}
-            <div className="w-full lg:w-1/2 flex flex-col relative z-10 bg-white bg-opacity-95 backdrop-blur-sm">
-                {/* Enhanced Header */}
-                <div className="flex items-center justify-between p-6 bg-white bg-opacity-80 backdrop-blur-md border-b border-gray-200 shadow-sm">
-                    <button
-                        onClick={() => navigate('/admin/dashboard')}
-                        className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-all duration-300 hover:scale-105 group"
-                    >
-                        <div className="p-1 rounded-full group-hover:bg-gray-100 transition-colors">
-                            <ArrowLeft className="w-5 h-5 transform group-hover:-translate-x-1 transition-transform" />
-                        </div>
-                        <span className="font-semibold">Back to Dashboard</span>
-                    </button>
-                    
-                    <div className="flex items-center space-x-2">
-                        <div className="text-sm text-gray-500 font-medium">
-                            Step {currentStep} of 3
-                        </div>
-                        <div className="flex space-x-1">
-                            {[1, 2, 3].map((step) => (
-                                <div 
-                                    key={step}
-                                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                                        currentStep >= step ? 'bg-blue-500' : 'bg-gray-300'
-                                    }`}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Enhanced Progress Bar */}
-                <div className="bg-white bg-opacity-80 backdrop-blur-md px-6 py-4 border-b border-gray-200">
-                    <div className="flex items-center space-x-4">
-                        {[1, 2, 3].map((step) => (
-                            <div key={step} className="flex items-center">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-500 transform ${
-                                    currentStep >= step 
-                                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white scale-110 shadow-lg' 
-                                        : 'bg-gray-200 text-gray-500 hover:scale-105'
-                                }`}>
-                                    {formSubmitted && step === 3 ? (
-                                        <CheckCircle className="w-5 h-5 animate-bounce" />
-                                    ) : (
-                                        step
-                                    )}
-                                </div>
-                                {step < 3 && (
-                                    <div className={`w-20 h-2 mx-3 rounded-full transition-all duration-500 ${
-                                        currentStep > step 
-                                            ? 'bg-gradient-to-r from-blue-500 to-purple-600' 
-                                            : 'bg-gray-200'
-                                    }`} />
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                    
-                    <div className="mt-3 text-sm text-gray-600 font-medium">
-                        {currentStep === 1 && (
-                            <div className="flex items-center space-x-2">
-                                <User className="w-4 h-4 text-blue-500" />
-                                <span>Basic Information</span>
-                            </div>
-                        )}
-                        {currentStep === 2 && (
-                            <div className="flex items-center space-x-2">
-                                <Stethoscope className="w-4 h-4 text-green-500" />
-                                <span>Professional Details</span>
-                            </div>
-                        )}
-                        {currentStep === 3 && (
-                            <div className="flex items-center space-x-2">
-                                <Upload className="w-4 h-4 text-purple-500" />
-                                <span>Digital Signature</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Enhanced Form Content */}
-                <div className="flex-1 overflow-y-auto">
-                    <form onSubmit={handleSubmit} className="p-6 space-y-6">
-                        
-                        {/* STEP 1: Enhanced Basic Information */}
-                        {currentStep === 1 && (
-                            <div className="space-y-6 animate-fadeInUp">
-                                <div className="text-center">
-                                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full mb-4 animate-pulse">
-                                        <User className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                                        Basic Information
-                                    </h2>
-                                    <p className="text-gray-600">Create the user account for the doctor</p>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {[
-                                        { name: 'fullName', type: 'text', placeholder: 'Dr. John Smith', icon: User, label: 'Full Name *', required: true },
-                                        { name: 'email', type: 'email', placeholder: 'doctor@hospital.com', icon: Mail, label: 'Email Address *', required: true },
-                                        { name: 'password', type: 'password', placeholder: '••••••••', icon: Lock, label: 'Password *', required: true },
-                                        { name: 'username', type: 'text', placeholder: 'Auto-generated from email', icon: User, label: 'Username (Optional)', required: false }
-                                    ].map((field, index) => (
-                                        <div key={field.name} className="group" style={{ animationDelay: `${index * 100}ms` }}>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                                <field.icon className="w-4 h-4 inline mr-2 text-blue-500" />
-                                                {field.label}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Full Name <span className="text-red-500">*</span>
                                             </label>
                                             <div className="relative">
+                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                                 <input
-                                                    type={field.type}
-                                                    name={field.name}
-                                                    value={formData[field.name]}
+                                                    type="text"
+                                                    name="fullName"
+                                                    value={formData.fullName}
                                                     onChange={handleInputChange}
-                                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 group-hover:border-gray-300 bg-white bg-opacity-80 backdrop-blur-sm"
-                                                    placeholder={field.placeholder}
-                                                    required={field.required}
+                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Dr. John Smith"
+                                                    required
                                                 />
-                                                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none"></div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
 
-                        {/* STEP 2: Enhanced Professional Details */}
-                        {currentStep === 2 && (
-                            <div className="space-y-6 animate-fadeInUp">
-                                <div className="text-center">
-                                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-green-500 to-teal-600 rounded-full mb-4 animate-pulse">
-                                        <Stethoscope className="w-8 h-8 text-white" />
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Email Address <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                                <input
+                                                    type="email"
+                                                    name="email"
+                                                    value={formData.email}
+                                                    onChange={handleInputChange}
+                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="john.smith@hospital.com"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Username
+                                            </label>
+                                            <div className="relative">
+                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    name="username"
+                                                    value={formData.username}
+                                                    onChange={handleInputChange}
+                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Auto-generated from email"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Password <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                                <input
+                                                    type={showPassword ? "text" : "password"}
+                                                    name="password"
+                                                    value={formData.password}
+                                                    onChange={handleInputChange}
+                                                    className="w-full pl-10 pr-12 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="Enter secure password"
+                                                    required
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setShowPassword(!showPassword)}
+                                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                                >
+                                                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Specialization <span className="text-red-500">*</span>
+                                            </label>
+                                            <div className="relative">
+                                                <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                                <input
+                                                    type="text"
+                                                    name="specialization"
+                                                    value={formData.specialization}
+                                                    onChange={handleInputChange}
+                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="e.g., Radiology, Cardiology"
+                                                    required
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <h2 className="text-3xl font-bold bg-gradient-to-r from-green-600 to-teal-600 bg-clip-text text-transparent mb-2">
-                                        Professional Details
-                                    </h2>
-                                    <p className="text-gray-600">Add medical credentials and contact information</p>
                                 </div>
+                            )}
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="md:col-span-2 group">
-                                        <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                            <Stethoscope className="w-4 h-4 inline mr-2 text-green-500" />
-                                            Specialization *
-                                        </label>
-                                        <div className="relative">
+                            {/* Step 2: Professional Details */}
+                            {currentStep === 2 && (
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-indigo-100 rounded-lg">
+                                            <Stethoscope className="w-5 h-5 text-indigo-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-800">Professional Details</h2>
+                                            <p className="text-sm text-slate-600">Medical credentials and experience</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                License Number
+                                            </label>
                                             <input
                                                 type="text"
-                                                name="specialization"
-                                                value={formData.specialization}
+                                                name="licenseNumber"
+                                                value={formData.licenseNumber}
                                                 onChange={handleInputChange}
-                                                className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 group-hover:border-gray-300 bg-white bg-opacity-80 backdrop-blur-sm"
-                                                placeholder="Cardiology, Radiology, etc."
-                                                required
+                                                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                placeholder="Medical license number"
                                             />
-                                            <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-green-500 to-teal-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none"></div>
                                         </div>
-                                    </div>
 
-                                    {[
-                                        { name: 'licenseNumber', placeholder: 'MD12345', icon: FileText, label: 'License Number' },
-                                        { name: 'department', placeholder: 'Radiology Department', icon: Shield, label: 'Department' },
-                                        { name: 'yearsOfExperience', type: 'number', placeholder: '10', icon: Award, label: 'Years of Experience', min: '0' },
-                                        { name: 'contactPhoneOffice', type: 'tel', placeholder: '+1 (555) 123-4567', icon: Phone, label: 'Office Phone' }
-                                    ].map((field, index) => (
-                                        <div key={field.name} className="group" style={{ animationDelay: `${index * 100}ms` }}>
-                                            <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                                <field.icon className="w-4 h-4 inline mr-2 text-green-500" />
-                                                {field.label}
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Department
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="department"
+                                                value={formData.department}
+                                                onChange={handleInputChange}
+                                                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                placeholder="Department name"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Years of Experience
+                                            </label>
+                                            <input
+                                                type="number"
+                                                name="yearsOfExperience"
+                                                value={formData.yearsOfExperience}
+                                                onChange={handleInputChange}
+                                                className="w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                placeholder="0"
+                                                min="0"
+                                            />
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Office Phone
                                             </label>
                                             <div className="relative">
+                                                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                                                 <input
-                                                    type={field.type || 'text'}
-                                                    name={field.name}
-                                                    value={formData[field.name]}
+                                                    type="tel"
+                                                    name="contactPhoneOffice"
+                                                    value={formData.contactPhoneOffice}
                                                     onChange={handleInputChange}
-                                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all duration-300 group-hover:border-gray-300 bg-white bg-opacity-80 backdrop-blur-sm"
-                                                    placeholder={field.placeholder}
-                                                    min={field.min}
+                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                    placeholder="+1 (555) 123-4567"
                                                 />
-                                                <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-green-500 to-teal-600 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none"></div>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
 
-                                {/* Enhanced Qualifications */}
-                                <div className="group">
-                                    <label className="block text-sm font-semibold text-gray-700 mb-4">
-                                        <Star className="w-4 h-4 inline mr-2 text-yellow-500" />
-                                        Qualifications
-                                    </label>
-                                    <div className="space-y-3">
-                                        {formData.qualifications.map((qualification, index) => (
-                                            <div key={index} className="flex space-x-3 animate-slideInRight" style={{ animationDelay: `${index * 100}ms` }}>
-                                                <div className="flex-1 relative group">
-                                                    <input
-                                                        type="text"
-                                                        value={qualification}
-                                                        onChange={(e) => handleQualificationChange(index, e.target.value)}
-                                                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-yellow-500 transition-all duration-300 group-hover:border-gray-300 bg-white bg-opacity-80 backdrop-blur-sm"
-                                                        placeholder="MBBS, MD, etc."
-                                                    />
-                                                    <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-yellow-400 to-orange-500 opacity-0 group-hover:opacity-5 transition-opacity duration-300 pointer-events-none"></div>
-                                                </div>
+                                        <div className="md:col-span-2">
+                                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                                Qualifications
+                                            </label>
+                                            <div className="space-y-2">
+                                                {formData.qualifications.map((qual, index) => (
+                                                    <div key={index} className="flex space-x-2">
+                                                        <input
+                                                            type="text"
+                                                            value={qual}
+                                                            onChange={(e) => handleQualificationChange(index, e.target.value)}
+                                                            className="flex-1 px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                                            placeholder="e.g., MD, MBBS, Fellowship"
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeQualification(index)}
+                                                            className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
+                                                        >
+                                                            <X className="w-5 h-5" />
+                                                        </button>
+                                                    </div>
+                                                ))}
                                                 <button
                                                     type="button"
-                                                    onClick={() => removeQualification(index)}
-                                                    className="px-4 py-3 bg-gradient-to-r from-red-500 to-pink-600 text-white rounded-xl hover:from-red-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform"
+                                                    onClick={addQualification}
+                                                    className="w-full px-4 py-2 border-2 border-dashed border-slate-300 rounded-lg text-slate-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors"
                                                 >
-                                                    Remove
+                                                    + Add Qualification
                                                 </button>
                                             </div>
-                                        ))}
+                                        </div>
+
+                                        <div className="md:col-span-2">
+                                            <label className="flex items-center space-x-2 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    name="requireReportVerification"
+                                                    checked={formData.requireReportVerification}
+                                                    onChange={handleInputChange}
+                                                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                                                />
+                                                <div>
+                                                    <div className="text-sm font-medium text-slate-700">
+                                                        Require Report Verification
+                                                    </div>
+                                                    <div className="text-xs text-slate-500">
+                                                        Reports by this doctor will need verification before finalization
+                                                    </div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Step 3: Signature Upload */}
+                            {currentStep === 3 && (
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-purple-100 rounded-lg">
+                                            <Award className="w-5 h-5 text-purple-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-800">Digital Signature</h2>
+                                            <p className="text-sm text-slate-600">Upload signature for report authentication (optional)</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {!signaturePreview ? (
+                                            <div className="border-2 border-dashed border-slate-300 rounded-lg p-8">
+                                                <div className="text-center">
+                                                    <Upload className="mx-auto w-12 h-12 text-slate-400 mb-4" />
+                                                    <h3 className="text-sm font-medium text-slate-700 mb-2">
+                                                        Upload Signature Image
+                                                    </h3>
+                                                    <p className="text-xs text-slate-500 mb-4">
+                                                        PNG, JPG up to 5MB
+                                                    </p>
+                                                    <input
+                                                        ref={fileInputRef}
+                                                        type="file"
+                                                        accept="image/*"
+                                                        onChange={handleSignatureUpload}
+                                                        className="hidden"
+                                                        id="signature-upload"
+                                                    />
+                                                    <label
+                                                        htmlFor="signature-upload"
+                                                        className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 cursor-pointer transition-colors"
+                                                    >
+                                                        <Image className="w-4 h-4 mr-2" />
+                                                        Choose Image
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="border-2 border-purple-200 rounded-lg p-4 bg-purple-50">
+                                                <div className="flex items-start justify-between mb-3">
+                                                    <div className="flex items-center space-x-2">
+                                                        <CheckCircle className="w-5 h-5 text-purple-600" />
+                                                        <span className="text-sm font-medium text-purple-900">
+                                                            Signature Uploaded
+                                                        </span>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={removeSignature}
+                                                        className="text-purple-600 hover:text-purple-800 transition-colors"
+                                                    >
+                                                        <X className="w-5 h-5" />
+                                                    </button>
+                                                </div>
+                                                <div className="bg-white rounded-lg p-4 flex items-center justify-center">
+                                                    <img
+                                                        src={signaturePreview}
+                                                        alt="Signature preview"
+                                                        className="max-h-32 object-contain"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* ✅ NEW: Step 4: Column Selection */}
+                            {currentStep === 4 && (
+                                <div className="p-8 space-y-6">
+                                    <div className="flex items-center space-x-3 mb-6">
+                                        <div className="p-2 bg-teal-100 rounded-lg">
+                                            <Columns className="w-5 h-5 text-teal-600" />
+                                        </div>
+                                        <div>
+                                            <h2 className="text-xl font-bold text-slate-800">Worklist Columns</h2>
+                                            <p className="text-sm text-slate-600">Choose which columns this doctor can see in their worklist</p>
+                                        </div>
+                                    </div>
+
+                                    <ColumnSelector
+                                        selectedColumns={formData.visibleColumns}
+                                        onColumnToggle={handleColumnToggle}
+                                        onSelectAll={handleSelectAllColumns}
+                                        onClearAll={handleClearAllColumns}
+                                        userRoles={['radiologist']}
+                                        formData={formData}
+                                        setFormData={setFormData}
+                                        useMultiRole={false}
+                                    />
+                                </div>
+                            )}
+
+                            {/* Navigation Buttons */}
+                            <div className="px-8 py-6 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/admin/dashboard')}
+                                    className="flex items-center space-x-2 px-4 py-2 text-slate-600 hover:text-slate-800 transition-colors"
+                                >
+                                    <ArrowLeft className="w-4 h-4" />
+                                    <span>Cancel</span>
+                                </button>
+
+                                <div className="flex items-center space-x-3">
+                                    {currentStep > 1 && (
                                         <button
                                             type="button"
-                                            onClick={addQualification}
-                                            className="px-6 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform flex items-center space-x-2"
+                                            onClick={prevStep}
+                                            className="flex items-center space-x-2 px-6 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
                                         >
-                                            <Star className="w-4 h-4" />
-                                            <span>Add Qualification</span>
+                                            <ChevronLeft className="w-4 h-4" />
+                                            <span>Previous</span>
                                         </button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
+                                    )}
 
-                        {/* STEP 3: Enhanced Signature Upload */}
-                        {currentStep === 3 && (
-                            <div className="space-y-6 animate-fadeInUp">
-                                <div className="text-center">
-                                    <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-600 rounded-full mb-4 animate-pulse">
-                                        <Upload className="w-8 h-8 text-white" />
-                                    </div>
-                                    <h2 className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
-                                        Digital Signature
-                                    </h2>
-                                    <p className="text-gray-600">Upload the doctor's signature image for report authentication (optional)</p>
-                                </div>
-
-                                <div className="signature-upload-area border-2 border-dashed border-gray-300 rounded-2xl p-8 bg-gradient-to-br from-purple-50 to-pink-50 hover:from-purple-100 hover:to-pink-100 transition-all duration-300 group">
-                                    
-                                    {!signaturePreview ? (
-                                        <div className="text-center">
-                                            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-purple-100 to-pink-100 rounded-full mb-6 group-hover:scale-110 transition-transform duration-300">
-                                                <Image className="w-10 h-10 text-purple-600" />
-                                            </div>
-                                            <h3 className="text-xl font-bold text-gray-900 mb-2">Upload Signature Image</h3>
-                                            <p className="text-sm text-gray-600 mb-6">
-                                                Choose a clear image of the doctor's signature<br />
-                                                <span className="text-xs text-gray-500">Supports JPG, PNG, GIF • Max 5MB</span>
-                                            </p>
-                                            
-                                            <input
-                                                ref={fileInputRef}
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleSignatureUpload}
-                                                className="hidden"
-                                            />
-                                            
-                                            <button
-                                                type="button"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="px-8 py-4 bg-gradient-to-r from-purple-500 to-pink-600 text-white rounded-xl hover:from-purple-600 hover:to-pink-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform flex items-center space-x-3 mx-auto"
-                                            >
-                                                <Upload className="w-5 h-5" />
-                                                <span className="font-semibold">Choose Image</span>
-                                            </button>
-                                        </div>
+                                    {currentStep < 4 ? (
+                                        <button
+                                            type="button"
+                                            onClick={nextStep}
+                                            className="flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg hover:from-blue-600 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg"
+                                        >
+                                            <span>Next</span>
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
                                     ) : (
-                                        <div className="text-center space-y-4">
-                                            <div className="relative inline-block">
-                                                <img
-                                                    src={signaturePreview}
-                                                    alt="Signature preview"
-                                                    className="max-w-full max-h-40 object-contain border-2 border-gray-200 rounded-lg shadow-lg"
-                                                />
-                                                <button
-                                                    type="button"
-                                                    onClick={removeSignature}
-                                                    className="absolute -top-2 -right-2 w-8 h-8 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors flex items-center justify-center shadow-lg"
-                                                >
-                                                    <X className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="flex items-center justify-center text-green-600 animate-bounce">
-                                                <div className="flex items-center space-x-2 bg-green-50 px-4 py-2 rounded-full">
-                                                    <CheckCircle className="w-5 h-5" />
-                                                    <span className="text-sm font-semibold">Signature uploaded successfully!</span>
-                                                </div>
-                                            </div>
-                                            
-                                            <button
-                                                type="button"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="px-6 py-2 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-lg hover:from-gray-600 hover:to-gray-700 transition-all duration-300 hover:scale-105 transform text-sm"
-                                            >
-                                                Change Image
-                                            </button>
-                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleCreateDoctor}
+                                            disabled={loading}
+                                            className="flex items-center space-x-2 px-6 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            {loading ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                                                    <span>Creating...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Save className="w-4 h-4" />
+                                                    <span>Create Doctor Profile</span>
+                                                </>
+                                            )}
+                                        </button>
                                     )}
                                 </div>
                             </div>
-                        )}
-
-                        {/* Enhanced Navigation Buttons */}
-                        <div className="flex justify-between pt-8 border-t border-gray-200">
-                            {currentStep > 1 && (
-                                <button
-                                    type="button"
-                                    onClick={prevStep}
-                                    className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-gray-500 to-gray-600 text-white rounded-xl hover:from-gray-600 hover:to-gray-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform"
-                                >
-                                    <ChevronLeft className="w-5 h-5" />
-                                    <span className="font-semibold">Previous</span>
-                                </button>
-                            )}
-
-                            <div className="flex-1"></div>
-
-                            {currentStep < 3 ? (
-                                <button
-                                    type="button"
-                                    onClick={nextStep}
-                                    className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-xl hover:from-blue-600 hover:to-purple-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform"
-                                >
-                                    <span className="font-semibold">Next</span>
-                                    <ChevronRight className="w-5 h-5" />
-                                </button>
-                            ) : (
-                                <button
-                                    type="submit"
-                                    disabled={loading || formSubmitted}
-                                    className="flex items-center space-x-2 px-8 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:from-green-600 hover:to-emerald-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-                                >
-                                    {loading ? (
-                                        <>
-                                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                                            <span className="font-semibold">Creating...</span>
-                                        </>
-                                    ) : formSubmitted ? (
-                                        <>
-                                            <CheckCircle className="w-5 h-5 animate-bounce" />
-                                            <span className="font-semibold">Created Successfully!</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Save className="w-5 h-5" />
-                                            <span className="font-semibold">Create Doctor</span>
-                                        </>
-                                    )}
-                                </button>
-                            )}
-                        </div>
-                    </form>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>

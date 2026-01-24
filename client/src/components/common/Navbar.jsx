@@ -174,6 +174,19 @@ const Navbar = ({
             {/* ✅ RIGHT SECTION - More compact */}
             <div className="flex items-center space-x-2">
               
+              {/* ✅ ADD: COPY STUDY BUTTON - Show for admin, assignor, super_admin */}
+              {(['admin', 'assignor', 'super_admin'].includes(currentUser?.role) || 
+                currentUser?.accountRoles?.some(role => ['admin', 'assignor', 'super_admin'].includes(role))) && (
+                <button
+                  onClick={handleOpenCopyModal}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                  title="Copy Study to Organization"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                  <span>Copy Study</span>
+                </button>
+              )}
+
               {/* ✅ COMPACT ADDITIONAL ACTIONS */}
               {additionalActions.map((action, index) => (
                 <button

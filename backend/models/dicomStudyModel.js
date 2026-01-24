@@ -30,6 +30,8 @@ const ACTION_TYPES = {
     REPORT_SAVED: 'report_saved',
     REPORT_FINALIZED: 'report_finalized',
     REPORT_VERIFIED: 'report_verified',
+    REPORT_REVERTED: 'report_reverted',
+    REPORT_RESOLVED: 'report_resolved',
     REPORT_REJECTED: 'report_rejected',
     
     // Print Actions
@@ -158,6 +160,7 @@ isCopiedStudy: {
     workflowStatus: {
         type: String,
         enum: [
+            'no_active_study',
             // CREATED
             'new_study_received',
             'metadata_extracted',
@@ -191,6 +194,9 @@ isCopiedStudy: {
             // FINAL
             'report_finalized',
             'final_approved',
+            'revert_to_radiologist', // ✅ NEW
+
+            'report_completed', 
             
             // URGENT
             'urgent_priority',
@@ -200,7 +206,7 @@ isCopiedStudy: {
             'reprint_requested',
             'correction_needed',
             
-            // Other statuses
+            // Download/Archive statuses
             'report_uploaded',
             'report_downloaded_radiologist',
             'report_downloaded',
@@ -224,7 +230,9 @@ isCopiedStudy: {
             'PENDING',
             'DRAFT',
             'VERIFICATION_PENDING',
+            "verification_pending",
             'FINAL',
+            'COMPLETED', // ✅ ADD THIS - Maps to report_completed status
             'URGENT',
             'REPRINT_NEED'
         ],
@@ -694,6 +702,16 @@ isCopiedStudy: {
         ref: 'Lab',
         index: { background: true }
     },
+
+   
+    labLocation: {
+        type: String,
+        trim: true,
+        default: '',
+        index: { sparse: true, background: true }
+    },
+
+
     ReportAvailable: {
         type: Boolean,
         default: false,
@@ -1408,7 +1426,7 @@ DicomStudySchema.statics.bulkUpdateTAT = async function(query = {}) {
                 }
             }
         }
-    }));
+}));
 
     if (bulkOps.length > 0) {
         await this.bulkWrite(bulkOps);

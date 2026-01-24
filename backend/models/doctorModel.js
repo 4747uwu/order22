@@ -56,6 +56,20 @@ const DoctorSchema = new mongoose.Schema({
         default: false,
     },
 
+    // ✅ NEW: Verification Mode Toggle for Doctor
+    requireReportVerification: {
+        type: Boolean,
+        default: true, // By default, reports need verification
+        description: 'If true, finalized reports go to verifier. If false, they go directly to completed.'
+    },
+    verificationEnabledAt: { 
+        type: Date 
+    },
+    verificationEnabledBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+
     signature: {
         type: String,
         trim: true,

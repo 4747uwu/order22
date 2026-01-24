@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback,useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../../hooks/useAuth';
 import { 
@@ -21,7 +21,8 @@ const Search = ({
     totalStudies = 0,
     currentCategory = 'all',
     analytics = null,
-    theme = 'default' // ✅ ADD: Theme support
+    theme = 'default', // ✅ ADD: Theme support
+    initialFilters = null 
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
@@ -42,6 +43,26 @@ const Search = ({
     });
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [searchTimeout, setSearchTimeout] = useState(null);
+
+    // ✅ Sync filters when initialFilters prop changes (e.g., loaded from localStorage)
+useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+        console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
+        
+        // Sync regular filters
+        setFilters(prevFilters => ({
+            ...prevFilters,
+            ...initialFilters
+        }));
+        
+        // ✅ FIX: Sync search term from saved filters
+        if (initialFilters.search) {
+            setSearchTerm(initialFilters.search);
+        } else {
+            setSearchTerm(''); // Clear if no search in saved filters
+        }
+    }
+}, [initialFilters]);
 
     // Check if user is admin or assignor
     const isAdmin = currentUser?.role === 'admin';
@@ -96,35 +117,63 @@ const Search = ({
     };
 
     // Handle search input change with debouncing
-    const handleSearchChange = useCallback((value) => {
-        setSearchTerm(value);
-        
-        if (searchTimeout) {
-            clearTimeout(searchTimeout);
-        }
-        
-        const newTimeout = setTimeout(() => {
-            handleSearch(value);
-        }, 300);
-        
-        setSearchTimeout(newTimeout);
-    }, [searchTimeout]);
-
-    // Execute search
-    const handleSearch = useCallback((term = searchTerm) => {
+const handleSearchChange = useCallback((value) => {
+    setSearchTerm(value);
+    
+    if (searchTimeout) {
+        clearTimeout(searchTimeout);
+    }
+    
+    // ✅ FIX: If clearing search, update immediately without debounce
+    if (value === '' || value.trim() === '') {
         const searchParams = {
-            search: term.trim() || undefined,
             ...filters
         };
+        // Remove search key completely
+        delete searchParams.search;
         
+        // Clean up other undefined/empty values
         Object.keys(searchParams).forEach(key => {
             if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
                 delete searchParams[key];
             }
         });
         
+        console.log('🗑️ [Search] CLEARING SEARCH TERM:', searchParams);
         onSearch?.(searchParams);
-    }, [searchTerm, filters, onSearch]);
+        onFilterChange?.(searchParams);
+        return;
+    }
+    
+    // For non-empty search, use debounce
+    const newTimeout = setTimeout(() => {
+        handleSearch(value);
+    }, 300);
+    
+    setSearchTimeout(newTimeout);
+}, [searchTimeout, filters, onSearch, onFilterChange]);
+
+    // Execute search
+const handleSearch = useCallback((term = searchTerm) => {
+    const searchParams = {
+        ...filters
+    };
+    
+    // ✅ FIX: Only add search if it has a value
+    if (term && term.trim()) {
+        searchParams.search = term.trim();
+    }
+    
+    // Clean up undefined/empty values
+    Object.keys(searchParams).forEach(key => {
+        if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
+            delete searchParams[key];
+        }
+    });
+    
+    console.log('🔍 [Search] Executing search:', searchParams);
+    onSearch?.(searchParams);
+}, [searchTerm, filters, onSearch]);
 
     // Handle filter changes
     const handleFilterChange = useCallback((key, value) => {
@@ -147,24 +196,31 @@ const Search = ({
     }, [filters, searchTerm, onSearch, onFilterChange]);
 
     // Clear all filters
-    const clearAllFilters = useCallback(() => {
-        setSearchTerm('');
-        const defaultFilters = {
-            category: 'all',
-            modality: 'all',
-            labId: 'all',
-            priority: 'all',
-            assigneeRole: 'all',
-            dateFilter: 'today',
-            dateType: 'createdAt',
-            customDateFrom: '',
-            customDateTo: '',
-            limit: 50
-        };
-        setFilters(defaultFilters);
-        onSearch?.(defaultFilters);
-        onFilterChange?.(defaultFilters);
-    }, [onSearch, onFilterChange]);
+    // Clear all filters
+const clearAllFilters = useCallback(() => {
+    console.log('🗑️ [Search] CLEARING ALL FILTERS');
+    
+    setSearchTerm('');
+    const defaultFilters = {
+        modality: 'all',
+        labId: 'all',
+        priority: 'all',
+        assigneeRole: 'all',
+        dateFilter: 'today',
+        dateType: 'createdAt',
+        customDateFrom: '',
+        customDateTo: '',
+        limit: 50
+    };
+    setFilters(defaultFilters);
+    
+    // ✅ Make sure NO search key is included
+    const cleanFilters = { ...defaultFilters };
+    delete cleanFilters.search;
+    
+    onSearch?.(cleanFilters);
+    onFilterChange?.(cleanFilters);
+}, [onSearch, onFilterChange]);
 
     const handleRefresh = useCallback(() => {
         handleSearch();

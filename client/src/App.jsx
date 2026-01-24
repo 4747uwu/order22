@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/authContext';
 import { useAuth } from './hooks/useAuth';
+import ToastConfig from './config/toastConfig';
 import LoginPage from './pages/Login';
 import SuperAdminDashboard from './pages/superadmin/Dashboard';
 import AdminDashboard from './pages/admin/Dashboard';
@@ -398,6 +399,8 @@ function App() {
     <Router>
       <AuthProvider>
         <div className="App">
+          {/* ✅ ADD: Toast Configuration */}
+          <ToastConfig />
           <AppRoutes />
         </div>
       </AuthProvider>

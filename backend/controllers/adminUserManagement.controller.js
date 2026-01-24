@@ -1,9 +1,11 @@
 import User from '../models/userModel.js';
 import Organization from '../models/organisation.js';
+import Doctor from '../models/doctorModel.js'; // ✅ ADD THIS
+import Lab from '../models/labModel.js';       // ✅ ADD THIS
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
-// ✅ GET ALL USERS IN ADMIN'S ORGANIZATION WITH CREDENTIALS
+// ✅ GET ALL USERS WITH VERIFICATION STATUS AND TEMP PASSWORD
 export const getOrganizationUsers = async (req, res) => {
     try {
         // Only admin can access this
@@ -21,14 +23,57 @@ export const getOrganizationUsers = async (req, res) => {
             query.organizationIdentifier = req.user.organizationIdentifier;
         }
 
-        // Get users with passwords (sensitive operation)
+        // Get users with passwords and tempPassword
         const users = await User.find(query)
             .populate('hierarchy.createdBy', 'fullName email role')
             .populate('hierarchy.parentUser', 'fullName email role')
             .populate('roleConfig.linkedRadiologist', 'fullName email')
             .populate('organization', 'name displayName identifier')
-            .select('+password') // Include password field
+            .select('+password +tempPassword') // ✅ Include both password fields
             .sort({ role: 1, createdAt: -1 });
+
+        // ✅ Fetch all doctors and labs for verification status
+        const doctors = await Doctor.find({
+            organizationIdentifier: req.user.organizationIdentifier
+        }).select('userAccount requireReportVerification');
+
+        const labs = await Lab.find({
+            organizationIdentifier: req.user.organizationIdentifier
+        }).select('_id settings.requireReportVerification');
+
+        // ✅ Create lookup maps
+        const doctorMap = new Map();
+        doctors.forEach(d => {
+            doctorMap.set(d.userAccount.toString(), {
+                doctorId: d._id,
+                requireReportVerification: d.requireReportVerification || false
+            });
+        });
+
+        const labMap = new Map();
+        labs.forEach(l => {
+            labMap.set(l._id.toString(), l.settings?.requireReportVerification || false);
+        });
+
+        // ✅ Enhance users with verification status
+        const enhancedUsers = users.map(user => {
+            const userObj = user.toObject();
+            
+            // Add verification status for radiologists
+            if (user.role === 'radiologist') {
+                const doctorData = doctorMap.get(user._id.toString());
+                userObj.requireReportVerification = doctorData?.requireReportVerification || false;
+                userObj.doctorId = doctorData?.doctorId;
+            }
+            
+            // Add verification status for lab_staff
+            if (user.role === 'lab_staff' && user.linkedLabs?.[0]?.labId) {
+                const labId = user.linkedLabs[0].labId.toString();
+                userObj.requireReportVerification = labMap.get(labId) || false;
+            }
+            
+            return userObj;
+        });
 
         // Get organization info
         const organization = await Organization.findOne({
@@ -41,9 +86,9 @@ export const getOrganizationUsers = async (req, res) => {
             success: true,
             data: {
                 organization: organization,
-                users: users
+                users: enhancedUsers
             },
-            count: users.length
+            count: enhancedUsers.length
         });
 
     } catch (error) {
@@ -55,96 +100,107 @@ export const getOrganizationUsers = async (req, res) => {
     }
 };
 
-// ✅ UPDATE USER CREDENTIALS (email/password/name)
+// ✅ UPDATE USER CREDENTIALS INCLUDING VERIFICATION TOGGLE
 export const updateUserCredentials = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { userId } = req.params;
-        const { email, password, fullName } = req.body;
+        const { fullName, email, password, visibleColumns, requireReportVerification } = req.body;
 
-        // Only admin can update credentials
-        if (!['admin', 'super_admin'].includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admin can update user credentials'
-            });
-        }
+        const user = await User.findOne({
+            _id: userId,
+            organizationIdentifier: req.user.organizationIdentifier
+        }).session(session);
 
-        // Validate user exists and belongs to same organization (for admin)
-        let query = { _id: userId };
-        if (req.user.role === 'admin') {
-            query.organizationIdentifier = req.user.organizationIdentifier;
-        }
-
-        const user = await User.findOne(query);
         if (!user) {
+            await session.abortTransaction();
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
             });
         }
 
-        const updates = {};
+        // Update basic fields
+        if (fullName) user.fullName = fullName;
+        if (email) user.email = email.toLowerCase().trim();
+        if (password) user.password = password;
+        
+        // ✅ Update visible columns
+        if (visibleColumns !== undefined) {
+            user.visibleColumns = Array.isArray(visibleColumns) ? visibleColumns : [];
+        }
 
-        // Update email if provided
-        if (email && email !== user.email) {
-            // Check if email already exists in the organization
-            const existingUser = await User.findOne({
-                email: email.toLowerCase().trim(),
-                organizationIdentifier: user.organizationIdentifier,
-                _id: { $ne: userId }
-            });
+        await user.save({ session });
 
-            if (existingUser) {
-                return res.status(409).json({
-                    success: false,
-                    message: 'Email already exists in this organization'
-                });
+        // ✅ UPDATE VERIFICATION SETTING BASED ON ROLE
+        if (requireReportVerification !== undefined) {
+            if (user.role === 'radiologist') {
+                // Find and update doctor profile
+                const doctor = await Doctor.findOne({
+                    userAccount: userId,
+                    organizationIdentifier: req.user.organizationIdentifier
+                }).session(session);
+
+                if (doctor) {
+                    doctor.requireReportVerification = requireReportVerification;
+                    if (requireReportVerification) {
+                        doctor.verificationEnabledAt = new Date();
+                        doctor.verificationEnabledBy = req.user._id;
+                    }
+                    await doctor.save({ session });
+                    console.log(`✅ Updated doctor verification: ${requireReportVerification}`);
+                } else {
+                    console.warn(`⚠️ Doctor profile not found for radiologist user ${userId}`);
+                }
+            } 
+            else if (user.role === 'lab_staff' && user.linkedLabs?.[0]?.labId) {
+                // Find and update lab settings
+                const labId = user.linkedLabs[0].labId;
+                const lab = await Lab.findOne({
+                    _id: labId,
+                    organizationIdentifier: req.user.organizationIdentifier
+                }).session(session);
+
+                if (lab) {
+                    if (!lab.settings) lab.settings = {};
+                    lab.settings.requireReportVerification = requireReportVerification;
+                    if (requireReportVerification) {
+                        lab.settings.verificationEnabledAt = new Date();
+                        lab.settings.verificationEnabledBy = req.user._id;
+                    }
+                    await lab.save({ session });
+                    console.log(`✅ Updated lab verification: ${requireReportVerification}`);
+                } else {
+                    console.warn(`⚠️ Lab not found for lab_staff user ${userId}`);
+                }
             }
-
-            updates.email = email.toLowerCase().trim();
         }
 
-        // Update full name if provided
-        if (fullName && fullName !== user.fullName) {
-            updates.fullName = fullName.trim();
-        }
+        await session.commitTransaction();
 
-        // Update password if provided
-        if (password) {
-            if (password.length < 6) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Password must be at least 6 characters long'
-                });
-            }
-            
-            const salt = await bcrypt.genSalt(10);
-            updates.password = await bcrypt.hash(password, salt);
-        }
-
-        // Perform update
-        const updatedUser = await User.findByIdAndUpdate(
-            userId,
-            updates,
-            { new: true, runValidators: true }
-        )
-        .populate('organization', 'name displayName identifier')
-        .select('-password');
-
-        console.log(`✅ Admin updated credentials for user ${updatedUser.email}`);
+        // Fetch updated user without sensitive fields
+        const updatedUser = await User.findById(userId)
+            .populate('organization', 'name displayName identifier')
+            .select('-password -tempPassword');
 
         res.json({
             success: true,
-            message: 'User credentials updated successfully',
+            message: 'User updated successfully',
             data: updatedUser
         });
 
     } catch (error) {
-        console.error('❌ Update user credentials error:', error);
+        await session.abortTransaction();
+        console.error('Error updating user credentials:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to update user credentials'
+            message: 'Failed to update user',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    } finally {
+        session.endSession();
     }
 };
 

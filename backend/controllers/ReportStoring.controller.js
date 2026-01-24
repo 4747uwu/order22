@@ -401,6 +401,7 @@ export const storeDraftReport = async (req, res) => {
         });
     }
 };
+
 export const storeFinalizedReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -411,7 +412,7 @@ export const storeFinalizedReport = async (req, res) => {
             templateId,
             templateInfo,
             format = 'docx',
-            capturedImages = [] // ✅ NEW: Accept captured images
+            capturedImages = []
         } = req.body;
 
         console.log(req.body)
@@ -427,7 +428,7 @@ export const storeFinalizedReport = async (req, res) => {
             contentLength: htmlContent?.length || placeholders?.['--Content--']?.length || 0,
             hasTemplateInfo: !!templateInfo,
             hasPlaceholders: !!placeholders,
-            capturedImagesCount: capturedImages.length // ✅ NEW
+            capturedImagesCount: capturedImages.length
         });
 
         // Validate required data
@@ -459,7 +460,7 @@ export const storeFinalizedReport = async (req, res) => {
             // 1. Find the study with organization info
             const study = await DicomStudy.findById(studyId)
                 .populate('patient', 'fullName patientId dateOfBirth gender')
-                .populate('sourceLab', 'name identifier')
+                .populate('sourceLab', 'name identifier settings.requireReportVerification')
                 .session(session);
 
             console.log('🔍 [Finalize Store] Study found:', {
@@ -484,7 +485,6 @@ export const storeFinalizedReport = async (req, res) => {
             if (!study.organizationIdentifier) {
                 console.log('⚠️ [Finalize Store] Study missing organizationIdentifier, setting from user');
                 study.organizationIdentifier = currentUser.organizationIdentifier;
-                await study.save({ session });
             }
 
             // 2. Verify user has access to this study
@@ -554,7 +554,6 @@ export const storeFinalizedReport = async (req, res) => {
                                           study.referringPhysicianName || 
                                           'N/A';
 
-            // Ensure it's always a string
             const referringPhysicianName = typeof referringPhysicianData === 'string' 
                 ? referringPhysicianData
                 : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
@@ -568,28 +567,17 @@ export const storeFinalizedReport = async (req, res) => {
             });
 
             const reportData = {
-                // ✅ ADD: Required reportId field  
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
-                
-                // Core identifiers
                 organizationIdentifier: currentUser.organizationIdentifier,
                 organization: organization?._id,
-                
-                // References
                 patient: study.patient?._id,
                 patientId: study.patientId,
                 dicomStudy: studyId,
-                
-                // ✅ FIX: Handle studyInstanceUID properly with fallbacks
                 studyInstanceUID: study.studyInstanceUID || study.orthancStudyID || studyId.toString(),
                 orthancStudyID: study.orthancStudyID,
                 accessionNumber: study.accessionNumber,
-                
-                // Personnel
                 createdBy: currentUser._id,
                 doctorId: currentUser._id,
-                
-                // Report content
                 reportContent: {
                     htmlContent: reportContent,
                     templateInfo: templateInfo || {
@@ -599,7 +587,6 @@ export const storeFinalizedReport = async (req, res) => {
                         templateTitle: templateName || 'Finalized Report'
                     },
                     placeholders: placeholders || {},
-                    // ✅ NEW: Include captured images
                     capturedImages: capturedImages.map((img, index) => ({
                         ...img,
                         capturedBy: currentUser._id,
@@ -611,27 +598,18 @@ export const storeFinalizedReport = async (req, res) => {
                         pageCount: 1
                     }
                 },
-                
-                // Report metadata
                 reportType: 'finalized',
                 reportStatus: 'finalized',
-                
-                // Export info
                 exportInfo: {
                     format: format,
                     fileName: templateName || `finalized_${studyId}_${Date.now()}.${format}`
                 },
-                
-                // Patient info (denormalized)
                 patientInfo: patientInfo,
-                
-                // ✅ FIX: Study info with proper referringPhysician structure
                 studyInfo: {
                     studyDate: study.studyDate,
                     modality: study.modality || study.modalitiesInStudy?.join(', '),
                     examDescription: study.examDescription || study.studyDescription,
                     institutionName: study.institutionName,
-                    // ✅ FIX: Ensure referringPhysician.name is always a string
                     referringPhysician: {
                         name: referringPhysicianName,
                         institution: typeof study.referringPhysician === 'object' 
@@ -646,15 +624,11 @@ export const storeFinalizedReport = async (req, res) => {
                     priority: study.studyPriority || study.assignment?.priority,
                     caseType: study.caseType
                 },
-                
-                // Workflow tracking
                 workflowInfo: {
                     draftedAt: existingReport?.workflowInfo?.draftedAt || now,
                     finalizedAt: now,
                     statusHistory: existingReport?.workflowInfo?.statusHistory || []
                 },
-                
-                // System info
                 systemInfo: {
                     dataSource: 'online_reporting_system'
                 }
@@ -669,7 +643,7 @@ export const storeFinalizedReport = async (req, res) => {
                 userRole: currentUser.role
             });
 
-            // ✅ ADD: Validate report data before saving
+            // ✅ Validate report data before saving
             console.log('🔍 [Finalize Store] Validating report data structure');
             const validationErrors = [];
             
@@ -697,85 +671,103 @@ export const storeFinalizedReport = async (req, res) => {
             let savedReport;
 
             if (existingReport) {
-                // Update existing draft to finalized
                 console.log('📝 [Finalize Store] Converting existing draft to finalized:', existingReport._id);
-                
                 Object.assign(existingReport, reportData);
                 savedReport = await existingReport.save({ session });
                 console.log('✅ [Finalize Store] Existing draft converted to finalized successfully');
             } else {
-                // Create new finalized report
                 console.log('📝 [Finalize Store] Creating new finalized report');
                 savedReport = new Report(reportData);
                 await savedReport.save({ session });
                 console.log('✅ [Finalize Store] New finalized report created successfully');
             }
 
-            // 5. Update DicomStudy with finalized report reference and workflow status
-            console.log('🔄 [Finalize Store] Updating study report status and workflow');
-            
-            // Update workflow status to report_finalized
-            study.workflowStatus = 'report_finalized';
-            // currentCategory uses uppercase category tokens defined in schema
-            study.currentCategory = 'FINAL';
-            
-            if (!study.reportInfo) {
-                study.reportInfo = {};
-            }
-            study.reportInfo.finalizedAt = now;
-            study.reportInfo.reporterName = currentUser.fullName;
-            
-            // Add status history
-            if (!study.statusHistory) {
-                study.statusHistory = [];
-            }
-            study.statusHistory.push({
-                status: 'report_finalized',
-                changedAt: now,
-                changedBy: currentUser._id,
-                note: `Report finalized by ${currentUser.fullName}`
-            });
-
+            // 5. Update DicomStudy with finalized report reference (but don't save yet)
+            console.log('🔄 [Finalize Store] Updating study report status');
             await updateStudyReportStatus(study, savedReport, session);
-            await study.save({ session });
 
-            // ✅ NEW: Update workflow status to 'report_finalized' using workflow manager
-            console.log('🔄 [Finalize Store] Updating workflow status to report_finalized');
+            // ✅ Use workflow status manager WITHOUT passing session (it will handle its own saves)
+            console.log('🔄 [Finalize Store] Updating workflow status via workflow manager');
+            
+            let workflowResult;
+            let workflowSuccess = false;
+            
             try {
-                // ✅ FIX: Add timeout and better error handling
-                const workflowUpdatePromise = updateWorkflowStatus({
+                // Get doctor info to check verification requirements
+                const doctorInfo = await mongoose.model('Doctor').findOne({ 
+                    userAccount: currentUser._id 
+                }).select('requireReportVerification');
+
+                console.log('📋 [Finalize Store] Verification requirements check:', {
+                    labRequiresVerification: study.sourceLab?.settings?.requireReportVerification,
+                    doctorRequiresVerification: doctorInfo?.requireReportVerification,
+                    willCheckBoth: true
+                });
+
+                // ✅ CRITICAL FIX: Call workflow manager WITHOUT session
+                // It will load the study fresh and save it independently
+                workflowResult = await updateWorkflowStatus({
                     studyId: studyId,
                     status: 'report_finalized',
                     doctorId: currentUser._id,
                     note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`,
                     user: currentUser
                 });
-
-                // ✅ FIX: Add a timeout to prevent hanging
-                const timeoutPromise = new Promise((_, reject) => {
-                    setTimeout(() => reject(new Error('Workflow update timeout')), 10000); // 10 second timeout
+                
+                workflowSuccess = true;
+                
+                console.log('✅ [Finalize Store] Workflow status updated:', {
+                    previousStatus: workflowResult.previousStatus,
+                    currentStatus: workflowResult.currentStatus,
+                    requiresVerification: workflowResult.requiresVerification
                 });
 
-                await Promise.race([workflowUpdatePromise, timeoutPromise]);
-                console.log('✅ [Finalize Store] Workflow status updated to report_finalized');
             } catch (workflowError) {
-                console.warn('⚠️ [Finalize Store] Failed to update workflow status:', workflowError.message);
-                console.warn('⚠️ [Finalize Store] Workflow error details:', {
-                    error: workflowError.message,
-                    stack: workflowError.stack?.substring(0, 500)
-                });
-                // Don't fail the transaction for workflow status update failure
+                console.warn('⚠️ [Finalize Store] Workflow manager failed:', workflowError.message);
+                console.warn('⚠️ [Finalize Store] Will use fallback after transaction commits');
             }
 
+            // ✅ Commit transaction FIRST (saves report and study report references)
             console.log('💾 [Finalize Store] Committing transaction');
             await session.commitTransaction();
+            
+            // ✅ If workflow manager failed, update study outside transaction
+            if (!workflowSuccess) {
+                console.log('🔄 [Finalize Store] Applying fallback workflow status update');
+                try {
+                    const freshStudy = await DicomStudy.findById(studyId);
+                    
+                    if (freshStudy) {
+                        if (freshStudy.sourceLab?.settings?.requireReportVerification) {
+                            freshStudy.workflowStatus = 'verification_pending';
+                            freshStudy.currentCategory = 'VERIFICATION_PENDING';
+                            console.log('⚠️ [Finalize Store] Fallback: Set to verification_pending');
+                        } else {
+                            freshStudy.workflowStatus = 'report_completed';
+                            freshStudy.currentCategory = 'COMPLETED';
+                            console.log('⚠️ [Finalize Store] Fallback: Set to report_completed');
+                        }
+                        
+                        await freshStudy.save();
+                        console.log('✅ [Finalize Store] Fallback workflow status saved');
+                        
+                        workflowResult = {
+                            currentStatus: freshStudy.workflowStatus,
+                            requiresVerification: freshStudy.workflowStatus === 'verification_pending'
+                        };
+                    }
+                } catch (fallbackError) {
+                    console.error('❌ [Finalize Store] Fallback also failed:', fallbackError.message);
+                }
+            }
 
             console.log('✅ [Finalize Store] Finalized report stored successfully:', {
                 reportId: savedReport._id,
                 reportType: savedReport.reportType,
                 reportStatus: savedReport.reportStatus,
                 fileName: savedReport.exportInfo.fileName,
-                studyWorkflowStatus: study.workflowStatus
+                studyWorkflowStatus: workflowResult?.currentStatus || 'unknown',
+                requiresVerification: workflowResult?.requiresVerification || false
             });
 
             res.status(200).json({
@@ -788,7 +780,11 @@ export const storeFinalizedReport = async (req, res) => {
                     reportType: savedReport.reportType,
                     reportStatus: savedReport.reportStatus,
                     finalizedAt: savedReport.workflowInfo.finalizedAt,
-                    studyWorkflowStatus: study.workflowStatus,
+                    studyWorkflowStatus: workflowResult?.currentStatus || 'report_finalized',
+                    requiresVerification: workflowResult?.requiresVerification || false,
+                    nextStep: (workflowResult?.currentStatus === 'verification_pending' || workflowResult?.requiresVerification)
+                        ? 'Report sent to verifier for approval' 
+                        : 'Report completed and ready for download',
                     createdAt: savedReport.createdAt
                 }
             });
@@ -955,7 +951,7 @@ const updateStudyReportStatus = async (study, report, session) => {
 
         // Add to modern reports
         if (!study.reportInfo) {
-            study.reportInfo = { modernReports: [] };
+            study.reportInfo = {};
         }
         if (!study.reportInfo.modernReports) {
             study.reportInfo.modernReports = [];
@@ -980,9 +976,10 @@ const updateStudyReportStatus = async (study, report, session) => {
             fileName: report.exportInfo?.fileName
         });
 
-        await study.save({ session });
+        // ✅ REMOVED: Don't save here - let the workflow manager handle it
+        // await study.save({ session });
         
-        console.log('✅ [Helper] Study report status updated successfully');
+        console.log('✅ [Helper] Study report status updated (not saved yet - will save after workflow update)');
     } catch (error) {
         console.error('❌ [Helper] Error updating study report status:', error);
         throw error;

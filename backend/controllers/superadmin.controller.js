@@ -452,34 +452,28 @@ export const deleteOrganization = async (req, res) => {
 // Get organization statistics
 export const getOrganizationStats = async (req, res) => {
     try {
-        const totalOrgs = await Organization.countDocuments();
-        const activeOrgs = await Organization.countDocuments({ status: 'active' });
-        const inactiveOrgs = await Organization.countDocuments({ status: 'inactive' });
-        
-        const planStats = await Organization.aggregate([
-            { $group: { _id: '$subscription.plan', count: { $sum: 1 } } }
-        ]);
-
-        const companyTypeStats = await Organization.aggregate([
-            { $group: { _id: '$companyType', count: { $sum: 1 } } }
+        const [totalOrgs, activeOrgs, totalUsers, totalLabs] = await Promise.all([
+            Organization.countDocuments(),
+            Organization.countDocuments({ status: 'active' }),
+            User.countDocuments({ isActive: true }),
+            Lab.countDocuments({ isActive: true })
         ]);
 
         res.json({
             success: true,
             data: {
-                total: totalOrgs,
-                active: activeOrgs,
-                inactive: inactiveOrgs,
-                byPlan: planStats,
-                byCompanyType: companyTypeStats
+                totalOrganizations: totalOrgs,
+                activeOrganizations: activeOrgs,
+                inactiveOrganizations: totalOrgs - activeOrgs,
+                totalUsers: totalUsers,
+                totalLabs: totalLabs
             }
         });
-
     } catch (error) {
         console.error('Get organization stats error:', error);
         res.status(500).json({
             success: false,
-            message: 'Failed to fetch organization statistics'
+            message: 'Failed to fetch statistics'
         });
     }
 };

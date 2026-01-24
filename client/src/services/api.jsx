@@ -3,18 +3,34 @@ import axios from 'axios';
 import sessionManager from './sessionManager';
 
 // ✅ Use environment variable with correct port
-// const API_URL = 'http://localhost:5000/api';
-const API_URL = '/api';
+const API_URL = 'http://localhost:5000/api';
 
-console.log('🔍 API Service URL:', API_URL); // Debug log
+console.log('🔍 API Service URL:', API_URL);
 
 // Create an axios instance with defaults
 const api = axios.create({
   baseURL: API_URL,
-  // ✅ Remove withCredentials since we're not using cookies
   headers: {
     'Content-Type': 'application/json',
   },
+  // ✅ ADD: Properly serialize array parameters
+  paramsSerializer: {
+    serialize: (params) => {
+      const parts = [];
+      Object.keys(params).forEach(key => {
+        const value = params[key];
+        if (Array.isArray(value) && value.length > 0) {
+          // Send arrays as repeated parameters: radiologists=id1&radiologists=id2
+          value.forEach(v => {
+            parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(v)}`);
+          });
+        } else if (value !== undefined && value !== null && value !== '') {
+          parts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`);
+        }
+      });
+      return parts.join('&');
+    }
+  }
 });
 
 // ✅ Add request interceptor to include token from sessionManager
@@ -29,6 +45,13 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     
+    console.log('📤 API Request:', {
+      method: config.method,
+      url: config.url,
+      params: config.params,
+      serializedParams: config.paramsSerializer.serialize(config.params || {})
+    });
+    
     return config;
   },
   (error) => {
@@ -42,10 +65,8 @@ api.interceptors.response.use(
   (error) => {
     // Handle 401 Unauthorized errors (session expired)
     if (error.response && error.response.status === 401) {
-      // ✅ Clear session using sessionManager
       sessionManager.clearSession();
       
-      // Redirect to login if not already there
       if (!window.location.pathname.includes('/login')) {
         window.location.href = '/login';
       }

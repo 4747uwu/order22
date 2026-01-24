@@ -10,6 +10,18 @@ import {
     getOrganizationLabs
 } from '../controllers/admin.controller.js';
 
+//revert to radiologist
+
+import { 
+    revertToRadiologist, 
+    getRevertHistory, 
+    resolveRevert 
+} from '../controllers/revertToRadiologist.controller.js';
+
+// Add import at the top
+import { getStudyStatusHistory } from '../controllers/statusHistory.controller.js';
+
+
 import {
     createDoctor,
     createLab,
@@ -36,6 +48,11 @@ import {
     deleteUser,
     
 } from '../controllers/adminUserManagement.controller.js';
+
+
+//filter data 
+import { getRadiologistsForFilter, getLabsForFilter } from '../controllers/filterOptions.controller.js';
+
 
 
 
@@ -100,9 +117,23 @@ router.put('/manage-users/:userId/status', protect, toggleUserStatus);
 router.post('/manage-users/:userId/reset-password', protect, resetUserPassword);
 router.delete('/manage-users/:userId', protect, deleteUser);
 
+// ✅ FILTER OPTIONS ROUTES
+router.get('/filters/radiologists', protect, getRadiologistsForFilter);
+router.get('/filters/labs', protect, getLabsForFilter);
+
 
 //to get all the labs 
 router.get('/labs', protect, getOrganizationLabs);
+
+//get the status history for a study
+router.get('/study/:studyId/status-history', protect, getStudyStatusHistory);
+
+//revert to radiologist routes
+
+router.post('/studies/:studyId/revert-to-radiologist', protect, revertToRadiologist);
+router.get('/studies/:studyId/revert-history', protect, getRevertHistory);
+router.post('/studies/:studyId/resolve-revert', protect, resolveRevert);
+
 
 // ✅ SYSTEM OVERVIEW ROUTES
 router.get('/system-overview', 

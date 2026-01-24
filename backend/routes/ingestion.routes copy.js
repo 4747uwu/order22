@@ -514,61 +514,77 @@ async function findOrCreateSourceLab(tags, organization) {
     });
     
     for (const tag of labTags) {
-      if (tags[tag] && tags[tag].trim() !== '') {
-        const labIdentifierFromTag = tags[tag].trim().toUpperCase();
+      const tagValue = tags[tag];
+      
+      // 🔧 FIX: Check for lab identifier (not default values)
+      if (tagValue && tagValue.trim() !== '' && tagValue !== 'xcenticlab') {
+        const labIdentifier = tagValue.trim();
+        console.log(`[Lab] ✅ Found lab identifier in tag [${tag}]: ${labIdentifier}`);
         
-        console.log(`[Lab] 🔍 Found lab identifier in tag ${tag}: ${labIdentifierFromTag}`);
-        
-        let lab = await Lab.findOne({ 
-          identifier: labIdentifierFromTag,
-          organization: organization._id 
-        });
-        
-        if (lab) {
-          console.log(`[Lab] ✅ Found existing lab: ${lab.name} (${lab.identifier})`);
-          // Extract lab location from address if available
-          const labLocation = lab.address?.street || lab.address?.city || '';
-          return { lab, labLocation };
+        try {
+          // Direct lookup by identifier field within organization (case insensitive)
+          const labByIdentifier = await Lab.findOne({ 
+            identifier: { $regex: new RegExp(`^${escapeRegex(labIdentifier)}$`, 'i') },
+            organization: organization._id,
+            isActive: true 
+          });
+          
+          if (labByIdentifier) {
+            console.log(`[Lab] ✅ Found lab in ${organization.name}: ${labByIdentifier.name} (${labByIdentifier.identifier})`);
+            return labByIdentifier;
+          } else {
+            console.warn(`[Lab] ⚠️ No lab found with identifier: ${labIdentifier} in organization ${organization.name}`);
+            
+            // 🔧 CREATE LAB: Auto-create lab if identifier is found but lab doesn't exist
+            console.log(`[Lab] 🆕 Creating new lab with identifier: ${labIdentifier} in organization ${organization.name}`);
+            const newLab = new Lab({
+              organization: organization._id,
+              organizationIdentifier: organization.identifier,
+              name: `${labIdentifier} Laboratory`,
+              identifier: labIdentifier.toUpperCase(),
+              isActive: true,
+              notes: `Auto-created from private DICOM tag [${tag}] with value "${labIdentifier}" on ${new Date().toISOString()}`
+            });
+            await newLab.save();
+            console.log(`[Lab] ✅ Created new lab in ${organization.name}: ${newLab.name} (${newLab.identifier})`);
+            return newLab;
+          }
+          
+        } catch (labLookupError) {
+          console.error(`[Lab] ❌ Error looking up lab with identifier ${labIdentifier}:`, labLookupError.message);
         }
-        
-        // Create new lab if not found
-        lab = new Lab({
-          organization: organization._id,
-          organizationIdentifier: organization.identifier,
-          name: `${labIdentifierFromTag} Laboratory`,
-          identifier: labIdentifierFromTag,
-          isActive: true
-        });
-        
-        await lab.save();
-        console.log(`[Lab] ✨ Created new lab: ${lab.name} (${lab.identifier})`);
-        return { lab, labLocation: '' };
+      } else {
+        console.log(`[Lab] 📋 Tag [${tag}] is empty or contains default value: ${tagValue || 'EMPTY'}`);
       }
     }
     
     // 🚫 NO LAB FOUND - Use unknown lab within organization
     console.warn(`[Lab] ⚠️ No valid lab identifier found in lab tags [0013,0010], [0015,0010]`);
     
+    // Find or create the unknown lab within organization
     let unknownLab = await Lab.findOne({ 
       identifier: DEFAULT_LAB.identifier,
       organization: organization._id 
     });
     
     if (!unknownLab) {
+      console.log(`[Lab] 🆕 Creating unknown lab in ${organization.name}: ${DEFAULT_LAB.name}`);
       unknownLab = new Lab({
         organization: organization._id,
         organizationIdentifier: organization.identifier,
-        ...DEFAULT_LAB
+        ...DEFAULT_LAB,
+        notes: `Unknown lab created in ${organization.name} because no valid lab identifier was found in private tags [0013,0010], [0015,0010]. Created on ${new Date().toISOString()}`
       });
       await unknownLab.save();
     }
 
     console.log(`[Lab] 🔄 Using unknown lab in ${organization.name}: ${unknownLab.name}`);
-    return { lab: unknownLab, labLocation: '' };
+    return unknownLab;
 
   } catch (error) {
     console.error('❌ Error in findOrCreateSourceLab:', error);
     
+    // Emergency fallback - find any active lab in organization
     let emergencyLab = await Lab.findOne({ 
       organization: organization._id,
       isActive: true 
@@ -578,13 +594,16 @@ async function findOrCreateSourceLab(tags, organization) {
       emergencyLab = new Lab({
         organization: organization._id,
         organizationIdentifier: organization.identifier,
-        ...DEFAULT_LAB
+        name: 'Emergency Default Lab',
+        identifier: 'EMERGENCY_DEFAULT',
+        isActive: true,
+        notes: `Emergency lab created in ${organization.name} due to system error. Created on ${new Date().toISOString()}`
       });
       await emergencyLab.save();
     }
     
     console.log(`[Lab] 🚨 Using emergency lab in ${organization.name}: ${emergencyLab.name}`);
-    return { lab: emergencyLab, labLocation: '' };
+    return emergencyLab;
   }
 }
 
@@ -749,9 +768,8 @@ async function processStableStudy(job) {
     
     // 🔧 UPDATED: Continue with patient and lab creation within organization context
     const patientRecord = await findOrCreatePatientFromTags(tags, organizationRecord);
-    // const labRecord = await findOrCreateSourceLab(tags, organizationRecord);
-    const { lab: labRecord, labLocation } = await findOrCreateSourceLab(tags, organizationRecord);
-
+    const labRecord = await findOrCreateSourceLab(tags, organizationRecord);
+    
     console.log(`[StableStudy] 👤 Patient: ${patientRecord.patientNameRaw} in ${organizationRecord.name}`);
     console.log(`[StableStudy] 🔬 Lab: ${labRecord.name} in ${organizationRecord.name}`);
     
@@ -777,7 +795,6 @@ async function processStableStudy(job) {
       patient: patientRecord._id,
       patientId: patientRecord.patientID,
       sourceLab: labRecord._id,
-      labLocation: labLocation,  // ← ADD THIS LINE
       studyDate: formatDicomDateToISO(tags.StudyDate),
       studyTime: tags.StudyTime || '',
       modalitiesInStudy: Array.from(modalitiesSet),

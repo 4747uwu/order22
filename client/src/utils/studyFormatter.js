@@ -11,11 +11,12 @@ export const formatStudyForWorklist = (rawStudy) => {
                             'Unknown Organization';
 
     // ✅ CENTER/LAB INFO - from populated sourceLab
-    const centerName = rawStudy.sourceLab?.name || 
-                      rawStudy.sourceLab?.labName || 
-                      rawStudy.sourceLab?.location || 
-                      'Unknown Center';
+    // const centerName = rawStudy.sourceLab?.name || 
+    //                   rawStudy.sourceLab?.labName || 
+    //                   rawStudy.sourceLab?.location || 
+    //                   'Unknown Center';
 
+    const centerName = rawStudy?.institutionName || '-'
     // ✅ PATIENT INFO - handle multiple possible sources
     const patientName = rawStudy.patientInfo?.patientName ||
                        rawStudy.patient?.patientNameRaw || 
@@ -51,9 +52,7 @@ export const formatStudyForWorklist = (rawStudy) => {
     const accessionNumber = rawStudy.accessionNumber || 'N/A';
 
     // ✅ REFERRAL NUMBER (from referring physician or accession)
-    const referralNumber = rawStudy.referringPhysician?.contactInfo || 
-                          rawStudy.physicians?.referring?.mobile ||
-                          rawStudy.accessionNumber || 
+    const referralNumber = rawStudy?.referringPhysicianName ||
                           'N/A';
 
     // ✅ CLINICAL HISTORY

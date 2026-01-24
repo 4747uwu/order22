@@ -25,14 +25,12 @@ export const createDoctor = async (req, res) => {
             qualifications,
             yearsOfExperience,
             contactPhoneOffice,
+
             requireReportVerification,
             
             // ✅ SIGNATURE DATA
             signature,
-            signatureMetadata,
-            
-            // ✅ NEW: Column configuration
-            visibleColumns = []
+            signatureMetadata
         } = req.body;
 
         // Validate admin permissions
@@ -99,10 +97,9 @@ export const createDoctor = async (req, res) => {
             password: password, // Will be hashed by pre-save hook
             
             fullName: fullName.trim(),
-            role: 'radiologist', // ✅ Changed from 'doctor_account'
+            role: 'radiologist',
             createdBy: req.user._id,
-            isActive: true,
-            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [] // ✅ NEW
+            isActive: true
         });
 
         await newUser.save({ session });
@@ -209,8 +206,7 @@ export const createLab = async (req, res) => {
                 email: staffEmail,
                 username,
                 password,
-                role = 'lab_staff', // Default role
-                visibleColumns = [] // ✅ NEW
+                role = 'lab_staff' // Default role
             } = {}
         } = req.body;
 
@@ -345,8 +341,7 @@ export const createLab = async (req, res) => {
                 fullName: fullName.trim(),
                 role: role,
                 createdBy: req.user._id,
-                isActive: true,
-                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [] // ✅ NEW
+                isActive: true
             });
 
             await staffUser.save({ session });
@@ -757,88 +752,6 @@ export const deleteLab = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to delete lab'
-        });
-    }
-};
-
-// ✅ GET ALL USERS IN ADMIN'S ORGANIZATION WITH CREDENTIALS AND VERIFICATION STATUS
-export const getOrganizationUsers = async (req, res) => {
-    try {
-        // Only admin can access this
-        if (!['admin', 'super_admin'].includes(req.user.role)) {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admin can access user credentials'
-            });
-        }
-
-        let query = { isActive: true };
-        
-        // For admin, limit to their organization
-        if (req.user.role === 'admin') {
-            query.organizationIdentifier = req.user.organizationIdentifier;
-        }
-
-        // Get users with passwords and tempPassword (sensitive operation)
-        const users = await User.find(query)
-            .populate('hierarchy.createdBy', 'fullName email role')
-            .populate('hierarchy.parentUser', 'fullName email role')
-            .populate('roleConfig.linkedRadiologist', 'fullName email')
-            .populate('organization', 'name displayName identifier')
-            .select('+password +tempPassword') // ✅ Include both password fields
-            .sort({ role: 1, createdAt: -1 });
-
-        // ✅ Fetch all doctors and labs for verification status
-        const doctors = await Doctor.find({
-            organizationIdentifier: req.user.organizationIdentifier
-        }).select('userAccount requireReportVerification');
-
-        const labs = await Lab.find({
-            organizationIdentifier: req.user.organizationIdentifier
-        }).select('_id settings.requireReportVerification');
-
-        // ✅ Create lookup maps
-        const doctorMap = new Map(doctors.map(d => [d.userAccount.toString(), d.requireReportVerification]));
-        const labMap = new Map(labs.map(l => [l._id.toString(), l.settings?.requireReportVerification]));
-
-        // ✅ Enhance users with verification status
-        const enhancedUsers = users.map(user => {
-            const userObj = user.toObject();
-            
-            // Add verification status for radiologists
-            if (user.role === 'radiologist') {
-                userObj.requireReportVerification = doctorMap.get(user._id.toString()) || false;
-            }
-            
-            // Add verification status for lab_staff
-            if (user.role === 'lab_staff' && user.linkedLabs?.[0]?.labId) {
-                userObj.requireReportVerification = labMap.get(user.linkedLabs[0].labId.toString()) || false;
-            }
-            
-            return userObj;
-        });
-
-        // Get organization info
-        const organization = await Organization.findOne({
-            identifier: req.user.organizationIdentifier
-        });
-
-        console.log(`🔐 Admin ${req.user.email} accessed credentials for ${users.length} users`);
-
-        res.json({
-            success: true,
-            data: {
-                organization: organization,
-                users: enhancedUsers
-            },
-            count: enhancedUsers.length
-        });
-
-    } catch (error) {
-        console.error('❌ Get organization users error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch organization users'
         });
     }
 };
