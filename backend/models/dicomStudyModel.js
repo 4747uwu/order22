@@ -689,6 +689,70 @@ isCopiedStudy: {
             createdAt: Date
         }]
     },
+
+        // ✅ NEW: Revert to Radiologist tracking
+    revertInfo: {
+        isReverted: {
+            type: Boolean,
+            default: false,
+            index: true
+        },
+        revertCount: {
+            type: Number,
+            default: 0
+        },
+        currentRevert: {
+            revertedAt: Date,
+            revertedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            revertedByName: String,
+            revertedByRole: String,
+            previousStatus: String,
+            reason: String,
+            notes: String,
+            resolved: {
+                type: Boolean,
+                default: false
+            },
+            resolvedAt: Date,
+            resolvedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            resolutionNotes: String
+        },
+        revertHistory: [{
+            revertedAt: {
+                type: Date,
+                default: Date.now
+            },
+            revertedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            revertedByName: String,
+            revertedByRole: String,
+            previousStatus: String,
+            reason: String,
+            notes: String,
+            resolved: {
+                type: Boolean,
+                default: false
+            },
+            resolvedAt: Date,
+            resolvedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            resolutionNotes: String,
+            _id: {
+                type: mongoose.Schema.Types.ObjectId,
+                auto: true
+            }
+        }]
+    },
     
     timingInfo: {
         uploadToAssignmentMinutes: { type: Number, index: { sparse: true, background: true } },

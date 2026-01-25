@@ -14,6 +14,7 @@ import { useAuth } from '../../../hooks/useAuth';
 import { useColumnResizing } from '../../../hooks/useColumnResizing';
 import ResizableTableHeader from './ResizableTableHeader';
 import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColumns';
+import PrintModal from '../../PrintModal';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -1109,7 +1110,7 @@ const UnifiedWorklistTable = ({
   const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
   const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
   const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
-
+  const [printModal, setPrintModal] = useState({ show: false, report: null });
 
   const handleShowTimeline = useCallback((study) => {
     setTimelineModal({ show: true, studyId: study._id, studyData: study });
@@ -1156,6 +1157,14 @@ const UnifiedWorklistTable = ({
       throw error;
     }
   }, [onToggleStudyLock]);
+
+  const handleShowPrintModal = useCallback((report) => {
+    setPrintModal({ show: true, report });
+  }, []);
+
+  const handleClosePrintModal = useCallback(() => {
+    setPrintModal({ show: false, report: null });
+  }, []);
 
   if (loading) {
     return (
@@ -1536,6 +1545,12 @@ const UnifiedWorklistTable = ({
           studyId={documentsModal.studyId}
           isOpen={documentsModal.show}
           onClose={() => setDocumentsModal({ show: false, studyId: null })}
+        />
+      )}
+      {printModal.show && (
+        <PrintModal
+          report={printModal.report}
+          onClose={handleClosePrintModal}
         />
       )}
     </div>

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, AlertCircle, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, AlertCircle, RotateCcw, User, Users } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -7,6 +7,43 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
     const [reason, setReason] = useState('');
     const [notes, setNotes] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [assignedRadiologists, setAssignedRadiologists] = useState([]);
+
+    // Extract radiologists from study data
+    useEffect(() => {
+        if (study) {
+            console.log('🔍 Study data in RevertModal:', study);
+            const radiologists = [];
+            
+            // Check _assignmentInfo.assignedDoctors (this is the correct structure)
+            if (study._assignmentInfo?.assignedDoctors && Array.isArray(study._assignmentInfo.assignedDoctors)) {
+                study._assignmentInfo.assignedDoctors.forEach(doctor => {
+                    radiologists.push({
+                        id: doctor.id,
+                        name: doctor.name,
+                        email: doctor.email,
+                        role: doctor.role,
+                        assignedAt: doctor.assignedAt,
+                        status: doctor.status,
+                        isCurrent: true // All in assignedDoctors are currently assigned
+                    });
+                });
+            }
+            // Fallback: Check if single radiologist is assigned (old structure)
+            else if (study.radiologist) {
+                radiologists.push({
+                    id: study.assignedToIds?.[0] || 'unknown',
+                    name: study.radiologist,
+                    email: study.radiologistEmail,
+                    role: study.radiologistRole || 'radiologist',
+                    isCurrent: true
+                });
+            }
+            
+            console.log('👨‍⚕️ Extracted radiologists:', radiologists);
+            setAssignedRadiologists(radiologists);
+        }
+    }, [study]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -28,7 +65,7 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
             );
 
             if (response.data.success) {
-                toast.success('Report reverted to radiologist successfully');
+                toast.success('Report reverted to radiologist(s) successfully');
                 onSuccess?.();
                 onClose();
             }
@@ -56,7 +93,7 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
                                 Revert to Radiologist
                             </h2>
                             <p className="text-xs text-slate-500 mt-0.5">
-                                {study?.patientName} • {study?.bharatPacsId}
+                                {study?.patientName} • {study?.bharatPacsId || study?.patientId}
                             </p>
                         </div>
                     </div>
@@ -71,12 +108,70 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
 
                 {/* Content */}
                 <form onSubmit={handleSubmit} className="p-5">
+                    {/* Assigned Radiologists Info */}
+                    {assignedRadiologists.length > 0 && (
+                        <div className="mb-4 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-300 rounded-lg">
+                            <div className="flex items-start gap-2 mb-3">
+                                <Users className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-blue-900">
+                                        {assignedRadiologists.length === 1 
+                                            ? 'Assigned Radiologist' 
+                                            : `${assignedRadiologists.length} Assigned Radiologists`}
+                                    </p>
+                                    <p className="text-xs text-blue-700 mt-0.5">
+                                        Report will be sent back to {assignedRadiologists.length === 1 ? 'this radiologist' : 'all radiologists'}
+                                    </p>
+                                </div>
+                            </div>
+                            
+                            <div className="space-y-2 mt-3">
+                                {assignedRadiologists.map((radiologist, index) => (
+                                    <div 
+                                        key={radiologist.id || index}
+                                        className="flex items-center gap-3 px-3 py-2.5 bg-white rounded-lg border border-blue-200 shadow-sm"
+                                    >
+                                        <div className="p-2 bg-blue-100 rounded-full">
+                                            <User className="w-4 h-4 text-blue-600" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-semibold text-blue-900 truncate">
+                                                {radiologist.name}
+                                            </p>
+                                            <p className="text-xs text-blue-600 truncate">
+                                                {radiologist.email}
+                                            </p>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
+                                                    {radiologist.role || 'Radiologist'}
+                                                </span>
+                                                {radiologist.status && (
+                                                    <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-700 rounded-full">
+                                                        {radiologist.status}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Warning Message */}
                     <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg mb-4">
                         <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                         <div className="text-xs text-amber-800">
-                            <p className="font-medium mb-1">This will send the report back to the radiologist</p>
-                            <p>The radiologist will be notified and must address your concerns before resubmitting.</p>
+                            <p className="font-medium mb-1">
+                                {assignedRadiologists.length > 1 
+                                    ? '⚠️ This will notify all assigned radiologists' 
+                                    : '⚠️ This will notify the assigned radiologist'}
+                            </p>
+                            <p>
+                                {assignedRadiologists.length > 1 
+                                    ? 'All radiologists listed above will receive a notification and must address your concerns before resubmitting.' 
+                                    : 'The radiologist will receive a notification and must address your concerns before resubmitting.'}
+                            </p>
                         </div>
                     </div>
 
@@ -89,6 +184,7 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
                             value={reason}
                             onChange={(e) => setReason(e.target.value)}
                             rows={4}
+                            maxLength={500}
                             className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 resize-none"
                             placeholder="Explain what needs to be corrected or improved..."
                             required
@@ -108,10 +204,14 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             rows={3}
+                            maxLength={1000}
                             className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-rose-500 focus:border-rose-500 resize-none"
                             placeholder="Any additional instructions or context..."
                             disabled={submitting}
                         />
+                        <p className="text-xs text-slate-500 mt-1">
+                            {notes.length} / 1000 characters
+                        </p>
                     </div>
 
                     {/* Actions */}
@@ -137,7 +237,11 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
                             ) : (
                                 <>
                                     <RotateCcw className="w-4 h-4" />
-                                    <span>Revert to Radiologist</span>
+                                    <span>
+                                        {assignedRadiologists.length > 1 
+                                            ? `Revert to ${assignedRadiologists.length} Radiologists` 
+                                            : 'Revert to Radiologist'}
+                                    </span>
                                 </>
                             )}
                         </button>

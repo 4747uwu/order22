@@ -259,6 +259,287 @@ class ReportDownloadController {
             });
         }
     }
+
+
+    // 2. ADD THIS TO ReportDownload.controller.js (after downloadReportAsDOCX method)
+
+    /**
+     * Print report as PDF - generates PDF in browser for printing
+     * Uses same PDF generation but tracks as print instead of download
+     */
+    static async printReportAsPDF(req, res) {
+        console.log('🖨️ [Print] Starting PDF generation for printing...');
+        console.log('📄 [Print] Request params:', req.params);
+        
+        try {
+            const { reportId } = req.params;
+            
+            if (!reportId) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Report ID is required.' 
+                });
+            }
+            
+            // 🔍 Find the report by ID
+            console.log(`🔍 [Print] Finding report with ID: ${reportId}`);
+            const report = await Report.findById(reportId)
+                .populate('patient', 'fullName patientId age gender')
+                .populate('dicomStudy', 'accessionNumber modality studyDate referringPhysician')
+                .populate('doctorId', 'fullName email');
+            
+            if (!report) {
+                console.error(`❌ [Print] Report not found: ${reportId}`);
+                return res.status(404).json({ 
+                    success: false, 
+                    message: 'Report not found' 
+                });
+            }
+            
+            console.log(`✅ [Print] Report found: ${report.reportId}`);
+            console.log(`📊 [Print] Report type: ${report.reportType}, Status: ${report.reportStatus}`);
+            console.log(`🖼️ [Print] Captured images count: ${report.reportContent?.capturedImages?.length || 0}`);
+            
+            // 🔍 Get the HTML content from the report
+            const htmlContent = report.reportContent?.htmlContent;
+            if (!htmlContent) {
+                console.error(`❌ [Print] No HTML content found in report: ${reportId}`);
+                return res.status(400).json({ 
+                    success: false, 
+                    message: 'Report content not available for printing' 
+                });
+            }
+            
+            console.log(`📝 [Print] HTML content length: ${htmlContent.length} characters`);
+            
+            // ✅ Fetch doctor information from User and Doctor models
+            let doctorData = null;
+            if (report.doctorId) {
+                try {
+                    const doctorUser = await User.findById(report.doctorId);
+                    const doctorProfile = await Doctor.findOne({ userAccount: report.doctorId });
+                    
+                    if (doctorUser && doctorProfile) {
+                        doctorData = {
+                            fullName: doctorUser.fullName,
+                            department: doctorProfile.department || 'Radiology',
+                            licenseNumber: doctorProfile.licenseNumber || 'N/A',
+                            signature: doctorProfile.signature || '',
+                            disclaimer: 'Electronically signed. This is a digitally generated report.'
+                        };
+                        
+                        console.log('👨‍⚕️ [Print] Doctor data retrieved:', {
+                            name: doctorData.fullName,
+                            department: doctorData.department,
+                            hasSignature: !!doctorData.signature
+                        });
+                    }
+                } catch (doctorError) {
+                    console.warn('⚠️ [Print] Failed to fetch doctor data:', doctorError.message);
+                }
+            }
+            
+            // ✅ Choose template based on captured images
+            const hasCapturedImages = report.reportContent?.capturedImages?.length > 0;
+            const templateName = hasCapturedImages ? 'MyReportwithPicture.docx' : 'MyReport.docx';
+            
+            console.log(`📋 [Print] Using template: ${templateName}`);
+            
+            // 📋 Prepare base placeholders with report data
+            const placeholders = {
+                '--name--': report.patientInfo?.fullName || report.patient?.fullName || '[Patient Name]',
+                '--patientid--': report.patientInfo?.patientId || report.patient?.patientId || '[Patient ID]',
+                '--accessionno--': report.accessionNumber || report.dicomStudy?.accessionNumber || '[Accession Number]',
+                '--age--': report.patientInfo?.age || report.patient?.age || '[Age]',
+                '--gender--': report.patientInfo?.gender || report.patient?.gender || '[Gender]',
+                '--agegender--': `${report.patientInfo?.age || report.patient?.age || '[Age]'} / ${report.patientInfo?.gender || report.patient?.gender || '[Gender]'}`,
+                '--referredby--': report.studyInfo?.referringPhysician?.name || 
+                                 report.dicomStudy?.referringPhysician || 
+                                 '[Referring Physician]',
+                '--reporteddate--': report.studyInfo?.studyDate ? 
+                                   new Date(report.studyInfo.studyDate).toLocaleDateString() : 
+                                   new Date().toLocaleDateString(),
+                '--studydate--': report.studyInfo?.studyDate ? 
+                                new Date(report.studyInfo.studyDate).toLocaleDateString() : 
+                                '[Study Date]',
+                '--modality--': report.studyInfo?.modality || report.dicomStudy?.modality || '[Modality]',
+                '--clinicalhistory--': report.patientInfo?.clinicalHistory || '[Clinical History]',
+                '--Content--': htmlContent
+            };
+            
+            // ✅ Add doctor data if available
+            if (doctorData) {
+                placeholders['--drname--'] = doctorData.fullName;
+                placeholders['--department--'] = doctorData.department;
+                placeholders['--Licence--'] = doctorData.licenseNumber;
+                placeholders['--disc--'] = doctorData.disclaimer;
+                
+                if (doctorData.signature) {
+                    placeholders['Doctor Signature'] = doctorData.signature;
+                }
+            }
+            
+            // ✅ Add captured images as Picture 1, Picture 2, etc.
+            if (hasCapturedImages) {
+                const capturedImages = report.reportContent.capturedImages;
+                capturedImages.forEach((img, index) => {
+                    const pictureKey = `Picture ${index + 1}`;
+                    placeholders[pictureKey] = img.imageData;
+                    console.log(`🖼️ [Print] Added ${pictureKey} (size: ${img.imageData.length} chars)`);
+                });
+            }
+            
+            console.log('📤 [Print] Prepared placeholders for C# service:', {
+                templateName,
+                placeholdersCount: Object.keys(placeholders).length,
+                contentLength: htmlContent.length,
+                patientName: placeholders['--name--'],
+                accessionNumber: placeholders['--accessionno--'],
+                doctorName: placeholders['--drname--'] || 'N/A',
+                capturedImagesCount: hasCapturedImages ? report.reportContent.capturedImages.length : 0
+            });
+            
+            // 📞 Call C# DOCX Service to generate PDF
+            console.log(`📞 [Print] Calling C# DOCX service: ${DOCX_SERVICE_URL}`);
+            
+            const docxServicePayload = {
+                templateName: templateName,
+                placeholders: placeholders,
+                outputFormat: 'pdf'
+            };
+            
+            const docxResponse = await axios.post(DOCX_SERVICE_URL, docxServicePayload, {
+                responseType: 'arraybuffer',
+                timeout: 60000,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/pdf'
+                }
+            });
+            
+            console.log(`✅ [Print] C# service responded with status: ${docxResponse.status}`);
+            console.log(`📦 [Print] PDF size: ${docxResponse.data.byteLength} bytes`);
+            
+            if (docxResponse.status !== 200 || !docxResponse.data) {
+                throw new Error('Invalid response from DOCX service');
+            }
+            
+            // 📥 Create PDF buffer
+            const pdfBuffer = Buffer.from(docxResponse.data);
+            console.log(`📄 [Print] PDF buffer created, size: ${pdfBuffer.length} bytes`);
+            
+            // 🔄 Update print tracking in report
+            try {
+                if (!report.printInfo) {
+                    report.printInfo = { 
+                        printHistory: [], 
+                        totalPrints: 0,
+                        firstPrintedAt: null,
+                        lastPrintedAt: null
+                    };
+                }
+                
+                // Determine if this is first print or reprint
+                const printType = report.printInfo.totalPrints === 0 ? 'print' : 'reprint';
+                
+                report.printInfo.totalPrints = (report.printInfo.totalPrints || 0) + 1;
+                report.printInfo.lastPrintedAt = new Date();
+                
+                if (!report.printInfo.firstPrintedAt) {
+                    report.printInfo.firstPrintedAt = new Date();
+                }
+                
+                if (!report.printInfo.printHistory) {
+                    report.printInfo.printHistory = [];
+                }
+                
+                report.printInfo.printHistory.push({
+                    printedBy: req.user?._id,
+                    printedAt: new Date(),
+                    printType: printType,
+                    userRole: req.user?.role || 'unknown',
+                    ipAddress: req.ip,
+                    userAgent: req.get('User-Agent')
+                });
+                
+                await report.save();
+                
+                console.log(`📊 [Print] Print tracking updated - Type: ${printType}, Total prints: ${report.printInfo.totalPrints}`);
+                
+                // ✅ Add status history entry to DicomStudy
+                const study = await DicomStudy.findById(report.dicomStudy);
+                if (study) {
+                    const actionType = printType === 'print' ? 'report_printed' : 'report_reprinted';
+                    
+                    study.statusHistory.push({
+                        status: study.workflowStatus,
+                        changedBy: req.user?._id,
+                        changedAt: new Date(),
+                        action: actionType,
+                        notes: `Report ${printType === 'print' ? 'printed' : 'reprinted'} (Total: ${report.printInfo.totalPrints})`
+                    });
+                    
+                    await study.save();
+                    console.log(`📝 [Print] Status history updated in DicomStudy`);
+                }
+                
+            } catch (trackingError) {
+                console.warn('⚠️ [Print] Failed to update print tracking:', trackingError.message);
+            }
+            
+            // 📤 Send PDF to frontend with inline disposition for printing
+            const fileName = `${report.reportId}_${new Date().toISOString().split('T')[0]}.pdf`;
+            
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `inline; filename="${fileName}"`); // inline instead of attachment
+            res.setHeader('Content-Length', pdfBuffer.length);
+            res.setHeader('Cache-Control', 'no-cache');
+            
+            console.log(`🎉 [Print] Sending PDF for printing: ${fileName}`);
+            res.send(pdfBuffer);
+            
+        } catch (error) {
+            console.error('❌ [Print] Error in PDF generation for printing:', error);
+            
+            if (error.code === 'ECONNREFUSED') {
+                console.error('🔌 [Print] Connection refused to DOCX service');
+                return res.status(503).json({
+                    success: false,
+                    message: 'PDF generation service is temporarily unavailable',
+                    error: 'Service connection failed'
+                });
+            }
+            
+            if (error.code === 'ETIMEDOUT') {
+                console.error('⏰ [Print] Timeout calling DOCX service');
+                return res.status(504).json({
+                    success: false,
+                    message: 'PDF generation timed out',
+                    error: 'Service timeout'
+                });
+            }
+            
+            if (error.response) {
+                console.error('🚫 [Print] DOCX service error response:', {
+                    status: error.response.status,
+                    statusText: error.response.statusText,
+                    data: error.response.data
+                });
+                
+                return res.status(500).json({
+                    success: false,
+                    message: 'PDF generation failed',
+                    error: `Service error: ${error.response.status} ${error.response.statusText}`
+                });
+            }
+            
+            res.status(500).json({
+                success: false,
+                message: 'Failed to generate PDF for printing',
+                error: error.message
+            });
+        }
+    }
     
     /**
      * Alternative method for downloading as DOCX

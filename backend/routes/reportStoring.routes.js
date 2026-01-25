@@ -16,6 +16,9 @@ router.get('/studies/:studyId/edit-report', protect, reportStoringController.get
 router.get('/studies/:studyId/reports', protect, reportStoringController.getStudyReports);
 router.get('/reports/:reportId/download', protect, reportStoringController.downloadReport);
 
+//print routes
+router.get('/:reportId/print', ReportDownloadController.printReportAsPDF);
+
 
 //Report download Routes 
 

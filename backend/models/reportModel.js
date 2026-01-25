@@ -417,6 +417,33 @@ capturedImages: [{
             pdfUrl: String
         }
     },
+
+    // 1. ADD THIS TO reportModel.js after downloadInfo (around line 420)
+
+    // ✅ PRINT TRACKING
+    printInfo: {
+        printHistory: [{
+            printedBy: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            printedAt: {
+                type: Date,
+                default: Date.now
+            },
+            printType: {
+                type: String,
+                enum: ['print', 'reprint']
+            },
+            userRole: String,
+            ipAddress: String,
+            userAgent: String
+        }],
+        
+        totalPrints: { type: Number, default: 0 },
+        firstPrintedAt: Date,
+        lastPrintedAt: Date
+    },
     
     // ✅ QUALITY METRICS
     qualityMetrics: {
