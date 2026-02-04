@@ -77,5 +77,5 @@ volumes:
   orthanc_data:
 
 networks:
-  medical-network:
+  orthanc_medical-network:
     external: true  # Use existing network if available
