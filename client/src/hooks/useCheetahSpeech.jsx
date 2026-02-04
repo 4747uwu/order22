@@ -21,7 +21,7 @@ export function useCheetahSpeech() {
     try {
       // Create worker
       workerRef.current = new Worker(
-        new URL('../workers/cheetahWorker.js', import.meta.url),
+          new URL('../worker/cheetahWebWorker.jsx', import.meta.url),
         { type: 'module' }
       );
 
