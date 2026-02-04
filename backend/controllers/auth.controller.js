@@ -135,7 +135,8 @@ export const loginUser = async (req, res) => {
                 name: user.lab.name,
                 identifier: user.lab.identifier,
                 fullIdentifier: user.lab.fullIdentifier,
-                isActive: user.lab.isActive
+                isActive: user.lab.isActive,
+                settings: user.lab.settings
             };
         } else if (user.role === 'doctor_account') {
             const doctorProfile = await Doctor.findOne({ 

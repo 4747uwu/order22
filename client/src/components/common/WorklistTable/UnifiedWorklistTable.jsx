@@ -45,11 +45,13 @@ const getStatusColor = (status) => {
 const formatWorkflowStatus = (status) => {
   switch (status) {
     case 'new_study_received': return 'New';
+    case 'history_created': return 'History Added'
     case 'pending_assignment': return 'Pending';
     case 'assigned_to_doctor': return 'Assigned';
     case 'doctor_opened_report': return 'Opened';
     case 'report_in_progress': return 'In Progress';
     case 'report_drafted': return 'Drafted';
+    case 'revert_to_radiologist': return 'Reverted';
     case 'report_finalized': return 'Finalized';
     case 'verification_in_progress': return 'Verifying';
     case 'report_verified': return 'Verified';
@@ -311,6 +313,9 @@ const UnifiedStudyRow = ({
   const canToggleLock = userRoles.includes('admin') || userRoles.includes('assignor');
   const isRejected = study.workflowStatus === 'report_rejected';
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
+  
+  // ✅ Check if study is an Emergency Case
+  const isEmergencyCase = study.studyPriority === 'Emergency Case';
 
   useEffect(() => {
     if (!inputFocused && !showAssignmentModal) {
@@ -319,10 +324,12 @@ const UnifiedStudyRow = ({
   }, [isAssigned, study.radiologist, inputFocused, showAssignmentModal]);
 
   const rowClasses = `${
+    // ✅ Emergency Case takes highest priority - full red background
+    isEmergencyCase ? 'bg-red-100 border-l-4 border-l-red-600' :
     isSelected ? 'bg-gray-100 border-l-2 border-l-gray-900' : 
     isAssigned ? 'bg-gray-50' : 
     index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-  } ${isUrgent ? 'border-l-4 border-l-rose-500' : ''} ${isRejected ? 'border-l-4 border-l-rose-600' : ''} hover:bg-gray-100 transition-all duration-200 border-b border-slate-100`;
+  } ${!isEmergencyCase && isUrgent ? 'border-l-4 border-l-rose-500' : ''} ${!isEmergencyCase && isRejected ? 'border-l-4 border-l-rose-600' : ''} ${isEmergencyCase ? 'hover:bg-red-200' : 'hover:bg-gray-100'} transition-all duration-200 border-b border-slate-100`;
 
   const handleAssignInputFocus = (e) => {
     if (isLocked) {
@@ -369,20 +376,39 @@ const UnifiedStudyRow = ({
     }
   };
 
-  const handleViewOnlyClick = (e) => {
+    const handleViewOnlyClick = (e) => {
     e.stopPropagation();
-    navigate(`/doctor/viewer/${study._id}`, {
-      state: { study }
-    });
+    // ✅ Open OHIF Viewer in new tab
+    window.open(`/doctor/viewer/${study._id}`, '_blank');
   };
 
-  const handleOHIFReporting = () => {
-    navigate(`/online-reporting/${study._id}?openOHIF=true`, {
-      state: { 
-        study: study,
-        studyInstanceUID: study.studyInstanceUID || study._id
+const handleOHIFReporting = async () => {
+    try {
+      // ✅ Lock the study first
+      setTogglingLock(true);
+      const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
+      
+      if (!lockResponse?.data?.success) {
+        throw new Error(lockResponse?.data?.message || 'Lock failed');
       }
-    });
+      
+      toast.success('Study locked for reporting', { icon: '🔒' });
+      
+      // ✅ Open OHIF + Reporting in new tab
+      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
+    } catch (error) {
+      console.error('Error locking study for reporting:', error);
+      if (error.response?.status === 423) {
+        toast.error(`Study is locked by ${error.response.data.lockedBy}`, {
+          duration: 5000,
+          icon: '🔒'
+        });
+      } else {
+        toast.error(error.response?.data?.message || 'Failed to lock study for reporting');
+      }
+    } finally {
+      setTogglingLock(false);
+    }
   };
 
   const handleLockToggle = async (e) => {
@@ -451,6 +477,16 @@ const UnifiedStudyRow = ({
         </td>
       )}
 
+            {/* 5. LOCATION */}
+      {isColumnVisible('location') && (
+        <td className="px-2 py-2 border-r border-b border-slate-200"
+            style={{ width: `${getColumnWidth('location')}px` }}>
+          <div className="flex items-center justify-center h-full text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">
+            {study?.location || study?.labLocation || '-'}
+          </div>
+        </td>
+      )}
+
       {/* 5. TIMELINE */}
       {isColumnVisible('timeline') && (
         <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('timeline')}px` }}>
@@ -515,6 +551,22 @@ const UnifiedStudyRow = ({
             title="View Images Only (No Locking)"
           >
             <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+          </button>
+        </td>
+      )}
+
+            {/* 11. REPORTING */}
+      {isColumnVisible('reporting') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" 
+            style={{ width: `${getColumnWidth('reporting')}px` }}>
+          <button
+            onClick={handleOHIFReporting}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
+            title="Open OHIF + Reporting"
+          >
+            <div className="flex items-center justify-center h-full w-full">
+              <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+            </div>
           </button>
         </td>
       )}
@@ -710,6 +762,8 @@ const UnifiedStudyRow = ({
             <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
               {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
             </span>
+
+            <span className="text-xs text-slate-600">{study.workflowStatus ? formatWorkflowStatus(study.workflowStatus) : '-'}</span>
             {study.statusHistory && study.statusHistory.length > 0 && (() => {
               const currentStatusEntry = study.statusHistory
                 .slice()
@@ -1042,6 +1096,8 @@ const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, display
   );
 };
 
+
+
 // ✅ MAIN UNIFIED WORKLIST TABLE
 const UnifiedWorklistTable = ({ 
   studies = [], 
@@ -1262,6 +1318,18 @@ const UnifiedWorklistTable = ({
       />
     )}
 
+    {isColumnVisible('location') && (
+      <ResizableTableHeader
+        columnId="centerName"
+        label="CENTER NAME"
+        width={getColumnWidth('location')}
+        onResize={handleColumnResize}
+        minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+        maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+      />
+    )}
+
+
     
 
     {/* 5. TIMELINE */}
@@ -1320,6 +1388,17 @@ const UnifiedWorklistTable = ({
         columnId="viewOnly"
         label="VIEW"
         width={getColumnWidth('viewOnly')}
+        onResize={handleColumnResize}
+        minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
+        maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}
+      />
+    )}
+
+    {isColumnVisible('location') && (
+      <ResizableTableHeader
+        columnId="location"
+        label="Reporting"
+        width={getColumnWidth('location')}
         onResize={handleColumnResize}
         minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
         maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}

@@ -5,7 +5,6 @@ import User from '../models/userModel.js';
 import Doctor from '../models/doctorModel.js';
 import Lab from '../models/labModel.js';
 import https from 'https';
-import { updateWorkflowStatus } from '../utils/workflowStatusManager.js';
 
 // const DOCX_SERVICE_URL = 'http://165.232.189.64:8777/api/Document/generate';
 const DOCX_SERVICE_URL = 'http://localhost:5044/api/Document/generate';
@@ -33,18 +32,11 @@ class ReportDownloadController {
                 });
             }
             
-            // 🔍 Find the report by ID with populated sourceLab
+            // 🔍 Find the report by ID
             console.log(`🔍 [Download] Finding report with ID: ${reportId}`);
             const report = await Report.findById(reportId)
                 .populate('patient', 'fullName patientId age gender')
-                .populate({
-                    path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab',
-                    populate: {
-                        path: 'sourceLab',
-                        model: 'Lab'
-                    }
-                })
+                .populate('dicomStudy', 'accessionNumber modality studyDate referringPhysician lab')
                 .populate('doctorId', 'fullName email');
             
             if (!report) {
@@ -73,9 +65,9 @@ class ReportDownloadController {
             
             // ✅ Fetch lab branding data
             let labBranding = null;
-            if (report.dicomStudy?.sourceLab) {
+            if (report.dicomStudy?.lab) {
                 try {
-                    const lab = report.dicomStudy.sourceLab; // Already populated
+                    const lab = await Lab.findById(report.dicomStudy.lab);
                     if (lab && lab.reportBranding) {
                         labBranding = {
                             headerImage: lab.reportBranding.headerImage?.url || '',
@@ -196,10 +188,6 @@ class ReportDownloadController {
                     console.log(`🖼️ [Download] Added ${pictureKey}`);
                 });
             }
-
-            // ✅ Extract studyId for QR code generation
-            const studyId = report.dicomStudy?._id?.toString() || '';
-            console.log(`🔑 [Download PDF] Study ID for QR code: ${studyId}`);
             
             console.log('📤 [Download] Prepared data for C# service:', {
                 templateName,
@@ -211,8 +199,7 @@ class ReportDownloadController {
                 doctorName: placeholders['--drname--'] || 'N/A',
                 hasHeader: !!images['HeaderPlaceholder'],
                 hasFooter: !!images['FooterPlaceholder'],
-                capturedImagesCount: hasCapturedImages ? report.reportContent.capturedImages.length : 0,
-                studyId: studyId
+                capturedImagesCount: hasCapturedImages ? report.reportContent.capturedImages.length : 0
             });
             
             // 📞 Call C# DOCX Service to generate PDF
@@ -222,7 +209,6 @@ class ReportDownloadController {
                 templateName: templateName,
                 placeholders: placeholders,
                 images: images,
-                studyId: studyId,
                 outputFormat: 'pdf'
             };
             
@@ -232,8 +218,7 @@ class ReportDownloadController {
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/pdf'
-                },
-                httpsAgent: httpsAgent
+                }
             });
             
             console.log(`✅ [Download] C# service responded with status: ${docxResponse.status}`);
@@ -274,21 +259,6 @@ class ReportDownloadController {
                 
             } catch (trackingError) {
                 console.warn('⚠️ [Download] Failed to update download tracking:', trackingError.message);
-            }
-
-            // ✅ Update workflow status to final_report_downloaded
-            if (report.dicomStudy?._id) {
-                try {
-                    await updateWorkflowStatus({
-                        studyId: report.dicomStudy._id,
-                        status: 'final_report_downloaded',
-                        note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
-                        user: req.user
-                    });
-                    console.log('✅ [Download] Workflow status updated to final_report_downloaded');
-                } catch (workflowError) {
-                    console.warn('⚠️ [Download] Failed to update workflow status:', workflowError.message);
-                }
             }
             
             // 📤 Send PDF to frontend
@@ -362,18 +332,11 @@ class ReportDownloadController {
                 });
             }
             
-            // 🔍 Find the report by ID with populated sourceLab
+            // 🔍 Find the report by ID
             console.log(`🔍 [Print] Finding report with ID: ${reportId}`);
             const report = await Report.findById(reportId)
                 .populate('patient', 'fullName patientId age gender')
-                .populate({
-                    path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab',
-                    populate: {
-                        path: 'sourceLab',
-                        model: 'Lab'
-                    }
-                })
+                .populate('dicomStudy', 'accessionNumber modality studyDate referringPhysician lab')
                 .populate('doctorId', 'fullName email');
             
             if (!report) {
@@ -402,9 +365,9 @@ class ReportDownloadController {
             
             // ✅ Fetch lab branding data
             let labBranding = null;
-            if (report.dicomStudy?.sourceLab) {
+            if (report.dicomStudy?.lab) {
                 try {
-                    const lab = report.dicomStudy.sourceLab; // Already populated
+                    const lab = await Lab.findById(report.dicomStudy.lab);
                     if (lab && lab.reportBranding) {
                         labBranding = {
                             headerImage: lab.reportBranding.headerImage?.url || '',
@@ -417,7 +380,9 @@ class ReportDownloadController {
                             labId: lab._id,
                             labName: lab.name,
                             hasHeader: !!labBranding.headerImage,
-                            hasFooter: !!labBranding.footerImage
+                            hasFooter: !!labBranding.footerImage,
+                            showHeader: labBranding.showHeader,
+                            showFooter: labBranding.showFooter
                         });
                     }
                 } catch (labError) {
@@ -523,10 +488,6 @@ class ReportDownloadController {
                     console.log(`🖼️ [Print] Added ${pictureKey}`);
                 });
             }
-
-            // ✅ Extract studyId for QR code generation
-            const studyId = report.dicomStudy?._id?.toString() || '';
-            console.log(`🔑 [Print] Study ID for QR code: ${studyId}`);
             
             console.log('📤 [Print] Prepared data for C# service:', {
                 templateName,
@@ -538,8 +499,7 @@ class ReportDownloadController {
                 doctorName: placeholders['--drname--'] || 'N/A',
                 hasHeader: !!images['HeaderPlaceholder'],
                 hasFooter: !!images['FooterPlaceholder'],
-                capturedImagesCount: hasCapturedImages ? report.reportContent.capturedImages.length : 0,
-                studyId: studyId
+                capturedImagesCount: hasCapturedImages ? report.reportContent.capturedImages.length : 0
             });
             
             // 📞 Call C# DOCX Service
@@ -549,7 +509,6 @@ class ReportDownloadController {
                 templateName: templateName,
                 placeholders: placeholders,
                 images: images,
-                studyId: studyId,
                 outputFormat: 'pdf'
             };
             
@@ -559,8 +518,7 @@ class ReportDownloadController {
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept': 'application/pdf'
-                },
-                httpsAgent: httpsAgent
+                }
             });
             
             console.log(`✅ [Print] C# service responded with status: ${docxResponse.status}`);
@@ -696,14 +654,7 @@ class ReportDownloadController {
             
             const report = await Report.findById(reportId)
                 .populate('patient', 'fullName patientId age gender')
-                .populate({
-                    path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab',
-                    populate: {
-                        path: 'sourceLab',
-                        model: 'Lab'
-                    }
-                })
+                .populate('dicomStudy', 'accessionNumber modality studyDate referringPhysician sourceLab')
                 .populate('doctorId', 'fullName email');
             
             if (!report) {
@@ -725,7 +676,7 @@ class ReportDownloadController {
             let labBranding = null;
             if (report.dicomStudy?.sourceLab) {
                 try {
-                    const lab = report.dicomStudy.sourceLab; // Already populated
+                    const lab = await Lab.findById(report.dicomStudy.sourceLab);
                     if (lab && lab.reportBranding) {
                         labBranding = {
                             headerImage: lab.reportBranding.headerImage?.url || '',
@@ -733,12 +684,6 @@ class ReportDownloadController {
                             showHeader: lab.reportBranding.showHeader !== false,
                             showFooter: lab.reportBranding.showFooter !== false
                         };
-                        console.log('🏥 [Download DOCX] Lab branding retrieved:', {
-                            labId: lab._id,
-                            labName: lab.name,
-                            hasHeader: !!labBranding.headerImage,
-                            hasFooter: !!labBranding.footerImage
-                        });
                     }
                 } catch (labError) {
                     console.warn('⚠️ [Download DOCX] Failed to fetch lab branding:', labError.message);
@@ -768,11 +713,12 @@ class ReportDownloadController {
             
             // ✅ Choose template
             const hasCapturedImages = report.reportContent?.capturedImages?.length > 0;
-            const templateName = hasCapturedImages ? 'MyReportwithPicture.docx' : 'MyReport.docx';
+            // const templateName = hasCapturedImages ? 'MyReportwithPicture.docx' : 'MyReport.docx';
+            const templateName = 'MyReport.docx';
             
             const placeholders = {
                 '--name--': report.patientInfo?.fullName || report.patient?.fullName || '[Patient Name]',
-                '--patientId--': report.patientInfo?.patientId || report.patient?.patientId || '[Patient ID]',
+                '--patientId--': report.patientInfo?.patientId || report.patientId || '[Patient ID]',
                 '--accessionno--': report.accessionNumber || report.dicomStudy?.accessionNumber || '-',
                 '--agegender--': `${report.patientInfo?.age || report.patient?.age || '[Age]'} / ${report.patientInfo?.gender || report.patient?.gender || '[Gender]'}`,
                 '--referredby--': report.studyInfo?.referringPhysician?.name || report.dicomStudy?.referringPhysician || '[Referring Physician]',
@@ -792,20 +738,22 @@ class ReportDownloadController {
             const images = {};
             
             // Add lab branding
-            if (labBranding) {
-                if (labBranding.showHeader && labBranding.headerImage) {
-                    const headerBase64 = labBranding.headerImage.replace(/^data:image\/\w+;base64,/, '');
-                    images['HeaderPlaceholder'] = headerBase64;
-                    console.log('🖼️ [Download DOCX] Added HeaderPlaceholder');
-                }
-                
-                if (labBranding.showFooter && labBranding.footerImage) {
-                    const footerBase64 = labBranding.footerImage.replace(/^data:image\/\w+;base64,/, '');
-                    images['FooterPlaceholder'] = footerBase64;
-                    console.log('🖼️ [Download DOCX] Added FooterPlaceholder');
-                }
-            }
-            
+            // ✅ CORRECTED: Add lab header and footer if available
+            // ✅ CORRECTED: Add lab header and footer if available
+            console.log(labBranding);
+if (labBranding) {
+    if (labBranding.showHeader && labBranding.headerImage) {
+        const headerBase64 = labBranding.headerImage.replace(/^data:image\/\w+;base64,/, '');
+        images['HeaderPlaceholder'] = headerBase64;
+        // console.log('🖼️ [Download DOCX] Added HeaderPlaceholder');
+    }
+    
+    if (labBranding.showFooter && labBranding.footerImage) {
+        const footerBase64 = labBranding.footerImage.replace(/^data:image\/\w+;base64,/, '');
+        images['FooterPlaceholder'] = footerBase64;
+        // console.log('🖼️ [Download DOCX] Added FooterPlaceholder');
+    }
+}
             // Add doctor signature
             if (doctorData?.signature) {
                 const signatureBase64 = doctorData.signature.replace(/^data:image\/\w+;base64,/, '');
@@ -826,34 +774,19 @@ class ReportDownloadController {
             console.log(`🔑 [Download DOCX] Study ID for QR code: ${studyId}`);
             
             const docxResponse = await axios.post(DOCX_SERVICE_URL, {
-                templateName: templateName,
-                placeholders: placeholders,
-                images: images,
-                studyId: studyId,
-                outputFormat: 'docx'
-            }, {
-                responseType: 'arraybuffer',
-                timeout: 60000,
-                httpsAgent: httpsAgent
-            });
+    templateName: templateName,
+    placeholders: placeholders,
+    images: images,
+    studyId:studyId,
+    outputFormat: 'docx'
+}, {
+    responseType: 'arraybuffer',
+    timeout: 60000,
+    httpsAgent: httpsAgent  // Add this line
+});
             
             const docxBuffer = Buffer.from(docxResponse.data);
             const fileName = `${report.reportId}_${new Date().toISOString().split('T')[0]}.docx`;
-
-            // ✅ Update workflow status to final_report_downloaded
-            if (report.dicomStudy?._id) {
-                try {
-                    await updateWorkflowStatus({
-                        studyId: report.dicomStudy._id,
-                        status: 'final_report_downloaded',
-                        note: `Report downloaded as DOCX by ${req.user?.fullName || 'User'}`,
-                        user: req.user
-                    });
-                    console.log('✅ [Download DOCX] Workflow status updated to final_report_downloaded');
-                } catch (workflowError) {
-                    console.warn('⚠️ [Download DOCX] Failed to update workflow status:', workflowError.message);
-                }
-            }
             
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);

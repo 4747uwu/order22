@@ -177,7 +177,8 @@ const OnlineReportingSystemWithOHIF = () => {
         // ✅ NEW: Build OHIF viewer URL
         if (studyInstanceUID) {
           // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
-          const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
+          // const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
+          const OHIF_BASE = 'http://206.189.133.52:4000/viewer';
           let studyUIDs = '';
           
           if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
@@ -449,70 +450,138 @@ const OnlineReportingSystemWithOHIF = () => {
   }, [capturedImages]); // ✅ Add capturedImages as dependency
 
 
-  // ✅ NEW: Template selection handler (add this before handleSaveDraft)
-  const handleTemplateSelect = async (template) => {
-    if (!template) return;
+ const handleTemplateSelect = async (template) => {
+  if (!template) return;
+  
+  try {
+    console.log('📄 [Template] Loading template:', template.title);
+
+    // Get the full template data
+    const response = await api.get(`/html-templates/${template._id}`);
     
-    try {
-      console.log('📄 [Template] Loading template:', template.title);
-
-      // Get the full template data
-      const response = await api.get(`/html-templates/${template._id}`);
-      
-      if (!response.data?.success) {
-        throw new Error(response.data?.message || 'Failed to load template');
-      }
-
-      const templateData = response.data.data;
-      console.log('✅ [Template] Template loaded successfully');
-
-      // Prepare placeholders for replacement
-      const placeholders = {
-        '--name--': patientData?.fullName || patientData?.patientName || '[Patient Name]',
-        '--patientid--': patientData?.patientId || '[Patient ID]',
-        '--accessionno--': studyData?.accessionNumber || '[Accession Number]',
-        '--age--': patientData?.age || '[Age]',
-        '--gender--': patientData?.gender || '[Gender]',
-        '--agegender--': `${patientData?.age || '[Age]'} / ${patientData?.gender || '[Gender]'}`,
-        '--referredby--': typeof reportData?.referringPhysician === 'string' 
-          ? reportData.referringPhysician
-          : studyData?.referringPhysician || '[Referring Physician]',
-        '--reporteddate--': studyData?.studyDate 
-          ? new Date(studyData.studyDate).toLocaleDateString() 
-          : new Date().toLocaleDateString(),
-        '--studydate--': studyData?.studyDate 
-          ? new Date(studyData.studyDate).toLocaleDateString() 
-          : '[Study Date]',
-        '--modality--': studyData?.modality || '[Modality]',
-        '--clinicalhistory--': reportData?.clinicalHistory || patientData?.clinicalHistory || '[Clinical History]'
-      };
-
-      // Replace placeholders in template content
-      let processedContent = templateData.htmlContent || '';
-      Object.entries(placeholders).forEach(([placeholder, value]) => {
-        const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-        processedContent = processedContent.replace(regex, value);
-      });
-
-      // Set the template and content
-      setSelectedTemplate(templateData);
-      setReportContent(processedContent);
-
-      // Record template usage (non-blocking)
-      try {
-        await api.post(`/html-templates/${template._id}/record-usage`);
-      } catch (usageError) {
-        console.warn('Could not record template usage:', usageError);
-      }
-
-      const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
-      toast.success(`${templateType} template "${template.title}" applied successfully!`);
-      
-    } catch (error) {
-      console.error('❌ [Template] Error loading template:', error);
-      toast.error(`Failed to load template: ${error.message}`);
+    if (!response.data?.success) {
+      throw new Error(response.data?.message || 'Failed to load template');
     }
+
+    const templateData = response.data.data;
+    console.log('✅ [Template] Template loaded successfully');
+
+    // Prepare placeholders for replacement
+    const placeholders = {
+      '--name--': patientData?.fullName || patientData?.patientName || '[Patient Name]',
+      '--patientid--': patientData?.patientId || '[Patient ID]',
+      '--accessionno--': studyData?.accessionNumber || '[Accession Number]',
+      '--age--': patientData?.age || '[Age]',
+      '--gender--': patientData?.gender || '[Gender]',
+      '--agegender--': `${patientData?.age || '[Age]'} / ${patientData?.gender || '[Gender]'}`,
+      '--referredby--': typeof reportData?.referringPhysician === 'string' 
+        ? reportData.referringPhysician
+        : studyData?.referringPhysician || '[Referring Physician]',
+      '--reporteddate--': studyData?.studyDate 
+        ? new Date(studyData.studyDate).toLocaleDateString() 
+        : new Date().toLocaleDateString(),
+      '--studydate--': studyData?.studyDate 
+        ? new Date(studyData.studyDate).toLocaleDateString() 
+        : '[Study Date]',
+      '--modality--': studyData?.modality || '[Modality]',
+      '--clinicalhistory--': reportData?.clinicalHistory || patientData?.clinicalHistory || '[Clinical History]'
+    };
+
+    // Replace placeholders in template content
+    let processedContent = templateData.htmlContent || '';
+    Object.entries(placeholders).forEach(([placeholder, value]) => {
+      const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+      processedContent = processedContent.replace(regex, value);
+    });
+
+    // ✅ CLEAN TEMPLATE: Remove container-level styling that creates box-in-box effect
+    processedContent = cleanTemplateHTML(processedContent);
+
+    // Set the template and content
+    setSelectedTemplate(templateData);
+    setReportContent(processedContent);
+
+    // Record template usage (non-blocking)
+    try {
+      await api.post(`/html-templates/${template._id}/record-usage`);
+    } catch (usageError) {
+      console.warn('Could not record template usage:', usageError);
+    }
+
+    const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
+    toast.success(`${templateType} template "${template.title}" applied successfully!`);
+    
+  } catch (error) {
+    console.error('❌ [Template] Error loading template:', error);
+    toast.error(`Failed to load template: ${error.message}`);
+  }
+};
+
+// ✅ NEW FUNCTION: Clean template HTML to remove container-level styling
+const cleanTemplateHTML = (html) => {
+  if (!html) return '';
+  
+  // Create a temporary div to parse HTML
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  
+  // Remove inline styles that create box effects from outer containers
+  const removeBoxStyles = (element) => {
+    // Only process div and section elements that might be containers
+    if (element.tagName === 'DIV' || element.tagName === 'SECTION') {
+      const style = element.style;
+      
+      // Remove box-shadow
+      if (style.boxShadow) {
+        style.boxShadow = '';
+      }
+      
+      // Remove background colors/images (but keep backgrounds on tables)
+      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH') {
+        if (style.background || style.backgroundColor || style.backgroundImage) {
+          style.background = '';
+          style.backgroundColor = '';
+          style.backgroundImage = '';
+        }
+      }
+      
+      // Remove borders from outer containers (keep borders on tables, th, td)
+      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH' && 
+          !element.classList.contains('patient-info-table') && 
+          !element.classList.contains('page-header-table')) {
+        if (style.border || style.borderTop || style.borderBottom || style.borderLeft || style.borderRight) {
+          style.border = '';
+          style.borderTop = '';
+          style.borderBottom = '';
+          style.borderLeft = '';
+          style.borderRight = '';
+        }
+      }
+      
+      // Remove excessive padding from outer containers (keep table padding)
+      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH') {
+        const padding = parseInt(style.padding || 0);
+        if (padding > 20) {
+          style.padding = '';
+        }
+      }
+      
+      // Remove excessive margin
+      const margin = parseInt(style.margin || 0);
+      if (margin > 20) {
+        style.margin = '';
+      }
+    }
+    
+    // Recursively process children
+    Array.from(element.children).forEach(child => removeBoxStyles(child));
   };
+  
+  // Process all children
+  removeBoxStyles(temp);
+  
+  return temp.innerHTML;
+};
 
   const handleSaveDraft = async () => {
     console.log('💾 [Draft] Starting draft save');

@@ -3,6 +3,7 @@
 import DicomStudy, { ACTION_TYPES } from '../models/dicomStudyModel.js';
 import Patient from '../models/patientModel.js';
 import Document from '../models/documentModal.js';
+import Report from '../models/reportModel.js';
 import Organization from '../models/organisation.js';
 import { wasabiS3Client, wasabiConfig } from '../config/wasabi-s3.js';
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
@@ -15,11 +16,18 @@ const generateBharatPacsId = (orgIdentifier, labIdentifier) => {
     return `BP-${orgIdentifier}-${labIdentifier}-${timestamp}-${random}`;
 };
 
+// ✅ HELPER: Generate new Report ID
+const generateReportId = (orgIdentifier) => {
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = crypto.randomBytes(4).toString('hex').toUpperCase();
+    return `RPT-${orgIdentifier}-${timestamp}-${random}`;
+};
+
 // ✅ SIMPLIFIED: Copy study to CURRENT organization (no target selection needed)
 export const copyStudyToOrganization = async (req, res) => {
     try {
         const { bharatPacsId } = req.params;
-        const { copyAttachments = true, reason = 'Study transfer' } = req.body;
+        const { copyAttachments = true, copyReports = true, copyNotes = true, reason = 'Study transfer' } = req.body;
         const user = req.user;
 
         console.log(`📋 Copying study ${bharatPacsId} to current organization ${user.organizationIdentifier}`);
@@ -32,11 +40,12 @@ export const copyStudyToOrganization = async (req, res) => {
             });
         }
 
-        // Find source study
+        // Find source study with all related data
         const sourceStudy = await DicomStudy.findOne({ bharatPacsId })
             .populate('organization', 'name identifier')
             .populate('sourceLab', 'name identifier')
             .populate('patient')
+            .populate('discussions.userId', 'fullName email role')
             .lean();
 
         if (!sourceStudy) {
@@ -93,6 +102,22 @@ export const copyStudyToOrganization = async (req, res) => {
             sourceStudy.sourceLab?.identifier || 'LAB'
         );
 
+        // ✅ NEW: Copy study notes/discussions
+        const copiedDiscussions = copyNotes && sourceStudy.discussions?.length > 0 
+            ? sourceStudy.discussions.map(discussion => ({
+                comment: discussion.comment,
+                userName: discussion.userName,
+                userRole: discussion.userRole,
+                userId: null, // Don't copy user reference (user may not exist in target org)
+                dateTime: discussion.dateTime,
+                copiedFrom: {
+                    originalUserId: discussion.userId?._id || discussion.userId,
+                    originalUserName: discussion.userName,
+                    copiedAt: new Date()
+                }
+            }))
+            : [];
+
         // Create copied study (deep copy)
         const copiedStudyData = {
             // New identifiers
@@ -136,13 +161,51 @@ export const copyStudyToOrganization = async (req, res) => {
             assignment: [],
             sourceLab: null,
             
-            // Reports
+            // ✅ Copy uploaded reports and doctor reports inline
+            uploadedReports: copyReports ? (sourceStudy.uploadedReports || []).map(report => ({
+                filename: report.filename,
+                contentType: report.contentType,
+                data: report.data, // Base64 data
+                size: report.size,
+                reportType: report.reportType,
+                uploadedAt: report.uploadedAt,
+                uploadedBy: `Copied from ${sourceStudy.organizationIdentifier}`,
+                reportStatus: report.reportStatus,
+                doctorId: null, // Don't copy doctor reference
+                copiedFrom: {
+                    originalOrg: sourceStudy.organizationIdentifier,
+                    originalBpId: sourceStudy.bharatPacsId,
+                    copiedAt: new Date()
+                }
+            })) : [],
+            
+            doctorReports: copyReports ? (sourceStudy.doctorReports || []).map(report => ({
+                filename: report.filename,
+                contentType: report.contentType,
+                data: report.data, // Base64 data
+                size: report.size,
+                reportType: report.reportType,
+                uploadedAt: report.uploadedAt,
+                uploadedBy: `Copied from ${sourceStudy.organizationIdentifier}`,
+                reportStatus: report.reportStatus,
+                doctorId: null, // Don't copy doctor reference
+                copiedFrom: {
+                    originalOrg: sourceStudy.organizationIdentifier,
+                    originalBpId: sourceStudy.bharatPacsId,
+                    copiedAt: new Date()
+                }
+            })) : [],
+            
+            // Reports placeholder (will be populated after copying Report documents)
             reportInfo: {
                 verificationInfo: { verificationStatus: 'pending' },
                 modernReports: []
             },
-            doctorReports: [],
-            uploadedReports: [],
+            reports: [],
+            
+            // ✅ Copy study notes/discussions
+            discussions: copiedDiscussions,
+            hasStudyNotes: copiedDiscussions.length > 0,
             
             // Copy tracking
             copiedFrom: {
@@ -152,7 +215,13 @@ export const copyStudyToOrganization = async (req, res) => {
                 organizationName: sourceStudy.organization?.name,
                 copiedAt: new Date(),
                 copiedBy: user._id,
-                reason
+                reason,
+                includedNotes: copyNotes,
+                includedReports: copyReports,
+                includedAttachments: copyAttachments,
+                notesCount: copiedDiscussions.length,
+                uploadedReportsCount: copyReports ? (sourceStudy.uploadedReports?.length || 0) : 0,
+                doctorReportsCount: copyReports ? (sourceStudy.doctorReports?.length || 0) : 0
             },
             
             isCopiedStudy: true,
@@ -186,21 +255,37 @@ export const copyStudyToOrganization = async (req, res) => {
                         bharatPacsId: newBharatPacsId,
                         organization: targetOrg.identifier
                     },
-                    metadata: { reason }
+                    metadata: { 
+                        reason,
+                        copiedNotes: copyNotes,
+                        copiedReports: copyReports,
+                        copiedAttachments: copyAttachments,
+                        notesCount: copiedDiscussions.length
+                    }
                 },
                 notes: `Study copied from ${sourceStudy.organizationIdentifier} to ${targetOrg.identifier}`
             }],
             
             // Flags
-            hasStudyNotes: false,
             hasAttachments: false,
-            discussions: [],
             attachments: []
         };
 
         // Create the copied study
         const copiedStudy = new DicomStudy(copiedStudyData);
         await copiedStudy.save();
+
+        // ✅ NEW: Copy Report documents from Report collection
+        let copiedReportsCount = 0;
+        if (copyReports) {
+            copiedReportsCount = await copyStudyReports(
+                sourceStudy,
+                copiedStudy,
+                targetOrg,
+                targetPatient,
+                user
+            );
+        }
 
         // Update source study
         await DicomStudy.findByIdAndUpdate(sourceStudy._id, {
@@ -226,8 +311,9 @@ export const copyStudyToOrganization = async (req, res) => {
         });
 
         // Copy attachments if requested
+        let copiedAttachmentsCount = 0;
         if (copyAttachments && sourceStudy.attachments?.length > 0) {
-            await copyStudyAttachments(
+            copiedAttachmentsCount = await copyStudyAttachments(
                 sourceStudy,
                 copiedStudy,
                 targetOrg.identifier,
@@ -236,6 +322,9 @@ export const copyStudyToOrganization = async (req, res) => {
         }
 
         console.log(`✅ Study copied successfully: ${newBharatPacsId}`);
+        console.log(`   - Notes copied: ${copiedDiscussions.length}`);
+        console.log(`   - Reports copied: ${copiedReportsCount}`);
+        console.log(`   - Attachments copied: ${copiedAttachmentsCount}`);
 
         res.status(201).json({
             success: true,
@@ -250,6 +339,13 @@ export const copyStudyToOrganization = async (req, res) => {
                     bharatPacsId: newBharatPacsId,
                     organization: targetOrg.identifier,
                     organizationName: targetOrg.name
+                },
+                copiedItems: {
+                    notes: copiedDiscussions.length,
+                    reports: copiedReportsCount,
+                    uploadedReports: copyReports ? (sourceStudy.uploadedReports?.length || 0) : 0,
+                    doctorReports: copyReports ? (sourceStudy.doctorReports?.length || 0) : 0,
+                    attachments: copiedAttachmentsCount
                 }
             }
         });
@@ -264,7 +360,197 @@ export const copyStudyToOrganization = async (req, res) => {
     }
 };
 
-// ✅ 2. COPY STUDY ATTACHMENTS
+// ✅ NEW: Copy reports from Report collection
+const copyStudyReports = async (sourceStudy, targetStudy, targetOrg, targetPatient, user) => {
+    try {
+        // Find all reports associated with the source study
+        const sourceReports = await Report.find({ 
+            dicomStudy: sourceStudy._id 
+        }).lean();
+
+        if (!sourceReports || sourceReports.length === 0) {
+            console.log(`📄 No reports found for study ${sourceStudy.bharatPacsId}`);
+            return 0;
+        }
+
+        console.log(`📄 Copying ${sourceReports.length} reports...`);
+
+        const copiedReportRefs = [];
+
+        for (const sourceReport of sourceReports) {
+            // Generate new report ID
+            const newReportId = generateReportId(targetOrg.identifier);
+
+            // Create copied report
+            const copiedReportData = {
+                reportId: newReportId,
+                
+                // Target organization
+                organization: targetOrg._id,
+                organizationIdentifier: targetOrg.identifier,
+                
+                // Patient reference
+                patient: targetPatient._id,
+                patientId: targetPatient.patientID,
+                
+                // Study reference
+                dicomStudy: targetStudy._id,
+                studyInstanceUID: targetStudy.studyInstanceUID,
+                accessionNumber: targetStudy.accessionNumber,
+                
+                // Personnel - set to copying user
+                createdBy: user._id,
+                doctorId: user._id, // Assign to copying user
+                verifierId: null,
+                
+                // Copy report content
+                reportContent: {
+                    htmlContent: sourceReport.reportContent?.htmlContent || '',
+                    plainTextContent: sourceReport.reportContent?.plainTextContent || '',
+                    templateInfo: sourceReport.reportContent?.templateInfo || {},
+                    placeholders: sourceReport.reportContent?.placeholders || {},
+                    capturedImages: sourceReport.reportContent?.capturedImages || [],
+                    statistics: sourceReport.reportContent?.statistics || {}
+                },
+                
+                // Copy captured images at root level too
+                capturedImages: sourceReport.capturedImages || [],
+                
+                // Report type and status
+                reportType: sourceReport.reportType || 'uploaded-report',
+                reportStatus: 'draft', // Reset to draft in new org
+                
+                // Export info
+                exportInfo: {
+                    format: sourceReport.exportInfo?.format || 'docx',
+                    fileName: sourceReport.exportInfo?.fileName,
+                    documentPath: null, // Clear path
+                    downloadUrl: null,
+                    downloadCount: 0
+                },
+                
+                // Patient info
+                patientInfo: sourceReport.patientInfo || targetStudy.patientInfo,
+                
+                // Study info
+                studyInfo: sourceReport.studyInfo || {
+                    studyDate: targetStudy.studyDate,
+                    modality: targetStudy.modality,
+                    examDescription: targetStudy.examDescription
+                },
+                
+                // Workflow info - reset
+                workflowInfo: {
+                    draftedAt: new Date(),
+                    statusHistory: [{
+                        status: 'draft',
+                        changedAt: new Date(),
+                        changedBy: user._id,
+                        notes: `Report copied from ${sourceStudy.organizationIdentifier}`,
+                        userRole: user.role
+                    }]
+                },
+                
+                // Verification info - reset
+                verificationInfo: {
+                    verificationStatus: 'pending'
+                },
+                
+                // Download/print info - reset
+                downloadInfo: {
+                    downloadHistory: [],
+                    totalDownloads: 0
+                },
+                printInfo: {
+                    printHistory: [],
+                    totalPrints: 0
+                },
+                
+                // Quality metrics
+                qualityMetrics: sourceReport.qualityMetrics || {},
+                
+                // Attachments - clear (will be handled separately)
+                attachments: [],
+                
+                // Search text
+                searchText: sourceReport.searchText || '',
+                
+                // System info
+                systemInfo: {
+                    version: '1.0',
+                    migrated: true,
+                    migrationDate: new Date(),
+                    dataSource: 'migrated_data', // ✅ FIX: Use valid enum value instead of 'study_copy'
+                    copiedFrom: {
+                        reportId: sourceReport.reportId,
+                        organizationIdentifier: sourceStudy.organizationIdentifier,
+                        copiedAt: new Date(),
+                        copiedBy: user._id
+                    }
+                },
+                
+                // Audit info
+                auditInfo: {
+                    hipaaCompliant: true,
+                    accessLog: [{
+                        accessedBy: user._id,
+                        accessedAt: new Date(),
+                        accessType: 'edit',
+                        ipAddress: 'study-copy'
+                    }],
+                    accessCount: 1
+                }
+            };
+
+            const copiedReport = new Report(copiedReportData);
+            await copiedReport.save();
+
+            // Add to refs array
+            copiedReportRefs.push({
+                reportId: copiedReport._id,
+                reportType: copiedReport.reportType,
+                reportStatus: copiedReport.reportStatus,
+                createdAt: new Date(),
+                createdBy: user._id,
+                fileName: copiedReport.exportInfo?.fileName
+            });
+
+            console.log(`   ✅ Copied report: ${sourceReport.reportId} -> ${newReportId}`);
+        }
+
+        // Update copied study with report references
+        if (copiedReportRefs.length > 0) {
+            await DicomStudy.findByIdAndUpdate(targetStudy._id, {
+                $push: { 
+                    reports: { $each: copiedReportRefs },
+                    'reportInfo.modernReports': { 
+                        $each: copiedReportRefs.map(r => ({
+                            reportId: r.reportId,
+                            reportType: r.reportType,
+                            createdAt: r.createdAt
+                        }))
+                    }
+                },
+                $set: {
+                    'currentReportStatus.hasReports': true,
+                    'currentReportStatus.latestReportId': copiedReportRefs[copiedReportRefs.length - 1].reportId,
+                    'currentReportStatus.latestReportStatus': 'draft',
+                    'currentReportStatus.latestReportType': copiedReportRefs[copiedReportRefs.length - 1].reportType
+                }
+            });
+        }
+
+        console.log(`✅ Copied ${copiedReportRefs.length} reports successfully`);
+        return copiedReportRefs.length;
+
+    } catch (error) {
+        console.error('❌ Error copying reports:', error);
+        // Don't throw error, just log it and return 0
+        return 0;
+    }
+};
+
+// ✅ 2. COPY STUDY ATTACHMENTS (existing function - updated to return count)
 const copyStudyAttachments = async (sourceStudy, targetStudy, targetOrgIdentifier, userId) => {
     try {
         console.log(`📎 Copying ${sourceStudy.attachments.length} attachments...`);
@@ -333,9 +619,11 @@ const copyStudyAttachments = async (sourceStudy, targetStudy, targetOrgIdentifie
         }
 
         console.log(`✅ Copied ${copiedAttachments.length} attachments successfully`);
+        return copiedAttachments.length;
     } catch (error) {
         console.error('❌ Error copying attachments:', error);
         // Don't throw error, just log it
+        return 0;
     }
 };
 
@@ -398,7 +686,7 @@ export const verifyStudy = async (req, res) => {
 
         const study = await DicomStudy.findOne({ bharatPacsId })
             .populate('organization', 'name identifier')
-            .select('bharatPacsId patientInfo studyDate modality modalitiesInStudy seriesCount instanceCount organizationIdentifier examDescription')
+            .select('bharatPacsId patientInfo studyDate modality modalitiesInStudy seriesCount instanceCount organizationIdentifier examDescription discussions uploadedReports doctorReports reports hasStudyNotes')
             .lean();
 
         if (!study) {
@@ -408,8 +696,8 @@ export const verifyStudy = async (req, res) => {
             });
         }
 
-        // ✅ Allow verification from any org (for cross-org copying)
-        // Only super_admin and admin can copy anyway
+        // Count reports
+        const reportCount = await Report.countDocuments({ dicomStudy: study._id });
 
         res.json({
             success: true,
@@ -422,7 +710,13 @@ export const verifyStudy = async (req, res) => {
                 instanceCount: study.instanceCount,
                 organizationIdentifier: study.organizationIdentifier,
                 organizationName: study.organization?.name || 'Unknown',
-                examDescription: study.examDescription
+                examDescription: study.examDescription,
+                // ✅ NEW: Include counts for notes and reports
+                hasStudyNotes: study.hasStudyNotes || (study.discussions?.length > 0),
+                notesCount: study.discussions?.length || 0,
+                reportsCount: reportCount,
+                uploadedReportsCount: study.uploadedReports?.length || 0,
+                doctorReportsCount: study.doctorReports?.length || 0
             }
         });
 
@@ -440,6 +734,6 @@ export const verifyStudy = async (req, res) => {
 export default {
     copyStudyToOrganization,
     getStudyCopyHistory,
-    verifyStudy  // ✅ ADD THIS
+    verifyStudy
 };
 

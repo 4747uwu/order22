@@ -32,10 +32,10 @@ services:
       - SMTP_USER=${SMTP_USER}
       - SMTP_PASS=${SMTP_PASS}
       - SENDER_EMAIL=${SENDER_EMAIL}
-      - ORTHANC_URL=http://165.232.189.64:8042
+      - ORTHANC_URL=http://206.189.133.52:8042
       - ORTHANC_USERNAME=alice  
       - ORTHANC_PASSWORD=alicePassword
-      - FRONTEND_URL=http://165.232.189.64  # ✅ Change from 157.245.86.199
+      - FRONTEND_URL=http://206.189.133.52  # ✅ Change from 157.245.86.199
       - ORTHANC_STORAGE_PATH=/root/orthanc/orthancstorage
     
     volumes: # ✅ ADD THIS SECTION
@@ -44,7 +44,7 @@ services:
     restart: unless-stopped
     
     networks:
-      - medical-network
+      - orthanc_medical-network
       
 
   frontend:
@@ -54,14 +54,14 @@ services:
         - VITE_NODE_ENV=production    
         - VITE_BACKEND_URL=    # ✅ Change IP
         - VITE_WS_URL=/ws              # ✅ Change IP  
-        - VITE_ORTHANC_URL=http://165.232.189.64:8042         # ✅ Change IP
+        - VITE_ORTHANC_URL=http://206.189.133.52:8042         # ✅ Change IP
     ports:
       - "80:80"
     depends_on:
       - backend
     restart: unless-stopped
     networks:
-      - medical-network
+      - orthanc_medical-network
 
   # orthanc:
   #   image: orthancteam/orthanc:latest

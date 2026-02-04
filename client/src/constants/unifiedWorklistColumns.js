@@ -49,7 +49,19 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 250
   },
 
-  // 5. TIMELINE HISTORY
+  // 5. LOCATION (NEW)
+  LOCATION: {
+    id: 'location',
+    label: 'Location',
+    description: 'Lab or center physical location/address',
+    category: 'lab',
+    tables: ['assignor', 'radiologist', 'verifier', 'lab_staff', 'receptionist'],
+    defaultWidth: 200,
+    minWidth: 150,
+    maxWidth: 350
+  },
+
+  // 6. TIMELINE HISTORY (moved from 5)
   TIMELINE: {
     id: 'timeline',
     label: 'Timeline',
@@ -61,7 +73,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 80
   },
 
-  // 6. PATIENT NAME / UHID
+  // 7. PATIENT NAME / UHID
   PATIENT_NAME: {
     id: 'patientName',
     label: 'PT Name / UHID',
@@ -73,7 +85,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 300
   },
 
-  // 7. AGE/SEX
+  // 8. AGE/SEX
   AGE_GENDER: {
     id: 'ageGender',
     label: 'Age/Sex',
@@ -85,7 +97,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 120
   },
 
-  // 8. MODALITY
+  // 9. MODALITY
   MODALITY: {
     id: 'modality',
     label: 'Modality',
@@ -97,7 +109,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 150
   },
 
-  // 9. VIEW ONLY
+  // 10. VIEW ONLY
   VIEW_ONLY: {
     id: 'viewOnly',
     label: 'View',
@@ -109,7 +121,19 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 80
   },
 
-  // 10. SERIES/IMAGES
+  // 11. REPORTING
+  REPORTING: {
+    id: 'reporting',
+    label: 'Reporting',
+    description: 'Open reporting interface',
+    category: 'actions',
+    tables: ['assignor', 'radiologist'],
+    defaultWidth: 100,
+    minWidth: 80,
+    maxWidth: 120
+  },
+
+  // 12. SERIES/IMAGES
   STUDY_SERIES_IMAGES: {
     id: 'studySeriesImages',
     label: 'Series/Images',
@@ -121,7 +145,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 180
   },
 
-  // 11. PATIENT ID
+  // 13. PATIENT ID
   PATIENT_ID: {
     id: 'patientId',
     label: 'PT ID',
@@ -133,7 +157,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 180
   },
 
-  // 12. REFERRAL DOCTOR
+  // 14. REFERRAL DOCTOR
   REFERRAL_DOCTOR: {
     id: 'referralDoctor',
     label: 'Referral Doctor',
@@ -145,7 +169,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 300
   },
 
-  // 13. CLINICAL HISTORY
+  // 15. CLINICAL HISTORY
   CLINICAL_HISTORY: {
     id: 'clinicalHistory',
     label: 'Clinical History',
@@ -157,7 +181,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 400
   },
 
-  // 14. STUDY DATE/TIME
+  // 16. STUDY DATE/TIME
   STUDY_DATE_TIME: {
     id: 'studyDateTime',
     label: 'Study Date/Time',
@@ -169,7 +193,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 200
   },
 
-  // 15. UPLOAD DATE/TIME
+  // 17. UPLOAD DATE/TIME
   UPLOAD_DATE_TIME: {
     id: 'uploadDateTime',
     label: 'Upload Date/Time',
@@ -181,7 +205,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 200
   },
 
-  // 16. RADIOLOGIST
+  // 18. RADIOLOGIST
   ASSIGNED_RADIOLOGIST: {
     id: 'assignedRadiologist',
     label: 'Radiologist',
@@ -193,7 +217,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 300
   },
 
-  // 17. LOCK/UNLOCK TOGGLE
+  // 19. LOCK/UNLOCK TOGGLE
   STUDY_LOCK: {
     id: 'studyLock',
     label: 'Lock/Unlock',
@@ -205,7 +229,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 120
   },
 
-  // 18. STATUS
+  // 20. STATUS
   STATUS: {
     id: 'status',
     label: 'Status',
@@ -217,7 +241,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 200
   },
 
-  // 19. PRINT REPORT
+  // 21. PRINT REPORT
   PRINT_COUNT: {
     id: 'printCount',
     label: 'Print Report',
@@ -229,7 +253,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 150
   },
 
-  // 20. REJECTION REASON
+  // 22. REJECTION REASON
   REJECTION_REASON: {
     id: 'rejectionReason',
     label: 'Rejection Reason',
@@ -241,7 +265,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 500
   },
 
-  // 21. VERIFIED BY
+  // 23. VERIFIED BY
   ASSIGNED_VERIFIER: {
     id: 'assignedVerifier',
     label: 'Verified By',
@@ -253,7 +277,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 250
   },
 
-  // 22. VERIFIED DATE/TIME
+  // 24. VERIFIED DATE/TIME
   VERIFIED_DATE_TIME: {
     id: 'verifiedDateTime',
     label: 'Verified Date/Time',
@@ -265,7 +289,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     maxWidth: 200
   },
 
-  // 23. ACTIONS
+  // 25. ACTIONS
   ACTIONS: {
     id: 'actions',
     label: 'Actions',
@@ -285,11 +309,13 @@ const STANDARD_COLUMN_ORDER = [
   'bharatPacsId',
   'organization',
   'centerName',
+  'location',              // ✅ NEW: Added after centerName
   'timeline',
   'patientName',
   'ageGender',
   'modality',
   'viewOnly',
+  'reporting',             // ✅ NEW: Added after viewOnly
   'studySeriesImages',
   'patientId',
   'referralDoctor',
@@ -313,11 +339,13 @@ export const SINGLE_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
     'modality',
     'viewOnly',
+    'reporting',             // ✅ NEW
     'studySeriesImages',
     'patientId',
     'referralDoctor',
@@ -337,11 +365,13 @@ export const SINGLE_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
     'modality',
     'viewOnly',
+    'reporting',             // ✅ NEW
     'studySeriesImages',
     'patientId',
     'referralDoctor',
@@ -361,6 +391,7 @@ export const SINGLE_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
@@ -383,6 +414,7 @@ export const SINGLE_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
@@ -406,6 +438,7 @@ export const SINGLE_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'patientName',
     'ageGender',
     'modality',
@@ -434,11 +467,13 @@ export const MULTI_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
     'modality',
     'viewOnly',
+    'reporting',             // ✅ NEW
     'studySeriesImages',
     'patientId',
     'referralDoctor',
@@ -459,6 +494,7 @@ export const MULTI_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
@@ -483,6 +519,7 @@ export const MULTI_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
@@ -507,11 +544,13 @@ export const MULTI_ROLE_DEFAULTS = {
     'bharatPacsId',
     'organization',
     'centerName',
+    'location',              // ✅ NEW
     'timeline',
     'patientName',
     'ageGender',
     'modality',
     'viewOnly',
+    'reporting',             // ✅ NEW
     'studySeriesImages',
     'patientId',
     'referralDoctor',

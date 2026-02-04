@@ -1,22 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { FileText, Clock, CheckCircle2, Edit3, RotateCcw, XCircle, UserPlus } from 'lucide-react';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
 import UnifiedWorklistTable from '../../components/common/WorklistTable/UnifiedWorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import CreateTypistModal from '../../components/doctor/CreateTypistModal';
 import api from '../../services/api';
+import { useAuth } from '../../hooks/useAuth';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
-import { 
-  FileText, 
-  Clock, 
-  CheckCircle2,
-  UserPlus,
-  CheckCircle,
-  XCircle
-} from 'lucide-react';
-import toast from 'react-hot-toast';
 
 // ✅ UTILITY: Resolve visible columns from user object
 const resolveUserVisibleColumns = (user) => {
@@ -54,23 +47,15 @@ const DoctorDashboard = () => {
   const [showTypistModal, setShowTypistModal] = useState(false);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
-  // ✅ UPDATED: API VALUES STATE - 5 categories (pending, completed, accepted, rejected)
-  const [apiValues, setApiValues] = useState({
-    total: 0,
+  // ✅ CATEGORY-BASED API VALUES (6 categories)
+  const [categoryValues, setCategoryValues] = useState({
+    all: 0,
     pending: 0,
+    drafted: 0,
     completed: 0,
-    accepted: 0,
+    reverted: 0,
     rejected: 0
   });
-
-  // ✅ UPDATED: USE API values for tab counts - 5 categories
-  const tabCounts = useMemo(() => ({
-    all: apiValues.total,
-    pending: apiValues.pending,
-    completed: apiValues.completed,
-    accepted: apiValues.accepted,
-    rejected: apiValues.rejected
-  }), [apiValues]);
 
   // ✅ COMPUTE visible columns from user
   const visibleColumns = useMemo(() => {
@@ -94,7 +79,7 @@ const DoctorDashboard = () => {
     return [];
   }, [currentUser?.accountRoles, currentUser?.role]);
 
-  // ✅ OLD: Column configuration (no longer needed, but kept for reference)
+  // ✅ COLUMN CONFIGURATION
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: false, order: 1, label: 'Select' },
     bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
@@ -135,18 +120,19 @@ const DoctorDashboard = () => {
     }
   }, [columnConfig]);
 
-  // ✅ UPDATED: API endpoints - 5 categories
+  // ✅ CATEGORY-BASED ENDPOINT MAPPING (6 categories)
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/doctor/studies/pending';
+      case 'drafted': return '/doctor/studies/drafted';
       case 'completed': return '/doctor/studies/completed';
-      case 'accepted': return '/doctor/studies/accepted';
+      case 'reverted': return '/doctor/studies/reverted';
       case 'rejected': return '/doctor/studies/rejected';
       default: return '/doctor/studies';
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
+  // ✅ FETCH STUDIES WITH PAGINATION
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
@@ -168,7 +154,7 @@ const DoctorDashboard = () => {
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         
-        // ✅ FORMAT STUDIES BEFORE SETTING STATE (like admin dashboard)
+        // ✅ FORMAT STUDIES BEFORE SETTING STATE
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         console.log('✅ DOCTOR: Formatted studies:', {
           raw: rawStudies.length,
@@ -198,8 +184,8 @@ const DoctorDashboard = () => {
     }
   }, [getApiEndpoint, pagination.currentPage, pagination.recordsPerPage]);
 
-  // ✅ UPDATED: FETCH ANALYTICS - 5 categories
-  const fetchAnalytics = useCallback(async (filters = {}) => {
+  // ✅ FETCH CATEGORY VALUES (6 categories)
+  const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
       
@@ -207,41 +193,57 @@ const DoctorDashboard = () => {
       
       const response = await api.get('/doctor/values', { params });
       if (response.data.success) {
-        setApiValues({
-          total: response.data.total || 0,
+        setCategoryValues({
+          all: response.data.all || 0,
           pending: response.data.pending || 0,
+          drafted: response.data.drafted || 0,
           completed: response.data.completed || 0,
-          accepted: response.data.accepted || 0,
+          reverted: response.data.reverted || 0,
           rejected: response.data.rejected || 0
         });
-
-        console.log('📊 DOCTOR API VALUES UPDATED:', {
-          total: response.data.total,
+        
+        console.log('✅ DOCTOR ANALYTICS:', {
+          all: response.data.all,
           pending: response.data.pending,
+          drafted: response.data.drafted,
           completed: response.data.completed,
-          accepted: response.data.accepted,
+          reverted: response.data.reverted,
           rejected: response.data.rejected
         });
       }
     } catch (error) {
       console.error('Error fetching doctor analytics:', error);
-      setApiValues({ total: 0, pending: 0, completed: 0, accepted: 0, rejected: 0 });
+      setCategoryValues({ all: 0, pending: 0, drafted: 0, completed: 0, reverted: 0, rejected: 0 });
     }
   }, [searchFilters]);
 
-  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
+  // ✅ INITIAL DATA FETCH - Load saved filters or use defaults
   useEffect(() => {
-    const defaultFilters = {
-      dateFilter: 'today',
-      dateType: 'createdAt',
-      modality: 'all',
-      priority: 'all'
-    };
+    const savedFilters = localStorage.getItem('doctorSearchFilters');
+    const defaultFilters = savedFilters 
+      ? JSON.parse(savedFilters)
+      : {
+          dateFilter: 'today',
+          dateType: 'createdAt',
+          modality: 'all',
+          priority: 'all'
+        };
     
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
-    fetchAnalytics(defaultFilters);
+    fetchCategoryValues(defaultFilters);
   }, []);
+
+  // ✅ Save filters whenever they change
+  useEffect(() => {
+    if (Object.keys(searchFilters).length > 0) {
+      try {
+        localStorage.setItem('doctorSearchFilters', JSON.stringify(searchFilters));
+      } catch (error) {
+        console.warn('Error saving filters:', error);
+      }
+    }
+  }, [searchFilters]);
 
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
@@ -253,7 +255,7 @@ const DoctorDashboard = () => {
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Doctor] Changing page: ${pagination.currentPage} -> ${newPage}`);
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
-  }, [fetchStudies, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
   // ✅ HANDLE RECORDS PER PAGE CHANGE
   const handleRecordsPerPageChange = useCallback((newLimit) => {
@@ -266,19 +268,21 @@ const DoctorDashboard = () => {
     console.log('🔍 [Doctor] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
     fetchStudies(searchParams, 1, pagination.recordsPerPage);
-    fetchAnalytics(searchParams);
-  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
+    fetchCategoryValues(searchParams);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Doctor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
     fetchStudies(filters, 1, pagination.recordsPerPage);
-    fetchAnalytics(filters);
-  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
+    fetchCategoryValues(filters);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Doctor] VIEW CHANGE: ${currentView} -> ${view}`);
-    setCurrentView(view);
+    if (currentView !== view) {
+      setCurrentView(view);
+    }
   }, [currentView]);
 
   const handleSelectAll = useCallback((checked) => {
@@ -296,8 +300,8 @@ const DoctorDashboard = () => {
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Doctor] Manual refresh');
     fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
-    fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+    fetchCategoryValues(searchFilters);
+  }, [fetchStudies, fetchCategoryValues, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
   const handleCreateTypist = useCallback(() => {
     console.log('👥 Opening create typist modal');
@@ -330,16 +334,15 @@ const DoctorDashboard = () => {
       
       if (response.data.success) {
         toast.success('Study details updated successfully');
-        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
-        fetchAnalytics(searchFilters);
+        handleRefresh();
       } else {
-        toast.error('Failed to update study details');
+        toast.error(response.data.message || 'Failed to update study details');
       }
     } catch (error) {
       console.error('Error updating study details:', error);
       toast.error('Error updating study details');
     }
-  }, [fetchStudies, searchFilters, fetchAnalytics, pagination.currentPage, pagination.recordsPerPage]);
+  }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
 
   // Additional actions for navbar
   const additionalActions = [
@@ -359,13 +362,14 @@ const DoctorDashboard = () => {
     }
   ];
 
-  // ✅ UPDATED: 5 CATEGORY TABS (added accepted and rejected)
+  // ✅ CATEGORY TABS - 6 categories matching admin style
   const categoryTabs = [
-    { key: 'all', label: 'All', count: tabCounts.all, icon: FileText },
-    { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Clock },
-    { key: 'completed', label: 'Completed', count: tabCounts.completed, icon: CheckCircle2 },
-    { key: 'accepted', label: 'Accepted', count: tabCounts.accepted, icon: CheckCircle },
-    { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: XCircle }
+    { key: 'all', label: 'All', count: categoryValues.all },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending },
+    { key: 'drafted', label: 'Drafted', count: categoryValues.drafted },
+    { key: 'completed', label: 'Completed', count: categoryValues.completed },
+    { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },
+    { key: 'rejected', label: 'Rejected', count: categoryValues.rejected }
   ];
 
   return (
@@ -377,23 +381,27 @@ const DoctorDashboard = () => {
         onRefresh={handleRefresh}
         additionalActions={additionalActions}
         notifications={0}
+        theme="doctor"
       />
       
       <Search
         onSearch={handleSearch}
         onFilterChange={handleFilterChange}
         loading={loading}
-        totalStudies={tabCounts.all}
+        totalStudies={categoryValues.all}
         currentCategory={currentView}
+        theme="doctor"
+        initialFilters={searchFilters}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
+          {/* ✅ HEADER BAR - Matching admin dashboard */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
               <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                My Worklist
+                Doctor Worklist
               </h2>
               <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
                 {studies.length} loaded
@@ -405,36 +413,36 @@ const DoctorDashboard = () => {
               )}
             </div>
 
+            {/* ✅ CATEGORY TABS - Compact & Modern */}
             <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
               <div className="flex items-center gap-1.5 min-w-max">
-                {categoryTabs.map((tab) => {
-                  const Icon = tab.icon;
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => handleViewChange(tab.key)}
-                      className={`
-                        flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all
-                        ${currentView === tab.key
-                          ? 'bg-gradient-to-r from-teal-600 to-cyan-600 text-white shadow-md'
-                          : 'bg-white text-slate-600 hover:bg-teal-50 border border-slate-200'
-                        }
-                      `}
-                    >
-                      <Icon className="w-3.5 h-3.5" />
-                      <span>{tab.label}</span>
-                      <span className={`
-                        ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold
-                        ${currentView === tab.key
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-100 text-slate-700'
-                        }
-                      `}>
+                {categoryTabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    onClick={() => handleViewChange(tab.key)}
+                    className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
+                      currentView === tab.key
+                        ? 'bg-teal-600 text-white shadow-md scale-[1.02]'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate">{tab.label}</span>
+                      <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
+                        currentView === tab.key 
+                          ? 'bg-white text-teal-600' 
+                          : 'bg-white text-slate-600'
+                      }`}>
                         {tab.count}
                       </span>
-                    </button>
-                  );
-                })}
+                    </div>
+                    
+                    {/* Active indicator */}
+                    {currentView === tab.key && (
+                      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
             
@@ -443,6 +451,7 @@ const DoctorDashboard = () => {
                 columnConfig={columnConfig}
                 onColumnChange={handleColumnChange}
                 onResetToDefault={handleResetColumns}
+                theme="doctor"
               />
             </div>
           </div>
@@ -464,6 +473,7 @@ const DoctorDashboard = () => {
               visibleColumns={visibleColumns}
               userRole={currentUser?.primaryRole || currentUser?.role || 'radiologist'}
               userRoles={userRoles}
+              theme="doctor"
             />
           </div>
         </div>

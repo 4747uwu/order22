@@ -92,7 +92,8 @@ const PatientSchema = new mongoose.Schema({
             'verification_pending',        // ✅ ADD THIS
             'report_verified',             // ✅ ADD THIS
             'report_rejected',             // ✅ ADD THIS
-            'report_completed',            // ✅ ADD THIS
+            'report_completed',  
+            'revert_to_radiologist',          // ✅ ADD THIS
             'report_downloaded',
             'final_report_downloaded',
             'archived'

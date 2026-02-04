@@ -61,7 +61,7 @@ export const storeDraftReport = async (req, res) => {
             // 1. Find the study with organization info
             const study = await DicomStudy.findById(studyId)
                 .populate('patient', 'fullName patientId dateOfBirth gender')
-                .populate('sourceLab', 'name identifier')
+                .populate('sourceLab', 'name identifier settings.requireReportVerification')
                 .session(session);
 
             console.log('🔍 [Draft Store] Study found:', {
@@ -156,7 +156,6 @@ export const storeDraftReport = async (req, res) => {
                                           study.referringPhysicianName || 
                                           'N/A';
 
-            // Ensure it's always a string
             const referringPhysicianName = typeof referringPhysicianData === 'string' 
                 ? referringPhysicianData
                 : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
@@ -322,45 +321,63 @@ export const storeDraftReport = async (req, res) => {
             console.log('🔄 [Draft Store] Updating study report status');
             await updateStudyReportStatus(study, savedReport, session);
 
-            // ✅ SIMPLIFIED: Update workflow status directly instead of using workflow manager
+            // ✅ UPDATE WORKFLOW STATUS DIRECTLY (in same transaction)
             console.log('🔄 [Draft Store] Updating workflow status to report_drafted');
-            try {
-                // Only update if status is different to avoid unnecessary saves
-                if (study.workflowStatus !== 'report_drafted') {
-                    study.workflowStatus = 'report_drafted';
-                    // currentCategory uses uppercase category tokens defined in schema
-                    study.currentCategory = 'DRAFT';
-                    
-                    // Add to status history
-                    if (!study.statusHistory) {
-                        study.statusHistory = [];
-                    }
-                    study.statusHistory.push({
-                        status: 'report_drafted',
-                        changedAt: now,
-                        changedBy: currentUser._id,
-                        note: `Draft report ${existingReport ? 'updated' : 'created'} by ${currentUser.fullName}`
-                    });
-                    
-                    // Update report info
-                    if (!study.reportInfo) {
-                        study.reportInfo = {};
-                    }
-                    study.reportInfo.draftedAt = now;
-                    study.reportInfo.reporterName = currentUser.fullName;
-                    
-                    await study.save({ session });
-                    console.log('✅ [Draft Store] Workflow status updated to report_drafted');
-                } else {
-                    console.log('✅ [Draft Store] Workflow status already report_drafted, skipping update');
-                }
-            } catch (workflowError) {
-                console.warn('⚠️ [Draft Store] Failed to update workflow status:', workflowError.message);
-                // Don't fail the transaction for workflow status update failure
+
+            // Check if verification is required
+            const doctorInfo = await mongoose.model('Doctor').findOne({ 
+                userAccount: currentUser._id 
+            }).select('requireReportVerification').session(session);
+
+            const requiresVerification = study.sourceLab?.settings?.requireReportVerification || 
+                                        doctorInfo?.requireReportVerification;
+
+            console.log('📋 [Draft Store] Verification required:', requiresVerification);
+
+            // const now = new Date();
+
+            if (requiresVerification) {
+                study.workflowStatus = 'verification_pending';
+                study.currentCategory = 'VERIFICATION_PENDING';
+                
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.sentForVerificationAt = now;
+            } else {
+                study.workflowStatus = 'report_completed';
+                study.currentCategory = 'COMPLETED';
+                
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.completedAt = now;
+                study.reportInfo.completedWithoutVerification = true;
             }
 
+            // Add to status history
+            if (!study.statusHistory) {
+                study.statusHistory = [];
+            }
+            study.statusHistory.push({
+                status: study.workflowStatus,
+                changedAt: now,
+                changedBy: currentUser._id,
+                note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`
+            });
+
+            // Update report info
+            study.reportInfo.finalizedAt = now;
+            study.reportInfo.reporterName = currentUser.fullName;
+
+            // Save the study (already has report references from updateStudyReportStatus)
+            await study.save({ session });
+            console.log('✅ [Draft Store] Workflow status updated to:', study.workflowStatus);
+
+            // ✅ COMMIT TRANSACTION
             console.log('💾 [Draft Store] Committing transaction');
             await session.commitTransaction();
+
+            const workflowResult = {
+                currentStatus: study.workflowStatus,
+                requiresVerification: requiresVerification
+            };
 
             console.log('✅ [Draft Store] Draft report stored successfully:', {
                 reportId: savedReport._id,
@@ -529,7 +546,7 @@ export const storeFinalizedReport = async (req, res) => {
                 existingReportId: existingReport?._id
             });
 
-            const now = new Date();
+            // const now = new Date();
 
             // ✅ ENHANCED: Better patient info extraction
             const patientInfo = {
@@ -610,6 +627,7 @@ export const storeFinalizedReport = async (req, res) => {
                     modality: study.modality || study.modalitiesInStudy?.join(', '),
                     examDescription: study.examDescription || study.studyDescription,
                     institutionName: study.institutionName,
+                    // ✅ FIX: Ensure referringPhysician.name is always a string
                     referringPhysician: {
                         name: referringPhysicianName,
                         institution: typeof study.referringPhysician === 'object' 
@@ -682,84 +700,67 @@ export const storeFinalizedReport = async (req, res) => {
                 console.log('✅ [Finalize Store] New finalized report created successfully');
             }
 
-            // 5. Update DicomStudy with finalized report reference (but don't save yet)
+            // 5. Update DicomStudy with finalized report reference
             console.log('🔄 [Finalize Store] Updating study report status');
             await updateStudyReportStatus(study, savedReport, session);
 
-            // ✅ Use workflow status manager WITHOUT passing session (it will handle its own saves)
-            console.log('🔄 [Finalize Store] Updating workflow status via workflow manager');
-            
-            let workflowResult;
-            let workflowSuccess = false;
-            
-            try {
-                // Get doctor info to check verification requirements
-                const doctorInfo = await mongoose.model('Doctor').findOne({ 
-                    userAccount: currentUser._id 
-                }).select('requireReportVerification');
+            // ✅ UPDATE WORKFLOW STATUS DIRECTLY (in same transaction)
+            console.log('🔄 [Finalize Store] Updating workflow status to report_finalized');
 
-                console.log('📋 [Finalize Store] Verification requirements check:', {
-                    labRequiresVerification: study.sourceLab?.settings?.requireReportVerification,
-                    doctorRequiresVerification: doctorInfo?.requireReportVerification,
-                    willCheckBoth: true
-                });
+            // Check if verification is required
+            const doctorInfo = await mongoose.model('Doctor').findOne({ 
+                userAccount: currentUser._id 
+            }).select('requireReportVerification').session(session);
 
-                // ✅ CRITICAL FIX: Call workflow manager WITHOUT session
-                // It will load the study fresh and save it independently
-                workflowResult = await updateWorkflowStatus({
-                    studyId: studyId,
-                    status: 'report_finalized',
-                    doctorId: currentUser._id,
-                    note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`,
-                    user: currentUser
-                });
+            const requiresVerification = study.sourceLab?.settings?.requireReportVerification || 
+                                        doctorInfo?.requireReportVerification;
+
+            console.log('📋 [Finalize Store] Verification required:', requiresVerification);
+
+            const now = new Date();
+
+            if (requiresVerification) {
+                study.workflowStatus = 'verification_pending';
+                study.currentCategory = 'VERIFICATION_PENDING';
                 
-                workflowSuccess = true;
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.sentForVerificationAt = now;
+            } else {
+                study.workflowStatus = 'report_completed';
+                study.currentCategory = 'COMPLETED';
                 
-                console.log('✅ [Finalize Store] Workflow status updated:', {
-                    previousStatus: workflowResult.previousStatus,
-                    currentStatus: workflowResult.currentStatus,
-                    requiresVerification: workflowResult.requiresVerification
-                });
-
-            } catch (workflowError) {
-                console.warn('⚠️ [Finalize Store] Workflow manager failed:', workflowError.message);
-                console.warn('⚠️ [Finalize Store] Will use fallback after transaction commits');
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.completedAt = now;
+                study.reportInfo.completedWithoutVerification = true;
             }
 
-            // ✅ Commit transaction FIRST (saves report and study report references)
+            // Add to status history
+            if (!study.statusHistory) {
+                study.statusHistory = [];
+            }
+            study.statusHistory.push({
+                status: study.workflowStatus,
+                changedAt: now,
+                changedBy: currentUser._id,
+                note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`
+            });
+
+            // Update report info
+            study.reportInfo.finalizedAt = now;
+            study.reportInfo.reporterName = currentUser.fullName;
+
+            // Save the study (already has report references from updateStudyReportStatus)
+            await study.save({ session });
+            console.log('✅ [Finalize Store] Workflow status updated to:', study.workflowStatus);
+
+            // ✅ COMMIT TRANSACTION
             console.log('💾 [Finalize Store] Committing transaction');
             await session.commitTransaction();
-            
-            // ✅ If workflow manager failed, update study outside transaction
-            if (!workflowSuccess) {
-                console.log('🔄 [Finalize Store] Applying fallback workflow status update');
-                try {
-                    const freshStudy = await DicomStudy.findById(studyId);
-                    
-                    if (freshStudy) {
-                        if (freshStudy.sourceLab?.settings?.requireReportVerification) {
-                            freshStudy.workflowStatus = 'verification_pending';
-                            freshStudy.currentCategory = 'VERIFICATION_PENDING';
-                            console.log('⚠️ [Finalize Store] Fallback: Set to verification_pending');
-                        } else {
-                            freshStudy.workflowStatus = 'report_completed';
-                            freshStudy.currentCategory = 'COMPLETED';
-                            console.log('⚠️ [Finalize Store] Fallback: Set to report_completed');
-                        }
-                        
-                        await freshStudy.save();
-                        console.log('✅ [Finalize Store] Fallback workflow status saved');
-                        
-                        workflowResult = {
-                            currentStatus: freshStudy.workflowStatus,
-                            requiresVerification: freshStudy.workflowStatus === 'verification_pending'
-                        };
-                    }
-                } catch (fallbackError) {
-                    console.error('❌ [Finalize Store] Fallback also failed:', fallbackError.message);
-                }
-            }
+
+            const workflowResult = {
+                currentStatus: study.workflowStatus,
+                requiresVerification: requiresVerification
+            };
 
             console.log('✅ [Finalize Store] Finalized report stored successfully:', {
                 reportId: savedReport._id,
@@ -938,6 +939,8 @@ export const downloadReport = async (req, res) => {
 // ✅ HELPER FUNCTION - Update study report status
 const updateStudyReportStatus = async (study, report, session) => {
     try {
+        console.log('🔄 [Helper] Updating study report status for study:', study._id);
+        
         // Update current report status
         study.currentReportStatus = {
             hasReports: true,
@@ -957,29 +960,48 @@ const updateStudyReportStatus = async (study, report, session) => {
             study.reportInfo.modernReports = [];
         }
         
-        study.reportInfo.modernReports.push({
-            reportId: report._id,
-            reportType: report.reportType,
-            createdAt: new Date()
-        });
+        // ✅ FIX: Check if report already exists to avoid duplicates
+        const reportExists = study.reportInfo.modernReports.some(
+            r => r.reportId?.toString() === report._id.toString()
+        );
+        
+        if (!reportExists) {
+            study.reportInfo.modernReports.push({
+                reportId: report._id,
+                reportType: report.reportType,
+                createdAt: new Date()
+            });
+        }
 
         // Add to reports array
         if (!study.reports) {
             study.reports = [];
         }
         
-        study.reports.push({
-            reportId: report._id,
-            reportType: report.reportType,
-            reportStatus: report.reportStatus,
-            createdBy: report.createdBy,
-            fileName: report.exportInfo?.fileName
-        });
-
-        // ✅ REMOVED: Don't save here - let the workflow manager handle it
-        // await study.save({ session });
+        // ✅ FIX: Check if report already exists to avoid duplicates
+        const legacyReportExists = study.reports.some(
+            r => r.reportId?.toString() === report._id.toString()
+        );
         
-        console.log('✅ [Helper] Study report status updated (not saved yet - will save after workflow update)');
+        if (!legacyReportExists) {
+            study.reports.push({
+                reportId: report._id,
+                reportType: report.reportType,
+                reportStatus: report.reportStatus,
+                createdBy: report.createdBy,
+                fileName: report.exportInfo?.fileName
+            });
+        }
+
+        // ✅ CRITICAL FIX: Save the study with session
+        await study.save({ session });
+        
+        console.log('✅ [Helper] Study report status updated and saved:', {
+            hasReports: study.currentReportStatus.hasReports,
+            reportCount: study.currentReportStatus.reportCount,
+            modernReportsCount: study.reportInfo.modernReports.length,
+            reportsArrayCount: study.reports.length
+        });
     } catch (error) {
         console.error('❌ [Helper] Error updating study report status:', error);
         throw error;

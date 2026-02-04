@@ -63,6 +63,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(yesterdayEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Tomorrow filter
             case 'tomorrow':
                 const currentTimeISTTomorrow = new Date(Date.now() + IST_OFFSET);
                 const tomorrowIST = new Date(currentTimeISTTomorrow.getTime() + 86400000);
@@ -82,6 +83,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(tomorrowEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last 2 days
             case 'last2days':
                 const currentTimeIST2Days = new Date(Date.now() + IST_OFFSET);
                 const twoDaysAgoIST = new Date(currentTimeIST2Days.getTime() - (2 * 86400000));
@@ -96,6 +98,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(currentEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last 7 days
             case 'last7days':
                 const currentTimeIST7Days = new Date(Date.now() + IST_OFFSET);
                 const sevenDaysAgoIST = new Date(currentTimeIST7Days.getTime() - (7 * 86400000));
@@ -109,6 +112,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(currentTimeIST7Days.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last 30 days
             case 'last30days':
                 const currentTimeIST30Days = new Date(Date.now() + IST_OFFSET);
                 const thirtyDaysAgoIST = new Date(currentTimeIST30Days.getTime() - (30 * 86400000));
@@ -136,6 +140,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(weekEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last week
             case 'lastWeek':
                 const currentTimeISTLastWeek = new Date(Date.now() + IST_OFFSET);
                 const lastWeekEnd = new Date(currentTimeISTLastWeek.getTime() - (currentTimeISTLastWeek.getDay() * 86400000) - 86400000);
@@ -159,6 +164,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(monthEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last month
             case 'lastMonth':
                 const currentTimeISTLastMonth = new Date(Date.now() + IST_OFFSET);
                 const lastMonthStartIST = new Date(
@@ -177,6 +183,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(lastMonthEndIST.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last 3 months
             case 'last3months':
                 const currentTimeIST3Months = new Date(Date.now() + IST_OFFSET);
                 const threeMonthsAgoIST = new Date(
@@ -189,6 +196,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(currentTimeIST3Months.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last 6 months
             case 'last6months':
                 const currentTimeIST6Months = new Date(Date.now() + IST_OFFSET);
                 const sixMonthsAgoIST = new Date(
@@ -201,6 +209,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(currentTimeIST6Months.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: This year
             case 'thisYear':
                 const currentTimeISTYear = new Date(Date.now() + IST_OFFSET);
                 const yearStartIST = new Date(
@@ -213,6 +222,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(currentTimeISTYear.getTime() - IST_OFFSET);
                 break;
 
+            // ✅ NEW: Last year
             case 'lastYear':
                 const currentTimeISTLastYear = new Date(Date.now() + IST_OFFSET);
                 const lastYearStartIST = new Date(
@@ -248,6 +258,7 @@ const buildDateFilter = (req) => {
                 break;
 
             default:
+                // Default to today if no valid preset
                 const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
                 const todayStartISTDefault = new Date(
                     currentTimeISTDefault.getFullYear(),
@@ -265,6 +276,7 @@ const buildDateFilter = (req) => {
                 filterEndDate = new Date(todayEndISTDefault.getTime() - IST_OFFSET);
         }
     } else {
+        // Default to today if no filter provided
         const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
         const todayStartISTDefault = new Date(
             currentTimeISTDefault.getFullYear(),
@@ -292,7 +304,6 @@ const buildDateFilter = (req) => {
 
     return { filterStartDate, filterEndDate };
 };
-
 // ✅ BUILD LAB-SPECIFIC QUERY
 const buildLabQuery = (req, user, workflowStatuses = null) => {
     const queryFilters = {};
@@ -313,7 +324,7 @@ const buildLabQuery = (req, user, workflowStatuses = null) => {
         queryFilters.workflowStatus = workflowStatuses.length === 1 ? workflowStatuses[0] : { $in: workflowStatuses };
     }
 
-    // Date filtering
+    // Date filtering (reuse from admin controller)
     const { filterStartDate, filterEndDate } = buildDateFilter(req);
     if (filterStartDate || filterEndDate) {
         const dateField = req.query.dateType === 'StudyDate' ? 'studyDate' : 'createdAt';
@@ -349,10 +360,9 @@ const buildLabQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ EXECUTE LAB STUDY QUERY WITH PAGINATION
-const executeLabStudyQuery = async (queryFilters, page = 1, limit = 50) => {
+// Execute lab study query
+const executeLabStudyQuery = async (queryFilters, limit) => {
     try {
-        const skip = (page - 1) * limit;
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
         const studies = await DicomStudy.find(queryFilters)
@@ -362,84 +372,18 @@ const executeLabStudyQuery = async (queryFilters, page = 1, limit = 50) => {
             .populate('sourceLab', 'name labName identifier location contactPerson')
             .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth')
             .sort({ createdAt: -1 })
-            .skip(skip)
             .limit(limit)
             .lean();
 
-        const totalPages = Math.ceil(totalStudies / limit);
-        const hasNextPage = page < totalPages;
-        const hasPrevPage = page > 1;
-
-        console.log(`📊 LAB QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}, Page: ${page}/${totalPages}`);
-        
-        return { 
-            studies, 
-            totalStudies,
-            pagination: {
-                currentPage: page,
-                totalPages,
-                totalRecords: totalStudies,
-                recordsPerPage: limit,
-                hasNextPage,
-                hasPrevPage
-            }
-        };
+        console.log(`📊 LAB QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}`);
+        return { studies, totalStudies };
     } catch (error) {
         console.error('❌ Error in executeLabStudyQuery:', error);
         throw error;
     }
 };
 
-
-const LAB_STATUS_CATEGORIES = {
-    // PENDING: Studies from receipt through assignment
-    pending: [
-        'new_study_received',
-        'metadata_extracted',
-        'history_pending',
-        'history_created',
-        'history_verified',
-        'pending_assignment',
-        'awaiting_radiologist',
-        'assigned_to_doctor',
-        'assignment_accepted'
-    ],
-    
-    // IN PROGRESS: Draft and verification stages
-    inprogress: [
-        'report_drafted',
-        'draft_saved',
-        'verification_pending',
-        'verification_in_progress',
-        
-        // Additional workflow statuses in progress
-        'doctor_opened_report',
-        'report_in_progress',
-        'pending_completion',
-        'report_uploaded',
-        'report_downloaded_radiologist',
-        'report_downloaded',
-        'report_verified',
-        'report_rejected',
-        'urgent_priority',
-        'emergency_case',
-        'reprint_requested',
-        'correction_needed',
-        'no_active_study'
-    ],
-    
-    // COMPLETED: Final completion states only (excluding finalized/approved/revert)
-    completed: [
-        'report_finalized',
-        'final_approved',
-        'revert_to_radiologist',
-        'report_completed',
-        'final_report_downloaded',
-        'archived'
-    ]
-};
-
-// ✅ GET LAB VALUES (CATEGORY COUNTS)
+// ✅ GET LAB VALUES
 export const getLabValues = async (req, res) => {
     try {
         const user = req.user;
@@ -449,21 +393,23 @@ export const getLabValues = async (req, res) => {
 
         const queryFilters = buildLabQuery(req, user);
         
-        console.log('🔍 [Lab] Fetching category values with filters:', queryFilters);
+        const statusCategories = {
+            pending: ['new_study_received', 'pending_assignment'],
+            inprogress: [
+                'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
+                'report_finalized', 'report_drafted', 'report_uploaded', 
+                'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+                'report_rejected'
+            ],
+            completed: ['final_report_downloaded', 'archived']
+        };
 
         const [totalStudies, pendingStudies, inprogressStudies, completedStudies] = await Promise.all([
             DicomStudy.countDocuments(queryFilters),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.pending } }),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.inprogress } }),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.completed } })
+            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: statusCategories.pending } }),
+            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: statusCategories.inprogress } }),
+            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: statusCategories.completed } })
         ]);
-
-        console.log('✅ [Lab] Category values:', {
-            total: totalStudies,
-            pending: pendingStudies,
-            inprogress: inprogressStudies,
-            completed: completedStudies
-        });
 
         res.status(200).json({
             success: true,
@@ -488,7 +434,7 @@ export const getLabValues = async (req, res) => {
     }
 };
 
-// ✅ GET LAB PENDING STUDIES
+// ✅ GET LAB STUDIES ENDPOINTS
 export const getLabPendingStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -496,22 +442,20 @@ export const getLabPendingStudies = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User not authenticated or not assigned to lab' });
         }
 
-        const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
-        
-        const queryFilters = buildLabQuery(req, user, LAB_STATUS_CATEGORIES.pending);
+        const pendingStatuses = ['new_study_received', 'pending_assignment'];
+        const queryFilters = buildLabQuery(req, user, pendingStatuses);
 
-        const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
+        const { studies, totalStudies } = await executeLabStudyQuery(queryFilters, limit);
 
         return res.status(200).json({
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            pagination,
             data: studies,
             metadata: {
                 category: 'pending',
-                statusesIncluded: LAB_STATUS_CATEGORIES.pending,
+                statusesIncluded: pendingStatuses,
                 labId: user.lab._id,
                 labName: user.lab.name
             }
@@ -527,7 +471,6 @@ export const getLabPendingStudies = async (req, res) => {
     }
 };
 
-// ✅ GET LAB IN-PROGRESS STUDIES
 export const getLabInProgressStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -535,22 +478,25 @@ export const getLabInProgressStudies = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User not authenticated or not assigned to lab' });
         }
 
-        const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
-        
-        const queryFilters = buildLabQuery(req, user, LAB_STATUS_CATEGORIES.inprogress);
+        const inProgressStatuses = [
+            'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
+            'report_finalized', 'report_drafted', 'report_uploaded', 
+            'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+            'report_rejected'
+        ];
+        const queryFilters = buildLabQuery(req, user, inProgressStatuses);
 
-        const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
+        const { studies, totalStudies } = await executeLabStudyQuery(queryFilters, limit);
 
         return res.status(200).json({
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            pagination,
             data: studies,
             metadata: {
                 category: 'inprogress',
-                statusesIncluded: LAB_STATUS_CATEGORIES.inprogress,
+                statusesIncluded: inProgressStatuses,
                 labId: user.lab._id,
                 labName: user.lab.name
             }
@@ -566,7 +512,6 @@ export const getLabInProgressStudies = async (req, res) => {
     }
 };
 
-// ✅ GET LAB COMPLETED STUDIES
 export const getLabCompletedStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -574,22 +519,20 @@ export const getLabCompletedStudies = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User not authenticated or not assigned to lab' });
         }
 
-        const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
-        
-        const queryFilters = buildLabQuery(req, user, LAB_STATUS_CATEGORIES.completed);
+        const completedStatuses = ['final_report_downloaded', 'archived'];
+        const queryFilters = buildLabQuery(req, user, completedStatuses);
 
-        const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
+        const { studies, totalStudies } = await executeLabStudyQuery(queryFilters, limit);
 
         return res.status(200).json({
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            pagination,
             data: studies,
             metadata: {
                 category: 'completed',
-                statusesIncluded: LAB_STATUS_CATEGORIES.completed,
+                statusesIncluded: completedStatuses,
                 labId: user.lab._id,
                 labName: user.lab.name
             }
@@ -605,7 +548,6 @@ export const getLabCompletedStudies = async (req, res) => {
     }
 };
 
-// ✅ GET ALL LAB STUDIES
 export const getAllLabStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -613,18 +555,15 @@ export const getAllLabStudies = async (req, res) => {
             return res.status(401).json({ success: false, message: 'User not authenticated or not assigned to lab' });
         }
 
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
-        
+        const limit = parseInt(req.query.limit) || 20;
         const queryFilters = buildLabQuery(req, user, null); // All statuses
 
-        const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
+        const { studies, totalStudies } = await executeLabStudyQuery(queryFilters, limit);
 
         return res.status(200).json({
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
-            pagination,
             data: studies,
             metadata: {
                 category: 'all',
@@ -637,7 +576,7 @@ export const getAllLabStudies = async (req, res) => {
     } catch (error) {
         console.error('❌ LAB ALL STUDIES: Error fetching studies:', error);
         res.status(500).json({ 
-            success: false,            
+            success: false, 
             message: 'Server error fetching studies.',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });

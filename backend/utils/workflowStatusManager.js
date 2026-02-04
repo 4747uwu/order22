@@ -162,6 +162,7 @@ export const updateWorkflowStatus = async (options) => {
         'final_report_downloaded': 'COMPLETED',
         'report_verified': 'COMPLETED',
         'report_rejected': 'VERIFICATION_PENDING',
+        'revert_to_radiologist': 'PENDING',
         'archived': 'ALL'
       };
       

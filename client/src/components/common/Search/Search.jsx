@@ -52,6 +52,7 @@ const Search = ({
     const [filters, setFilters] = useState({
         category: currentCategory,
         modality: 'all',
+        modalities: [], // ✅ NEW: Multi-select modalities
         labId: 'all',
         priority: 'all',
         assigneeRole: 'all',
@@ -224,6 +225,11 @@ const Search = ({
             searchParams.search = term.trim();
         }
         
+        // ✅ NEW: Handle modalities multi-select
+        if (filters.modalities && filters.modalities.length > 0) {
+            searchParams.modalities = filters.modalities;
+        }
+        
         if (filters.radiologists && filters.radiologists.length > 0) {
             searchParams.radiologists = filters.radiologists;
         }
@@ -257,6 +263,11 @@ const Search = ({
             searchParams.search = searchTerm.trim();
         }
         
+        // ✅ NEW: Handle modalities multi-select
+        if (newFilters.modalities && newFilters.modalities.length > 0) {
+            searchParams.modalities = newFilters.modalities;
+        }
+        
         if (newFilters.radiologists && newFilters.radiologists.length > 0) {
             searchParams.radiologists = newFilters.radiologists;
         }
@@ -287,6 +298,7 @@ const Search = ({
         setSearchTerm('');
         const defaultFilters = {
             modality: 'all',
+            modalities: [], // ✅ NEW: Reset modalities
             labId: 'all',
             priority: 'all',
             assigneeRole: 'all',
@@ -344,13 +356,19 @@ const Search = ({
     }, [navigate]);
 
     // Options
-    const modalityOptions = [
-        { value: 'all', label: 'All' },
+    const modalityMultiSelectOptions = [
         { value: 'CT', label: 'CT' },
         { value: 'MR', label: 'MRI' },
         { value: 'CR', label: 'CR' },
         { value: 'DX', label: 'DX' },
-        { value: 'PR', label: 'PR' }
+        { value: 'PR', label: 'PR' },
+        { value: 'US', label: 'US' },
+        { value: 'XA', label: 'XA' },
+        { value: 'MG', label: 'MG' },
+        { value: 'NM', label: 'NM' },
+        { value: 'PT', label: 'PET' },
+        { value: 'RF', label: 'RF' },
+        { value: 'OT', label: 'Other' }
     ];
 
     const priorityOptions = [
@@ -383,13 +401,16 @@ const Search = ({
         fetchFilterOptions();
     }, []);
 
+    // ✅ NEW: Check if user can access radiologist and lab filters
+    const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(currentUser?.role);
+
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
             {/* MAIN SEARCH ROW */}
             <div className="flex items-center gap-2">
                 
                 {/* SEARCH INPUT */}
-                <div className="flex-1 relative max-w-md">
+                <div className="relative w-88 flex-shrink-0">
                     <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
                     <input
                         type="text"
@@ -410,17 +431,14 @@ const Search = ({
 
                 {/* QUICK FILTERS */}
                 <div className="flex items-center gap-1">
-                    <select
-                        value={filters.modality}
-                        onChange={(e) => handleFilterChange('modality', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16`}
-                    >
-                        {modalityOptions.map(option => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
+                    {/* ✅ UPDATED: Modality Multi-Select */}
+                    <MultiSelect
+                        options={modalityMultiSelectOptions}
+                        selected={filters.modalities}
+                        onChange={(selected) => handleFilterChange('modalities', selected)}
+                        placeholder="Modality"
+                        className="w-24"
+                    />
 
                     <select
                         value={filters.priority}
@@ -434,21 +452,27 @@ const Search = ({
                         ))}
                     </select>
 
-                    <MultiSelect
-                        options={radiologistOptions}
-                        selected={filters.radiologists}
-                        onChange={(selected) => handleFilterChange('radiologists', selected)}
-                        placeholder="Radiologist"
-                        className="min-w-32"
-                    />
+                    {/* ✅ RESTRICTED: Radiologist filter - only for admin, super_admin, assignor */}
+                    {canAccessAdvancedFilters && (
+                        <MultiSelect
+                            options={radiologistOptions}
+                            selected={filters.radiologists}
+                            onChange={(selected) => handleFilterChange('radiologists', selected)}
+                            placeholder="Radiologist"
+                            className="w-32"
+                        />
+                    )}
 
-                    <MultiSelect
-                        options={labOptions}
-                        selected={filters.labs}
-                        onChange={(selected) => handleFilterChange('labs', selected)}
-                        placeholder="Center"
-                        className="min-w-32"
-                    />
+                    {/* ✅ RESTRICTED: Lab/Center filter - only for admin, super_admin, assignor */}
+                    {canAccessAdvancedFilters && (
+                        <MultiSelect
+                            options={labOptions}
+                            selected={filters.labs}
+                            onChange={(selected) => handleFilterChange('labs', selected)}
+                            placeholder="Center"
+                            className="w-32"
+                        />
+                    )}
 
                     {isAssignor && (
                         <select

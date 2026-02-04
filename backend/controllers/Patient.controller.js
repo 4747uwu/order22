@@ -17,7 +17,11 @@ export const updateStudyDetails = async (req, res) => {
             studyName,
             referringPhysician,
             accessionNumber,
-            clinicalHistory
+            clinicalHistory,
+            // ✅ Priority fields
+            caseType,
+            studyPriority,
+            assignmentPriority
         } = req.body;
 
         const user = req.user;
@@ -31,7 +35,10 @@ export const updateStudyDetails = async (req, res) => {
             patientGender,
             studyName,
             referringPhysician,
-            clinicalHistory: clinicalHistory?.substring(0, 50) + '...'
+            clinicalHistory: clinicalHistory?.substring(0, 50) + '...',
+            caseType,
+            studyPriority,
+            assignmentPriority
         });
 
         // Find study
@@ -59,32 +66,72 @@ export const updateStudyDetails = async (req, res) => {
 
         // Build update object
         const updateData = {};
+        const changes = {};
 
         if (patientName) {
             updateData['patientInfo.patientName'] = patientName;
+            changes.patientName = patientName;
         }
         
         if (patientAge) {
             updateData.age = patientAge;
             updateData['patientInfo.age'] = patientAge;
+            changes.patientAge = patientAge;
         }
         
         if (patientGender) {
             updateData.gender = patientGender;
             updateData['patientInfo.gender'] = patientGender;
+            changes.patientGender = patientGender;
         }
         
         if (studyName) {
             updateData.examDescription = studyName;
+            changes.studyName = studyName;
         }
         
         if (referringPhysician) {
             updateData.referringPhysicianName = referringPhysician;
             updateData['physicians.referring.name'] = referringPhysician;
+            changes.referringPhysician = referringPhysician;
         }
         
         if (accessionNumber) {
             updateData.accessionNumber = accessionNumber;
+            changes.accessionNumber = accessionNumber;
+        }
+
+        // ✅ Handle caseType update (updates both caseType and studyPriority together)
+        if (caseType) {
+            const validCaseTypes = ['routine', 'urgent', 'stat', 'emergency', 'ROUTINE', 'URGENT', 'STAT', 'EMERGENCY', 'Billed Study', 'New Study'];
+            if (validCaseTypes.includes(caseType)) {
+                updateData.caseType = caseType;
+                changes.caseType = { from: study.caseType, to: caseType };
+                console.log(`✅ caseType updated: ${study.caseType} → ${caseType}`);
+            }
+        }
+
+        // ✅ Handle studyPriority update
+        if (studyPriority) {
+            const validStudyPriorities = ['SELECT', 'Emergency Case', 'Meet referral doctor', 'MLC Case', 'Study Exception'];
+            if (validStudyPriorities.includes(studyPriority)) {
+                updateData.studyPriority = studyPriority;
+                changes.studyPriority = { from: study.studyPriority, to: studyPriority };
+                console.log(`✅ studyPriority updated: ${study.studyPriority} → ${studyPriority}`);
+            }
+        }
+
+        // ✅ Handle assignment.priority update
+        if (assignmentPriority) {
+            const validAssignmentPriorities = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
+            if (validAssignmentPriorities.includes(assignmentPriority)) {
+                // Update the first assignment's priority if exists
+                if (study.assignment && study.assignment.length > 0) {
+                    updateData['assignment.0.priority'] = assignmentPriority;
+                }
+                changes.assignmentPriority = { from: study.assignment?.[0]?.priority, to: assignmentPriority };
+                console.log(`✅ assignmentPriority updated: ${study.assignment?.[0]?.priority} → ${assignmentPriority}`);
+            }
         }
         
         if (clinicalHistory !== undefined) {
@@ -101,7 +148,19 @@ export const updateStudyDetails = async (req, res) => {
             updateData['categoryTracking.historyCreated.lastUpdatedAt'] = new Date();
             updateData['categoryTracking.historyCreated.lastUpdatedBy'] = user._id;
             updateData['categoryTracking.historyCreated.isComplete'] = true;
+            
+            changes.clinicalHistoryUpdated = true;
         }
+
+        // ✅ Build descriptive note for priority changes
+        const priorityChanges = [];
+        if (changes.caseType) priorityChanges.push(`Case Type: ${changes.caseType.to}`);
+        if (changes.studyPriority) priorityChanges.push(`Study Priority: ${changes.studyPriority.to}`);
+        if (changes.assignmentPriority) priorityChanges.push(`Assignment Priority: ${changes.assignmentPriority.to}`);
+
+        const actionNote = priorityChanges.length > 0 
+            ? `Study details updated via patient edit modal. Priority changes: ${priorityChanges.join(', ')}`
+            : 'Study details updated via patient edit modal';
 
         // Update study
         const updatedStudy = await DicomStudy.findByIdAndUpdate(
@@ -113,7 +172,7 @@ export const updateStudyDetails = async (req, res) => {
                         status: 'study_details_updated',
                         changedAt: new Date(),
                         changedBy: user._id,
-                        note: `Study details updated by ${user.fullName || user.email}`
+                        note: `Study details updated by ${user.fullName || user.email}${priorityChanges.length > 0 ? ` (${priorityChanges.join(', ')})` : ''}`
                     },
                     actionLog: {
                         actionType: 'history_created',
@@ -123,17 +182,9 @@ export const updateStudyDetails = async (req, res) => {
                         performedByRole: user.role,
                         performedAt: new Date(),
                         actionDetails: {
-                            changes: {
-                                patientName,
-                                patientAge,
-                                patientGender,
-                                studyName,
-                                referringPhysician,
-                                accessionNumber,
-                                clinicalHistoryUpdated: !!clinicalHistory
-                            }
+                            changes: changes
                         },
-                        notes: 'Study details updated via patient edit modal'
+                        notes: actionNote
                     }
                 }
             },
@@ -144,6 +195,9 @@ export const updateStudyDetails = async (req, res) => {
         .populate('sourceLab', 'name identifier');
 
         console.log(`✅ Study details updated successfully for ${studyId}`);
+        if (priorityChanges.length > 0) {
+            console.log(`📊 Priority updates: ${priorityChanges.join(', ')}`);
+        }
 
         res.json({
             success: true,

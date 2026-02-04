@@ -5,12 +5,76 @@ import Search from '../../components/common/Search/Search';
 import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
-import { RefreshCw, Plus, Shield, Database } from 'lucide-react';
+import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
+// import FileText from 'react-icons/all';
 
-const Dashboard = () => {
+const HEADER_COLOR_PRESETS = [
+  { name: 'Dark Gray', gradient: 'from-gray-800 via-gray-900 to-black', textColor: 'text-white' },
+  { name: 'Blue', gradient: 'from-blue-700 via-blue-800 to-blue-900', textColor: 'text-white' },
+  { name: 'Green', gradient: 'from-green-700 via-green-800 to-green-900', textColor: 'text-white' },
+  { name: 'Purple', gradient: 'from-purple-700 via-purple-800 to-purple-900', textColor: 'text-white' },
+  { name: 'Red', gradient: 'from-red-700 via-red-800 to-red-900', textColor: 'text-white' },
+  { name: 'Indigo', gradient: 'from-indigo-700 via-indigo-800 to-indigo-900', textColor: 'text-white' },
+  { name: 'Teal', gradient: 'from-teal-700 via-teal-800 to-teal-900', textColor: 'text-white' },
+  { name: 'Orange', gradient: 'from-orange-700 via-orange-800 to-orange-900', textColor: 'text-white' },
+  { name: 'Pink', gradient: 'from-pink-700 via-pink-800 to-pink-900', textColor: 'text-white' },
+  { name: 'Cyan', gradient: 'from-cyan-700 via-cyan-800 to-cyan-900', textColor: 'text-white' }
+];
+
+const HeaderColorPicker = ({ isOpen, onClose, currentColor, onSelectColor }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border-2 border-gray-300">
+        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Palette className="w-5 h-5" />
+            <h2 className="text-lg font-bold">Choose Header Color</h2>
+          </div>
+          <button onClick={onClose} className="text-white hover:text-gray-300">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-3">
+            {HEADER_COLOR_PRESETS.map((preset, index) => (
+              <button
+                key={index}
+                onClick={() => {
+                  onSelectColor(preset);
+                  onClose();
+                }}
+                className={`relative px-4 py-3 rounded-lg transition-all border-2 ${
+                  currentColor.name === preset.name 
+                    ? 'border-gray-900 scale-105 shadow-lg' 
+                    : 'border-gray-300 hover:border-gray-500'
+                }`}
+              >
+                <div className={`h-8 rounded bg-gradient-to-r ${preset.gradient} flex items-center justify-center ${preset.textColor} text-sm font-bold`}>
+                  {preset.name}
+                </div>
+                {currentColor.name === preset.name && (
+                  <div className="absolute top-1 right-1 bg-white rounded-full p-0.5">
+                    <CheckCircle className="w-4 h-4 text-green-600 fill-current" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Dashboard = (isSuperAdminView = false) => {
   const { currentUser, currentOrganizationContext } = useAuth();
   const navigate = useNavigate();
   
@@ -32,6 +96,11 @@ const Dashboard = () => {
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
+  const [headerColor, setHeaderColor] = useState(() => {
+    const saved = localStorage.getItem('adminWorklistTableHeaderColor');
+    return saved ? JSON.parse(saved) : HEADER_COLOR_PRESETS[0];
+  });
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   // ✅ CATEGORY-BASED API VALUES
   const [categoryValues, setCategoryValues] = useState({
@@ -214,9 +283,12 @@ const Dashboard = () => {
     }
   }, []);
 
-  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
+  // ✅ INITIAL DATA FETCH - Load saved filters or use defaults
   useEffect(() => {
-    const defaultFilters = {
+    // Try to load saved filters from localStorage
+    const savedFilters = localStorage.getItem('adminDashboardFilters');
+    
+    let defaultFilters = {
       dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
@@ -224,14 +296,41 @@ const Dashboard = () => {
       priority: 'all'
     };
     
+    // If saved filters exist, use them
+    if (savedFilters) {
+      try {
+        defaultFilters = JSON.parse(savedFilters);
+        console.log('📁 [Admin] Loaded saved filters:', defaultFilters);
+      } catch (error) {
+        console.warn('Error loading saved filters:', error);
+      }
+    }
+    
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
     fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
   }, []); // ✅ Empty deps - only run once on mount
 
-  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  // ✅ Save filters whenever they change
   useEffect(() => {
+    if (Object.keys(searchFilters).length > 0) {
+      try {
+        localStorage.setItem('adminDashboardFilters', JSON.stringify(searchFilters));
+        console.log('💾 [Admin] Saved filters to localStorage:', searchFilters);
+      } catch (error) {
+        console.warn('Error saving filters:', error);
+      }
+    }
+  }, [searchFilters]);
+
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES (SINGLE useEffect - Remove duplicate)
+  useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
     console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
     // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
@@ -256,35 +355,42 @@ const Dashboard = () => {
   // Handlers
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Admin] NEW SEARCH:', searchParams);
-    setSearchFilters(searchParams);
+    
+    // ✅ FIX: Remove search key if it's empty
+    const cleanedParams = { ...searchParams };
+    if (!cleanedParams.search || cleanedParams.search.trim() === '') {
+        delete cleanedParams.search;
+    }
+    
+    setSearchFilters(cleanedParams);
     
     // ✅ Reset to page 1, keep current limit
-    fetchStudies(searchParams, 1, pagination.recordsPerPage);
-    fetchCategoryValues(searchParams);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+    fetchStudies(cleanedParams, 1, pagination.recordsPerPage);
+    fetchCategoryValues(cleanedParams);
+}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Admin] FILTER CHANGE:', filters);
-    setSearchFilters(filters);
+    
+    // ✅ FIX: Remove search key if it's empty
+    const cleanedFilters = { ...filters };
+    if (!cleanedFilters.search || cleanedFilters.search.trim() === '') {
+        delete cleanedFilters.search;
+    }
+    
+    setSearchFilters(cleanedFilters);
     
     // ✅ Reset to page 1, keep current limit
-    fetchStudies(filters, 1, pagination.recordsPerPage);
-    fetchCategoryValues(filters);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+    fetchStudies(cleanedFilters, 1, pagination.recordsPerPage);
+    fetchCategoryValues(cleanedFilters);
+}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
   // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Admin] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
-    // Note: This will trigger the useEffect below
+    // Note: This will trigger the useEffect above
   }, [currentView]);
-
-  // ✅ Fetch when view changes
-  useEffect(() => {
-    console.log(`🔄 [Admin] currentView changed to: ${currentView}`);
-    // ✅ Reset to page 1, keep current limit
-    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);
@@ -390,6 +496,15 @@ const Dashboard = () => {
     }
   }, [fetchStudies]);
 
+    const handleSelectColor = useCallback((color) => {
+    setHeaderColor(color);
+    localStorage.setItem('adminWorklistTableHeaderColor', JSON.stringify(color));
+    toast.success(`Header color changed to ${color.name}`, {
+      duration: 2000,
+      position: 'top-center'
+    });
+  }, []);
+
   const additionalActions = [
     {
       label: 'System Overview',
@@ -397,6 +512,13 @@ const Dashboard = () => {
       onClick: () => navigate('/admin/system-overview'),
       variant: 'secondary',
       tooltip: 'View comprehensive system overview'
+    },
+    {
+      label: 'Templates',
+      icon: FileText,
+      onClick: () => navigate('/admin/templates'),
+      variant: 'primary',
+      tooltip: 'Manage organization templates'
     },
     {
       label: 'Admin Panel',
@@ -411,6 +533,13 @@ const Dashboard = () => {
       onClick: handleCreateStudy,
       variant: 'success',
       tooltip: 'Create a new study'
+    },
+    {
+      label: 'Branding',
+      icon: Palette,
+      onClick: () => navigate('/admin/branding'),
+      variant: 'secondary',
+      tooltip: 'Configure report branding'
     }
   ];
 
@@ -448,6 +577,7 @@ const Dashboard = () => {
         totalStudies={categoryValues.all}
         currentCategory={currentView}
         theme="admin"
+        initialFilters={searchFilters}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
@@ -503,6 +633,14 @@ const Dashboard = () => {
             </div>
             
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowColorPicker(true)}
+                className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium bg-gradient-to-r from-gray-100 to-gray-200 hover:from-gray-200 hover:to-gray-300 border border-gray-300 rounded-lg transition-all shadow-sm"
+                title="Change table header color"
+              >
+                <Palette className="w-4 h-4" />
+                <span>Header Color</span>
+              </button>
               <ColumnConfigurator
                 columnConfig={columnConfig}
                 onColumnChange={handleColumnChange}
@@ -526,15 +664,26 @@ const Dashboard = () => {
               onAssignmentSubmit={handleAssignmentSubmit}
               onUpdateStudyDetails={handleUpdateStudyDetails}
               userRole={currentUser?.role || 'viewer'}
+              userRoles={currentUser?.roles || []}
               onToggleStudyLock={handleToggleStudyLock}
               pagination={pagination}
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
               theme="admin"
+              headerColor={headerColor} // ✅ NEW PROP
             />
           </div>
         </div>
       </div>
+
+      {showColorPicker && (
+        <HeaderColorPicker
+          isOpen={showColorPicker}
+          onClose={() => setShowColorPicker(false)}
+          currentColor={headerColor}
+          onSelectColor={handleSelectColor}
+        />
+      )}
     </div>
   );
 };

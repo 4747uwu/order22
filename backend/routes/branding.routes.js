@@ -1,12 +1,15 @@
 import express from 'express';
 import multer from 'multer';
-// import { authMiddleware } from '../middleware/authMiddleware.js';
 import { protect } from '../middleware/authMiddleware.js';
 import {
     getLabBranding,
     uploadBrandingImage,
     toggleBrandingVisibility,
-    deleteBrandingImage
+    deleteBrandingImage,
+    getOwnLabBranding,
+    uploadOwnLabBrandingImage,
+    toggleOwnLabBrandingVisibility,
+    deleteOwnLabBrandingImage
 } from '../controllers/branding.controller.js';
 
 const router = express.Router();
@@ -26,10 +29,16 @@ const upload = multer({
     }
 });
 
-// ✅ BRANDING ROUTES (Admin only)
+// ✅ ADMIN ROUTES - Manage any lab branding
 router.get('/labs/:labId/branding', protect, getLabBranding);
 router.post('/labs/:labId/branding/upload', protect, upload.single('image'), uploadBrandingImage);
 router.patch('/labs/:labId/branding/toggle', protect, toggleBrandingVisibility);
 router.delete('/labs/:labId/branding/delete', protect, deleteBrandingImage);
+
+// ✅ LAB STAFF ROUTES - Manage own lab branding only
+router.get('/my-lab/branding', protect, getOwnLabBranding);
+router.post('/my-lab/branding/upload', protect, upload.single('image'), uploadOwnLabBrandingImage);
+router.patch('/my-lab/branding/toggle', protect, toggleOwnLabBrandingVisibility);
+router.delete('/my-lab/branding/delete', protect, deleteOwnLabBrandingImage);
 
 export default router;

@@ -5,7 +5,6 @@ import Lab from '../models/labModel.js';
 import Organization from '../models/organisation.js';
 import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
-// 🕐 ENHANCED: Date filtering utility function with more options
 const buildDateFilter = (req) => {
     const IST_OFFSET = 5.5 * 60 * 60 * 1000;
     let filterStartDate = null;
@@ -312,9 +311,18 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     const queryFilters = {};
 
     // 🏢 MULTI-TENANT: Organization-based filtering
-    if (user.role !== 'super_admin') {
+    // ✅ FIX: Check for organizationContext from token (when super admin switches org)
+    if (user.role === 'super_admin' && user.tokenContext?.organizationIdentifier) {
+        // Super admin viewing a specific organization
+        queryFilters.organizationIdentifier = user.tokenContext.organizationIdentifier;
+        console.log(`🏢 [Super Admin Context] Filtering for organization: ${user.tokenContext.organizationIdentifier}`);
+    } else if (user.role !== 'super_admin') {
+        // Regular users - always filter by their organization
         queryFilters.organizationIdentifier = user.organizationIdentifier;
-        console.log(`🏢 Multi-tenant filter applied for organization: ${user.organizationIdentifier}`);
+        console.log(`🏢 [Multi-tenant] Filter applied for organization: ${user.organizationIdentifier}`);
+    } else {
+        // Super admin without organization context - see all organizations
+        console.log(`🏢 [Super Admin] No organization filter - viewing all orgs`);
     }
 
     // ✅ NEW: ASSIGNOR LAB FILTERING - Apply before other filters
@@ -331,12 +339,9 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         });
 
         if (assignorLabAccessMode === 'selected' && assignedLabs.length > 0) {
-            queryFilters.sourceLab = { $in: assignedLabs };
-            console.log(`✅ Lab filtering applied: Assignor can only see studies from ${assignedLabs.length} lab(s)`);
+            queryFilters.sourceLab = { $in: assignedLabs.map(id => new mongoose.Types.ObjectId(id)) };
         } else if (assignorLabAccessMode === 'none') {
-            // Block all studies
-            queryFilters.sourceLab = { $in: [] };
-            console.log(`🚫 Lab access mode: none - No studies will be shown`);
+            queryFilters.sourceLab = null;
         }
         // If 'all' mode, no additional filtering needed
     }
@@ -366,7 +371,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         ];
     }
 
-    // 🔬 MODALITY FILTERING
+    // 🔬 MODALITY FILTERING - Single or Multiple
     if (req.query.modality && req.query.modality !== 'all') {
         queryFilters.$or = [
             { modality: req.query.modality },
@@ -374,7 +379,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         ];
     }
 
-    // 🏥 LAB FILTERING (within organization)
+    // 🏥 LAB FILTERING (within organization) - Old single select
     if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
         queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
     }
@@ -392,7 +397,115 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         }
     }
 
-    return queryFilters;
+  // ✅ NEW: RADIOLOGIST MULTI-SELECT FILTER
+// When filtering by radiologists, we need to check the assignment array
+if (req.query.radiologists) {
+    let radiologistIds = [];
+    
+    // Handle both array and comma-separated string formats
+    if (Array.isArray(req.query.radiologists)) {
+        radiologistIds = req.query.radiologists;
+    } else if (typeof req.query.radiologists === 'string') {
+        // Single value or comma-separated
+        radiologistIds = req.query.radiologists.includes(',') 
+            ? req.query.radiologists.split(',').map(id => id.trim()).filter(Boolean)
+            : [req.query.radiologists];
+    }
+    
+    console.log('🔍 [Radiologist Filter - Raw]:', {
+        rawParam: req.query.radiologists,
+        isArray: Array.isArray(req.query.radiologists),
+        parsedIds: radiologistIds
+    });
+    
+    if (radiologistIds.length > 0) {
+        // Convert to ObjectIds and validate
+        const validObjectIds = radiologistIds
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+        
+        if (validObjectIds.length > 0) {
+            // Query the assignment array to find studies assigned to these radiologists
+            queryFilters['assignment.assignedTo'] = { $in: validObjectIds };
+            
+            console.log('✅ [Radiologist Filter Applied]:', {
+                radiologistCount: validObjectIds.length,
+                radiologistIds: validObjectIds.map(id => id.toString()),
+                filter: queryFilters['assignment.assignedTo']
+            });
+        } else {
+            console.warn('⚠️ [Radiologist Filter] No valid ObjectIds found');
+        }
+    }
+}
+
+// ✅ NEW: LAB/CENTER MULTI-SELECT FILTER
+// When filtering by labs, we need to check the sourceLab field
+if (req.query.labs) {
+    let labIds = [];
+    
+    // Handle both array and comma-separated string formats
+    if (Array.isArray(req.query.labs)) {
+        labIds = req.query.labs;
+    } else if (typeof req.query.labs === 'string') {
+        // Single value or comma-separated
+        labIds = req.query.labs.includes(',')
+            ? req.query.labs.split(',').map(id => id.trim()).filter(Boolean)
+            : [req.query.labs];
+    }
+    
+    console.log('🔍 [Lab Filter - Raw]:', {
+        rawParam: req.query.labs,
+        isArray: Array.isArray(req.query.labs),
+        parsedIds: labIds
+    });
+    
+    if (labIds.length > 0) {
+        // Convert to ObjectIds and validate
+        const validObjectIds = labIds
+            .filter(id => mongoose.Types.ObjectId.isValid(id))
+            .map(id => new mongoose.Types.ObjectId(id));
+        
+        if (validObjectIds.length > 0) {
+            // Check if there's already a sourceLab filter from assignor restrictions
+            if (queryFilters.sourceLab && queryFilters.sourceLab.$in) {
+                // Find intersection of assignor's labs and selected labs
+                const assignorLabIds = queryFilters.sourceLab.$in.map(id => id.toString());
+                const selectedLabIds = validObjectIds.map(id => id.toString());
+                const intersection = assignorLabIds.filter(id => selectedLabIds.includes(id));
+                
+                console.log('🔍 [Lab Filter - Intersection with Assignor]:', {
+                    assignorLabs: assignorLabIds,
+                    selectedLabs: selectedLabIds,
+                    intersection: intersection
+                });
+                
+                if (intersection.length > 0) {
+                    queryFilters.sourceLab = { $in: intersection.map(id => new mongoose.Types.ObjectId(id)) };
+                } else {
+                    // No intersection, return empty results
+                    console.warn('⚠️ [Lab Filter] No intersection between assignor labs and selected labs');
+                    queryFilters.sourceLab = null; // This will return no results
+                }
+            } else {
+                // No assignor restriction, apply selected labs directly
+                queryFilters.sourceLab = { $in: validObjectIds };
+            }
+            
+            console.log('✅ [Lab Filter Applied]:', {
+                labCount: validObjectIds.length,
+                labIds: validObjectIds.map(id => id.toString()),
+                finalFilter: queryFilters.sourceLab
+            });
+        } else {
+            console.warn('⚠️ [Lab Filter] No valid ObjectIds found');
+        }
+    }
+}
+
+console.log('🎯 [Final Query Filters]:', JSON.stringify(queryFilters, null, 2));
+
+return queryFilters;
 };
 
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {
@@ -754,7 +867,7 @@ export const getCompletedStudies = async (req, res) => {
     }
 };
 
-// ✅ NEW: Get category values for all categories
+// ✅ NEW: Get category values for all categories - COUNT BY WORKFLOW STATUS
 export const getCategoryValues = async (req, res) => {
     console.log(`🔍 Fetching category values with filters: ${JSON.stringify(req.query)}`);
     try {
@@ -788,66 +901,75 @@ export const getCategoryValues = async (req, res) => {
             // CREATED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'CREATED'
+                workflowStatus: { $in: ['new_study_received', 'metadata_extracted', 'no_active_study'] }
             }),
             
             // HISTORY CREATED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'HISTORY_CREATED'
+                workflowStatus: { $in: ['history_pending', 'history_created', 'history_verified'] }
             }),
             
             // UNASSIGNED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'UNASSIGNED'
+                workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] }
             }),
             
             // ASSIGNED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'ASSIGNED'
+                workflowStatus: { $in: ['assigned_to_doctor', 'assignment_accepted'] }
             }),
             
             // PENDING
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'PENDING'
+                workflowStatus: { $in: ['doctor_opened_report', 'report_in_progress', 'pending_completion'] }
             }),
             
             // DRAFT
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'DRAFT'
+                workflowStatus: { $in: ['report_drafted', 'draft_saved'] }
             }),
             
             // VERIFICATION PENDING
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'VERIFICATION_PENDING'
+                workflowStatus: { $in: ['verification_pending', 'verification_in_progress'] }
             }),
             
-            // FINAL
+            // FINAL - All finalized, completed, downloaded, verified, archived
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'FINAL'
+                workflowStatus: { 
+                    $in: [
+                        'report_finalized', 
+                        'final_approved', 
+                        'revert_to_radiologist',
+                        'report_completed',
+                        'report_uploaded',
+                        'report_downloaded_radiologist',
+                        'report_downloaded',
+                        'final_report_downloaded',
+                        'report_verified',
+                        'report_rejected',
+                        'archived'
+                    ] 
+                }
             }),
             
             // URGENT
             DicomStudy.countDocuments({
                 ...queryFilters,
-                $or: [
-                    { currentCategory: 'URGENT' },
-                    { studyPriority: 'Emergency Case' },
-                    { caseType: 'emergency' },
-                    { 'assignment.priority': 'URGENT' }
-                ]
+                workflowStatus: { $in: ['urgent_priority', 'emergency_case'] }
             }),
             
             // REPRINT NEED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                currentCategory: 'REPRINT_NEED'
+                workflowStatus: { $in: ['reprint_requested', 'correction_needed'] }
             })
         ]);
 
@@ -894,12 +1016,12 @@ export const getCategoryValues = async (req, res) => {
     }
 };
 
-// ✅ FIX: Get studies by category WITH PAGINATION
+// ✅ FIX: Get studies by category WITH PAGINATION AND PROPER WORKFLOW STATUS MAPPING
 export const getStudiesByCategory = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
+        const page = parseInt(req.query.page) || 1;
         const { category } = req.params;
         
         const user = req.user;
@@ -911,51 +1033,97 @@ export const getStudiesByCategory = async (req, res) => {
 
         const queryFilters = buildBaseQuery(req, user);
         
-        // Category-specific filters...
+        // ✅ COMPREHENSIVE WORKFLOW STATUS MAPPING BY CATEGORY
         switch (category) {
             case 'created':
-                queryFilters.currentCategory = 'CREATED';
+                // CREATED: New studies that just arrived
+                queryFilters.workflowStatus = { 
+                    $in: ['new_study_received', 'metadata_extracted', 'no_active_study'] 
+                };
                 break;
+                
             case 'history-created':
-                queryFilters.currentCategory = 'HISTORY_CREATED';
+                // HISTORY CREATED: Studies with history being created
+                queryFilters.workflowStatus = { 
+                    $in: ['history_pending', 'history_created', 'history_verified'] 
+                };
                 break;
+                
             case 'unassigned':
-                queryFilters.currentCategory = 'UNASSIGNED';
+                // UNASSIGNED: Studies awaiting assignment
+                queryFilters.workflowStatus = { 
+                    $in: ['pending_assignment', 'awaiting_radiologist'] 
+                };
                 break;
+                
             case 'assigned':
-                queryFilters.currentCategory = 'ASSIGNED';
+                // ASSIGNED: Studies assigned to radiologist
+                queryFilters.workflowStatus = { 
+                    $in: ['assigned_to_doctor', 'assignment_accepted'] 
+                };
                 break;
+                
             case 'pending':
-                queryFilters.currentCategory = 'PENDING';
+                // PENDING: Report work in progress
+                queryFilters.workflowStatus = { 
+                    $in: ['doctor_opened_report', 'report_in_progress', 'pending_completion'] 
+                };
                 break;
+                
             case 'draft':
-                queryFilters.currentCategory = 'DRAFT';
+                // DRAFT: Draft reports saved
+                queryFilters.workflowStatus = { 
+                    $in: ['report_drafted', 'draft_saved'] 
+                };
                 break;
+                
             case 'verification-pending':
-                queryFilters.currentCategory = 'VERIFICATION_PENDING';
+                // VERIFICATION PENDING: Reports awaiting verification
+                queryFilters.workflowStatus = { 
+                    $in: ['verification_pending', 'verification_in_progress'] 
+                };
                 break;
+                
             case 'final':
-                queryFilters.currentCategory = 'FINAL';
+                // FINAL: Finalized reports (including completed and archived)
+                queryFilters.workflowStatus = { 
+                    $in: [
+                        'report_finalized', 
+                        'final_approved', 
+                        'revert_to_radiologist',
+                        'report_completed',
+                        'report_uploaded',
+                        'report_downloaded_radiologist',
+                        'report_downloaded',
+                        'final_report_downloaded',
+                        'report_verified',
+                        'report_rejected',
+                        'archived'
+                    ] 
+                };
                 break;
+                
             case 'urgent':
-                queryFilters.$or = [
-                    { currentCategory: 'URGENT' },
-                    { studyPriority: 'Emergency Case' },
-                    { caseType: 'emergency' },
-                    { 'assignment.priority': 'URGENT' }
-                ];
+                // URGENT: Emergency/urgent cases
+                queryFilters.workflowStatus = { 
+                    $in: ['urgent_priority', 'emergency_case'] 
+                };
                 break;
+                
             case 'reprint-need':
-                queryFilters.currentCategory = 'REPRINT_NEED';
+                // REPRINT NEED: Studies needing reprint/correction
+                queryFilters.workflowStatus = { 
+                    $in: ['reprint_requested', 'correction_needed'] 
+                };
                 break;
+                
             default:
-                // 'all' - no additional filter
+                // 'all' - no workflow status filter
                 break;
         }
 
-        console.log(`🔍 [${category.toUpperCase()}] query filters:`, JSON.stringify(queryFilters, null, 2));
+        console.log(`🔍 [${category.toUpperCase()}] workflow status filter:`, queryFilters.workflowStatus);
 
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
@@ -976,6 +1144,7 @@ export const getStudiesByCategory = async (req, res) => {
             },
             metadata: {
                 category: category,
+                workflowStatusesIncluded: queryFilters.workflowStatus?.$in || 'all',
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
                 userRole: user.role,
                 processingTime: processingTime

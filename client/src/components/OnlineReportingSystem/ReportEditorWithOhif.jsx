@@ -1,6 +1,5 @@
-import React from 'react';
-import { useState, useRef, useEffect, useCallback } from 'react';
-import SpeechRecognition, { useSpeechRecognition } from 'react-speech-recognition';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { useCheetahSpeech } from '../../hooks/useCheetahSpeech';
 
 const ReportEditor = ({ content, onChange }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
@@ -21,237 +20,46 @@ const ReportEditor = ({ content, onChange }) => {
     superscript: false
   });
   const contentEditableRef = useRef(null);
-  const [showFindReplace, setShowFindReplace] = useState(false);
-  const [findText, setFindText] = useState('');
-  const [replaceText, setReplaceText] = useState('');
-  const lastTranscriptRef = useRef('');
-  const [isRecording, setIsRecording] = useState(false); // Local state for UI
+  const lastTranscriptLengthRef = useRef(0);
 
-  // Voice to Text functionality
+  // Replace react-speech-recognition with Cheetah
   const {
     transcript,
-    listening,
+    isListening,
+    isReady,
+    error: speechError,
+    startListening,
+    stopListening,
     resetTranscript,
     browserSupportsSpeechRecognition
-  } = useSpeechRecognition();
+  } = useCheetahSpeech();
 
-  // 🐛 DEBUG: Log speech recognition initialization
+  // Insert new transcript text (already throttled from worker)
   useEffect(() => {
-    console.log('🎤 [Voice Init] Speech Recognition Status:', {
-      browserSupported: browserSupportsSpeechRecognition,
-      SpeechRecognitionAvailable: !!SpeechRecognition,
-      listening,
-      transcript,
-      transcriptLength: transcript?.length || 0
-    });
-  }, []);
-
-  // 🐛 DEBUG: Log listening state changes
-  useEffect(() => {
-    console.log('🎤 [Voice State] Listening state changed:', {
-      listening,
-      transcript,
-      transcriptLength: transcript?.length || 0,
-      lastTranscript: lastTranscriptRef.current,
-      lastTranscriptLength: lastTranscriptRef.current?.length || 0
-    });
-  }, [listening]);
-
-  // 🐛 DEBUG: Log transcript changes
-  useEffect(() => {
-    console.log('🎤 [Voice Transcript] Transcript changed:', {
-      transcript,
-      transcriptLength: transcript?.length || 0,
-      lastTranscript: lastTranscriptRef.current,
-      lastTranscriptLength: lastTranscriptRef.current?.length || 0,
-      areEqual: transcript === lastTranscriptRef.current,
-      editorExists: !!contentEditableRef.current,
-      editorContent: contentEditableRef.current?.innerHTML?.substring(0, 100)
-    });
-  }, [transcript]);
-
-  // Insert transcript into editor when it changes
-  useEffect(() => {
-    console.log('🎤 [Voice Effect] Transcript effect triggered:', {
-      hasTranscript: !!transcript,
-      transcriptValue: transcript,
-      transcriptLength: transcript?.length || 0,
-      hasEditor: !!contentEditableRef.current,
-      lastTranscript: lastTranscriptRef.current,
-      isDifferent: transcript !== lastTranscriptRef.current,
-      listening: listening,
-      isRecording: isRecording // Add this to logs
-    });
-
-    // 🔧 FIX: Check isRecording instead of listening - immediate response
-    if (!isRecording) {
-      console.log('🎤 [Voice Effect] Skipped: Not recording (isRecording=false)');
-      return;
-    }
-
-    if (transcript && contentEditableRef.current && transcript !== lastTranscriptRef.current) {
-      console.log('🎤 [Voice Insert] Starting transcript insertion:', {
-        oldTranscript: lastTranscriptRef.current,
-        newTranscript: transcript,
-        oldLength: lastTranscriptRef.current.length,
-        newLength: transcript.length
-      });
-
-      // Calculate only the NEW text to insert
-      const previousLength = lastTranscriptRef.current.length;
-      const newText = transcript.substring(previousLength);
-      
-      console.log('🎤 [Voice Insert] Calculated new text to insert:', {
-        previousLength,
-        newText,
-        newTextLength: newText.length
-      });
-
-      // Update the last transcript BEFORE inserting
-      lastTranscriptRef.current = transcript;
-      
-      // Only insert if there's actually new text
-      if (newText.trim()) {
-        // Focus the editor first
-        contentEditableRef.current.focus();
-        console.log('🎤 [Voice Insert] Editor focused');
-        
-        // Get current selection
-        const selection = window.getSelection();
-        console.log('🎤 [Voice Insert] Selection info:', {
-          rangeCount: selection.rangeCount,
-          isCollapsed: selection.isCollapsed,
-          anchorNode: selection.anchorNode?.nodeName,
-          focusNode: selection.focusNode?.nodeName
-        });
-
-        let range;
-        
-        if (selection.rangeCount > 0) {
-          range = selection.getRangeAt(0);
-          console.log('🎤 [Voice Insert] Using existing range:', {
-            startContainer: range.startContainer?.nodeName,
-            startOffset: range.startOffset,
-            endContainer: range.endContainer?.nodeName,
-            endOffset: range.endOffset,
-            collapsed: range.collapsed
-          });
-        } else {
-          // If no selection, create one at the end
-          console.log('🎤 [Voice Insert] No existing range, creating new one at end');
-          range = document.createRange();
-          range.selectNodeContents(contentEditableRef.current);
-          range.collapse(false);
-          selection.removeAllRanges();
-          selection.addRange(range);
-          console.log('🎤 [Voice Insert] New range created and added to selection');
-        }
-        
-        // 🔧 FIX: Add space before if needed (for word boundaries)
-        const needsLeadingSpace = previousLength > 0 && !transcript[previousLength - 1]?.match(/\s/);
-        const textToInsert = (needsLeadingSpace ? ' ' : '') + newText;
-        
-        console.log('🎤 [Voice Insert] Attempting to insert text:', {
-          textToInsert,
-          textLength: textToInsert.length,
-          needsLeadingSpace,
-          beforeContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 50)
-        });
-
-        try {
-          // Use insertHTML to properly insert the text
-          const success = document.execCommand('insertHTML', false, textToInsert);
-          console.log('🎤 [Voice Insert] execCommand result:', {
-            success,
-            afterContent: contentEditableRef.current.innerHTML.substring(contentEditableRef.current.innerHTML.length - 100),
-            newContentLength: contentEditableRef.current.innerHTML.length
-          });
-          
-          // 🔧 FIX: Call onChange to update parent, but don't trigger re-render loop
-          onChange(contentEditableRef.current.innerHTML);
-          
-        } catch (error) {
-          console.error('🎤 [Voice Insert] ERROR during execCommand:', error);
-        }
-        
-        console.log('🎤 [Voice Insert] Insertion complete');
-      } else {
-        console.log('🎤 [Voice Insert] Skipped: No new text to insert (whitespace only)');
-      }
-    }
-  }, [transcript, isRecording]); // 🔧 FIX: Changed from listening to isRecording
-
-  // 🔧 FIX: Update content effect to not interfere during voice recording
-  useEffect(() => {
-    // Don't update content from props while actively recording
-    if (listening) {
-      console.log('📝 [Content Update] Skipped: Voice recording in progress');
-      return;
-    }
+    if (!isListening || !contentEditableRef.current) return;
     
-    if (contentEditableRef.current && content !== contentEditableRef.current.innerHTML) {
-      contentEditableRef.current.innerHTML = content || '';
-      console.log('📝 [Content Update] Editor content updated from props:', {
-        contentLength: content?.length || 0
-      });
+    // Only insert NEW text since last update
+    const newText = transcript.substring(lastTranscriptLengthRef.current);
+    lastTranscriptLengthRef.current = transcript.length;
+    
+    if (newText.trim()) {
+      contentEditableRef.current.focus();
+      document.execCommand('insertHTML', false, newText);
+      onChange(contentEditableRef.current.innerHTML);
     }
-  }, [content, listening]); // 🔧 FIX: Added listening as dependency
+  }, [transcript, isListening, onChange]);
 
   // Toggle voice recognition
-  const toggleVoiceRecognition = () => {
-    console.log('🎤 [Voice Toggle] Toggle button clicked:', {
-      currentListening: listening,
-      currentIsRecording: isRecording,
-      willStart: !isRecording
-    });
-
-    if (isRecording || listening) {
-      console.log('🎤 [Voice Toggle] Stopping voice recognition');
-      
-      // Update UI immediately
-      setIsRecording(false);
-      
-      // Stop the actual recognition
-      SpeechRecognition.stopListening();
-      
-      console.log('🎤 [Voice Toggle] Voice recognition stopped');
-      
+  const toggleVoiceRecognition = async () => {
+    if (isListening) {
+      await stopListening();
     } else {
-      console.log('🎤 [Voice Toggle] Starting voice recognition');
-      
-      // Update UI immediately
-      setIsRecording(true);
-      
-      // 🔧 FIX: Focus editor BEFORE starting
-      if (contentEditableRef.current) {
-        contentEditableRef.current.focus();
-        console.log('🎤 [Voice Toggle] Editor focused before starting');
-        
-        // Move cursor to end
-        const selection = window.getSelection();
-        const range = document.createRange();
-        range.selectNodeContents(contentEditableRef.current);
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        console.log('🎤 [Voice Toggle] Cursor moved to end');
-      }
-      
-      // Reset transcript and tracking
       resetTranscript();
-      lastTranscriptRef.current = '';
+      lastTranscriptLengthRef.current = 0;
       
-      try {
-        SpeechRecognition.startListening({ 
-          continuous: true, 
-          language: 'en-US' 
-        });
-        console.log('🎤 [Voice Toggle] startListening called successfully');
-      } catch (error) {
-        console.error('🎤 [Voice Toggle] ERROR starting listening:', error);
-        // Revert UI state if start fails
-        setIsRecording(false);
-      }
+      // Focus editor before starting
+      contentEditableRef.current?.focus();
+      await startListening();
     }
   };
 

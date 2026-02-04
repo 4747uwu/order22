@@ -43,6 +43,48 @@ export const getLabBranding = async (req, res) => {
     }
 };
 
+// ✅ GET LAB BRANDING FOR LAB STAFF (Own lab only)
+export const getOwnLabBranding = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const organizationIdentifier = req.user.organizationIdentifier;
+
+        // Find lab where user is a staff member
+        const lab = await Lab.findOne({
+            organizationIdentifier,
+            'staffUsers.userId': userId,
+            'staffUsers.isActive': true,
+            isActive: true
+        }).select('reportBranding name identifier');
+
+        if (!lab) {
+            return res.status(404).json({
+                success: false,
+                message: 'No lab assignment found. Please contact your administrator.'
+            });
+        }
+
+        console.log('✅ Lab staff branding data fetched:', lab.identifier);
+
+        res.json({
+            success: true,
+            data: {
+                labId: lab._id,
+                labName: lab.name,
+                labIdentifier: lab.identifier,
+                branding: lab.reportBranding || {}
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Get own lab branding error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch branding data'
+        });
+    }
+};
+
 // ✅ UPLOAD BRANDING IMAGE (Store in MongoDB as Base64)
 export const uploadBrandingImage = async (req, res) => {
     try {
@@ -174,6 +216,118 @@ export const uploadBrandingImage = async (req, res) => {
     }
 };
 
+// ✅ UPLOAD BRANDING IMAGE FOR OWN LAB (Lab staff only)
+export const uploadOwnLabBrandingImage = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const organizationIdentifier = req.user.organizationIdentifier;
+        const { type } = req.body;
+        const file = req.file;
+
+        if (!file) {
+            return res.status(400).json({
+                success: false,
+                message: 'No image file provided'
+            });
+        }
+
+        if (!['header', 'footer'].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid type. Must be "header" or "footer"'
+            });
+        }
+
+        // Find lab where user is a staff member
+        const lab = await Lab.findOne({
+            organizationIdentifier,
+            'staffUsers.userId': userId,
+            'staffUsers.isActive': true,
+            isActive: true
+        });
+
+        if (!lab) {
+            return res.status(404).json({
+                success: false,
+                message: 'No lab assignment found'
+            });
+        }
+
+        console.log('📤 Lab staff processing branding image:', {
+            labId: lab._id,
+            labIdentifier: lab.identifier,
+            type,
+            fileName: file.originalname,
+            originalSize: file.size
+        });
+
+        // Get the aspect ratio
+        const aspectRatio = lab.reportBranding?.[`${type}AspectRatio`] || 5;
+
+        // Process image with Sharp
+        const processedImageBuffer = await sharp(file.buffer)
+            .resize(1500, Math.round(1500 / aspectRatio), {
+                fit: 'contain',
+                background: { r: 255, g: 255, b: 255, alpha: 1 }
+            })
+            .png({ quality: 90, compressionLevel: 9 })
+            .toBuffer();
+
+        const metadata = await sharp(processedImageBuffer).metadata();
+        const base64Image = processedImageBuffer.toString('base64');
+        const dataUrl = `data:image/png;base64,${base64Image}`;
+
+        // Validate size (4MB limit)
+        const sizeInMB = processedImageBuffer.length / (1024 * 1024);
+        if (sizeInMB > 4) {
+            return res.status(400).json({
+                success: false,
+                message: `Processed image is too large (${sizeInMB.toFixed(2)}MB). Please use a smaller image.`
+            });
+        }
+
+        // Update lab document
+        const updateField = `reportBranding.${type}Image`;
+        await Lab.findByIdAndUpdate(lab._id, {
+            $set: {
+                [`${updateField}.url`]: dataUrl,
+                [`${updateField}.width`]: metadata.width,
+                [`${updateField}.height`]: metadata.height,
+                [`${updateField}.size`]: processedImageBuffer.length,
+                [`${updateField}.updatedAt`]: new Date(),
+                [`${updateField}.updatedBy`]: userId
+            }
+        });
+
+        console.log('✅ Lab staff branding image saved:', {
+            labIdentifier: lab.identifier,
+            type,
+            size: `${sizeInMB.toFixed(2)}MB`
+        });
+
+        res.json({
+            success: true,
+            message: `${type} image uploaded successfully`,
+            data: {
+                [`${type}Image`]: {
+                    url: dataUrl,
+                    width: metadata.width,
+                    height: metadata.height,
+                    size: processedImageBuffer.length,
+                    updatedAt: new Date()
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Upload own lab branding image error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to upload image'
+        });
+    }
+};
+
 // ✅ TOGGLE BRANDING VISIBILITY
 export const toggleBrandingVisibility = async (req, res) => {
     try {
@@ -215,6 +369,61 @@ export const toggleBrandingVisibility = async (req, res) => {
 
     } catch (error) {
         console.error('❌ Toggle branding visibility error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update visibility'
+        });
+    }
+};
+
+// ✅ TOGGLE BRANDING VISIBILITY FOR OWN LAB
+export const toggleOwnLabBrandingVisibility = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const organizationIdentifier = req.user.organizationIdentifier;
+        const { field, value } = req.body;
+
+        if (!['showHeader', 'showFooter'].includes(field)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid field. Must be "showHeader" or "showFooter"'
+            });
+        }
+
+        const lab = await Lab.findOneAndUpdate(
+            {
+                organizationIdentifier,
+                'staffUsers.userId': userId,
+                'staffUsers.isActive': true,
+                isActive: true
+            },
+            {
+                $set: { [`reportBranding.${field}`]: value }
+            },
+            { new: true }
+        ).select('reportBranding identifier');
+
+        if (!lab) {
+            return res.status(404).json({
+                success: false,
+                message: 'No lab assignment found'
+            });
+        }
+
+        console.log('✅ Lab staff branding visibility toggled:', {
+            labIdentifier: lab.identifier,
+            field,
+            value
+        });
+
+        res.json({
+            success: true,
+            message: 'Visibility updated successfully',
+            data: lab.reportBranding
+        });
+
+    } catch (error) {
+        console.error('❌ Toggle own lab branding visibility error:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to update visibility'
@@ -271,6 +480,68 @@ export const deleteBrandingImage = async (req, res) => {
 
     } catch (error) {
         console.error('❌ Delete branding image error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to delete image'
+        });
+    }
+};
+
+// ✅ DELETE BRANDING IMAGE FOR OWN LAB
+export const deleteOwnLabBrandingImage = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        const organizationIdentifier = req.user.organizationIdentifier;
+        const { type } = req.body;
+
+        if (!['header', 'footer'].includes(type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid type. Must be "header" or "footer"'
+            });
+        }
+
+        const updateField = `reportBranding.${type}Image`;
+        const lab = await Lab.findOneAndUpdate(
+            {
+                organizationIdentifier,
+                'staffUsers.userId': userId,
+                'staffUsers.isActive': true,
+                isActive: true
+            },
+            {
+                $set: {
+                    [`${updateField}.url`]: '',
+                    [`${updateField}.width`]: 0,
+                    [`${updateField}.height`]: 0,
+                    [`${updateField}.size`]: 0,
+                    [`${updateField}.updatedAt`]: new Date(),
+                    [`${updateField}.updatedBy`]: userId
+                }
+            },
+            { new: true }
+        ).select('reportBranding identifier');
+
+        if (!lab) {
+            return res.status(404).json({
+                success: false,
+                message: 'No lab assignment found'
+            });
+        }
+
+        console.log('✅ Lab staff branding image deleted:', {
+            labIdentifier: lab.identifier,
+            type
+        });
+
+        res.json({
+            success: true,
+            message: `${type} image deleted successfully`,
+            data: lab.reportBranding
+        });
+
+    } catch (error) {
+        console.error('❌ Delete own lab branding image error:', error);
         res.status(500).json({
             success: false,
             message: 'Failed to delete image'

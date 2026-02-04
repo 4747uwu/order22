@@ -22,6 +22,9 @@ import OnlineReportingSystemWithOHIF from './components/OnlineReportingSystem/On
 import OHIFViewerPage from './pages/doctor/OHIFViewerPage';
 import SystemOverview from './pages/admin/SystemOverview';
 import BrandingSettings from './pages/admin/BrandingSettings';
+import AdminTemplates from './pages/admin/Templates';
+import LabBrandingSettings from './pages/lab/LabBrandingSettings';
+
 
 // Protected Route Component - Updated for multi-role support with better fallback
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
@@ -341,6 +344,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
+
+      <Route 
+        path="/admin/templates" 
+        element={
+          <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+            <AdminTemplates />
+          </ProtectedRoute>
+        } 
+      />
       
       {/* Admin Branding Settings - Allow admin only */}
       <Route 
@@ -351,13 +363,15 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } 
       />
+
+      
       
       {/* Lab Branding Settings - Allow lab_staff + admin */}
       <Route 
         path="/lab/branding" 
         element={
           <ProtectedRoute allowedRoles={['lab_staff', 'admin']}>
-            <BrandingSettings />
+            <LabBrandingSettings />
           </ProtectedRoute>
         } 
       />

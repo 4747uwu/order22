@@ -26,6 +26,8 @@ import labRoutes from './routes/lab.routes.js';
 import downloadRoutes from './routes/download.routes.js'
 import studyCopyRoutes from './routes/studyCopy.routes.js';
 import brandingRoutes from './routes/branding.routes.js';
+import compressionRoutes from './routes/compression.routes.js';
+
 
 
 
@@ -81,7 +83,9 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'http://ai.starradiology.com',
         'http://157.245.86.199',
         'http://165.232.189.64',
-                         'https://pacs.xcentic.com'
+        'https://pacs.xcentic.com',
+        'http://206.189.133.52'
+
 
                // ✅ Local HTTPS testing
       ]
@@ -97,8 +101,9 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://portal.xcentic.in',
         'http://ai.starradiology.com',
         'http://157.245.86.199',
-                'http://165.232.189.64',
-                 'https://pacs.xcentic.com'
+        'http://165.232.189.64',
+        'https://pacs.xcentic.com',
+        'http://206.189.133.52'
 
       ];
 
@@ -185,6 +190,9 @@ app.use('/api/download', downloadRoutes);
 app.use('/api/study-copy', studyCopyRoutes);
 app.use('/api/study-notes', studyNotesRoutes); // ✅ ADD THIS LINE
 app.use('/api/branding', brandingRoutes);
+
+// Add with other routes
+app.use('/api/compression', compressionRoutes);
 // ...existing code...
 
 

@@ -526,27 +526,8 @@ async function findOrCreateSourceLab(tags, organization) {
         
         if (lab) {
           console.log(`[Lab] ✅ Found existing lab: ${lab.name} (${lab.identifier})`);
-          
-          // ✅ Extract lab location from lab's address field in database
-          let labLocation = '';
-          
-          if (lab.address) {
-            const addressParts = [];
-            if (lab.address.street) addressParts.push(lab.address.street);
-            if (lab.address.city) addressParts.push(lab.address.city);
-            if (lab.address.state) addressParts.push(lab.address.state);
-            if (lab.address.zipCode) addressParts.push(lab.address.zipCode);
-            if (lab.address.country) addressParts.push(lab.address.country);
-            
-            labLocation = addressParts.filter(part => part && part.trim() !== '').join(', ');
-          }
-          
-          if (labLocation) {
-            console.log(`[Lab] 📍 Lab location from DB: ${labLocation}`);
-          } else {
-            console.log(`[Lab] ⚠️ No address information available in lab database record`);
-          }
-          
+          // Extract lab location from address if available
+          const labLocation = lab.address?.street || lab.address?.city || '';
           return { lab, labLocation };
         }
         
@@ -561,8 +542,6 @@ async function findOrCreateSourceLab(tags, organization) {
         
         await lab.save();
         console.log(`[Lab] ✨ Created new lab: ${lab.name} (${lab.identifier})`);
-        console.log(`[Lab] 📍 New lab has no address yet`);
-        
         return { lab, labLocation: '' };
       }
     }
@@ -583,24 +562,9 @@ async function findOrCreateSourceLab(tags, organization) {
       });
       await unknownLab.save();
     }
-    
-    // Extract location from unknown lab if available
-    let unknownLabLocation = '';
-    if (unknownLab.address) {
-      const addressParts = [];
-      if (unknownLab.address.street) addressParts.push(unknownLab.address.street);
-      if (unknownLab.address.city) addressParts.push(unknownLab.address.city);
-      if (unknownLab.address.state) addressParts.push(unknownLab.address.state);
-      if (unknownLab.address.zipCode) addressParts.push(unknownLab.address.zipCode);
-      if (unknownLab.address.country) addressParts.push(unknownLab.address.country);
-      
-      unknownLabLocation = addressParts.filter(part => part && part.trim() !== '').join(', ');
-    }
 
     console.log(`[Lab] 🔄 Using unknown lab in ${organization.name}: ${unknownLab.name}`);
-    console.log(`[Lab] 📍 Unknown lab location: ${unknownLabLocation || 'Not available'}`);
-    
-    return { lab: unknownLab, labLocation: unknownLabLocation };
+    return { lab: unknownLab, labLocation: '' };
 
   } catch (error) {
     console.error('❌ Error in findOrCreateSourceLab:', error);
@@ -619,23 +583,8 @@ async function findOrCreateSourceLab(tags, organization) {
       await emergencyLab.save();
     }
     
-    // Extract location from emergency lab if available
-    let emergencyLabLocation = '';
-    if (emergencyLab.address) {
-      const addressParts = [];
-      if (emergencyLab.address.street) addressParts.push(emergencyLab.address.street);
-      if (emergencyLab.address.city) addressParts.push(emergencyLab.address.city);
-      if (emergencyLab.address.state) addressParts.push(emergencyLab.address.state);
-      if (emergencyLab.address.zipCode) addressParts.push(emergencyLab.address.zipCode);
-      if (emergencyLab.address.country) addressParts.push(emergencyLab.address.country);
-      
-      emergencyLabLocation = addressParts.filter(part => part && part.trim() !== '').join(', ');
-    }
-    
     console.log(`[Lab] 🚨 Using emergency lab in ${organization.name}: ${emergencyLab.name}`);
-    console.log(`[Lab] 📍 Emergency lab location: ${emergencyLabLocation || 'Not available'}`);
-    
-    return { lab: emergencyLab, labLocation: emergencyLabLocation };
+    return { lab: emergencyLab, labLocation: '' };
   }
 }
 

@@ -14,10 +14,10 @@ export const revertToRadiologist = async (req, res) => {
         const userRole = req.user?.role;
 
         // Validate admin permissions
-        if (!['admin', 'super_admin', 'assignor'].includes(userRole)) {
+        if (!['admin', 'super_admin', 'assignor', 'verifier'].includes(userRole)) {
             return res.status(403).json({
                 success: false,
-                message: 'Only admins can revert reports to radiologists'
+                message: 'Only admins, assignors, or verifiers can revert reports to radiologists'
             });
         }
 
@@ -44,12 +44,12 @@ export const revertToRadiologist = async (req, res) => {
             adminRole: userRole
         });
 
-        // Find study and populate necessary fields
+        // ✅ FIXED: Use correct populate paths based on DicomStudy schema
         const study = await DicomStudy.findOne({
             _id: studyId,
-            organization: req.user?.organization
+            organizationIdentifier: req.user?.organizationIdentifier
         })
-        .populate('radiologist', 'fullName email')
+        .populate('assignment.assignedTo', 'fullName email')
         .populate('patient', 'patientName patientID');
 
         if (!study) {
@@ -59,8 +59,10 @@ export const revertToRadiologist = async (req, res) => {
             });
         }
 
-        // Check if study has a radiologist assigned
-        if (!study.radiologist && !study.lastAssignedDoctor) {
+        // ✅ FIXED: Check for assigned radiologist using correct field
+        const assignedRadiologist = study.assignment?.[0]?.assignedTo;
+        
+        if (!assignedRadiologist) {
             return res.status(400).json({
                 success: false,
                 message: 'No radiologist assigned to this study'
@@ -71,6 +73,7 @@ export const revertToRadiologist = async (req, res) => {
         const validStatuses = [
             'report_drafted',
             'report_finalized',
+            'verification_in_progress',
             'verification_pending',
             'report_verified',
             'report_completed'
@@ -85,9 +88,32 @@ export const revertToRadiologist = async (req, res) => {
 
         const previousStatus = study.workflowStatus;
 
-        // Update study status to reverted
+        // ✅ UPDATED: Use revert_to_radiologist (matches schema enum)
         study.workflowStatus = 'revert_to_radiologist';
-        study.currentCategory = 'PENDING'; // Put it back in pending category
+        study.currentCategory = 'PENDING';
+
+        // ✅ NEW: Clear verification info when reverting
+        if (study.reportInfo?.verificationInfo) {
+            console.log('🧹 [Revert] Clearing verification info');
+            study.reportInfo.verificationInfo = {
+                verificationStatus: 'reverted',
+                verifiedBy: null,
+                verifiedAt: null,
+                verificationNotes: '',
+                rejectionReason: '',
+                corrections: [],
+                verificationTimeMinutes: 0,
+                verificationHistory: study.reportInfo.verificationInfo.verificationHistory || []
+            };
+            
+            // Add to verification history
+            study.reportInfo.verificationInfo.verificationHistory.push({
+                action: 'reverted_to_radiologist',
+                performedBy: userId,
+                performedAt: new Date(),
+                notes: `Report reverted by ${req.user?.fullName || 'admin'}. Reason: ${reason}`
+            });
+        }
 
         // Initialize revertInfo if not exists
         if (!study.revertInfo) {
@@ -144,7 +170,8 @@ export const revertToRadiologist = async (req, res) => {
             studyId,
             previousStatus,
             newStatus: 'revert_to_radiologist',
-            revertCount: study.revertInfo.revertCount
+            revertCount: study.revertInfo.revertCount,
+            verificationInfoCleared: true
         });
 
         // Update workflow status using utility
@@ -159,8 +186,8 @@ export const revertToRadiologist = async (req, res) => {
             console.warn('⚠️ [Revert] Workflow status update warning:', workflowError.message);
         }
 
-        // Prepare response
-        const radiologistInfo = study.radiologist || { fullName: 'Unknown', email: '' };
+        // ✅ FIXED: Use correct radiologist reference
+        const radiologistInfo = assignedRadiologist || { fullName: 'Unknown', email: '' };
         
         res.status(200).json({
             success: true,
@@ -168,11 +195,11 @@ export const revertToRadiologist = async (req, res) => {
             data: {
                 studyId: study._id,
                 bharatPacsId: study.bharatPacsId,
-                patientName: study.patient?.patientName || study.patientName,
+                patientName: study.patient?.patientName || study.patientInfo?.patientName,
                 previousStatus,
                 currentStatus: study.workflowStatus,
                 radiologist: {
-                    id: study.radiologist?._id,
+                    id: assignedRadiologist?._id,
                     name: radiologistInfo.fullName,
                     email: radiologistInfo.email
                 },
@@ -182,7 +209,8 @@ export const revertToRadiologist = async (req, res) => {
                     reason: revertRecord.reason,
                     notes: revertRecord.notes,
                     revertCount: study.revertInfo.revertCount
-                }
+                },
+                verificationInfoCleared: true
             }
         });
 
@@ -263,7 +291,7 @@ export const resolveRevert = async (req, res) => {
 
         const study = await DicomStudy.findOne({
             _id: studyId,
-            organization: req.user?.organization
+            organizationIdentifier: req.user?.organizationIdentifier
         });
 
         if (!study) {
@@ -273,6 +301,7 @@ export const resolveRevert = async (req, res) => {
             });
         }
 
+        // ✅ UPDATED: Check for revert_to_radiologist status (matches schema enum)
         if (study.workflowStatus !== 'revert_to_radiologist') {
             return res.status(400).json({
                 success: false,

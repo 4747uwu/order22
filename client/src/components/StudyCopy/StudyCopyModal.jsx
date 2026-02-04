@@ -1,7 +1,7 @@
 // client/src/components/StudyCopy/StudyCopyModal.jsx
 
 import React, { useState, useEffect } from 'react';
-import { Copy, AlertTriangle, X, Search, ArrowRight } from 'lucide-react';
+import { Copy, AlertTriangle, X, Search, ArrowRight, FileText, MessageSquare } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import api from '../../services/api';
 
@@ -12,6 +12,8 @@ export const StudyCopyModal = ({
     onSuccess 
 }) => {
     const [copyAttachments, setCopyAttachments] = useState(true);
+    const [copyReports, setCopyReports] = useState(true);
+    const [copyNotes, setCopyNotes] = useState(true);
     const [reason, setReason] = useState('');
     const [copying, setCopying] = useState(false);
     const [bharatPacsId, setBharatPacsId] = useState('');
@@ -25,6 +27,8 @@ export const StudyCopyModal = ({
             setStudyInfo(null);
             setReason('');
             setCopyAttachments(true);
+            setCopyReports(true);
+            setCopyNotes(true);
         }
     }, [isOpen]);
 
@@ -85,11 +89,15 @@ export const StudyCopyModal = ({
             setCopying(true);
             const response = await api.post(`/study-copy/copy/${bharatPacsId.trim()}`, {
                 copyAttachments,
+                copyReports,
+                copyNotes,
                 reason: reason.trim()
             });
 
+            const { copiedItems } = response.data.data;
+            
             toast.success(
-                `✅ Study copied successfully!\n\nNew BP ID: ${response.data.data.copiedStudy.bharatPacsId}\n\nFrom: ${response.data.data.originalStudy.organization}\nTo: ${response.data.data.copiedStudy.organizationName}`,
+                `✅ Study copied successfully!\n\nNew BP ID: ${response.data.data.copiedStudy.bharatPacsId}\n\nCopied: ${copiedItems.notes} notes, ${copiedItems.reports + copiedItems.uploadedReports + copiedItems.doctorReports} reports, ${copiedItems.attachments} attachments`,
                 { duration: 6000 }
             );
             
@@ -234,6 +242,24 @@ export const StudyCopyModal = ({
                                             </span>
                                         </div>
                                     </div>
+
+                                    {/* ✅ NEW: Notes and Reports Info */}
+                                    <div className="mt-3 pt-3 border-t border-green-200 grid grid-cols-2 gap-2">
+                                        <div className="flex items-center gap-2 text-xs">
+                                            <MessageSquare className="w-4 h-4 text-blue-600" />
+                                            <span className="text-gray-600">Study Notes:</span>
+                                            <span className={`font-medium ${studyInfo.notesCount > 0 ? 'text-blue-600' : 'text-gray-400'}`}>
+                                                {studyInfo.notesCount || 0}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-xs">
+                                            <FileText className="w-4 h-4 text-purple-600" />
+                                            <span className="text-gray-600">Reports:</span>
+                                            <span className={`font-medium ${(studyInfo.reportsCount + studyInfo.uploadedReportsCount + studyInfo.doctorReportsCount) > 0 ? 'text-purple-600' : 'text-gray-400'}`}>
+                                                {(studyInfo.reportsCount || 0) + (studyInfo.uploadedReportsCount || 0) + (studyInfo.doctorReportsCount || 0)}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -248,13 +274,58 @@ export const StudyCopyModal = ({
                                 <li>A new BP ID will be generated for the copied study</li>
                                 <li>The copied study will be independent from the original</li>
                                 <li>Workflow status will be reset to "New Study Received"</li>
-                                <li>Assignments and reports will not be copied</li>
+                                <li>Assignments will not be copied (reports will be set to draft)</li>
                             </ul>
                         </div>
                     </div>
 
                     {/* Copy Options */}
-                    <div className="mb-6">
+                    <div className="mb-6 space-y-3">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Copy Options:</p>
+                        
+                        {/* Copy Notes */}
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={copyNotes}
+                                onChange={(e) => setCopyNotes(e.target.checked)}
+                                className="w-4 h-4 text-teal-600 focus:ring-teal-500 rounded"
+                                disabled={!studyInfo}
+                            />
+                            <div className="flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4 text-blue-600" />
+                                <span className={`text-sm font-medium ${studyInfo ? 'text-gray-700' : 'text-gray-400'}`}>
+                                    Copy study notes/discussions
+                                    {studyInfo?.notesCount > 0 && (
+                                        <span className="ml-2 text-xs text-blue-600">({studyInfo.notesCount} notes)</span>
+                                    )}
+                                </span>
+                            </div>
+                        </label>
+
+                        {/* Copy Reports */}
+                        <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={copyReports}
+                                onChange={(e) => setCopyReports(e.target.checked)}
+                                className="w-4 h-4 text-teal-600 focus:ring-teal-500 rounded"
+                                disabled={!studyInfo}
+                            />
+                            <div className="flex items-center gap-2">
+                                <FileText className="w-4 h-4 text-purple-600" />
+                                <span className={`text-sm font-medium ${studyInfo ? 'text-gray-700' : 'text-gray-400'}`}>
+                                    Copy reports (will be set to draft status)
+                                    {studyInfo && (studyInfo.reportsCount + studyInfo.uploadedReportsCount + studyInfo.doctorReportsCount) > 0 && (
+                                        <span className="ml-2 text-xs text-purple-600">
+                                            ({(studyInfo.reportsCount || 0) + (studyInfo.uploadedReportsCount || 0) + (studyInfo.doctorReportsCount || 0)} reports)
+                                        </span>
+                                    )}
+                                </span>
+                            </div>
+                        </label>
+
+                        {/* Copy Attachments */}
                         <label className="flex items-center gap-3 cursor-pointer">
                             <input
                                 type="checkbox"
@@ -267,7 +338,7 @@ export const StudyCopyModal = ({
                                 Copy attachments to target organization
                             </span>
                         </label>
-                        <p className="text-xs text-gray-500 ml-7 mt-1">
+                        <p className="text-xs text-gray-500 ml-7">
                             Files will be duplicated in Wasabi S3 for the target organization
                         </p>
                     </div>

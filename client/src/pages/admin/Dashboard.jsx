@@ -5,10 +5,11 @@ import Search from '../../components/common/Search/Search';
 import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
-import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle } from 'lucide-react';
+import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
+// import FileText from 'react-icons/all';
 
 const HEADER_COLOR_PRESETS = [
   { name: 'Dark Gray', gradient: 'from-gray-800 via-gray-900 to-black', textColor: 'text-white' },
@@ -73,7 +74,7 @@ const HeaderColorPicker = ({ isOpen, onClose, currentColor, onSelectColor }) => 
   );
 };
 
-const Dashboard = (isSuperAdminView = false) => {
+const Dashboard = ({ isSuperAdminView = false }) => {
   const { currentUser, currentOrganizationContext } = useAuth();
   const navigate = useNavigate();
   
@@ -471,7 +472,10 @@ const Dashboard = (isSuperAdminView = false) => {
         studyName: formData.studyName,
         referringPhysician: formData.referringPhysician,
         accessionNumber: formData.accessionNumber,
-        clinicalHistory: formData.clinicalHistory
+        clinicalHistory: formData.clinicalHistory,
+        caseType: formData.caseType,
+        studyPriority: formData.studyPriority,
+        assignmentPriority: formData.assignmentPriority
       });
 
       if (response.data.success) {
@@ -513,6 +517,13 @@ const Dashboard = (isSuperAdminView = false) => {
       tooltip: 'View comprehensive system overview'
     },
     {
+      label: 'Templates',
+      icon: FileText,
+      onClick: () => navigate('/admin/templates'),
+      variant: 'primary',
+      tooltip: 'Manage organization templates'
+    },
+    {
       label: 'Admin Panel',
       icon: Shield,
       onClick: () => console.log('Open admin panel'),
@@ -528,7 +539,7 @@ const Dashboard = (isSuperAdminView = false) => {
     },
     {
       label: 'Branding',
-      icon: Palette, // Import from lucide-react
+      icon: Palette,
       onClick: () => navigate('/admin/branding'),
       variant: 'secondary',
       tooltip: 'Configure report branding'
@@ -551,16 +562,19 @@ const Dashboard = (isSuperAdminView = false) => {
   ];
 
   return (
-    <div className="h-screen bg-teal-50 flex flex-col">
-      <Navbar
-        title="Admin Dashboard"
-        subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • PACS Administration`}
-        showOrganizationSelector={true}
-        onRefresh={handleRefresh}
-        additionalActions={additionalActions}
-        notifications={0}
-        theme="admin"
-      />
+    <div className={`${isSuperAdminView ? 'h-full' : 'h-screen'} bg-teal-50 flex flex-col`}>
+      {/* ✅ Only show navbar if NOT in super admin view */}
+      {!isSuperAdminView && (
+        <Navbar
+          title="Admin Dashboard"
+          subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • PACS Administration`}
+          showOrganizationSelector={true}
+          onRefresh={handleRefresh}
+          additionalActions={additionalActions}
+          notifications={0}
+          theme="admin"
+        />
+      )}
       
       <Search
         onSearch={handleSearch}
@@ -570,6 +584,7 @@ const Dashboard = (isSuperAdminView = false) => {
         currentCategory={currentView}
         theme="admin"
         initialFilters={searchFilters}
+        onRefresh={handleRefresh}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">

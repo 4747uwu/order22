@@ -12,6 +12,44 @@ export const formatDate = (dateString) => {
     }).replace(/\//g, '.');
 };
 
+// Add this helper function at the top of the file with other utility functions
+export const calculateElapsedTime = (assignedAt) => {
+  if (!assignedAt) return null;
+  
+  const now = new Date();
+  const assigned = new Date(assignedAt);
+  const diffMs = now - assigned;
+  
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  } else {
+    return `${seconds}s`;
+  }
+};
+
+const formatTimeTaken = (assignedAt, completedAt) => {
+  if (!assignedAt || !completedAt) return null;
+  
+  const assigned = new Date(assignedAt);
+  const completed = new Date(completedAt);
+  const diffMs = completed - assigned;
+  
+  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else {
+    return `${minutes}m`;
+  }
+};
+
 // Format time string to HH:MM format
 export const formatTime = (dateString) => {
     if (!dateString) return '';

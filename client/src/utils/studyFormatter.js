@@ -17,6 +17,9 @@ export const formatStudyForWorklist = (rawStudy) => {
     //                   'Unknown Center';
 
     const centerName = rawStudy?.institutionName || '-'
+
+        const location = rawStudy?.labLocation || '-'
+
     // ✅ PATIENT INFO - handle multiple possible sources
     const patientName = rawStudy.patientInfo?.patientName ||
                        rawStudy.patient?.patientNameRaw || 
@@ -198,6 +201,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       bharatPacsId,
       organizationName,
       centerName,
+      location,
       
       // ✅ PATIENT INFO
       patientId,

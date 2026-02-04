@@ -86,6 +86,22 @@ const LabSchema = new mongoose.Schema({
         verificationEnabledBy: {
             type: mongoose.Schema.Types.ObjectId,
             ref: 'User'
+        },
+        // ✅ NEW: Compression Mode Toggle
+        enableCompression: {
+            type: Boolean,
+            default: false, // By default, compression is disabled
+            description: 'If true, DICOM studies will be compressed for storage optimization.'
+        },
+        compressionEnabledAt: { type: Date },
+        compressionEnabledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
+        },
+        compressionDisabledAt: { type: Date },
+        compressionDisabledBy: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'User'
         }
     },
     

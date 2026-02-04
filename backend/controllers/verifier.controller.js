@@ -19,14 +19,15 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
             { organizationIdentifier: { $exists: false } },
             { organizationIdentifier: null }
         ],
-        // ✅ UPDATED: Only show finalized reports and verification statuses
+        // ✅ UPDATED: Include study_reverted status for verifiers to see
         workflowStatus: { 
             $in: [
+                'verification_pending',
                 'report_finalized',  // ✅ Main status for verifiers
                 'verification_in_progress',
                 'report_verified',
-                'report_rejected'
-                // ✅ REMOVED: 'report_drafted' - verifiers shouldn't see drafts
+                'report_rejected',
+                'revert_to_radiologist' // ✅ NEW: Show reverted studies
             ] 
         }
     };
@@ -394,7 +395,7 @@ export const getRejectedStudies = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Enhanced verify report with admin/assignor bypass for workflow state checks
+// ✅ UPDATED: Enhanced verify report - updates BOTH DicomStudy AND Report model
 export const verifyReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -454,23 +455,31 @@ export const verifyReport = async (req, res) => {
 
             // ✅ ADMIN BYPASS: Skip workflow state check for admin/assignor roles
             if (!hasAdminRole) {
-                // ✅ VERIFY STUDY STATE: Must be in correct state for verification
-                if (!['report_finalized', 'report_drafted', 'verification_in_progress'].includes(study.workflowStatus)) {
+                // ✅ UPDATED: Accept more statuses for verification
+                const verifiableStatuses = [
+                    'verification_pending',
+                    'report_finalized', 
+                    
+                    'verification_in_progress'
+                ];
+                
+                if (!verifiableStatuses.includes(study.workflowStatus)) {
                     await session.abortTransaction();
                     return res.status(400).json({ 
                         success: false, 
-                        message: `Study is not in a state that can be verified. Current status: ${study.workflowStatus}` 
+                        message: `Study is not in a state that can be verified. Current status: ${study.workflowStatus}. Expected one of: ${verifiableStatuses.join(', ')}` 
                     });
                 }
             } else {
                 console.log(`✅ ADMIN BYPASS: User ${user.fullName} (${userRoles.join(', ')}) bypassing workflow state check`);
             }
 
-            // ✅ BUILD UPDATE: Prepare verification update
             const now = new Date();
-            const updateData = {
+            
+            // ✅ STEP 1: Update DicomStudy
+            const studyUpdateData = {
                 workflowStatus: approved ? 'report_verified' : 'report_rejected',
-                currentCategory: approved ? 'report_verified' : 'report_rejected',
+                currentCategory: 'FINAL',
                 'reportInfo.verificationInfo.verifiedBy': user._id,
                 'reportInfo.verificationInfo.verifiedAt': now,
                 'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
@@ -478,16 +487,13 @@ export const verifyReport = async (req, res) => {
                 'reportInfo.verificationInfo.verificationTimeMinutes': verificationTimeMinutes || 0
             };
 
-            // ✅ HANDLE REJECTION: Add rejection details
             if (!approved) {
-                updateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
-                
+                studyUpdateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
                 if (corrections && corrections.length > 0) {
-                    updateData['reportInfo.verificationInfo.corrections'] = corrections;
+                    studyUpdateData['reportInfo.verificationInfo.corrections'] = corrections;
                 }
             }
 
-            // ✅ ADD HISTORY: Track verification action
             const historyEntry = {
                 action: approved ? 'verified' : 'rejected',
                 performedBy: user._id,
@@ -495,7 +501,7 @@ export const verifyReport = async (req, res) => {
                 notes: verificationNotes || rejectionReason || ''
             };
 
-            updateData.$push = {
+            studyUpdateData.$push = {
                 'reportInfo.verificationInfo.verificationHistory': historyEntry,
                 'statusHistory': {
                     status: approved ? 'report_verified' : 'report_rejected',
@@ -505,36 +511,90 @@ export const verifyReport = async (req, res) => {
                 }
             };
 
-            // ✅ UPDATE STUDY
             const updatedStudy = await DicomStudy.findByIdAndUpdate(
                 studyId, 
-                updateData, 
+                studyUpdateData, 
                 { session, new: true }
             ).populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role');
 
-            // ✅ UPDATE VERIFIER STATS (only if user is actual verifier)
-            // ✅ UPDATE VERIFIER STATS (only if user is actual verifier)
-if (hasVerifierRole) {
-    try {
-        const VerifierModel = mongoose.model('Verifier');
-        await VerifierModel.findOneAndUpdate(
-            { userAccount: user._id }, // ✅ FIXED: Use 'userAccount' instead of 'userId'
-            { 
-                $inc: { 
-                    'verificationStats.totalReportsVerified': 1,
-                    'verificationStats.reportsVerifiedToday': 1,
-                    'verificationStats.reportsVerifiedThisMonth': 1
-                },
-                $set: {
-                    'verificationStats.lastVerificationAt': now
+            // ✅ STEP 2: Update Report model with verification info
+            const Report = mongoose.model('Report');
+            const report = await Report.findOne({
+                dicomStudy: studyId,
+                reportStatus: { $in: ['finalized', 'draft'] }
+            }).session(session);
+
+            if (report) {
+                console.log('📋 [Verify] Updating Report model with verification info:', report._id);
+                
+                // Update report verification info
+                if (!report.verificationInfo) {
+                    report.verificationInfo = {};
                 }
-            },
-            { upsert: false, session } // ✅ FIXED: Set upsert to false since verifier should already exist
-        );
-    } catch (statsError) {
-        console.log('⚠️ Could not update verifier stats:', statsError.message);
-    }
-}
+                
+                report.verificationInfo.verifiedBy = user._id;
+                report.verificationInfo.verifiedAt = now;
+                report.verificationInfo.verificationStatus = approved ? 'verified' : 'rejected';
+                report.verificationInfo.verificationNotes = verificationNotes || '';
+                
+                if (!approved) {
+                    report.verificationInfo.rejectionReason = rejectionReason || '';
+                    if (corrections && corrections.length > 0) {
+                        report.verificationInfo.corrections = corrections;
+                    }
+                }
+                
+                // Update report status if verified
+                if (approved) {
+                    report.reportStatus = 'verified';
+                }
+                
+                // Add to verification history
+                if (!report.verificationInfo.verificationHistory) {
+                    report.verificationInfo.verificationHistory = [];
+                }
+                report.verificationInfo.verificationHistory.push(historyEntry);
+                
+                // Update workflow info
+                if (!report.workflowInfo.statusHistory) {
+                    report.workflowInfo.statusHistory = [];
+                }
+                report.workflowInfo.statusHistory.push({
+                    status: approved ? 'verified' : 'rejected',
+                    changedAt: now,
+                    changedBy: user._id,
+                    notes: verificationNotes || rejectionReason || '',
+                    userRole: user.role
+                });
+                
+                await report.save({ session });
+                console.log('✅ [Verify] Report model updated with verification info');
+            } else {
+                console.warn('⚠️ [Verify] No Report document found for study:', studyId);
+            }
+
+            // ✅ STEP 3: Update verifier stats
+            if (hasVerifierRole) {
+                try {
+                    const VerifierModel = mongoose.model('Verifier');
+                    await VerifierModel.findOneAndUpdate(
+                        { userAccount: user._id },
+                        { 
+                            $inc: { 
+                                'verificationStats.totalReportsVerified': 1,
+                                'verificationStats.reportsVerifiedToday': 1,
+                                'verificationStats.reportsVerifiedThisMonth': 1
+                            },
+                            $set: {
+                                'verificationStats.lastVerificationAt': now
+                            }
+                        },
+                        { upsert: false, session }
+                    );
+                } catch (statsError) {
+                    console.log('⚠️ Could not update verifier stats:', statsError.message);
+                }
+            }
 
             await session.commitTransaction();
 
@@ -553,7 +613,8 @@ if (hasVerifierRole) {
                     verificationNotes,
                     corrections: !approved ? corrections : undefined,
                     rejectionReason: !approved ? rejectionReason : undefined,
-                    adminBypass: hasAdminRole
+                    adminBypass: hasAdminRole,
+                    reportModelUpdated: !!report
                 }
             });
 
@@ -604,7 +665,7 @@ export const startVerification = async (req, res) => {
         const now = new Date();
         const updateData = {
             workflowStatus: 'verification_in_progress',
-            currentCategory: 'verification_in_progress',
+            currentCategory: 'VERIFICATION_PENDING',
             $push: {
                 'reportInfo.verificationInfo.verificationHistory': {
                     action: 'verification_started',

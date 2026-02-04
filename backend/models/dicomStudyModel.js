@@ -265,7 +265,7 @@ isCopiedStudy: {
         },
         lockedByRole: {
             type: String,
-            enum: ['admin', 'doctor_account', 'radiologist', 'verifier', 'lab_staff']
+            enum: ['admin', 'assignor', 'doctor_account', 'radiologist', 'verifier', 'lab_staff'] // ✅ Added 'assignor'
         },
         lockedAt: {
             type: Date,
@@ -624,7 +624,7 @@ isCopiedStudy: {
             },
             verificationStatus: {
                 type: String,
-                enum: ['pending', 'in_progress', 'verified', 'rejected'],
+                enum: ['pending', 'in_progress', 'verified', 'rejected', 'reverted'], // ✅ Added 'reverted'
                 default: 'pending',
                 index: { background: true }
             },
@@ -666,7 +666,7 @@ isCopiedStudy: {
             verificationHistory: [{
                 action: {
                     type: String,
-                    enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested']
+                    enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist'] // ✅ Added 'reverted_to_radiologist'
                 },
                 performedBy: {
                     type: mongoose.Schema.Types.ObjectId,
