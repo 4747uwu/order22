@@ -1,126 +1,108 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { WebVoiceProcessor } from '@picovoice/web-voice-processor';
 
-const PICOVOICE_ACCESS_KEY = import.meta.env.VITE_PICOVOICE_ACCESS_KEY;
-
+// ✅ Use Web Speech API - FREE, no model file, works immediately
 export function useCheetahSpeech() {
   const [isListening, setIsListening] = useState(false);
-  const [isReady, setIsReady] = useState(false);
+  const [isReady] = useState(true);
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState(null);
   
-  const workerRef = useRef(null);
-  const voiceProcessorRef = useRef(null);
-  const initializingRef = useRef(false);
+  const recognitionRef = useRef(null);
+  const finalTranscriptRef = useRef('');
 
-  // Lazy initialization - only load when needed
-  const initializeCheetah = useCallback(async () => {
-    if (workerRef.current || initializingRef.current) return;
-    initializingRef.current = true;
+  const browserSupportsSpeechRecognition = typeof window !== 'undefined' && 
+    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
-    try {
-      // Create worker
-      workerRef.current = new Worker(
-          new URL('../worker/cheetahWebWorker.jsx', import.meta.url),
-        { type: 'module' }
-      );
+  // Initialize
+  const getRecognition = useCallback(() => {
+    if (recognitionRef.current) return recognitionRef.current;
+    if (!browserSupportsSpeechRecognition) return null;
 
-      // Handle messages from worker
-      workerRef.current.onmessage = (event) => {
-        const { type, transcript: newTranscript, error: workerError } = event.data;
-        
-        switch (type) {
-          case 'READY':
-            setIsReady(true);
-            break;
-          case 'TRANSCRIPT':
-            // Append new transcript (throttled from worker)
-            setTranscript(prev => prev + newTranscript);
-            break;
-          case 'ERROR':
-            setError(workerError);
-            setIsListening(false);
-            break;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SpeechRecognition();
+    
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event) => {
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + ' ';
         }
-      };
+      }
 
-      // Initialize Cheetah in worker
-      workerRef.current.postMessage({
-        type: 'INIT',
-        payload: {
-          accessKey: PICOVOICE_ACCESS_KEY,
-          modelPath: '/models/cheetah_params.pv' // Put model in public folder
-        }
-      });
-    } catch (err) {
-      setError(err.message);
-      initializingRef.current = false;
-    }
-  }, []);
+      if (finalTranscript) {
+        finalTranscriptRef.current += finalTranscript;
+        setTranscript(finalTranscriptRef.current);
+      }
+    };
 
-  // Audio frame handler
-  const audioFrameHandler = useCallback((audioFrame) => {
-    if (workerRef.current) {
-      // Transfer audio data to worker
-      workerRef.current.postMessage(
-        { type: 'PROCESS_AUDIO', payload: { audioFrame } },
-        [audioFrame.buffer] // Transfer ownership for performance
-      );
-    }
-  }, []);
+    recognition.onerror = (event) => {
+      console.error('🎤 [Speech] Error:', event.error);
+      if (event.error !== 'no-speech' && event.error !== 'aborted') {
+        setError(`Speech error: ${event.error}`);
+        setIsListening(false);
+      }
+    };
 
-  // Start listening
+    recognition.onend = () => {
+      // Auto-restart if still listening
+      if (recognitionRef.current?._shouldListen) {
+        try { recognition.start(); } catch (e) {}
+      }
+    };
+
+    recognitionRef.current = recognition;
+    return recognition;
+  }, [browserSupportsSpeechRecognition]);
+
   const startListening = useCallback(async () => {
+    console.log('🎤 [Speech] Starting...');
     setError(null);
     
-    // Lazy-load Cheetah on first use
-    if (!isReady) {
-      await initializeCheetah();
-      // Wait for READY message
-      await new Promise(resolve => {
-        const checkReady = setInterval(() => {
-          if (isReady) {
-            clearInterval(checkReady);
-            resolve();
-          }
-        }, 100);
-      });
+    const recognition = getRecognition();
+    if (!recognition) {
+      setError('Speech recognition not supported');
+      return;
     }
 
     try {
-      // Start microphone capture
-      voiceProcessorRef.current = await WebVoiceProcessor.subscribe(audioFrameHandler);
+      recognition._shouldListen = true;
+      recognition.start();
       setIsListening(true);
+      console.log('🎤 [Speech] Listening!');
     } catch (err) {
-      setError(`Microphone error: ${err.message}`);
+      if (err.name !== 'InvalidStateError') {
+        setError(err.message);
+      }
     }
-  }, [isReady, initializeCheetah, audioFrameHandler]);
+  }, [getRecognition]);
 
-  // Stop listening
   const stopListening = useCallback(async () => {
-    if (voiceProcessorRef.current) {
-      await WebVoiceProcessor.unsubscribe(audioFrameHandler);
-      voiceProcessorRef.current = null;
+    console.log('🎤 [Speech] Stopping...');
+    if (recognitionRef.current) {
+      recognitionRef.current._shouldListen = false;
+      try { recognitionRef.current.stop(); } catch (e) {}
     }
-    
-    // Flush remaining transcript
-    workerRef.current?.postMessage({ type: 'STOP' });
     setIsListening(false);
-  }, [audioFrameHandler]);
-
-  // Reset transcript
-  const resetTranscript = useCallback(() => {
-    setTranscript('');
   }, []);
 
-  // Cleanup on unmount
+  const resetTranscript = useCallback(() => {
+    setTranscript('');
+    finalTranscriptRef.current = '';
+  }, []);
+
   useEffect(() => {
     return () => {
-      stopListening();
-      workerRef.current?.postMessage({ type: 'RELEASE' });
-      workerRef.current?.terminate();
+      if (recognitionRef.current) {
+        recognitionRef.current._shouldListen = false;
+        try { recognitionRef.current.stop(); } catch (e) {}
+      }
     };
-  }, [stopListening]);
+  }, []);
 
   return {
     transcript,
@@ -130,6 +112,6 @@ export function useCheetahSpeech() {
     startListening,
     stopListening,
     resetTranscript,
-    browserSupportsSpeechRecognition: typeof AudioWorklet !== 'undefined'
+    browserSupportsSpeechRecognition
   };
 }

@@ -28,7 +28,16 @@ import LabBrandingSettings from './pages/lab/LabBrandingSettings';
 
 // Protected Route Component - Updated for multi-role support with better fallback
 const ProtectedRoute = ({ children, allowedRoles = [] }) => {
-  const { isAuthenticated, currentUser, getDashboardRoute } = useAuth();
+  const { isAuthenticated, currentUser, getDashboardRoute, loading } = useAuth();
+
+  // ✅ FIX: Wait for auth loading to complete before making decisions
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-100">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div>
+      </div>
+    );
+  }
 
   if (!isAuthenticated()) {
     return <Navigate to="/login" replace />;

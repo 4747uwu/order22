@@ -406,11 +406,11 @@ const Search = ({
 
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
-            {/* MAIN SEARCH ROW */}
-            <div className="flex items-center gap-2">
+            {/* MAIN SEARCH ROW - Made responsive with flex-wrap */}
+            <div className="flex flex-wrap items-center gap-2">
                 
-                {/* SEARCH INPUT */}
-                <div className="relative w-88 flex-shrink-0">
+                {/* SEARCH INPUT - Responsive width */}
+                <div className="relative w-full sm:w-36 md:w-40 lg:w-44 xl:w-48 flex-shrink-0 order-1">
                     <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
                     <input
                         type="text"
@@ -429,21 +429,21 @@ const Search = ({
                     )}
                 </div>
 
-                {/* QUICK FILTERS */}
-                <div className="flex items-center gap-1">
+                {/* QUICK FILTERS - Responsive with wrap */}
+                <div className="flex flex-wrap items-center gap-1 order-2">
                     {/* ✅ UPDATED: Modality Multi-Select */}
                     <MultiSelect
                         options={modalityMultiSelectOptions}
                         selected={filters.modalities}
                         onChange={(selected) => handleFilterChange('modalities', selected)}
                         placeholder="Modality"
-                        className="w-24"
+                        className="w-20 sm:w-24"
                     />
 
                     <select
                         value={filters.priority}
                         onChange={(e) => handleFilterChange('priority', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16`}
+                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-14 sm:min-w-16`}
                     >
                         {priorityOptions.map(option => (
                             <option key={option.value} value={option.value}>
@@ -459,7 +459,7 @@ const Search = ({
                             selected={filters.radiologists}
                             onChange={(selected) => handleFilterChange('radiologists', selected)}
                             placeholder="Radiologist"
-                            className="w-32"
+                            className="w-24 sm:w-28 lg:w-32"
                         />
                     )}
 
@@ -470,7 +470,7 @@ const Search = ({
                             selected={filters.labs}
                             onChange={(selected) => handleFilterChange('labs', selected)}
                             placeholder="Center"
-                            className="w-32"
+                            className="w-24 sm:w-28 lg:w-32"
                         />
                     )}
 
@@ -478,7 +478,7 @@ const Search = ({
                         <select
                             value={filters.assigneeRole}
                             onChange={(e) => handleFilterChange('assigneeRole', e.target.value)}
-                            className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-20`}
+                            className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16 sm:min-w-20`}
                         >
                             <option value="all">All Roles</option>
                             <option value="radiologist">Radiologist</option>
@@ -487,14 +487,14 @@ const Search = ({
                     )}
                 </div>
 
-                {/* TIME FILTERS */}
-                <div className="flex items-center gap-1">
-                    {['Today', 'Yesterday', '7 Days', '30 Days'].map((period) => {
+                {/* TIME FILTERS - Hidden on very small screens, shown in advanced panel instead */}
+                <div className="hidden md:flex items-center gap-1 order-3">
+                    {['Today', 'Yesterday', '7 Days'].map((period) => {
                         const isActive = 
                             (period === 'Today' && filters.dateFilter === 'today') ||
                             (period === 'Yesterday' && filters.dateFilter === 'yesterday') ||
-                            (period === '7 Days' && filters.dateFilter === 'last7days') ||
-                            (period === '30 Days' && filters.dateFilter === 'last30days');
+                            (period === '7 Days' && filters.dateFilter === 'last7days')
+                            
                         
                         const value = 
                             period === 'Today' ? 'today' :
@@ -537,58 +537,74 @@ const Search = ({
                     </div>
                 </div>
 
-                {/* ADMIN BUTTONS */}
+                {/* Mobile date filter dropdown - shown only on small screens */}
+                <div className="flex md:hidden items-center order-3">
+                    <select
+                        value={filters.dateFilter || 'today'}
+                        onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
+                        className={`px-2 py-1.5 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-black'}`}
+                    >
+                        <option value="">All Time</option>
+                        <option value="today">Today</option>
+                        <option value="yesterday">Yesterday</option>
+                        <option value="last7days">Last 7 Days</option>
+                        {/* <option value="last30days">Last 30 Days</option> */}
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+
+                {/* ADMIN BUTTONS - Responsive with flex-wrap */}
                 {(canCreateDoctor || canCreateLab || canCreateUser) && (
-                    <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border}`}>
+                    <div className={`flex flex-wrap items-center gap-1 pl-2 border-l border-${themeColors.border} order-4`}>
                         {isAdmin && (
                             <button
                                 onClick={() => navigate('/admin/user-management')}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'} text-white text-xs font-medium rounded transition-colors`}
                                 title="Manage Users"
                             >
                                 <Shield size={12} />
-                                <span className="hidden sm:inline">Manage</span>
+                                <span className="hidden lg:inline">Manage</span>
                             </button>
                         )}
                         
-                        {canCreateUser && (
+                        {/* {canCreateUser && (
                             <button
                                 onClick={handleCreateUser}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white text-xs font-medium rounded transition-colors`}
                                 title="Create New User"
                             >
                                 <Users size={12} />
-                                <span className="hidden sm:inline">User</span>
+                                <span className="hidden lg:inline">User</span>
                             </button>
-                        )}
+                        )} */}
                         
                         {canCreateDoctor && (
                             <button
                                 onClick={handleCreateDoctor}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-teal-700 hover:bg-teal-800' : 'bg-black hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-teal-700 hover:bg-teal-800' : 'bg-black hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
                                 title="Create Doctor Account"
                             >
                                 <UserPlus size={12} />
-                                <span className="hidden sm:inline">Doctor</span>
+                                <span className="hidden lg:inline">Doctor</span>
                             </button>
                         )}
                         
                         {canCreateLab && (
                             <button
                                 onClick={handleCreateLab}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 ${isGreenTheme ? 'bg-slate-600 hover:bg-slate-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
+                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-slate-600 hover:bg-slate-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
                                 title="Create Lab"
                             >
                                 <Building size={12} />
-                                <span className="hidden sm:inline">Lab</span>
+                                <span className="hidden lg:inline">Lab</span>
                             </button>
                         )}
                     </div>
                 )}
 
-                {/* ASSIGNOR ANALYTICS */}
+                {/* ASSIGNOR ANALYTICS - Hidden on small screens */}
                 {isAssignor && analytics && (
-                    <div className={`flex items-center gap-2 pl-2 border-l border-${themeColors.border}`}>
+                    <div className={`hidden lg:flex items-center gap-2 pl-2 border-l border-${themeColors.border} order-5`}>
                         <div className="text-xs">
                             <span className={`text-${themeColors.textSecondary}`}>Unassigned:</span>
                             <span className="font-bold text-red-600 ml-1">{analytics.overview?.totalUnassigned || 0}</span>
@@ -604,13 +620,13 @@ const Search = ({
                     </div>
                 )}
 
-                {/* ✅ NEW: AUTO-REFRESH CONTROLS */}
-                <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border}`}>
-                    {/* Refresh interval selector */}
+                {/* ✅ AUTO-REFRESH CONTROLS - Compact on small screens */}
+                <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border} order-6`}>
+                    {/* Refresh interval selector - hidden on very small screens */}
                     <select
                         value={refreshInterval}
                         onChange={(e) => handleRefreshIntervalChange(parseInt(e.target.value))}
-                        className={`px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-gray-500'}`}
+                        className={`hidden sm:block px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-gray-500'}`}
                         title="Auto-refresh interval"
                     >
                         {refreshIntervalOptions.map(option => (
@@ -636,7 +652,7 @@ const Search = ({
                     >
                         {autoRefreshEnabled ? <Play size={12} /> : <Pause size={12} />}
                         {autoRefreshEnabled && (
-                            <span className="font-mono text-[10px]">
+                            <span className="hidden sm:inline font-mono text-[10px]">
                                 {formatCountdown(timeUntilRefresh)}
                             </span>
                         )}
@@ -644,7 +660,7 @@ const Search = ({
                 </div>
 
                 {/* ACTION BUTTONS */}
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 order-7">
                     {/* Advanced Toggle */}
                     <button
                         onClick={() => setShowAdvanced(!showAdvanced)}
@@ -682,14 +698,7 @@ const Search = ({
                     >
                         <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                     </button>
-                </div>
-
-                {/* RESULTS COUNT */}
-                <div className={`flex items-center gap-1 text-xs text-${themeColors.textSecondary} pl-2 border-l border-${themeColors.border}`}>
-                    <span className={`font-bold text-${themeColors.primary}`}>{totalStudies.toLocaleString()}</span>
-                    <span className="hidden sm:inline">studies</span>
-                    {loading && <span className={`text-${isGreenTheme ? 'teal-600' : 'green-600'} font-medium`}>• Live</span>}
-                </div>
+                </div>                
             </div>
 
             {/* ADVANCED FILTERS PANEL */}

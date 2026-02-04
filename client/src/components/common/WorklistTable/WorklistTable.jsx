@@ -904,11 +904,11 @@ const handleOHIFReporting = async () => {
   
   {/* ✅ NEW: Timer below radiologist name */}
   {isAssigned && assignedDoctor && (
-    <div className="mt-2 flex items-center justify-between gap-2">
+    <div className="mt-1 flex items-center justify-between gap-2">
       {isAssignedStatus && !isReportCompleted && elapsedTime ? (
         // Show running timer if still assigned and no report
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded-md">
-          <Clock className="w-3 h-3 text-amber-600 animate-pulse" />
+        <div className="flex items-center gap-1.5 px-2 py-0 bg-amber-50 border border-amber-200 rounded-md">
+          <Clock className="w-2 h-2 text-amber-600 animate-pulse" />
           <span className="text-[10px] font-mono font-bold text-amber-700">
             {elapsedTime}
           </span>
