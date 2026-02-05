@@ -61,9 +61,9 @@ const BrandingSettings = () => {
     showHeader: true,
     showFooter: true,
     paperSettings: {
-      paperWidth: 816,    // 8.5" Letter width in pixels (215.9mm * 96/25.4)
-      paperHeight: 1056,  // 11" Letter height in pixels (279.4mm * 96/25.4)
-      marginTop: 96,      // 1 inch in pixels
+      paperWidth: 794,    // 210mm in pixels (210 * 96/25.4)
+      paperHeight: 1123,  // 297mm in pixels (297 * 96/25.4)
+      marginTop: 96,      // 25.4mm in pixels
       marginBottom: 96,
       marginLeft: 96,
       marginRight: 96,
@@ -74,23 +74,23 @@ const BrandingSettings = () => {
   });
 
   // ✅ UPDATED: A4 Paper calculations in PIXELS with FIXED positioning
-  const LETTER_CONSTANTS = {
-    WIDTH_PX: 816,     // 8.5 inches * 96 DPI = 816px (215.9mm)
-    HEIGHT_PX: 1056,   // 11 inches * 96 DPI = 1056px (279.4mm)
+  const A4_CONSTANTS = {
+    WIDTH_PX: 794,     // 210mm * 96 DPI / 25.4
+    HEIGHT_PX: 1123,   // 297mm * 96 DPI / 25.4
     SCALE_FACTOR: 0.8, // Scale down for screen display
-    MARGIN_PX: 96,     // 1 inch (25.4mm) in pixels
-    FIXED_HEIGHT: 1056 * 0.8 // Keep paper at fixed height
+    MARGIN_PX: 96,     // 25.4mm in pixels
+    FIXED_HEIGHT: 1123 * 0.8 // Keep paper at fixed height
   };
 
   const getDisplayDimensions = () => {
-    const scale = LETTER_CONSTANTS.SCALE_FACTOR;
+    const scale = A4_CONSTANTS.SCALE_FACTOR;
     return {
-      paperWidth: LETTER_CONSTANTS.WIDTH_PX * scale,
-      paperHeight: LETTER_CONSTANTS.FIXED_HEIGHT, // ✅ FIXED HEIGHT - no more shifting
-      marginTop: LETTER_CONSTANTS.MARGIN_PX * scale,
-      marginBottom: LETTER_CONSTANTS.MARGIN_PX * scale,
-      marginLeft: LETTER_CONSTANTS.MARGIN_PX * scale,
-      marginRight: LETTER_CONSTANTS.MARGIN_PX * scale,
+      paperWidth: A4_CONSTANTS.WIDTH_PX * scale,
+      paperHeight: A4_CONSTANTS.FIXED_HEIGHT, // ✅ FIXED HEIGHT - no more shifting
+      marginTop: A4_CONSTANTS.MARGIN_PX * scale,
+      marginBottom: A4_CONSTANTS.MARGIN_PX * scale,
+      marginLeft: A4_CONSTANTS.MARGIN_PX * scale,
+      marginRight: A4_CONSTANTS.MARGIN_PX * scale,
       headerHeight: headerHeight * scale,
       footerHeight: footerHeight * scale,
     };
@@ -788,11 +788,11 @@ const BrandingSettings = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-base font-bold text-gray-900">{currentLab.name}</h2>
-                <p className="text-xs text-gray-600">Letter Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
+                <p className="text-xs text-gray-600">A4 Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
               </div>
               
               <div className="flex items-center gap-3 text-xs text-gray-600">
-                <span>📐 816×1056px (Letter 8.5"×11")</span>
+                <span>📐 794×1123px (A4)</span>
                 <span className={`${headerSizeMatch ? 'text-green-600 font-semibold' : ''}`}>
                   📏 Header: {headerHeight}px {headerSizeMatch && <span className="text-green-600">✅</span>}
                 </span>
@@ -1147,12 +1147,9 @@ const BrandingSettings = () => {
                     Crop {cropType === 'header' ? 'Header' : 'Footer'} Image
                   </h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    <span className="font-bold text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                      Letter Paper Requirements
-                    </span> • Min Width: <span className="font-bold text-blue-600">624px</span> • Target Height: <span className="font-bold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px</span>
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    📏 Content area: 624px wide (8.5" - 2" margins) • Drag to select crop area • Adjust corners to resize
+                    Target height: <span className="font-bold text-purple-600 bg-purple-100 px-2 py-1 rounded">
+                      {cropType === 'header' ? headerHeight : footerHeight}px
+                    </span> • Drag to select crop area • Adjust corners to resize
                   </p>
                 </div>
                 
@@ -1185,7 +1182,7 @@ const BrandingSettings = () => {
             </div>
             
             <div className="p-6 bg-gray-100 flex justify-center">
-              <div className="max-w-full max-h-[70vh] overflow-auto">
+              <div className="max-w-full max-h-[60vh] overflow-auto">
                 {cropImageSrc && (
                   <ReactCrop
                     crop={crop}
@@ -1193,8 +1190,7 @@ const BrandingSettings = () => {
                     onComplete={(c) => setCompletedCrop(c)}
                     aspect={undefined}
                     minHeight={30}
-                    minWidth={624}
-                    maxWidth={816}
+                    minWidth={50}
                   >
                     <img
                       ref={imgRef}
@@ -1203,7 +1199,8 @@ const BrandingSettings = () => {
                       style={{
                         transform: `rotate(${rotation}deg) scale(${scale})`,
                         transition: 'transform 0.2s ease-in-out',
-                        display: 'block'
+                        maxWidth: '800px',
+                        maxHeight: '600px'
                       }}
                       onLoad={() => {
                         // Set initial crop when image loads

@@ -127,12 +127,12 @@ const LabSchema = new mongoose.Schema({
         }
     }],
     
-    // ✅ UPDATED: Report Branding Settings (Base64 storage in MongoDB)
+    // ✅ UPDATED: Report Branding Settings with Enhanced Image Storage
     reportBranding: {
         headerImage: {
             url: { type: String, default: '' }, // Base64 data URL: data:image/png;base64,...
-            width: { type: Number, default: 0 },
-            height: { type: Number, default: 0 },
+            width: { type: Number, default: 0 }, // Actual image width in pixels
+            height: { type: Number, default: 0 }, // Actual image height in pixels
             size: { type: Number, default: 0 }, // Size in bytes
             updatedAt: { type: Date },
             updatedBy: {
@@ -142,8 +142,8 @@ const LabSchema = new mongoose.Schema({
         },
         footerImage: {
             url: { type: String, default: '' }, // Base64 data URL: data:image/png;base64,...
-            width: { type: Number, default: 0 },
-            height: { type: Number, default: 0 },
+            width: { type: Number, default: 0 }, // Actual image width in pixels
+            height: { type: Number, default: 0 }, // Actual image height in pixels
             size: { type: Number, default: 0 }, // Size in bytes
             updatedAt: { type: Date },
             updatedBy: {
@@ -153,9 +153,21 @@ const LabSchema = new mongoose.Schema({
         },
         showHeader: { type: Boolean, default: true },
         showFooter: { type: Boolean, default: true },
-        // Aspect ratios for validation (width:height)
-        headerAspectRatio: { type: Number, default: 5 }, // 15cm:3cm = 5:1
-        footerAspectRatio: { type: Number, default: 5 }
+        // ✅ NEW: A4 Paper Dimensions & Header/Footer Heights (in mm)
+        paperSettings: {
+            paperWidth: { type: Number, default: 210 }, // A4 width in mm
+            paperHeight: { type: Number, default: 297 }, // A4 height in mm
+            marginTop: { type: Number, default: 25.4 }, // 1 inch in mm
+            marginBottom: { type: Number, default: 25.4 }, // 1 inch in mm
+            marginLeft: { type: Number, default: 25.4 }, // 1 inch in mm
+            marginRight: { type: Number, default: 25.4 }, // 1 inch in mm
+            headerHeight: { type: Number, default: 30 }, // Header area height in mm
+            footerHeight: { type: Number, default: 20 }, // Footer area height in mm
+            dpi: { type: Number, default: 96 } // DPI for pixel to mm conversion
+        },
+        // Remove old aspect ratio fields since we're using actual dimensions
+        // headerAspectRatio: { type: Number, default: 5 }, // REMOVED
+        // footerAspectRatio: { type: Number, default: 5 }  // REMOVED
     }
 }, { 
     timestamps: true,
@@ -179,6 +191,24 @@ LabSchema.pre('save', function(next) {
 // ✅ NEW: Virtual for active staff count
 LabSchema.virtual('activeStaffCount').get(function() {
     return this.staffUsers ? this.staffUsers.filter(staff => staff.isActive).length : 0;
+});
+
+// ✅ NEW: Virtual for calculated dimensions
+LabSchema.virtual('reportBranding.calculatedDimensions').get(function() {
+    const settings = this.reportBranding?.paperSettings || {};
+    const dpi = settings.dpi || 96;
+    
+    // Convert mm to pixels for display
+    const mmToPixels = (mm) => Math.round((mm * dpi) / 25.4);
+    
+    return {
+        paperWidthPx: mmToPixels(settings.paperWidth || 210),
+        paperHeightPx: mmToPixels(settings.paperHeight || 297),
+        headerHeightPx: mmToPixels(settings.headerHeight || 30),
+        footerHeightPx: mmToPixels(settings.footerHeight || 20),
+        contentAreaWidthPx: mmToPixels((settings.paperWidth || 210) - (settings.marginLeft || 25.4) - (settings.marginRight || 25.4)),
+        contentAreaHeightPx: mmToPixels((settings.paperHeight || 297) - (settings.marginTop || 25.4) - (settings.marginBottom || 25.4) - (settings.headerHeight || 30) - (settings.footerHeight || 20))
+    };
 });
 
 const Lab = mongoose.model('Lab', LabSchema);

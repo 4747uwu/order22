@@ -85,11 +85,11 @@ export const getOwnLabBranding = async (req, res) => {
     }
 };
 
-// ✅ UPLOAD BRANDING IMAGE (Store in MongoDB as Base64)
+// ✅ UPLOAD BRANDING IMAGE (Store in MongoDB as Base64) - UPDATED TO USE FRONTEND DIMENSIONS
 export const uploadBrandingImage = async (req, res) => {
     try {
         const { labId } = req.params;
-        const { type } = req.body; // 'header' or 'footer'
+        const { type, width, height } = req.body; // ✅ NEW: Accept width/height from frontend
         const file = req.file;
 
         if (!file) {
@@ -102,7 +102,7 @@ export const uploadBrandingImage = async (req, res) => {
         if (!['header', 'footer'].includes(type)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid type. Must be "header" or "footer"'
+                message: 'Invalid image type. Must be "header" or "footer"'
             });
         }
 
@@ -115,7 +115,7 @@ export const uploadBrandingImage = async (req, res) => {
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'Lab not found'
+                message: 'Laboratory not found'
             });
         }
 
@@ -124,54 +124,56 @@ export const uploadBrandingImage = async (req, res) => {
             type,
             fileName: file.originalname,
             originalSize: file.size,
-            mimeType: file.mimetype
+            mimeType: file.mimetype,
+            frontendWidth: width,
+            frontendHeight: height
         });
 
-        // 1. Get the aspect ratio for this type
-        const aspectRatio = lab.reportBranding?.[`${type}AspectRatio`] || 5;
-
-        // 2. Process image with Sharp (resize, optimize)
+        // ✅ UPDATED: Process image WITHOUT resizing to preserve exact dimensions
+        // Only optimize compression, don't change dimensions
         const processedImageBuffer = await sharp(file.buffer)
-            .resize(1500, Math.round(1500 / aspectRatio), {
-                fit: 'contain',
-                background: { r: 255, g: 255, b: 255, alpha: 1 }
-            })
             .png({ quality: 90, compressionLevel: 9 })
             .toBuffer();
 
-        // 3. Get image dimensions
+        // ✅ UPDATED: Use frontend-provided dimensions if available, fallback to Sharp metadata
         const metadata = await sharp(processedImageBuffer).metadata();
+        const finalWidth = width ? parseInt(width) : metadata.width;
+        const finalHeight = height ? parseInt(height) : metadata.height;
 
-        // 4. Convert to Base64 string
+        // Convert to Base64 string
         const base64Image = processedImageBuffer.toString('base64');
         const dataUrl = `data:image/png;base64,${base64Image}`;
 
         console.log('📊 Image processed:', {
             originalSize: file.size,
             processedSize: processedImageBuffer.length,
-            width: metadata.width,
-            height: metadata.height,
+            frontendWidth: width,
+            frontendHeight: height,
+            sharpWidth: metadata.width,
+            sharpHeight: metadata.height,
+            finalWidth,
+            finalHeight,
             compression: `${((1 - processedImageBuffer.length / file.size) * 100).toFixed(1)}%`
         });
 
-        // 5. Validate size (MongoDB document limit is 16MB, but we'll keep it under 4MB)
+        // Validate size (4MB limit)
         const sizeInMB = processedImageBuffer.length / (1024 * 1024);
         if (sizeInMB > 4) {
             return res.status(400).json({
                 success: false,
-                message: `Processed image is too large (${sizeInMB.toFixed(2)}MB). Please use a smaller image.`
+                message: `Processed image is too large (${sizeInMB.toFixed(2)}MB). Maximum size is 4MB`
             });
         }
 
-        // 6. Update lab document in MongoDB
+        // ✅ UPDATED: Update lab document with frontend-provided dimensions
         const updateField = `reportBranding.${type}Image`;
         const updatedLab = await Lab.findByIdAndUpdate(
             labId,
             {
                 $set: {
-                    [`${updateField}.url`]: dataUrl, // Base64 data URL
-                    [`${updateField}.width`]: metadata.width,
-                    [`${updateField}.height`]: metadata.height,
+                    [`${updateField}.url`]: dataUrl,
+                    [`${updateField}.width`]: finalWidth,
+                    [`${updateField}.height`]: finalHeight,
                     [`${updateField}.size`]: processedImageBuffer.length,
                     [`${updateField}.updatedAt`]: new Date(),
                     [`${updateField}.updatedBy`]: req.user._id
@@ -189,7 +191,7 @@ export const uploadBrandingImage = async (req, res) => {
             labId,
             type,
             size: `${sizeInMB.toFixed(2)}MB`,
-            dimensions: `${metadata.width}x${metadata.height}`
+            dimensions: `${finalWidth}x${finalHeight}`
         });
 
         res.json({
@@ -198,8 +200,8 @@ export const uploadBrandingImage = async (req, res) => {
             data: {
                 [`${type}Image`]: {
                     url: dataUrl,
-                    width: metadata.width,
-                    height: metadata.height,
+                    width: finalWidth,
+                    height: finalHeight,
                     size: processedImageBuffer.length,
                     updatedAt: new Date(),
                     updatedBy: req.user._id
@@ -216,12 +218,12 @@ export const uploadBrandingImage = async (req, res) => {
     }
 };
 
-// ✅ UPLOAD BRANDING IMAGE FOR OWN LAB (Lab staff only)
+// ✅ UPLOAD BRANDING IMAGE FOR OWN LAB (Lab staff only) - UPDATED TO USE FRONTEND DIMENSIONS
 export const uploadOwnLabBrandingImage = async (req, res) => {
     try {
         const userId = req.user._id;
         const organizationIdentifier = req.user.organizationIdentifier;
-        const { type } = req.body;
+        const { type, width, height } = req.body; // ✅ NEW: Accept width/height from frontend
         const file = req.file;
 
         if (!file) {
@@ -234,7 +236,7 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
         if (!['header', 'footer'].includes(type)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid type. Must be "header" or "footer"'
+                message: 'Invalid image type. Must be "header" or "footer"'
             });
         }
 
@@ -249,7 +251,7 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'No lab assignment found'
+                message: 'No lab found for this user'
             });
         }
 
@@ -258,22 +260,21 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
             labIdentifier: lab.identifier,
             type,
             fileName: file.originalname,
-            originalSize: file.size
+            originalSize: file.size,
+            frontendWidth: width,
+            frontendHeight: height
         });
 
-        // Get the aspect ratio
-        const aspectRatio = lab.reportBranding?.[`${type}AspectRatio`] || 5;
-
-        // Process image with Sharp
+        // ✅ UPDATED: Process image WITHOUT resizing to preserve exact dimensions
         const processedImageBuffer = await sharp(file.buffer)
-            .resize(1500, Math.round(1500 / aspectRatio), {
-                fit: 'contain',
-                background: { r: 255, g: 255, b: 255, alpha: 1 }
-            })
             .png({ quality: 90, compressionLevel: 9 })
             .toBuffer();
 
+        // ✅ UPDATED: Use frontend-provided dimensions if available
         const metadata = await sharp(processedImageBuffer).metadata();
+        const finalWidth = width ? parseInt(width) : metadata.width;
+        const finalHeight = height ? parseInt(height) : metadata.height;
+
         const base64Image = processedImageBuffer.toString('base64');
         const dataUrl = `data:image/png;base64,${base64Image}`;
 
@@ -282,17 +283,17 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
         if (sizeInMB > 4) {
             return res.status(400).json({
                 success: false,
-                message: `Processed image is too large (${sizeInMB.toFixed(2)}MB). Please use a smaller image.`
+                message: `Processed image is too large (${sizeInMB.toFixed(2)}MB). Maximum size is 4MB`
             });
         }
 
-        // Update lab document
+        // ✅ UPDATED: Update lab document with frontend-provided dimensions
         const updateField = `reportBranding.${type}Image`;
         await Lab.findByIdAndUpdate(lab._id, {
             $set: {
                 [`${updateField}.url`]: dataUrl,
-                [`${updateField}.width`]: metadata.width,
-                [`${updateField}.height`]: metadata.height,
+                [`${updateField}.width`]: finalWidth,
+                [`${updateField}.height`]: finalHeight,
                 [`${updateField}.size`]: processedImageBuffer.length,
                 [`${updateField}.updatedAt`]: new Date(),
                 [`${updateField}.updatedBy`]: userId
@@ -302,7 +303,8 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
         console.log('✅ Lab staff branding image saved:', {
             labIdentifier: lab.identifier,
             type,
-            size: `${sizeInMB.toFixed(2)}MB`
+            size: `${sizeInMB.toFixed(2)}MB`,
+            dimensions: `${finalWidth}x${finalHeight}`
         });
 
         res.json({
@@ -311,8 +313,8 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
             data: {
                 [`${type}Image`]: {
                     url: dataUrl,
-                    width: metadata.width,
-                    height: metadata.height,
+                    width: finalWidth,
+                    height: finalHeight,
                     size: processedImageBuffer.length,
                     updatedAt: new Date()
                 }
@@ -355,7 +357,7 @@ export const toggleBrandingVisibility = async (req, res) => {
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'Lab not found'
+                message: 'Laboratory not found'
             });
         }
 
@@ -401,12 +403,12 @@ export const toggleOwnLabBrandingVisibility = async (req, res) => {
                 $set: { [`reportBranding.${field}`]: value }
             },
             { new: true }
-        ).select('reportBranding identifier');
+        ).select('reportBranding');
 
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'No lab assignment found'
+                message: 'No lab found for this user'
             });
         }
 
@@ -434,13 +436,12 @@ export const toggleOwnLabBrandingVisibility = async (req, res) => {
 // ✅ DELETE BRANDING IMAGE
 export const deleteBrandingImage = async (req, res) => {
     try {
-        const { labId } = req.params;
-        const { type } = req.body; // 'header' or 'footer'
+        const { labId, type } = req.params;
 
         if (!['header', 'footer'].includes(type)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid type. Must be "header" or "footer"'
+                message: 'Invalid image type'
             });
         }
 
@@ -466,7 +467,7 @@ export const deleteBrandingImage = async (req, res) => {
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'Lab not found'
+                message: 'Laboratory not found'
             });
         }
 
@@ -492,12 +493,12 @@ export const deleteOwnLabBrandingImage = async (req, res) => {
     try {
         const userId = req.user._id;
         const organizationIdentifier = req.user.organizationIdentifier;
-        const { type } = req.body;
+        const { type } = req.params;
 
         if (!['header', 'footer'].includes(type)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid type. Must be "header" or "footer"'
+                message: 'Invalid image type'
             });
         }
 
@@ -520,12 +521,12 @@ export const deleteOwnLabBrandingImage = async (req, res) => {
                 }
             },
             { new: true }
-        ).select('reportBranding identifier');
+        ).select('reportBranding');
 
         if (!lab) {
             return res.status(404).json({
                 success: false,
-                message: 'No lab assignment found'
+                message: 'No lab found for this user'
             });
         }
 
@@ -551,7 +552,11 @@ export const deleteOwnLabBrandingImage = async (req, res) => {
 
 export default {
     getLabBranding,
+    getOwnLabBranding,
     uploadBrandingImage,
+    uploadOwnLabBrandingImage,
     toggleBrandingVisibility,
-    deleteBrandingImage
+    toggleOwnLabBrandingVisibility,
+    deleteBrandingImage,
+    deleteOwnLabBrandingImage
 };
