@@ -29,7 +29,7 @@ export const loginUser = async (req, res) => {
         })
         .select('+password')
         .populate('organization', 'name identifier status displayName features subscription')
-        .populate('lab', 'name identifier isActive fullIdentifier');
+        .populate('lab', 'name identifier isActive fullIdentifier settings');
 
         // Verify user exists and password is correct
         if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -138,6 +138,8 @@ export const loginUser = async (req, res) => {
                 isActive: user.lab.isActive,
                 settings: user.lab.settings
             };
+
+        console.log('Lab data added to response for lab_staff:', userResponseData.lab);
         } else if (user.role === 'doctor_account') {
             const doctorProfile = await Doctor.findOne({ 
                 userAccount: user._id,
@@ -229,7 +231,8 @@ export const getMe = async (req, res) => {
                 organizationIdentifier: req.user.organizationIdentifier
             })
             .populate('organization', 'name identifier status displayName features subscription')
-            .populate('lab', 'name identifier isActive fullIdentifier');
+            .populate('lab', 'name identifier isActive fullIdentifier settings');
+
         }
 
         const user = await userQuery.exec();
@@ -490,7 +493,7 @@ export const labConnectorLogin = async (req, res) => {
         const user = await User.findOne({ email: email.trim().toLowerCase() })
             .select('+password')
             .populate('organization', 'name identifier status')
-            .populate('lab', 'name identifier isActive');
+            .populate('lab', 'name identifier isActive settings');
 
         // 3. Verify Credentials
         if (!user || !(await bcrypt.compare(password, user.password))) {
