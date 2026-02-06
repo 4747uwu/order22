@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
-import { toast } from 'react-toastify';
+import toast from 'react-hot-toast';
 import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
@@ -401,12 +401,15 @@ const OnlineReportingSystemWithOHIF = () => {
   const handleAttachOhifImage = () => {
     console.log('📸 [Capture] Requesting screenshot from OHIF...');
     const iframe = document.getElementById('ohif-viewer-iframe'); // We will add this ID below
-    
+  
     if (iframe && iframe.contentWindow) {
       iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*');
-      toast.info('Capturing image from viewer...', { icon: '📸' });
+      // ✅ react-hot-toast syntax (no options object needed)
+      toast.loading('📸 Capturing image from viewer...', {
+        duration: 2000,
+      });
     } else {
-      toast.error('OHIF Viewer not ready');
+      toast.error('❌ OHIF Viewer not ready');
     }
   };
 
@@ -432,15 +435,35 @@ const OnlineReportingSystemWithOHIF = () => {
           displayOrder: capturedImages.length
         };
 
-        setCapturedImages(prev => [...prev, imageObj]);
-        
-        // ✅ Show success message without inserting into HTML
-        toast.success(`Image captured from ${viewportId}! (${capturedImages.length + 1} images stored)`);
-        
-        console.log('✅ [Capture] Image stored in capturedImages array:', {
-          viewportId,
-          totalImages: capturedImages.length + 1,
-          imageSize: image.length
+        setCapturedImages(prev => {
+          const newImages = [...prev, imageObj];
+          const imageCount = newImages.length;
+          
+          // ✅ FIXED: react-hot-toast success syntax
+          toast.success(
+            `📸 Image captured! ${imageCount} image${imageCount !== 1 ? 's' : ''} ready`,
+            {
+              duration: 3000,
+              icon: '✅',
+              style: {
+                border: '1px solid #10b981',
+                padding: '16px',
+                color: '#065f46',
+              },
+              iconTheme: {
+                primary: '#10b981',
+                secondary: '#fff',
+              },
+            }
+          );
+          
+          console.log('✅ [Capture] Image stored:', {
+            viewportId,
+            totalImages: imageCount,
+            imageSize: image.length
+          });
+          
+          return newImages;
         });
       }
     };
@@ -1133,11 +1156,18 @@ const cleanTemplateHTML = (html) => {
 
                   <button
                     onClick={handleAttachOhifImage}
-                    className="flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
-                    title="Capture active viewport to report"
+                    className="relative flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors shadow-sm"
+                    title={`Capture active viewport to report${capturedImages.length > 0 ? ` (${capturedImages.length} captured)` : ''}`}
                   >
                     <Camera className="w-3 h-3" />
                     <span>Capture</span>
+                    
+                    {/* ✅ Badge showing captured images count */}
+                    {capturedImages.length > 0 && (
+                      <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-[20px] h-5 px-1 text-[10px] font-bold text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-full shadow-md border-2 border-white">
+                        {capturedImages.length}
+                      </span>
+                    )}
                   </button>
                   
                   <div className="flex items-center space-x-2">
@@ -1208,12 +1238,12 @@ const cleanTemplateHTML = (html) => {
                       title="Update Report"
                     >
                       {saving ? (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
                           <span>Updating</span>
                         </div>
                       ) : (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <Edit className="w-3 h-3" />
                           <span>Update</span>
                         </div>
@@ -1231,12 +1261,12 @@ const cleanTemplateHTML = (html) => {
                       title="Reject Report"
                     >
                       {rejecting ? (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
                           <span>Rejecting</span>
                         </div>
                       ) : (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <XCircle className="w-3 h-3" />
                           <span>Reject</span>
                         </div>
@@ -1254,12 +1284,12 @@ const cleanTemplateHTML = (html) => {
                       title="Verify Report"
                     >
                       {verifying ? (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
                           <span>Verifying</span>
                         </div>
                       ) : (
-                        <div className="flex items-center space-x-1">
+                        <div className="flex items-center gap-1">
                           <CheckCircle className="w-3 h-3" />
                           <span>Verify</span>
                         </div>

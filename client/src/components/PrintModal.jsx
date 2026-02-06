@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { X, Printer, Loader } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -8,12 +7,20 @@ const PrintModal = ({ report, onClose }) => {
     const [loading, setLoading] = useState(true);
     const [pdfUrl, setPdfUrl] = useState(null);
     const [error, setError] = useState(null);
+    const fetchedRef = useRef(false); // ✅ Track if already fetched
 
     useEffect(() => {
         const fetchPDFForPrint = async () => {
+            // ✅ Prevent multiple fetches
+            if (fetchedRef.current) {
+                console.log('⏭️ [PrintModal] PDF already fetched, skipping...');
+                return;
+            }
+            
             try {
                 setLoading(true);
                 setError(null);
+                fetchedRef.current = true; // ✅ Mark as fetched
 
                 console.log('🖨️ [PrintModal] Fetching PDF for report:', report._id);
 
@@ -32,6 +39,7 @@ const PrintModal = ({ report, onClose }) => {
                 console.error('❌ [PrintModal] Error fetching PDF:', err);
                 setError(err.response?.data?.message || 'Failed to load PDF for printing');
                 toast.error('Failed to load PDF for printing');
+                fetchedRef.current = false; // ✅ Allow retry on error
             } finally {
                 setLoading(false);
             }
@@ -47,12 +55,21 @@ const PrintModal = ({ report, onClose }) => {
                 URL.revokeObjectURL(pdfUrl);
             }
         };
-    }, [report]);
+    }, [report._id]); // ✅ Use report._id instead of report object
 
-    const handlePrint = () => {
+    const handlePrint = async () => {
         if (!pdfUrl) return;
 
         console.log('🖨️ [PrintModal] Opening print dialog');
+
+        // ✅ Track print click before printing
+        try {
+            await api.post(`/reports/${report._id}/track-print`);
+            console.log('✅ [PrintModal] Print tracked successfully');
+        } catch (err) {
+            console.error('⚠️ [PrintModal] Failed to track print:', err);
+            // Don't block printing if tracking fails
+        }
 
         // Open PDF in new window and trigger print dialog
         const printWindow = window.open(pdfUrl, '_blank');
@@ -66,8 +83,17 @@ const PrintModal = ({ report, onClose }) => {
         }
     };
 
-    const handleDirectPrint = () => {
+    const handleDirectPrint = async () => {
         if (!pdfUrl) return;
+
+        // ✅ Track print click before printing
+        try {
+            await api.post(`/reports/${report._id}/track-print`);
+            console.log('✅ [PrintModal] Print tracked successfully');
+        } catch (err) {
+            console.error('⚠️ [PrintModal] Failed to track print:', err);
+            // Don't block printing if tracking fails
+        }
 
         // Alternative: Create hidden iframe and print
         const iframe = document.createElement('iframe');

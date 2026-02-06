@@ -546,7 +546,7 @@ export const storeFinalizedReport = async (req, res) => {
                 existingReportId: existingReport?._id
             });
 
-            // const now = new Date();
+            const now = new Date();
 
             // ✅ ENHANCED: Better patient info extraction
             const patientInfo = {
@@ -717,7 +717,7 @@ export const storeFinalizedReport = async (req, res) => {
 
             console.log('📋 [Finalize Store] Verification required:', requiresVerification);
 
-            const now = new Date();
+            // const now = new Date();
 
             if (requiresVerification) {
                 study.workflowStatus = 'verification_pending';

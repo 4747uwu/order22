@@ -685,11 +685,14 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 3. ORGANIZATION */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
-        <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
-          {study.organizationName || '-'}
-        </div>
-      </td>
+      {/* 3. ORGANIZATION - Only for super_admin */}
+{(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
+    <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
+      {study.organizationName || '-'}
+    </div>
+  </td>
+)}
 
       {/* 4. CENTER NAME */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
@@ -980,53 +983,71 @@ const handleOHIFReporting = async () => {
 
       {/* 19. PRINT COUNT */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
-        {study.printInfo && study.printInfo.totalPrints > 0 ? (
-          <div className="flex flex-col items-center gap-1">
-            {/* Print Button with Count */}
-            <button
-              onClick={() => onViewReport?.(study)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:scale-105 shadow-sm ${
-                study.printInfo.totalPrints === 1 
-                  ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-300 hover:from-emerald-100 hover:to-green-100' 
-                  : 'bg-gradient-to-r from-rose-50 to-red-50 border border-rose-300 hover:from-rose-100 hover:to-red-100'
-              }`}
-              title={`${study.printInfo.totalPrints} print${study.printInfo.totalPrints > 1 ? 's' : ''} - Last: ${formatDate(study.printInfo.lastPrintedAt)}`}
-            >
-              <Printer className={`w-3.5 h-3.5 ${
-                study.printInfo.totalPrints === 1 ? 'text-emerald-600' : 'text-rose-600'
-              }`} />
-              <span className={`text-xs font-bold ${
-                study.printInfo.totalPrints === 1 ? 'text-emerald-700' : 'text-rose-700'
-              }`}>
-                {study.printInfo.totalPrints}
-              </span>
-            </button>
-            
-            {/* Print Date & Time */}
-            <div className="text-[10px] text-slate-500 text-center">
-              <div className="font-medium">{formatDate(study.printInfo.lastPrintedAt)}</div>
-              <div>{formatTime(study.printInfo.lastPrintedAt)}</div>
-            </div>
-            
-            {/* First print indicator if reprinted */}
-            {study.printInfo.totalPrints > 1 && study.printInfo.firstPrintedAt && (
-              <div className="text-[9px] text-slate-400 flex items-center gap-0.5">
-                <Clock className="w-2.5 h-2.5" />
-                <span>First: {formatDate(study.printInfo.firstPrintedAt)}</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button
-            onClick={() => onViewReport?.(study)}
-            className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
-            title="No prints yet - Click to view report"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="text-[10px]">No prints</span>
-          </button>
-        )}
-      </td>
+  {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
+    <div className="flex flex-col items-center gap-1">
+      {/* Print Button with Count */}
+      <button
+        onClick={() => onViewReport?.(study)}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:scale-105 shadow-sm ${
+          (study.printCount === 1 || study.printInfo?.totalPrints === 1)
+            ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-300 hover:from-emerald-100 hover:to-green-100' 
+            : 'bg-gradient-to-r from-rose-50 to-red-50 border border-rose-300 hover:from-rose-100 hover:to-red-100'
+        }`}
+        title={`${study.printCount || study.printInfo?.totalPrints || 0} print${(study.printCount || study.printInfo?.totalPrints) > 1 ? 's' : ''} - Last: ${formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}`}
+      >
+        <Printer className={`w-3.5 h-3.5 ${
+          (study.printCount === 1 || study.printInfo?.totalPrints === 1) ? 'text-emerald-600' : 'text-rose-600'
+        }`} />
+        <span className={`text-xs font-bold ${
+          (study.printCount === 1 || study.printInfo?.totalPrints === 1) ? 'text-emerald-700' : 'text-rose-700'
+        }`}>
+          {study.printCount || study.printInfo?.totalPrints || 0}
+        </span>
+      </button>
+      
+      {/* Print Date & Time */}
+      <div className="text-[10px] text-slate-500 text-center">
+        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+        <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+      </div>
+      
+      {/* Printed By */}
+      {study.lastPrintedBy && (
+        <div className="text-[9px] text-slate-600 font-medium">
+          By: {study.lastPrintedBy}
+        </div>
+      )}
+      
+      {/* Print Type Badge */}
+      {study.lastPrintType && (
+        <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${
+          study.lastPrintType === 'reprint' 
+            ? 'bg-rose-100 text-rose-700' 
+            : 'bg-emerald-100 text-emerald-700'
+        }`}>
+          {study.lastPrintType.toUpperCase()}
+        </span>
+      )}
+      
+      {/* First print indicator if reprinted - fallback to printInfo if exists */}
+      {((study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt) && (
+        <div className="text-[9px] text-slate-400 flex items-center gap-0.5">
+          <Clock className="w-2.5 h-2.5" />
+          <span>First: {formatDate(study.printInfo.firstPrintedAt)}</span>
+        </div>
+      )}
+    </div>
+  ) : (
+    <button
+      onClick={() => onViewReport?.(study)}
+      className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
+      title="No prints yet - Click to view report"
+    >
+      <Printer className="w-4 h-4" />
+      <span className="text-[10px]">No prints</span>
+    </button>
+  )}
+</td>
 
       <td className="px-3 py-3.5 border-r border-slate-200" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
         {isRejected ? (
@@ -1527,15 +1548,17 @@ const handleClosePrintModal = useCallback(() => {
                 maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
               />
               
-              {/* 3. ORGANIZATION */}
-              <ResizableTableHeader
-                columnId="organization"
-                label="ORGANIZATION"
-                width={getColumnWidth('organization')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
-              />
+              {/* 3. ORGANIZATION - Only for super_admin */}
+              {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+                <ResizableTableHeader
+                  columnId="organization"
+                  label="ORGANIZATION"
+                  width={getColumnWidth('organization')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
+                />
+              )}
               
               {/* 4. CENTER NAME */}
               <ResizableTableHeader

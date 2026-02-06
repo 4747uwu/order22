@@ -28,5 +28,6 @@ router.get('/:reportId/print', ReportDownloadController.printReportAsPDF);
 router.use(protect);
 router.get('/reports/:reportId/download/pdf', ReportDownloadController.downloadReportAsPDF);
 router.get('/reports/:reportId/download/docx', ReportDownloadController.downloadReportAsDOCX);
+router.post('/:reportId/track-print',  ReportDownloadController.trackPrintClick);
 
 export default router;

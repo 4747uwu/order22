@@ -15,6 +15,7 @@ import { useColumnResizing } from '../../../hooks/useColumnResizing';
 import ResizableTableHeader from './ResizableTableHeader';
 import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColumns';
 import PrintModal from '../../PrintModal';
+import sessionManager from '../../../services/sessionManager';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -383,33 +384,80 @@ const UnifiedStudyRow = ({
   };
 
 const handleOHIFReporting = async () => {
-    try {
-      // ✅ Lock the study first
-      setTogglingLock(true);
+  try {
+    setTogglingLock(true);
+    
+    // ✅ Get current user and check roles
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    
+    // ✅ Check if user should lock (radiologist or doctor_account)
+    const shouldLockStudy = accountRoles.includes('radiologist') || 
+                           accountRoles.includes('doctor_account');
+    
+    // ✅ Check if user is verifier
+    const isVerifier = accountRoles.includes('verifier');
+    
+    // ✅ Only attempt to lock if user is radiologist or doctor
+    if (shouldLockStudy && !isVerifier) {
+      console.log('🔒 [Lock] Radiologist/Doctor - attempting to lock study');
+      
       const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
       
       if (!lockResponse?.data?.success) {
         throw new Error(lockResponse?.data?.message || 'Lock failed');
       }
       
-      toast.success('Study locked for reporting', { icon: '🔒' });
+      toast.success('Study locked for reporting', { 
+        icon: '🔒',
+        duration: 2000,
+        style: {
+          border: '1px solid #10b981',
+        }
+      });
+    } else if (isVerifier) {
+      console.log('✅ [Verifier] Bypassing lock check - opening for verification');
       
-      // ✅ Open OHIF + Reporting in new tab
-      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
-    } catch (error) {
-      console.error('Error locking study for reporting:', error);
-      if (error.response?.status === 423) {
-        toast.error(`Study is locked by ${error.response.data.lockedBy}`, {
-          duration: 5000,
-          icon: '🔒'
-        });
-      } else {
-        toast.error(error.response?.data?.message || 'Failed to lock study for reporting');
-      }
-    } finally {
-      setTogglingLock(false);
+      
     }
-  };
+    
+    // ✅ Build URL with appropriate query params
+    const queryParams = new URLSearchParams({
+      openOHIF: 'true',
+      ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+    });
+    
+    const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
+    
+    console.log(`📂 [Open] Opening: ${reportingUrl}`);
+    
+    // ✅ Open in new tab
+    window.open(reportingUrl, '_blank');
+    
+  } catch (error) {
+    console.error('❌ [Error] OHIF reporting error:', error);
+    
+    if (error.response?.status === 423) {
+      // Study is locked by someone else
+      const lockedBy = error.response.data.lockedBy || 'another user';
+      
+      toast.error(`Study is locked by ${lockedBy}`, {
+        duration: 5000,
+        icon: '🔒',
+        style: {
+          border: '1px solid #ef4444',
+        }
+      });
+    } else {
+      toast.error(error.response?.data?.message || 'Failed to open study', {
+        duration: 4000,
+        icon: '❌'
+      });
+    }
+  } finally {
+    setTogglingLock(false);
+  }
+};
 
   const handleLockToggle = async (e) => {
     e.stopPropagation();
