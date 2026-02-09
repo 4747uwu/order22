@@ -14,6 +14,8 @@ class WebSocketService {
   constructor() {
     this.wss = null;
     this.adminConnections = new Map();
+    this.radiologistConnections = new Map(); // ✅ NEW: Track radiologist connections
+    this.activeStudyViewers = new Map(); // ✅ NEW: Map<studyId, Set<userId>>
     this.connectionCount = 0;
     this.lastDataSnapshot = null;
     this.dataUpdateInterval = null;
@@ -31,7 +33,6 @@ class WebSocketService {
     this.wss.on('connection', async (ws, request) => {
       try {
         console.log('🔌 New WebSocket connection attempt...');
-        // console.log(request.headers);
         
         // Extract token from cookies
         let token = null;
@@ -67,10 +68,7 @@ class WebSocketService {
         // Find user
         const user = await User.findById(decoded.id)
                               .select('-password')
-                              .populate({
-                                path: 'lab',
-                                select: 'name identifier isActive'
-                              });
+                              .populate('lab', 'name identifier isActive');
 
         if (!user || !user.isActive) {
           console.log('❌ WebSocket connection rejected: User not found or inactive');
@@ -78,54 +76,42 @@ class WebSocketService {
           return;
         }
 
-        // Check if user is admin
-        if (user.role !== 'admin') {
-          console.log(`❌ WebSocket connection rejected: User ${user.email} is not admin`);
-          ws.close(4003, 'Admin access required');
-          return;
-        }
-
         // Generate unique connection ID
         this.connectionCount++;
-        const connectionId = `admin_${user._id}_${this.connectionCount}_${Date.now()}`;
+        const connectionId = `${user.role}_${user._id}_${this.connectionCount}_${Date.now()}`;
         
-        // Store connection
-        this.adminConnections.set(connectionId, {
+        // ✅ NEW: Store connection based on role
+        const connectionData = {
           ws,
           user,
           connectionId,
           connectedAt: new Date(),
           lastPing: new Date(),
-          subscribedToStudies: true, // Auto-subscribe to studies
-          subscribedToLiveData: false,
           isAlive: true,
-          lastDataSent: null,
-          filters: {
-            category: 'all',
-            page: 1,
-            limit: 50
-          }
-        });
+          currentlyViewingStudy: null, // ✅ Track currently viewing study
+          subscribedToStudies: true,
+          subscribedToLiveData: false,
+          subscribedToViewerUpdates: false, // ✅ NEW: Subscribe to viewer status
+          filters: { category: 'all', page: 1, limit: 50 }
+        };
 
-        console.log(`✅ Admin WebSocket connected: ${user.fullName || user.email} (${connectionId})`);
-
-        // Set up connection handlers
-        ws.isAlive = true;
-        
-        // Handle pong responses
-        ws.on('pong', () => {
-          ws.isAlive = true;
-          const connection = this.adminConnections.get(connectionId);
-          if (connection) {
-            connection.lastPing = new Date();
-            connection.isAlive = true;
-          }
-        });
+        // Store in appropriate map
+        if (user.role === 'admin' || user.role === 'assignor') {
+          this.adminConnections.set(connectionId, connectionData);
+          connectionData.subscribedToViewerUpdates = true; // Auto-subscribe admins
+          console.log(`✅ Admin/Assignor WebSocket connected: ${user.fullName || user.email}`);
+        } else if (user.role === 'radiologist' || user.role === 'doctor_account' || user.role === 'verifier') {
+          this.radiologistConnections.set(connectionId, connectionData);
+          console.log(`✅ Radiologist WebSocket connected: ${user.fullName || user.email}`);
+        } else {
+          ws.close(4003, 'Unauthorized role');
+          return;
+        }
 
         // Send connection confirmation
         ws.send(JSON.stringify({
           type: 'connection_established',
-          message: 'Connected to admin notifications',
+          message: 'Connected to study viewer tracking',
           userId: user._id,
           connectionId,
           userInfo: {
@@ -135,32 +121,46 @@ class WebSocketService {
           timestamp: new Date()
         }));
 
+        // ✅ Send current active viewers to new admin connection
+        if (user.role === 'admin' || user.role === 'assignor') {
+          this.sendActiveViewersToConnection(connectionId);
+        }
+
         // Handle client messages
         ws.on('message', (data) => {
           try {
-            const connection = this.adminConnections.get(connectionId);
-            if (connection) {
-              connection.lastPing = new Date();
-              connection.isAlive = true;
-            }
+            const rawData = data.toString();
+            console.log('📨 [WebSocket] Raw message received:', rawData.substring(0, 100));
             
-            const message = JSON.parse(data);
-            this.handleClientMessage(connectionId, message);
+            const message = JSON.parse(rawData);
+            console.log('📨 [WebSocket] Parsed message:', {
+              type: message.type,
+              userId: user._id,
+              userName: user.fullName || user.email,
+              role: user.role,
+              studyId: message.studyId || 'N/A'
+            });
+            
+            this.handleClientMessage(connectionId, message, user.role);
           } catch (error) {
-            console.error('Invalid WebSocket message:', error);
+            console.error('❌ [WebSocket] Error parsing message:', error);
+            console.error('❌ [WebSocket] Raw data:', data.toString());
           }
         });
 
         // Handle disconnection
         ws.on('close', (code, reason) => {
-          console.log(`❌ Admin WebSocket disconnected: ${user.fullName || user.email} (Code: ${code}, Reason: ${reason})`);
-          this.adminConnections.delete(connectionId);
+          console.log(`❌ WebSocket disconnected: ${user.fullName || user.email} (Code: ${code})`);
           
-          // Stop data streaming if no connections left
-          if (this.adminConnections.size === 0 && this.dataUpdateInterval) {
-            clearInterval(this.dataUpdateInterval);
-            this.dataUpdateInterval = null;
-            console.log('🛑 Stopped data streaming - no connections');
+          // ✅ Clean up active viewers if radiologist disconnects
+          if (user.role === 'radiologist' || user.role === 'doctor_account' || user.role === 'verifier') {
+            const connection = this.radiologistConnections.get(connectionId);
+            if (connection?.currentlyViewingStudy) {
+              this.notifyStudyClosed(connection.currentlyViewingStudy, user._id, user.fullName || user.email);
+            }
+            this.radiologistConnections.delete(connectionId);
+          } else {
+            this.adminConnections.delete(connectionId);
           }
         });
 
@@ -168,10 +168,17 @@ class WebSocketService {
         ws.on('error', (error) => {
           console.error('WebSocket error:', error);
           this.adminConnections.delete(connectionId);
+          this.radiologistConnections.delete(connectionId);
         });
 
-        // Send initial data if requested
-        await this.sendInitialStudyData(connectionId);
+        // Set up pong handler
+        ws.on('pong', () => {
+          ws.isAlive = true;
+          const connection = this.adminConnections.get(connectionId) || this.radiologistConnections.get(connectionId);
+          if (connection) {
+            connection.lastPing = new Date();
+          }
+        });
 
       } catch (error) {
         console.error('❌ WebSocket connection error:', error);
@@ -179,22 +186,30 @@ class WebSocketService {
       }
     });
 
-    // Start heartbeat
     this.startHeartbeat();
-    
-    // Start periodic data updates
     this.startDataStreaming();
 
-    console.log('🔌 WebSocket server initialized for admin notifications and live data');
+    console.log('🔌 WebSocket server initialized with study viewer tracking');
   }
 
-  async handleClientMessage(connectionId, message) {
-    const connection = this.adminConnections.get(connectionId);
-    if (!connection) return;
+  // ✅ NEW: Enhanced message handler with viewer tracking
+  async handleClientMessage(connectionId, message, userRole) {
+    console.log('🔧 [handleClientMessage] Processing:', {
+      type: message.type,
+      userRole,
+      connectionId: connectionId.substring(0, 30)
+    });
+    
+    const connection = this.adminConnections.get(connectionId) || this.radiologistConnections.get(connectionId);
+    if (!connection) {
+      console.log('❌ [handleClientMessage] Connection not found for:', connectionId.substring(0, 30));
+      return;
+    }
 
     switch (message.type) {
+      // Existing cases...
       case 'ping':
-      case 'heartbeat': // Add heartbeat handling
+      case 'heartbeat':
         connection.lastPing = new Date();
         connection.isAlive = true;
         connection.ws.send(JSON.stringify({
@@ -202,70 +217,173 @@ class WebSocketService {
           timestamp: new Date()
         }));
         break;
-      
+
+      // ✅ NEW: Radiologist opened a study for viewing/reporting
+      case 'study_opened':
+        console.log('👁️ [WebSocket] Processing study_opened:', {
+          userRole,
+          studyId: message.studyId,
+          mode: message.mode
+        });
+        
+        if (userRole === 'radiologist' || userRole === 'doctor_account' || userRole === 'verifier') {
+          const { studyId, mode } = message;
+          if (studyId) {
+            console.log('✅ [WebSocket] Valid study_opened, notifying admins');
+            this.notifyStudyOpened(studyId, connection.user._id, connection.user.fullName || connection.user.email, mode);
+            connection.currentlyViewingStudy = studyId;
+          } else {
+            console.log('❌ [WebSocket] No studyId in message');
+          }
+        } else {
+          console.log('❌ [WebSocket] Invalid userRole for study_opened:', userRole);
+        }
+        break;
+
+      // ✅ NEW: Radiologist closed the study
+      case 'study_closed':
+        if (userRole === 'radiologist' || userRole === 'doctor_account' || userRole === 'verifier') {
+          const { studyId } = message;
+          if (studyId) {
+            this.notifyStudyClosed(studyId, connection.user._id, connection.user.fullName || connection.user.email);
+            connection.currentlyViewingStudy = null;
+          }
+        }
+        break;
+
+      // ✅ NEW: Admin requests list of active viewers
+      case 'request_active_viewers':
+        if (userRole === 'admin' || userRole === 'assignor') {
+          this.sendActiveViewersToConnection(connectionId);
+        }
+        break;
+
+      // ✅ NEW: Subscribe to viewer updates (admins only)
+      case 'subscribe_to_viewer_updates':
+        if (userRole === 'admin' || userRole === 'assignor') {
+          connection.subscribedToViewerUpdates = true;
+          connection.ws.send(JSON.stringify({
+            type: 'subscribed_to_viewer_updates',
+            message: 'Subscribed to real-time viewer updates',
+            timestamp: new Date()
+          }));
+          this.sendActiveViewersToConnection(connectionId);
+        }
+        break;
+
+      // Existing cases...
       case 'subscribe_to_live_data':
         connection.subscribedToLiveData = true;
         if (message.filters) {
           connection.filters = { ...connection.filters, ...message.filters };
         }
-        await this.sendStudyData(connectionId, true); // Force send
-        connection.ws.send(JSON.stringify({
-          type: 'subscribed_to_live_data',
-          message: 'Subscribed to live study data',
-          timestamp: new Date()
-        }));
-        console.log(`📊 Admin ${connection.user.fullName || connection.user.email} subscribed to live data`);
-        break;
-
-      // 🆕 ADD: Handle subscribe_to_studies message
-      case 'subscribe_to_studies':
-        connection.subscribedToStudies = true;
-        connection.ws.send(JSON.stringify({
-          type: 'subscribed_to_studies',
-          message: 'Subscribed to study notifications',
-          timestamp: new Date()
-        }));
-        console.log(`📢 Admin ${connection.user.fullName || connection.user.email} subscribed to study notifications`);
-        break;
-
-      case 'unsubscribe_from_studies':
-        connection.subscribedToStudies = false;
-        connection.ws.send(JSON.stringify({
-          type: 'unsubscribed_from_studies',
-          message: 'Unsubscribed from study notifications',
-          timestamp: new Date()
-        }));
-        break;
-      
-      case 'unsubscribe_from_live_data':
-        connection.subscribedToLiveData = false;
-        connection.ws.send(JSON.stringify({
-          type: 'unsubscribed_from_live_data',
-          message: 'Unsubscribed from live data',
-          timestamp: new Date()
-        }));
-        break;
-      
-      case 'update_filters':
-        if (connection.subscribedToLiveData && message.filters) {
-          connection.filters = { ...connection.filters, ...message.filters };
-          await this.sendStudyData(connectionId, true); // Send filtered data immediately
-        }
-        break;
-      
-      case 'request_data_refresh':
         await this.sendStudyData(connectionId, true);
         break;
-      
+
       default:
         console.log(`Unknown message type: ${message.type}`);
-        // Send unknown message response
-        connection.ws.send(JSON.stringify({
-          type: 'error',
-          message: `Unknown message type: ${message.type}`,
-          timestamp: new Date()
-        }));
     }
+  }
+
+  // ✅ NEW: Notify admins that a study was opened
+  notifyStudyOpened(studyId, userId, userName, mode = 'viewing') {
+    // Track in active viewers map
+    if (!this.activeStudyViewers.has(studyId)) {
+      this.activeStudyViewers.set(studyId, new Set());
+    }
+    this.activeStudyViewers.get(studyId).add(userId);
+
+    const notification = {
+      type: 'study_viewer_opened',
+      timestamp: new Date(),
+      data: {
+        studyId,
+        userId,
+        userName,
+        mode, // 'viewing' or 'reporting'
+        action: 'opened'
+      }
+    };
+
+    let sentCount = 0;
+    this.adminConnections.forEach((connection) => {
+      if (connection.ws.readyState === connection.ws.OPEN && connection.subscribedToViewerUpdates) {
+        try {
+          connection.ws.send(JSON.stringify(notification));
+          sentCount++;
+        } catch (error) {
+          console.error(`Error sending viewer notification:`, error);
+        }
+      }
+    });
+
+    console.log(`👁️ Study opened notification sent to ${sentCount} admin(s): ${userName} opened study ${studyId} (${mode})`);
+  }
+
+  // ✅ NEW: Notify admins that a study was closed
+  notifyStudyClosed(studyId, userId, userName) {
+    // Remove from active viewers map
+    if (this.activeStudyViewers.has(studyId)) {
+      this.activeStudyViewers.get(studyId).delete(userId);
+      if (this.activeStudyViewers.get(studyId).size === 0) {
+        this.activeStudyViewers.delete(studyId);
+      }
+    }
+
+    const notification = {
+      type: 'study_viewer_closed',
+      timestamp: new Date(),
+      data: {
+        studyId,
+        userId,
+        userName,
+        action: 'closed'
+      }
+    };
+
+    let sentCount = 0;
+    this.adminConnections.forEach((connection) => {
+      if (connection.ws.readyState === connection.ws.OPEN && connection.subscribedToViewerUpdates) {
+        try {
+          connection.ws.send(JSON.stringify(notification));
+          sentCount++;
+        } catch (error) {
+          console.error(`Error sending viewer closed notification:`, error);
+        }
+      }
+    });
+
+    console.log(`👁️ Study closed notification sent to ${sentCount} admin(s): ${userName} closed study ${studyId}`);
+  }
+
+  // ✅ NEW: Send current active viewers to a specific connection
+  sendActiveViewersToConnection(connectionId) {
+    const connection = this.adminConnections.get(connectionId);
+    if (!connection || connection.ws.readyState !== connection.ws.OPEN) return;
+
+    const activeViewers = {};
+    
+    // Build active viewers object: { studyId: [{ userId, userName, mode }] }
+    this.radiologistConnections.forEach((radConn) => {
+      if (radConn.currentlyViewingStudy) {
+        if (!activeViewers[radConn.currentlyViewingStudy]) {
+          activeViewers[radConn.currentlyViewingStudy] = [];
+        }
+        activeViewers[radConn.currentlyViewingStudy].push({
+          userId: radConn.user._id,
+          userName: radConn.user.fullName || radConn.user.email,
+          mode: 'viewing' // Could be enhanced to track mode
+        });
+      }
+    });
+
+    connection.ws.send(JSON.stringify({
+      type: 'active_viewers_list',
+      timestamp: new Date(),
+      data: activeViewers
+    }));
+
+    console.log(`📋 Sent active viewers list to ${connection.user.email}`);
   }
 
   async sendInitialStudyData(connectionId) {

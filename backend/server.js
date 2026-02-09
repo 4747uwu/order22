@@ -7,6 +7,7 @@ import connectDB from './config/db.js';
 import cookieParser from 'cookie-parser';
 import http from 'http';
 import helmet from 'helmet';
+import WebSocketService from './config/webSocket.js'; // ✅ ADD THIS
 import authRoutes from './routes/auth.routes.js';
 import superadminRoutes from './routes/superadmin.routes.js';
 import orthancRoutes from './routes/ingestion.routes.js';
@@ -42,7 +43,11 @@ connectDB();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const server = http.createServer(app);
+const server = http.createServer(app); // ✅ Already exists
+
+// ✅ ADD: Initialize WebSocket service
+WebSocketService.initialize(server);
+console.log('🔌 WebSocket service initialized');
 
 // ✅ ADD BODY PARSING MIDDLEWARE
 app.use(express.json({ limit: '10mb' })); // Parse JSON bodies
@@ -200,6 +205,7 @@ app.use('/api/compression', compressionRoutes);
 
 server.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    console.log(`✅ WebSocket available at ws://localhost:${PORT}`);
 });
 
 

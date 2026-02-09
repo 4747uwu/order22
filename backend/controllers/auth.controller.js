@@ -558,7 +558,9 @@ export const labConnectorLogin = async (req, res) => {
                 organizationIdentifier: user.organization.identifier,
                 lab: {
                     identifier: user.lab.identifier,
-                    name: user.lab.name
+                    name: user.lab.name,
+                    isActive: user.lab.isActive,
+                    settings: user.lab.settings
                 }
             }
         });

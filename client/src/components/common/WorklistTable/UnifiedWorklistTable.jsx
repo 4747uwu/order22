@@ -508,13 +508,14 @@ const handleOHIFReporting = async () => {
       )}
 
       {/* 3. ORGANIZATION */}
-      {isColumnVisible('organization') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
-          <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
-            {study.organizationName || '-'}
-          </div>
-        </td>
-      )}
+      {/* 3. ORGANIZATION - Only for super_admin */}
+{(userRoles.includes('super_admin') || userRole === 'super_admin') && isColumnVisible('organization') && (
+  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
+    <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
+      {study.organizationName || '-'}
+    </div>
+  </td>
+)}
 
       {/* 4. CENTER NAME */}
       {isColumnVisible('centerName') && (
@@ -1343,16 +1344,17 @@ const UnifiedWorklistTable = ({
     )}
     
     {/* 3. ORGANIZATION */}
-    {isColumnVisible('organization') && (
-      <ResizableTableHeader
-        columnId="organization"
-        label="ORGANIZATION"
-        width={getColumnWidth('organization')}
-        onResize={handleColumnResize}
-        minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
-        maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
-      />
-    )}
+    {/* 3. ORGANIZATION - Only for super_admin */}
+{(userRoles.includes('super_admin') || userRole === 'super_admin') && isColumnVisible('organization') && (
+  <ResizableTableHeader
+    columnId="organization"
+    label="ORGANIZATION"
+    width={getColumnWidth('organization')}
+    onResize={handleColumnResize}
+    minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
+    maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
+  />
+)}
     
     {/* 4. CENTER NAME */}
     {isColumnVisible('centerName') && (

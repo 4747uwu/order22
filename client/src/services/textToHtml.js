@@ -1,349 +1,295 @@
-class TextToHtmlService {
-  
-  /**
-   * Convert plain text to HTML with enhanced medical report formatting
-   */
-  static convertToHtml(text, options = {}) {
-    if (!text || typeof text !== 'string') {
-      return '';
-    }
+/**
+ * 🔥 PROFESSIONAL RADIOLOGY REPORT RENDERING ENGINE
+ * 
+ * Architecture: Text → HTML (faithful, literal conversion)
+ * - Preserves original section names exactly
+ * - Preserves original formatting/structure
+ * - No renaming, no reordering, no "smart" changes
+ * - Only adds styling (bold headers, underline, center title)
+ */
 
+class RadiologyReportEngine {
+
+  /**
+   * 🎯 SECTION HEADERS - just for detection, NOT for renaming
+   */
+  static SECTION_HEADERS = [
+    'CLINICAL HISTORY', 'HISTORY', 'INDICATION', 'REASON FOR EXAM',
+    'CLINICAL INFORMATION', 'REASON FOR STUDY', 'CLINICAL NOTES',
+    'TECHNIQUE', 'PROCEDURE', 'METHOD', 'METHODOLOGY', 'PROTOCOL', 'IMAGING TECHNIQUE',
+    'COMPARISON', 'PRIOR STUDIES', 'PREVIOUS STUDIES', 'PRIOR EXAM',
+    'OBSERVATION', 'OBSERVATIONS',
+    'FINDINGS', 'DESCRIPTION', 'RADIOLOGICAL FINDINGS', 'IMAGING FINDINGS',
+    'IMPRESSION', 'OPINION', 'SUMMARY', 'RADIOLOGICAL IMPRESSION', 'RADIOLOGICAL OPINION',
+    'CONCLUSION', 'FINAL DIAGNOSIS', 'DIAGNOSIS',
+    'RECOMMENDATION', 'RECOMMENDATIONS', 'ADVICE', 'SUGGESTION',
+    'FOLLOW-UP', 'FOLLOW UP', 'FURTHER MANAGEMENT'
+  ];
+
+  /**
+   * 🎯 SEVERITY-AWARE MEDICAL TERMS
+   */
+  static MEDICAL_TERMS = {
+    critical: [
+      'HEMORRHAGE', 'RUPTURE', 'MALIGNANT', 'ACUTE INFARCT', 'FRACTURE',
+      'DISSECTION', 'ANEURYSM', 'OCCLUSION', 'THROMBOSIS', 'EMBOLISM'
+    ],
+    normal: [
+      'UNREMARKABLE', 'WNL', 'NORMAL', 'WITHIN NORMAL LIMITS',
+      'NO ABNORMALITY', 'PRESERVED'
+    ],
+    negative: [
+      'NO EVIDENCE OF', 'NO EVIDENCE FOR', 'ABSENT', 'NOT SEEN',
+      'NO SIGNS OF', 'NO ACUTE', 'NO DEFINITE', 'NO SIGNIFICANT'
+    ]
+  };
+
+  /**
+   * 🔥 MAIN CONVERSION: Text → HTML (literal, faithful)
+   */
+  static convert(text, options = {}) {
     const {
+      templateVariables = {},
+      fontFamily = 'Times New Roman',
+      fontSize = '12pt',
+      lineHeight = '1.15',
       formatHeaders = true,
       formatLists = true,
       formatMedicalTerms = true,
       createParagraphs = true,
-      addPageBreaks = false,
-      fontFamily = 'Arial',
-      fontSize = '11pt',
-      lineHeight = '1.5'
+      addPageBreaks = false
     } = options;
 
-    let html = text.trim();
-
-    // 1. Escape HTML to prevent conflicts
-    html = this.escapeHtml(html);
-
-    // 2. Format medical sections and headers
-    if (formatHeaders) {
-      html = this.formatMedicalSections(html);
+    if (!text || typeof text !== 'string') {
+      return '';
     }
 
-    // 3. Format lists (numbered and bulleted)
-    if (formatLists) {
-      html = this.formatLists(html);
-    }
-
-    // 4. Format medical terms and measurements
-    if (formatMedicalTerms) {
-      html = this.formatMedicalTerms(html);
-    }
-
-    // 5. Create paragraphs from line breaks
-    if (createParagraphs) {
-      html = this.createParagraphs(html);
-    } else {
-      html = html.replace(/\n/g, '<br>');
-    }
-
-    // 6. Add page breaks if needed
-    if (addPageBreaks) {
-      html = this.addPageBreaks(html);
-    }
-
-    // 7. Wrap in medical report container
-    return this.wrapInMedicalContainer(html, { fontFamily, fontSize, lineHeight });
-  }
-
-  /**
-   * Enhanced medical section formatting
-   */
-  static formatMedicalSections(text) {
-    // Primary medical sections
-    const primarySections = [
-      /^(CLINICAL HISTORY|HISTORY|INDICATION|CLINICAL INFORMATION|REASON FOR STUDY):?\s*(.*)$/gmi,
-      /^(FINDINGS|OBSERVATION|OBSERVATIONS|RADIOLOGICAL FINDINGS|IMAGING FINDINGS):?\s*(.*)$/gmi,
-      /^(IMPRESSION|CONCLUSION|DIAGNOSIS|RADIOLOGICAL IMPRESSION|FINAL DIAGNOSIS):?\s*(.*)$/gmi,
-      /^(RECOMMENDATIONS?|ADVICE|FOLLOW[- ]?UP|FURTHER MANAGEMENT):?\s*(.*)$/gmi
-    ];
-
-    primarySections.forEach(pattern => {
-      text = text.replace(pattern, (match, header, content) => {
-        const headerStyle = `
-          color: #1f2937; 
-          font-weight: 700; 
-          text-decoration: underline; 
-          margin: 18px 0 10px 0; 
-          font-size: 12pt;
-          padding: 8px 0;
-          border-left: 3px solid #374151;
-          padding-left: 12px;
-          letter-spacing: 0.5px;
-        `;
-        return `<h3 style="${headerStyle}">${header.toUpperCase()}:</h3>${content ? `<p>${content}</p>` : ''}`;
+    // Apply template variables first
+    let processed = text.trim();
+    if (Object.keys(templateVariables).length > 0) {
+      processed = processed.replace(/\{\{([^}]+)\}\}/g, (match, path) => {
+        return path.split('.').reduce((obj, key) => obj?.[key], templateVariables) || match;
       });
-    });
+    }
 
-    // Secondary sections
-    const secondarySections = [
-      /^(TECHNIQUE|PROCEDURE|METHOD|METHODOLOGY|COMPARISON|PRIOR STUDIES?|PREVIOUS STUDIES?|CONTRAST|PROTOCOL):?\s*(.*)$/gmi
-    ];
+    // Convert text to HTML line by line - LITERAL conversion
+    const html = this.convertLines(processed, { formatHeaders, formatLists, formatMedicalTerms, createParagraphs });
 
-    secondarySections.forEach(pattern => {
-      text = text.replace(pattern, (match, header, content) => {
-        const headerStyle = `
-          color: #374151; 
-          font-weight: 600; 
-          margin: 14px 0 8px 0; 
-          font-size: 11pt;
-          text-transform: uppercase;
-          letter-spacing: 0.3px;
-        `;
-        return `<h4 style="${headerStyle}">${header.toUpperCase()}:</h4>${content ? `<p>${content}</p>` : ''}`;
-      });
-    });
-
-    return text;
+    // Wrap in simple container
+    return this.wrapInContainer(html, { fontFamily, fontSize, lineHeight });
   }
 
   /**
-   * Enhanced list formatting with proper medical styling
+   * 🧠 Convert text line by line - FAITHFUL to original
    */
-  static formatLists(text) {
-    // Numbered lists with medical styling
-    text = text.replace(/^(\d+[\.)]\s+.+)$/gm, (match, item) => {
-      const cleanItem = item.replace(/^\d+[\.)]\s*/, '');
-      return `<li style="margin: 6px 0; line-height: 1.6; color: #374151;">${cleanItem}</li>`;
-    });
+  static convertLines(text, options) {
+    const lines = text.split('\n');
+    let html = '';
+    let isFirstLine = true;
+    let firstLineProcessed = false;
 
-    // Wrap consecutive numbered list items
-    text = text.replace(/(<li[^>]*>.*?<\/li>\s*)+/gs, (match) => {
-      return `<ol style="margin: 12px 0; padding-left: 28px; color: #374151; font-weight: 500;">${match}</ol>`;
-    });
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
 
-    // Bulleted lists
-    text = text.replace(/^([-•*]\s+.+)$/gm, (match, item) => {
-      const cleanItem = item.replace(/^[-•*]\s*/, '');
-      return `<li style="margin: 6px 0; line-height: 1.6; color: #374151;">${cleanItem}</li>`;
-    });
-
-    // Wrap consecutive bulleted list items
-    text = text.replace(/(<li[^>]*>.*?<\/li>\s*(?:<ol[^>]*>.*?<\/ol>\s*)?)+/gs, (match) => {
-      if (match.includes('<ol')) return match; // Skip if already wrapped in ol
-      return `<ul style="margin: 12px 0; padding-left: 28px; color: #374151; font-weight: 500;">${match}</ul>`;
-    });
-
-    return text;
-  }
-
-  /**
-   * Enhanced medical terms formatting with expanded dictionary
-   */
-  static formatMedicalTerms(text) {
-    // Critical findings (bold emphasis)
-    const criticalFindings = [
-      /\b(NORMAL|ABNORMAL|NEGATIVE|POSITIVE|WNL|WITHIN\s+NORMAL\s+LIMITS?)\b/gi,
-      /\b(NO\s+(?:EVIDENCE|SIGNS?|ACUTE|ACTIVE|SIGNIFICANT|ABNORMALITIES?|PATHOLOGY|DISEASE))\b/gi,
-      /\b(UNREMARKABLE|REMARKABLE|PATHOLOGICAL|NON[-\s]?SPECIFIC)\b/gi,
-      /\b(EMERGENT|URGENT|CRITICAL|STAT|IMMEDIATE)\b/gi
-    ];
-
-    criticalFindings.forEach(pattern => {
-      text = text.replace(pattern, '<strong style="color: #111827; font-weight: 700;">$1</strong>');
-    });
-
-    // Severity indicators (medium emphasis)
-    const severityIndicators = [
-      /\b(MILD|MODERATE|SEVERE|MARKED|EXTENSIVE|MINIMAL|SUBTLE|PROMINENT|SIGNIFICANT)\b/gi,
-      /\b(ACUTE|CHRONIC|SUBACUTE|PROGRESSIVE|STABLE|IMPROVED|WORSENED|RESOLVED)\b/gi,
-      /\b(FOCAL|DIFFUSE|LOCALIZED|GENERALIZED|BILATERAL|UNILATERAL|MULTIFOCAL)\b/gi,
-      /\b(COMPLETE|INCOMPLETE|PARTIAL|TOTAL|NEAR[-\s]?COMPLETE)\b/gi
-    ];
-
-    severityIndicators.forEach(pattern => {
-      text = text.replace(pattern, '<span style="color: #1f2937; font-weight: 600;">$1</span>');
-    });
-
-    // Measurements and values (subtle emphasis)
-    text = text.replace(/(\d+(?:\.\d+)?\s*(?:mm|cm|ml|mg|kg|g|%|degrees?|x|cm2|cm3|ml\/min|mmHg|bpm|Hz|mSv|kVp|mAs|sec|min|hours?|days?|weeks?|months?|years?))\b/gi, 
-      '<span style="font-weight: 600; color: #374151; border-bottom: 1px solid #d1d5db; padding-bottom: 1px;">$1</span>');
-
-    // Expanded imaging modalities and equipment
-    const imagingModalities = [
-      /\b(radiograph|X[-\s]?ray|CT|MRI|MRA|MRV|ultrasound|US|echocardiogram|echo|electrocardiogram|ECG|EKG)\b/gi,
-      /\b(mammography|fluoroscopy|angiography|arteriography|venography|myelography|cholangiography)\b/gi,
-      /\b(PET|SPECT|nuclear medicine|scintigraphy|bone scan|thyroid scan|cardiac catheterization)\b/gi,
-      /\b(DEXA|densitometry|tomosynthesis|stereotactic|biopsy|intervention|drainage)\b/gi,
-      /\b(T1[-\s]?weighted|T2[-\s]?weighted|FLAIR|DWI|ADC|perfusion|spectroscopy|DTI)\b/gi,
-      /\b(contrast[-\s]?enhanced|non[-\s]?contrast|pre[-\s]?contrast|post[-\s]?contrast|gadolinium|iodine)\b/gi
-    ];
-
-    imagingModalities.forEach(pattern => {
-      text = text.replace(pattern, '<em style="color: #374151; font-style: italic; font-weight: 500;">$1</em>');
-    });
-
-    // Expanded anatomical terms
-    const anatomicalTerms = [
-      /\b(anterior|posterior|lateral|medial|superior|inferior|proximal|distal|cranial|caudal)\b/gi,
-      /\b(sagittal|coronal|axial|transverse|oblique|longitudinal|cross[-\s]?sectional)\b/gi,
-      /\b(bilateral|unilateral|symmetrical|asymmetrical|ipsilateral|contralateral)\b/gi,
-      /\b(superficial|deep|subcutaneous|intramuscular|intravenous|arterial|venous)\b/gi,
-      /\b(cervical|thoracic|lumbar|sacral|coccygeal|vertebral|spinal|epidural|subdural)\b/gi,
-      /\b(intracranial|extracranial|intraorbital|extraorbital|retro[-\s]?orbital)\b/gi,
-      /\b(pulmonary|cardiac|hepatic|renal|splenic|pancreatic|gastric|intestinal)\b/gi,
-      /\b(abdominal|pelvic|thoracic|cervical|cranial|facial|orbital|nasal|paranasal)\b/gi
-    ];
-
-    anatomicalTerms.forEach(pattern => {
-      text = text.replace(pattern, '<span style="color: #4b5563; font-weight: 500; font-style: italic;">$1</span>');
-    });
-
-    // Medical conditions and pathology (expanded)
-    const medicalConditions = [
-      /\b(pneumonia|pneumothorax|pleural effusion|atelectasis|consolidation|infiltrate|opacity)\b/gi,
-      /\b(fracture|dislocation|arthritis|osteoporosis|osteomyelitis|tumor|mass|lesion)\b/gi,
-      /\b(aneurysm|stenosis|occlusion|thrombosis|embolism|ischemia|infarction|hemorrhage)\b/gi,
-      /\b(edema|inflammation|infection|abscess|hematoma|seroma|cyst|polyp)\b/gi,
-      /\b(cardiomegaly|hepatomegaly|splenomegaly|lymphadenopathy|organomegaly)\b/gi,
-      /\b(calcification|calcified|ossification|sclerosis|fibrosis|scarring|adhesions)\b/gi,
-      /\b(dilatation|dilation|distension|compression|impingement|displacement)\b/gi,
-      /\b(hypertrophy|atrophy|hyperplasia|dysplasia|metaplasia|neoplasia|malignancy)\b/gi
-    ];
-
-    medicalConditions.forEach(pattern => {
-      text = text.replace(pattern, '<span style="color: #1f2937; font-weight: 600; text-decoration: underline; text-decoration-style: dotted;">$1</span>');
-    });
-
-    // Laboratory values and normal ranges
-    const labValues = [
-      /\b(elevated|decreased|increased|reduced|low|high|normal|borderline|within limits)\b/gi,
-      /\b(WBC|RBC|hemoglobin|hematocrit|platelet|glucose|creatinine|BUN|GFR)\b/gi,
-      /\b(sodium|potassium|chloride|CO2|calcium|magnesium|phosphorus|protein|albumin)\b/gi,
-      /\b(bilirubin|alkaline phosphatase|ALT|AST|LDH|amylase|lipase|troponin|BNP)\b/gi
-    ];
-
-    labValues.forEach(pattern => {
-      text = text.replace(pattern, '<span style="color: #374151; font-weight: 500; background-color: #f9fafb; padding: 1px 3px; border-radius: 3px;">$1</span>');
-    });
-
-    return text;
-  }
-
-  /**
-   * Enhanced paragraph creation with medical formatting
-   */
-  static createParagraphs(text) {
-    const paragraphs = text.split(/\n\s*\n/);
-    
-    return paragraphs.map(paragraph => {
-      const trimmed = paragraph.trim();
-      if (!trimmed) return '';
-      
-      // Don't wrap if already has HTML tags
-      if (/<\/?(h[1-6]|ul|ol|li|div|p)\b/i.test(trimmed)) {
-        return trimmed;
+      // Empty line = line break
+      if (!trimmed) {
+        html += '<br>';
+        continue;
       }
-      
-      // Special handling for short lines (likely labels or headers)
-      const lines = trimmed.split('\n');
-      if (lines.length === 1 && lines[0].length < 50 && lines[0].toUpperCase() === lines[0]) {
-        return `<h4 style="color: #374151; font-weight: 600; margin: 14px 0 8px 0; font-size: 11pt; text-transform: uppercase; letter-spacing: 0.3px;">${trimmed}</h4>`;
+
+      // First non-empty line: check if it's a title (all caps, short)
+      if (isFirstLine && !firstLineProcessed) {
+        firstLineProcessed = true;
+        isFirstLine = false;
+
+        if (trimmed === trimmed.toUpperCase() && trimmed.length < 80) {
+          html += `<div style="text-align: center; font-weight: bold; font-size: 14pt; text-decoration: underline; margin-bottom: 8px;">${trimmed}</div>\n`;
+          continue;
+        }
       }
-      
-      // Regular paragraph
-      const cleaned = trimmed.replace(/\n/g, ' ').replace(/\s+/g, ' ');
-      return `<p style="margin: 8px 0; line-height: 1.6; color: #374151; text-align: justify;">${cleaned}</p>`;
-    }).filter(p => p).join('\n');
+
+      // Check if this line is a section header (standalone like "OBSERVATION:" or inline like "TECHNIQUE: content")
+      if (options.formatHeaders) {
+        const headerMatch = this.matchSectionHeader(trimmed);
+
+        if (headerMatch) {
+          if (headerMatch.content) {
+            // Inline header: "TECHNIQUE: Volume scan of arm..."
+            let content = headerMatch.content;
+            if (options.formatMedicalTerms) {
+              content = this.applyMedicalEmphasis(content);
+            }
+            html += `<div style="margin-top: 6px;"><span style="font-weight: bold; text-decoration: underline;">${headerMatch.header}:</span> ${content}</div>\n`;
+          } else {
+            // Standalone header: "OBSERVATION:"
+            html += `<div style="font-weight: bold; text-decoration: underline; margin-top: 6px;">${headerMatch.header}:</div>\n`;
+          }
+          continue;
+        }
+      }
+
+      // Check if line starts with any bullet-like character or checkbox
+      if (options.formatLists && this.isBulletLine(trimmed)) {
+        const cleaned = this.stripBulletMarker(trimmed);
+        let content = cleaned;
+        if (options.formatMedicalTerms) {
+          content = this.applyMedicalEmphasis(content);
+        }
+        
+        // Use simple bullet point that works in Times New Roman
+        html += `<div style="margin-left: 30px; text-indent: -20px; margin-top: 2px;">• ${content}</div>\n`;
+        continue;
+      }
+
+      // Regular line
+      let content = trimmed;
+      if (options.formatMedicalTerms) {
+        content = this.applyMedicalEmphasis(content);
+      }
+      html += `<div style="margin-top: 2px;">${content}</div>\n`;
+    }
+
+    return html;
   }
 
   /**
-   * Wrap in medical report container
+   * 🔍 Detect if a line is a bullet/arrow line
+   * Detects ANY non-letter character at the start followed by space, or tab indentation
    */
-  static wrapInMedicalContainer(html, { fontFamily, fontSize, lineHeight }) {
-    return `
-      <div style="
-        font-family: ${fontFamily}, 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: ${fontSize};
-        line-height: ${lineHeight};
-        color: #374151;
-        margin: 0;
-        padding: 24px;
-        background-color: #ffffff;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-        max-width: 21cm;
-        margin: 0 auto;
-        letter-spacing: 0.2px;
-      ">
-        ${html}
-      </div>
-    `;
+  static isBulletLine(line) {
+    // Match: any symbol/punctuation at start + space, OR tab-indented text
+    // This catches: ☐, □, ■, ✓, >, •, ➤, ▸, etc. AND broken Unicode boxes
+    return /^[^\w\s]\s+/.test(line) || /^\t+\S/.test(line);
   }
 
   /**
-   * Convert HTML back to plain text (improved)
+   * 🔍 Strip bullet marker from start of line
+   */
+  static stripBulletMarker(line) {
+    // Remove any non-word, non-space character at the start + following spaces
+    return line.replace(/^[^\w\s]\s*/, '').replace(/^\t+/, '').trim();
+  }
+
+  /**
+   * 🔍 Match section header - returns original name, never renames
+   */
+  static matchSectionHeader(line) {
+    const upper = line.toUpperCase().replace(/[:\s]+$/, '');
+
+    for (const header of this.SECTION_HEADERS) {
+      if (upper === header) {
+        // Standalone header (e.g., "OBSERVATION:")
+        return { header: line.replace(/[:\s]+$/, ''), content: null };
+      }
+      if (upper.startsWith(header + ':') || upper.startsWith(header + ' :')) {
+        // Inline header (e.g., "TECHNIQUE: Volume scan...")
+        const colonIndex = line.indexOf(':');
+        const originalHeader = line.substring(0, colonIndex).trim();
+        const content = line.substring(colonIndex + 1).trim();
+        return { header: originalHeader, content: content || null };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 🎯 Apply medical term emphasis - conservative
+   */
+  static applyMedicalEmphasis(text) {
+    // Critical terms
+    this.MEDICAL_TERMS.critical.forEach(term => {
+      const regex = new RegExp(`\\b(${term})\\b`, 'gi');
+      text = text.replace(regex, '<strong style="color: #d32f2f;">$1</strong>');
+    });
+
+    // Normal findings (bold, black)
+    this.MEDICAL_TERMS.normal.forEach(term => {
+      const regex = new RegExp(`\\b(${term})\\b`, 'gi');
+      text = text.replace(regex, '<strong>$1</strong>');
+    });
+
+    // Negative findings (bold, black)
+    this.MEDICAL_TERMS.negative.forEach(term => {
+      const regex = new RegExp(`(${term})`, 'gi');
+      text = text.replace(regex, '<strong>$1</strong>');
+    });
+
+    return text;
+  }
+
+  /**
+   * 🎨 Wrap in simple container - NO <style> tags, ONLY inline styles
+   */
+  static wrapInContainer(html, { fontFamily, fontSize, lineHeight }) {
+    return `<div style="font-family: '${fontFamily}', 'Times New Roman', serif; font-size: ${fontSize}; line-height: ${lineHeight}; color: #000; padding: 20px 30px; max-width: 21cm; margin: 0 auto;">${html}</div>`;
+  }
+
+  /**
+   * 🔄 Convert HTML back to plain text
    */
   static htmlToText(html) {
     if (!html) return '';
-    
-    // Create a temporary element
+
     const div = document.createElement('div');
     div.innerHTML = html;
-    
-    // Replace headers with their text followed by colons and line breaks
-    const headers = div.querySelectorAll('h1, h2, h3, h4, h5, h6');
-    headers.forEach(header => {
-      const text = header.textContent.trim();
-      header.outerHTML = `\n\n${text}\n`;
+
+    // Replace <br> with newlines
+    div.innerHTML = div.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+
+    // Replace divs/sections with newlines
+    const blocks = div.querySelectorAll('div, section, p, header');
+    blocks.forEach(block => {
+      block.insertAdjacentText('afterend', '\n');
     });
 
-    // Replace paragraphs with line breaks
-    const paragraphs = div.querySelectorAll('p');
-    paragraphs.forEach(p => {
-      p.outerHTML = p.textContent.trim() + '\n\n';
+    // Replace list items
+    const listItems = div.querySelectorAll('li');
+    listItems.forEach(li => {
+      li.insertAdjacentText('beforebegin', '• ');
+      li.insertAdjacentText('afterend', '\n');
     });
 
-    // Replace lists
-    const lists = div.querySelectorAll('ol, ul');
-    lists.forEach(list => {
-      const items = list.querySelectorAll('li');
-      const isOrdered = list.tagName === 'OL';
-      let listText = '\n';
-      items.forEach((item, index) => {
-        const prefix = isOrdered ? `${index + 1}. ` : '• ';
-        listText += `${prefix}${item.textContent.trim()}\n`;
-      });
-      list.outerHTML = listText + '\n';
-    });
+    let text = div.textContent || div.innerText || '';
 
-    // Get final text content
-    return div.textContent || div.innerText || '';
+    // Clean up multiple newlines
+    text = text.replace(/\n{3,}/g, '\n\n');
+
+    return text.trim();
   }
 
-  // ✅ Escape HTML characters to avoid injection and allow safe processing
-  static escapeHtml(str) {
-    if (!str || typeof str !== 'string') return '';
-    return str.replace(/[&<>"']/g, (m) => {
-      switch (m) {
-        case '&': return '&amp;';
-        case '<': return '&lt;';
-        case '>': return '&gt;';
-        case '"': return '&quot;';
-        case "'": return '&#039;';
-        default: return m;
+  /**
+   * 🔍 Extract structured data for AI/Analytics
+   */
+  static extractStructuredData(text) {
+    const ast = { title: '', sections: {}, measurements: [], criticalFindings: [] };
+    const lines = text.trim().split('\n');
+
+    if (lines[0] && lines[0] === lines[0].toUpperCase()) {
+      ast.title = lines[0].trim();
+    }
+
+    // Extract measurements
+    const measurementRegex = /\d+(?:\.\d+)?\s*(?:x|×)\s*\d+(?:\.\d+)?\s*(?:mm|cm)/gi;
+    const measurements = text.match(measurementRegex);
+    if (measurements) ast.measurements = measurements;
+
+    // Extract critical findings
+    this.MEDICAL_TERMS.critical.forEach(term => {
+      if (new RegExp(term, 'i').test(text)) {
+        ast.criticalFindings.push(term);
       }
     });
-  }
 
-  // ✅ Simple page-break inserter before major sections
-  static addPageBreaks(text) {
-    if (!text || typeof text !== 'string') return text;
-    // Insert page-break before major section headers (IMPRESSION/CONCLUSION/RECOMMENDATIONS)
-    return text.replace(
-      /(<h[1-6][^>]*>\s*)(IMPRESSION|CONCLUSION|RECOMMENDATIONS?|RECOMMENDATION)(:?\s*<\/h[1-6]>?)/gmi,
-      '<div style="page-break-before: always;"></div>$1$2$3'
-    );
+    return ast;
+  }
+}
+
+// 🔥 Export with backward compatibility alias
+class TextToHtmlService extends RadiologyReportEngine {
+  static convertToHtml(text, options = {}) {
+    return super.convert(text, options);
   }
 }
 

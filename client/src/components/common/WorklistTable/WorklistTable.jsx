@@ -17,7 +17,8 @@ import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColu
 import RevertModal from '../../../components/RevertModal.jsx';
 import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
-
+// import { useEffect, useRef, useState } from 'react';
+import useWebSocket from '../../../hooks/useWebSocket'; // We'll create this
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -463,6 +464,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 // ✅ STUDY ROW - ALL COLUMNS VISIBLE WITH DYNAMIC WIDTHS
 const StudyRow = ({ 
   study, 
+  activeViewers = [],
   index,
   selectedStudies,
   availableAssignees,
@@ -498,6 +500,7 @@ const StudyRow = ({
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [downloadPosition, setDownloadPosition] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
+  const hasActiveViewers  = activeViewers.length > 0;
 
   const isSelected = selectedStudies?.includes(study._id);
   const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
@@ -670,17 +673,34 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 2. BHARAT PACS ID */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200">
         <div className="flex items-center justify-center gap-1.5">
-          <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
-            {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
+          <span className="text-xs font-mono font-semibold text-slate-700 truncate">
+            {study.bharatPacsId}
           </span>
-          <button
-            onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+          <button onClick={() => copyToClipboard(study.bharatPacsId, 'BP ID')}>
+            <Copy className="w-3.5 h-3.5 text-slate-500" />
           </button>
+          
+          {/* ✅ NEW: Active Viewer Indicator */}
+          {hasActiveViewers && (
+            <div 
+              className="relative group"
+              title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}
+            >
+              <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {activeViewers.length}
+              </span>
+              
+              {/* Tooltip on hover */}
+              <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50">
+                {activeViewers.map(v => (
+                  <div key={v.userId}>{v.userName} ({v.mode})</div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </td>
 
@@ -1402,6 +1422,10 @@ const WorklistTable = ({
     []
   );
 
+  const [activeViweres, setActiveViewers] = useState({});
+  const { sendMessage, lastMessage, readyState } = useWebSocket();
+
+
   const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
   const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
@@ -1411,6 +1435,64 @@ const WorklistTable = ({
 
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
   const[printModal, setPrintModal] = useState({ show: false, report: false });
+
+
+  useEffect(() => {
+    if (readyState === WebSocket.OPEN) {
+      // Subscribe to viewer updates
+      sendMessage({
+        type: 'subscribe_to_viewer_updates'
+      });
+
+      // Request current active viewers
+      sendMessage({
+        type: 'request_active_viewers'
+      });
+    }
+  }, [readyState, sendMessage]);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const message = JSON.parse(lastMessage.data);
+
+    switch (message.type) {
+      case 'study_viewer_opened':
+        setActiveViewers(prev => {
+          const studyId = message.data.studyId;
+          const viewers = prev[studyId] || [];
+          if (!viewers.find(v => v.userId === message.data.userId)) {
+            return {
+              ...prev,
+              [studyId]: [...viewers, {
+                userId: message.data.userId,
+                userName: message.data.userName,
+                mode: message.data.mode
+              }]
+            };
+          }
+          return prev;
+        });
+        break;
+
+      case 'study_viewer_closed':
+        setActiveViewers(prev => {
+          const studyId = message.data.studyId;
+          const viewers = (prev[studyId] || []).filter(v => v.userId !== message.data.userId);
+          if (viewers.length === 0) {
+            const { [studyId]: removed, ...rest } = prev;
+            return rest;
+          }
+          return { ...prev, [studyId]: viewers };
+        });
+        break;
+
+      case 'active_viewers_list':
+        setActiveViewers(message.data);
+        break;
+    }
+  }, [lastMessage]);
+
 
   const handleShowTimeline = useCallback((study) => {
     setTimelineModal({ show: true, studyId: study._id, studyData: study });
@@ -1793,6 +1875,7 @@ const handleClosePrintModal = useCallback(() => {
               <StudyRow
                 key={study._id}
                 study={study}
+                activeViewers={activeViweres[study._id] || []} // ✅ Pass viewers
                 index={index}
                 selectedStudies={selectedStudies}
                 availableAssignees={availableAssignees}

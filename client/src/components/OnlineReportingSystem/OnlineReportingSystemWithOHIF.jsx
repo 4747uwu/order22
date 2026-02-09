@@ -7,9 +7,11 @@ import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
 import { CheckCircle, XCircle, Edit, Camera } from 'lucide-react';
+import useWebSocket from '../../hooks/useWebSocket';
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
+  const { sendMessage, readyState } = useWebSocket();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -61,6 +63,77 @@ const OnlineReportingSystemWithOHIF = () => {
     { value: 70, label: '70% / 30%' },
     { value: 80, label: '80% / 20%' }
   ];
+
+// At the top with other useRef declarations
+const hasSentStudyOpened = useRef(false);
+const sendAttemptTimeout = useRef(null);
+const initialDelayTimeout = useRef(null); // ✅ NEW: For initial 5-second delay
+
+// ✅ UPDATED: Wait 5 seconds initially, then use retry logic
+useEffect(() => {
+  // Reset flag when studyId changes
+  if (!studyId) {
+    hasSentStudyOpened.current = false;
+    if (sendAttemptTimeout.current) {
+      clearTimeout(sendAttemptTimeout.current);
+    }
+    if (initialDelayTimeout.current) {
+      clearTimeout(initialDelayTimeout.current);
+    }
+    return;
+  }
+
+  console.log('⏳ [WebSocket] Waiting 5 seconds before sending study_opened to ensure connection is stable...');
+  
+  // Function to attempt sending
+  const attemptSend = () => {
+    if (readyState === WebSocket.OPEN && !hasSentStudyOpened.current) {
+      console.log('👁️ [WebSocket] Sending study_opened:', studyId);
+      console.log('👁️ [WebSocket] readyState:', readyState);
+      
+      const message = {
+        type: 'study_opened',
+        studyId: studyId,
+        mode: 'reporting'
+      };
+      
+      console.log('👁️ [WebSocket] Message object:', JSON.stringify(message));
+      sendMessage(message);
+      
+      hasSentStudyOpened.current = true;
+      console.log('✅ [WebSocket] study_opened sent successfully!');
+    } else if (readyState !== WebSocket.OPEN && !hasSentStudyOpened.current) {
+      // WebSocket not open yet, retry in 1 second
+      console.log('⏳ [WebSocket] Not open yet (state:', readyState, '), retrying in 1 second...');
+      sendAttemptTimeout.current = setTimeout(attemptSend, 1000);
+    }
+  };
+
+  // ✅ NEW: Wait 5 seconds before first attempt to allow WebSocket to fully stabilize
+  initialDelayTimeout.current = setTimeout(() => {
+    console.log('⏰ [WebSocket] 5-second delay complete, attempting to send study_opened...');
+    attemptSend();
+  }, 4000); // 5 seconds initial delay
+
+  // Cleanup - send study_closed on unmount
+  return () => {
+    if (sendAttemptTimeout.current) {
+      clearTimeout(sendAttemptTimeout.current);
+    }
+    if (initialDelayTimeout.current) {
+      clearTimeout(initialDelayTimeout.current);
+    }
+    
+    if (hasSentStudyOpened.current && readyState === WebSocket.OPEN) {
+      console.log('👁️ [WebSocket] Sending study_closed on unmount:', studyId);
+      sendMessage({
+        type: 'study_closed',
+        studyId: studyId
+      });
+      hasSentStudyOpened.current = false;
+    }
+  };
+}, [studyId, readyState, sendMessage]);
 
   // 🔍 DEBUG: Log all state changes
   useEffect(() => {
