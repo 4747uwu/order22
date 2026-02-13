@@ -39,9 +39,9 @@ RUN groupadd --gid 1001 nodejs && \
     useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs
 
 # ✅ NEW: Create shared temp directory with proper permissions
-RUN mkdir -p /root/node/temp && \
-    chown -R nodejs:nodejs /root/node/temp && \
-    chmod -R 755 /root/node/temp
+RUN mkdir -p /tmp/node/restore && \
+    chown -R nodejs:nodejs /tmp/node/restore && \
+    chmod -R 755 /tmp/node/restore
 
 # Create cache directory and set ownership
 RUN mkdir -p /home/nodejs/.cache/puppeteer && \

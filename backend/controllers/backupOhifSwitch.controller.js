@@ -19,7 +19,7 @@ const BACKUP_ORTHANC_PASSWORD = process.env.BACKUP_ORTHANC_PASSWORD || 'orthanc'
 const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' + BACKUP_ORTHANC_PASSWORD).toString('base64');
 
 // ✅ NEW: Use environment variable for shared temp directory
-const SHARED_TEMP_DIR = process.env.SHARED_TEMP_DIR || '/root/node/temp';
+const SHARED_TEMP_DIR = process.env.SHARED_TEMP_DIR || '/tmp/node/restore';
 
 /**
  * ✅ NEW: Restore study from Cloudflare R2 to backup Orthanc (port 9042)

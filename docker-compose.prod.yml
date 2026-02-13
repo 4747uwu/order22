@@ -37,12 +37,12 @@ services:
       - ORTHANC_PASSWORD=alicePassword
       - FRONTEND_URL=http://206.189.133.52
       - ORTHANC_STORAGE_PATH=/root/orthanc/orthancstorage
-      - SHARED_TEMP_DIR=/root/node/temp  # ✅ NEW: Define shared temp location
+      - SHARED_TEMP_DIR=/tmp/node/restore  # ✅ Changed from /root/node/temp
     
     volumes:
-      - /root/orthanc/orthancstorage:/root/orthanc/orthancstorage:ro  # ✅ Read-only for Orthanc storage
-      - /root/node/temp:/root/node/temp:rw                             # ✅ NEW: Read-write for restore temp files
-      - backend_cache:/home/nodejs/.cache                              # ✅ NEW: Cache persistence
+      - /root/orthanc/orthancstorage:/root/orthanc/orthancstorage:ro
+      - /tmp/node/restore:/tmp/node/restore:rw  # ✅ Changed path
+      - backend_cache:/home/nodejs/.cache
       
     restart: unless-stopped
     networks:
