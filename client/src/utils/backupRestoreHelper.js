@@ -6,15 +6,17 @@ import api from '../services/api';
  * @param {number} days - Number of days threshold (default 10)
  * @returns {boolean}
  */
-export const isStudyOlderThan = (studyDate, days = 10) => {
+export const isStudyOlderThan = (studyDate, hours = 1) => {
   if (!studyDate) return false;
   
   const studyDateTime = new Date(studyDate);
   const now = new Date();
   const diffTime = now - studyDateTime;
-  const diffDays = diffTime / (1000 * 60 * 60 * 24);
+  const diffHours = diffTime / (1000 * 60 * 60); // ✅ Changed to hours
   
-  return diffDays >= days;
+  console.log(`🕐 [Backup Test] Study age: ${diffHours.toFixed(2)} hours (threshold: ${hours} hours)`);
+  
+  return diffHours >= hours; // ✅ Compare hours instead of days
 };
 
 /**
@@ -25,7 +27,7 @@ export const isStudyOlderThan = (studyDate, days = 10) => {
  */
 export const checkAndRestoreStudy = async (study, options = {}) => {
   const {
-    daysThreshold = 10,
+    daysThreshold = 1,
     showNotifications = true,
     onProgress = null
   } = options;
@@ -93,7 +95,7 @@ export const checkAndRestoreStudy = async (study, options = {}) => {
 export const navigateWithRestore = async (navigate, path, study, options = {}) => {
   const {
     state = {},
-    daysThreshold = 10,
+    daysThreshold = 1,
     forceRestore = false,
     onRestoreStart = null,
     onRestoreComplete = null,
@@ -159,7 +161,7 @@ export const navigateWithRestore = async (navigate, path, study, options = {}) =
  * @param {number} daysThreshold - Days threshold
  * @returns {Array} Studies that need restoration
  */
-export const getStudiesNeedingRestore = (studies, daysThreshold = 10) => {
+export const getStudiesNeedingRestore = (studies, daysThreshold = 1) => {
   if (!Array.isArray(studies)) return [];
   
   return studies.filter(study => isStudyOlderThan(study.studyDate, daysThreshold));

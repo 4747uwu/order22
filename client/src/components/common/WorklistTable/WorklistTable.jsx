@@ -623,7 +623,7 @@ const StudyRow = ({
         `/doctor/viewer/${study._id}`,
         study,
         {
-          daysThreshold: 10,
+          daysThreshold: 1,
           onRestoreStart: (study) => {
             console.log(`🔄 [View Only] Restoring study: ${study.bharatPacsId}`);
             toast.loading(`Restoring study from backup...`, { id: `restore-${study._id}` });
