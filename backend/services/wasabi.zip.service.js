@@ -12,7 +12,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 import { r2Client, r2Config, getR2PublicUrl, getCDNOptimizedUrl } from '../config/cloudflare-r2.js';
 import DicomStudy from '../models/dicomStudyModel.js';
 
-const ORTHANC_BASE_URL = process.env.ORTHANC_URL || 'http://localhost:8042';
+const ORTHANC_BASE_URL =  'http://orthanc-server:8042';
 const ORTHANC_USERNAME = process.env.ORTHANC_USERNAME || 'alice';
 const ORTHANC_PASSWORD = process.env.ORTHANC_PASSWORD || 'alicePassword';
 const orthancAuth = 'Basic ' + Buffer.from(ORTHANC_USERNAME + ':' + ORTHANC_PASSWORD).toString('base64');
