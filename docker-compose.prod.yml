@@ -35,17 +35,18 @@ services:
       - ORTHANC_URL=http://206.189.133.52:8042
       - ORTHANC_USERNAME=alice  
       - ORTHANC_PASSWORD=alicePassword
-      - FRONTEND_URL=http://206.189.133.52  # ✅ Change from 157.245.86.199
+      - FRONTEND_URL=http://206.189.133.52
       - ORTHANC_STORAGE_PATH=/root/orthanc/orthancstorage
+      - SHARED_TEMP_DIR=/root/node/temp  # ✅ NEW: Define shared temp location
     
-    volumes: # ✅ ADD THIS SECTION
-      - /root/orthanc/orthancstorage:/root/orthanc/orthancstorage
+    volumes:
+      - /root/orthanc/orthancstorage:/root/orthanc/orthancstorage:ro  # ✅ Read-only for Orthanc storage
+      - /root/node/temp:/root/node/temp:rw                             # ✅ NEW: Read-write for restore temp files
+      - backend_cache:/home/nodejs/.cache                              # ✅ NEW: Cache persistence
       
     restart: unless-stopped
-    
     networks:
       - orthanc_medical-network
-      
 
   frontend:
     build:
@@ -75,6 +76,7 @@ services:
 
 volumes:
   orthanc_data:
+  backend_cache:  # ✅ NEW: Persistent cache volume
 
 networks:
   orthanc_medical-network:

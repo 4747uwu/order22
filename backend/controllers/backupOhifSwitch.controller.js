@@ -18,7 +18,8 @@ const BACKUP_ORTHANC_USERNAME = process.env.BACKUP_ORTHANC_USERNAME || 'orthanc'
 const BACKUP_ORTHANC_PASSWORD = process.env.BACKUP_ORTHANC_PASSWORD || 'orthanc';
 const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' + BACKUP_ORTHANC_PASSWORD).toString('base64');
 
-const TEMP_DIR = path.join(process.cwd(), 'temp');
+// ✅ NEW: Use environment variable for shared temp directory
+const SHARED_TEMP_DIR = process.env.SHARED_TEMP_DIR || '/root/node/temp';
 
 // ✅ Ensure temp directory exists
 const ensureTempDir = async () => {
@@ -119,10 +120,15 @@ export const restoreFromBackup = async (req, res) => {
     await ensureTempDir();
 
     // 4. Download ZIP from Cloudflare R2
-    const tempFileName = `restore_${study._id}_${Date.now()}.zip`;
-    tempFilePath = path.join(TEMP_DIR, tempFileName);
-
     console.log(`⬇️ [Restore] Downloading from R2: ${r2Key}`);
+
+    // ✅ FIXED: Stream directly to /root/node/temp (shared volume)
+    await mkdir(SHARED_TEMP_DIR, { recursive: true });
+
+    const tempFileName = `restore_${study._id}_${Date.now()}.zip`;
+    tempFilePath = path.join(SHARED_TEMP_DIR, tempFileName);
+
+    console.log(`📁 [Restore] Using shared volume: ${tempFilePath}`);
 
     const command = new GetObjectCommand({
       Bucket: 'studyzip',
@@ -130,24 +136,42 @@ export const restoreFromBackup = async (req, res) => {
     });
 
     const r2Response = await r2Client.send(command);
-    const chunks = [];
-    
+
+    // ✅ Stream directly to disk (NO memory accumulation)
+    const writeStream = fs.createWriteStream(tempFilePath);
+    let downloadedBytes = 0;
+
     for await (const chunk of r2Response.Body) {
-      chunks.push(chunk);
+      writeStream.write(chunk);
+      downloadedBytes += chunk.length;
+      
+      // Log progress every 50MB
+      if (downloadedBytes % (50 * 1024 * 1024) < chunk.length) {
+        const downloadedMB = (downloadedBytes / 1024 / 1024).toFixed(2);
+        console.log(`📥 [Restore] Downloaded ${downloadedMB} MB...`);
+      }
     }
-    
-    const fileBuffer = Buffer.concat(chunks);
-    await writeFile(tempFilePath, fileBuffer);
 
-    const fileSizeMB = (fileBuffer.length / (1024 * 1024)).toFixed(2);
-    console.log(`✅ [Restore] Downloaded ${fileSizeMB}MB to: ${tempFilePath}`);
+    writeStream.end();
 
-    // 5. Upload to backup Orthanc (port 9042)
+    // Wait for write stream to finish
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    const fileSizeMB = (downloadedBytes / 1024 / 1024).toFixed(2);
+    console.log(`✅ [Restore] Downloaded ${fileSizeMB}MB to shared volume: ${tempFilePath}`);
+
+    // 5. Upload to backup Orthanc (stream from disk, not memory)
     console.log(`📤 [Restore] Uploading to backup Orthanc: ${BACKUP_ORTHANC_URL}`);
+
+    // ✅ Read file as stream instead of loading into memory
+    const fileStream = fs.createReadStream(tempFilePath);
 
     const uploadResponse = await axios.post(
       `${BACKUP_ORTHANC_URL}/instances`,
-      fileBuffer,
+      fileStream,  // ✅ Stream instead of buffer
       {
         headers: {
           'Authorization': backupOrthancAuth,

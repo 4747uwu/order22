@@ -1,12 +1,10 @@
-# 🔧 PRODUCTION: backend/Dockerfile (Definitive Puppeteer Fix)
+# 🔧 PRODUCTION: backend/Dockerfile
 FROM node:22-bookworm-slim AS base
 
-# Install essential tools AND the complete, official list of Puppeteer dependencies
+# Install essential tools AND complete Puppeteer dependencies
 RUN apt-get update && apt-get install -y \
     dcmtk \
     git \
-    # ✅ FIX: Using the complete, official dependency list from the Puppeteer team
-    # This covers all common graphics, font, audio, and system libraries.
     libatk1.0-0 \
     libatk-bridge2.0-0 \
     libcups2 \
@@ -36,9 +34,14 @@ WORKDIR /app
 # Copy package files
 COPY package*.json ./
 
-# Create non-root user for security FIRST
+# Create non-root user for security
 RUN groupadd --gid 1001 nodejs && \
     useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nodejs
+
+# ✅ NEW: Create shared temp directory with proper permissions
+RUN mkdir -p /root/node/temp && \
+    chown -R nodejs:nodejs /root/node/temp && \
+    chmod -R 755 /root/node/temp
 
 # Create cache directory and set ownership
 RUN mkdir -p /home/nodejs/.cache/puppeteer && \
@@ -51,15 +54,15 @@ ENV PUPPETEER_CACHE_DIR=/home/nodejs/.cache/puppeteer
 # Install npm packages
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy the rest of your application code
+# Copy application code
 COPY . .
 
-# Install Chrome and its dependencies using the official command
+# Install Chrome and set ownership
 RUN chown -R nodejs:nodejs /app
 USER nodejs
 RUN npx puppeteer browsers install chrome
 
-# Switch back to the WORKDIR as the nodejs user
+# Switch back to WORKDIR as nodejs user
 WORKDIR /app
 
 # Expose port
