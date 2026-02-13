@@ -85,7 +85,9 @@ export const restoreFromBackup = async (req, res) => {
     }
 
     // 2. Check if study has backup ZIP URL
-    if (!study.preProcessedDownload?.zipUrl && !study.preProcessedDownload?.r2Key) {
+    if (!study.preProcessedDownload?.zipUrl && 
+        !study.preProcessedDownload?.r2Key && 
+        !study.preProcessedDownload?.zipKey) {
       return res.status(400).json({ 
         success: false,
         error: 'Study backup not available in Cloudflare R2',
@@ -94,13 +96,29 @@ export const restoreFromBackup = async (req, res) => {
     }
 
     console.log(`📦 [Restore] Study found: ${study.bharatPacsId || study._id}`);
-    console.log(`🔗 [Restore] R2 Key: ${study.preProcessedDownload.r2Key}`);
+
+    // ✅ FIX: Use zipKey if r2Key is not available
+    const r2Key = study.preProcessedDownload.r2Key || study.preProcessedDownload.zipKey;
+
+    if (!r2Key) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'No R2 key found in study data',
+        studyId: study._id,
+        availableFields: {
+          hasZipUrl: !!study.preProcessedDownload?.zipUrl,
+          hasR2Key: !!study.preProcessedDownload?.r2Key,
+          hasZipKey: !!study.preProcessedDownload?.zipKey
+        }
+      });
+    }
+
+    console.log(`🔗 [Restore] R2 Key: ${r2Key}`);
 
     // 3. Ensure temp directory exists
     await ensureTempDir();
 
     // 4. Download ZIP from Cloudflare R2
-    const r2Key = study.preProcessedDownload.r2Key;
     const tempFileName = `restore_${study._id}_${Date.now()}.zip`;
     tempFilePath = path.join(TEMP_DIR, tempFileName);
 

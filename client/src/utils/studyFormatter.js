@@ -11,12 +11,12 @@ export const formatStudyForWorklist = (rawStudy) => {
                             'Unknown Organization';
 
     // ✅ CENTER/LAB INFO - from populated sourceLab
-    // const centerName = rawStudy.sourceLab?.name || 
-    //                   rawStudy.sourceLab?.labName || 
-    //                   rawStudy.sourceLab?.location || 
-    //                   'Unknown Center';
+    const centerName = rawStudy.sourceLab?.name || 
+                      rawStudy.sourceLab?.labName || 
+                      rawStudy.sourceLab?.location || 
+                      'Unknown Center';
 
-    const centerName = rawStudy?.institutionName || '-'
+    // const centerName = rawStudy?.institutionName || '-'
 
         const location = rawStudy?.labLocation || '-'
 
