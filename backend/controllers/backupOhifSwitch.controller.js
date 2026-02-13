@@ -21,15 +21,6 @@ const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' +
 // ✅ NEW: Use environment variable for shared temp directory
 const SHARED_TEMP_DIR = process.env.SHARED_TEMP_DIR || '/root/node/temp';
 
-// ✅ Ensure temp directory exists
-const ensureTempDir = async () => {
-  try {
-    await mkdir(TEMP_DIR, { recursive: true });
-  } catch (err) {
-    if (err.code !== 'EEXIST') throw err;
-  }
-};
-
 /**
  * ✅ NEW: Restore study from Cloudflare R2 to backup Orthanc (port 9042)
  */
@@ -117,7 +108,7 @@ export const restoreFromBackup = async (req, res) => {
     console.log(`🔗 [Restore] R2 Key: ${r2Key}`);
 
     // 3. Ensure temp directory exists
-    await ensureTempDir();
+    await mkdir(SHARED_TEMP_DIR, { recursive: true });
 
     // 4. Download ZIP from Cloudflare R2
     console.log(`⬇️ [Restore] Downloading from R2: ${r2Key}`);
