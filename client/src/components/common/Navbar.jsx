@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
 import DoctorProfileModal from '../doctor/DoctorProfileModal'; // ✅ ADD THIS IMPORT
+import ManualStudyCreator from '../admin/ManualStudyCreator'; // ✅ ADD THIS IMPORT
 
 const Navbar = ({ 
   title, 
@@ -42,6 +43,7 @@ const Navbar = ({
   const [isLoading, setIsLoading] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD THIS STATE
+  const [showManualStudyModal, setShowManualStudyModal] = useState(false); // ✅ ADD THIS STATE
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -92,16 +94,28 @@ const Navbar = ({
     onRefresh?.();
   };
 
-  // ✅ ADD THIS FUNCTION
   const handleOpenProfileModal = () => {
     setShowProfileModal(true);
     setShowProfileDropdown(false); // Close dropdown when opening modal
   };
 
-  // ✅ ADD THIS FUNCTION
   const handleProfileSuccess = (updatedProfile) => {
     console.log('Profile updated:', updatedProfile);
     // Optionally refresh data if needed
+    onRefresh?.();
+  };
+
+  const handleOpenManualStudy = () => {
+    setShowManualStudyModal(true);
+  };
+
+  const handleCloseManualStudy = () => {
+    setShowManualStudyModal(false);
+  };
+
+  const handleManualStudySuccess = (data) => {
+    console.log('Manual study created:', data);
+    setShowManualStudyModal(false);
     onRefresh?.();
   };
 
@@ -145,6 +159,9 @@ const Navbar = ({
   // ✅ CHECK IF USER CAN ACCESS PROFILE MODAL (doctors and radiologists)
   const canAccessProfileModal = ['doctor_account', 'radiologist'].includes(currentUser?.role);
 
+  // ✅ CHECK IF USER CAN CREATE MANUAL STUDIES
+  const canCreateManualStudy = ['admin', 'super_admin', 'lab_staff'].includes(currentUser?.role);
+
   return (
     <>
       {/* ✅ COMPACT NAVBAR - Height reduced from 16 to 12 */}
@@ -184,6 +201,18 @@ const Navbar = ({
                 >
                   <Copy className="h-3.5 w-3.5" />
                   <span>Copy Study</span>
+                </button>
+              )}
+
+              {/* ✅ ADD: CREATE STUDY BUTTON - Show for admin, super_admin, lab_staff */}
+              {canCreateManualStudy && (
+                <button
+                  onClick={handleOpenManualStudy}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-gradient-to-r from-teal-600 to-green-600 text-white hover:from-teal-700 hover:to-green-700"
+                  title="Create Manual Study"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Study</span>
                 </button>
               )}
 
@@ -463,6 +492,13 @@ const Navbar = ({
           onSuccess={handleProfileSuccess}
         />
       )}
+
+      {/* ✅ Manual Study Creator Modal */}
+      <ManualStudyCreator
+        isOpen={showManualStudyModal}
+        onClose={handleCloseManualStudy}
+        onSuccess={handleManualStudySuccess}
+      />
     </>
   );
 };

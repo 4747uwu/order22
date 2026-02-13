@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Upload, FileText, UserCheck, Lock, Unlock, 
-  CheckCircle, XCircle, Clock, FileCheck, Printer, 
-  AlertCircle, RefreshCw, Users, FileWarning, Calendar,
-  User, MessageSquare
+  X, Upload, FileText, UserCheck, Lock, 
+  CheckCircle, Clock, FileCheck, Printer, 
+  AlertCircle, RefreshCw, FileWarning, Calendar,
+  User, MessageSquare, Download, Hash
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -32,23 +32,20 @@ const getStatusIcon = (status) => {
   
   if (!status) return <Clock {...iconProps} />;
   
-  if (status.includes('uploaded') || status.includes('received')) 
+  // Status-based icons
+  if (status === 'new_study_received' || status === 'study_uploaded') 
     return <Upload {...iconProps} />;
-  if (status.includes('assigned') || status.includes('reassigned')) 
+  if (status === 'assigned_to_doctor' || status === 'study_assigned' || status === 'study_reassigned' || status === 'assignments_cleared') 
     return <UserCheck {...iconProps} />;
-  if (status.includes('cleared')) 
-    return <Users {...iconProps} />;
-  if (status.includes('locked')) 
+  if (status === 'study_locked' || status === 'study_locked_for_reporting') 
     return <Lock {...iconProps} />;
-  if (status.includes('unlocked')) 
-    return <Unlock {...iconProps} />;
-  if (status.includes('finalized') || status.includes('verified')) 
+  if (status === 'report_finalized' || status === 'verification_pending') 
+    return <FileText {...iconProps} />;
+  if (status === 'report_verified') 
     return <CheckCircle {...iconProps} />;
-  if (status.includes('rejected')) 
-    return <XCircle {...iconProps} />;
-  if (status.includes('report') || status.includes('draft')) 
-    return <FileCheck {...iconProps} />;
-  if (status.includes('print')) 
+  if (status === 'final_report_downloaded' || status === 'report_downloaded') 
+    return <Download {...iconProps} />;
+  if (status === 'report_printed' || status === 'report_reprinted') 
     return <Printer {...iconProps} />;
   
   return <Clock {...iconProps} />;
@@ -63,7 +60,8 @@ const getStatusColor = (status) => {
     icon: 'text-slate-500'
   };
   
-  if (status.includes('uploaded') || status.includes('received')) 
+  // Status-based colors
+  if (status === 'new_study_received' || status === 'study_uploaded') 
     return { 
       bg: 'bg-blue-50', 
       text: 'text-blue-700', 
@@ -71,7 +69,7 @@ const getStatusColor = (status) => {
       border: 'border-blue-300',
       icon: 'text-blue-600'
     };
-  if (status.includes('assigned')) 
+  if (status === 'assigned_to_doctor' || status === 'study_assigned' || status === 'study_reassigned' || status === 'assignments_cleared') 
     return { 
       bg: 'bg-emerald-50', 
       text: 'text-emerald-700', 
@@ -79,7 +77,7 @@ const getStatusColor = (status) => {
       border: 'border-emerald-300',
       icon: 'text-emerald-600'
     };
-  if (status.includes('cleared')) 
+  if (status === 'study_locked' || status === 'study_locked_for_reporting') 
     return { 
       bg: 'bg-amber-50', 
       text: 'text-amber-700', 
@@ -87,39 +85,7 @@ const getStatusColor = (status) => {
       border: 'border-amber-300',
       icon: 'text-amber-600'
     };
-  if (status.includes('locked')) 
-    return { 
-      bg: 'bg-red-50', 
-      text: 'text-red-700', 
-      dot: 'bg-red-500',
-      border: 'border-red-300',
-      icon: 'text-red-600'
-    };
-  if (status.includes('unlocked')) 
-    return { 
-      bg: 'bg-orange-50', 
-      text: 'text-orange-700', 
-      dot: 'bg-orange-500',
-      border: 'border-orange-300',
-      icon: 'text-orange-600'
-    };
-  if (status.includes('finalized') || status.includes('verified')) 
-    return { 
-      bg: 'bg-indigo-50', 
-      text: 'text-indigo-700', 
-      dot: 'bg-indigo-500',
-      border: 'border-indigo-300',
-      icon: 'text-indigo-600'
-    };
-  if (status.includes('rejected')) 
-    return { 
-      bg: 'bg-rose-50', 
-      text: 'text-rose-700', 
-      dot: 'bg-rose-500',
-      border: 'border-rose-300',
-      icon: 'text-rose-600'
-    };
-  if (status.includes('report') || status.includes('draft')) 
+  if (status === 'report_finalized' || status === 'verification_pending') 
     return { 
       bg: 'bg-violet-50', 
       text: 'text-violet-700', 
@@ -127,7 +93,23 @@ const getStatusColor = (status) => {
       border: 'border-violet-300',
       icon: 'text-violet-600'
     };
-  if (status.includes('print')) 
+  if (status === 'report_verified') 
+    return { 
+      bg: 'bg-indigo-50', 
+      text: 'text-indigo-700', 
+      dot: 'bg-indigo-500',
+      border: 'border-indigo-300',
+      icon: 'text-indigo-600'
+    };
+  if (status === 'final_report_downloaded' || status === 'report_downloaded') 
+    return { 
+      bg: 'bg-cyan-50', 
+      text: 'text-cyan-700', 
+      dot: 'bg-cyan-500',
+      border: 'border-cyan-300',
+      icon: 'text-cyan-600'
+    };
+  if (status === 'report_printed' || status === 'report_reprinted') 
     return { 
       bg: 'bg-purple-50', 
       text: 'text-purple-700', 
@@ -151,19 +133,19 @@ const formatStatusLabel = (status = '') => {
   const labels = {
     study_uploaded: 'Study Uploaded',
     new_study_received: 'Study Received',
-    assignments_cleared: 'Assignments Cleared',
     assigned_to_doctor: 'Assigned to Radiologist',
+    study_assigned: 'Assigned to Radiologist',
     study_reassigned: 'Reassigned',
+    assignments_cleared: 'Assignments Cleared',
     study_locked: 'Locked for Reporting',
-    study_unlocked: 'Unlocked',
-    report_started: 'Report Started',
-    report_drafted: 'Draft Saved',
+    study_locked_for_reporting: 'Locked for Reporting',
     report_finalized: 'Report Finalized',
+    verification_pending: 'Verification Pending',
     report_verified: 'Report Verified',
-    report_rejected: 'Report Rejected',
+    final_report_downloaded: 'Report Downloaded',
+    report_downloaded: 'Report Downloaded',
     report_printed: 'Report Printed',
-    status_changed: 'Status Changed',
-    priority_changed: 'Priority Changed'
+    report_reprinted: 'Report Reprinted'
   };
   
   return labels[status] || status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -245,7 +227,7 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
               {/* Timeline line */}
               <div className="absolute left-[19px] top-3 bottom-3 w-0.5 bg-gradient-to-b from-slate-200 via-slate-300 to-slate-200" />
               
-              {/* Timeline entries */}
+              {/* Timeline entries - GROUPED WITH COUNTS */}
               <div className="space-y-4">
                 {timeline.map((entry, index) => {
                   const colors = getStatusColor(entry.status);
@@ -263,11 +245,20 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
 
                       {/* Content card */}
                       <div className={`flex-1 ${colors.bg} border ${colors.border} rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow`}>
-                        {/* Status badge */}
+                        {/* Status badge with count */}
                         <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-semibold ${colors.text}`}>
-                            {formatStatusLabel(entry.status)}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs font-semibold ${colors.text}`}>
+                              {formatStatusLabel(entry.status)}
+                            </span>
+                            {/* ✅ Show count badge if more than 1 occurrence */}
+                            {entry.count > 1 && (
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
+                                <Hash className="w-3 h-3" />
+                                {entry.count}x
+                              </span>
+                            )}
+                          </div>
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
                             <Calendar className="w-3 h-3" />
                             <span>{date}</span>
@@ -304,6 +295,15 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
                             </p>
                           </div>
                         )}
+
+                        {/* ✅ Count text if more than 1 occurrence */}
+                        {entry.count > 1 && (
+                          <div className="mt-2 pt-2 border-t border-slate-200/50">
+                            <p className="text-[10px] text-slate-500 italic">
+                              This action occurred {entry.count} times. Showing latest occurrence.
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -316,7 +316,7 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-slate-50/50">
           <span className="text-[10px] text-slate-500">
-            {timeline.length} {timeline.length === 1 ? 'event' : 'events'} recorded
+            {timeline.length} unique {timeline.length === 1 ? 'event' : 'events'}
           </span>
           <button
             onClick={onClose}

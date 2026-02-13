@@ -146,7 +146,7 @@ isCopiedStudy: {
     modality: { 
         type: String, 
         index: { background: true },
-        enum: ['CT', 'MRI', 'XR', 'US', 'DX', 'CR', 'MG', 'NM', 'PT'],
+        enum: ['CT', 'MRI', 'MR', 'XR', 'US', 'DX', 'CR', 'MG', 'NM', 'PT', 'RF', 'RTSTRUCT', 'RTDOSE', 'RTPLAN', 'OT', 'SR', 'SC', 'ECG', 'EPS', 'HD', 'IO', 'IVUS', 'KER', 'LEN', 'OAM', 'OP', 'PR', 'PROSPECTIVE_SERIES', 'SEG', 'SM', 'SRF', 'STAIN', 'US_MSK', 'XA'],
         default: 'CT'
     },
     accessionNumber: { 
@@ -219,6 +219,11 @@ isCopiedStudy: {
         index: { background: true }
     },
 
+    ohif:{
+        type: String,
+        default: 'ohif1'
+
+    },
     currentCategory: {
         type: String,
         enum: [

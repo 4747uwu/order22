@@ -28,6 +28,9 @@ import downloadRoutes from './routes/download.routes.js'
 import studyCopyRoutes from './routes/studyCopy.routes.js';
 import brandingRoutes from './routes/branding.routes.js';
 import compressionRoutes from './routes/compression.routes.js';
+import dicomRoutes from './routes/dicom.routes.js'; // ✅ ADD THIS LINE
+import backupRoutes from './routes/backup.routes.js';
+
 
 
 
@@ -195,6 +198,8 @@ app.use('/api/download', downloadRoutes);
 app.use('/api/study-copy', studyCopyRoutes);
 app.use('/api/study-notes', studyNotesRoutes); // ✅ ADD THIS LINE
 app.use('/api/branding', brandingRoutes);
+app.use('/api/dicom', dicomRoutes);
+app.use('/api/backup', backupRoutes);
 
 // Add with other routes
 app.use('/api/compression', compressionRoutes);

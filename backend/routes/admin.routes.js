@@ -1,4 +1,5 @@
 import express from 'express';
+import multer from 'multer';    
 import { 
     getValues, 
     getCategoryValues, // ✅ NEW
@@ -18,6 +19,8 @@ import {
     resolveRevert 
 } from '../controllers/revertToRadiologist.controller.js';
 
+
+import { createManualStudy } from '../controllers/manualStudyCreator.controller.js';
 // Add import at the top
 import { getStudyStatusHistory } from '../controllers/statusHistory.controller.js';
 
@@ -133,6 +136,55 @@ router.get('/study/:studyId/status-history', protect, getStudyStatusHistory);
 router.post('/studies/:studyId/revert-to-radiologist', protect, revertToRadiologist);
 router.get('/studies/:studyId/revert-history', protect, getRevertHistory);
 router.post('/studies/:studyId/resolve-revert', protect, resolveRevert);
+
+// Update the multer configuration in admin.routes.js (around line 143-156)
+
+const manualUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 200 * 1024 * 1024 // 200MB per file
+  },
+  fileFilter: (req, file, cb) => {
+    console.log('🔍 [Multer] Checking file:', {
+      fieldname: file.fieldname,
+      originalname: file.originalname,
+      mimetype: file.mimetype,
+      size: file.size
+    });
+
+    // Check field name
+    if (file.fieldname === 'images') {
+      // For images field, only accept image files
+      if (file.mimetype.startsWith('image/')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Images field only accepts image files'));
+      }
+    } else if (file.fieldname === 'zipFile') {
+      // For zipFile field, accept ZIP files (check both extension and mimetype)
+      const isZipMime = file.mimetype === 'application/zip' || 
+                        file.mimetype === 'application/x-zip-compressed' ||
+                        file.mimetype === 'application/octet-stream'; // Sometimes ZIP is sent as octet-stream
+      const isZipExt = file.originalname.toLowerCase().endsWith('.zip');
+      
+      if (isZipMime || isZipExt) {
+        cb(null, true);
+      } else {
+        cb(new Error('zipFile field only accepts ZIP files'));
+      }
+    } else {
+      // Unknown field
+      cb(new Error(`Unexpected field: ${file.fieldname}`));
+    }
+  }
+});
+
+// Route remains the same
+router.post('/create-manual-study', protect, manualUpload.fields([
+  { name: 'images', maxCount: 50 },
+  { name: 'zipFile', maxCount: 1 }
+]), createManualStudy);
+
 
 
 // ✅ SYSTEM OVERVIEW ROUTES

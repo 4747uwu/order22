@@ -17,8 +17,8 @@ import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColu
 import RevertModal from '../../../components/RevertModal.jsx';
 import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
-// import { useEffect, useRef, useState } from 'react';
-import useWebSocket from '../../../hooks/useWebSocket'; // We'll create this
+import useWebSocket from '../../../hooks/useWebSocket';
+import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -500,6 +500,7 @@ const StudyRow = ({
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [downloadPosition, setDownloadPosition] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
+  const [restoringStudy, setRestoringStudy] = useState(false); // ✅ NEW STATE
   const hasActiveViewers  = activeViewers.length > 0;
 
   const isSelected = selectedStudies?.includes(study._id);
@@ -608,13 +609,48 @@ const StudyRow = ({
     }
   };
 
-    const handleViewOnlyClick = (e) => {
+  // ✅ UPDATED: View Only with Restore Check
+  const handleViewOnlyClick = async (e) => {
     e.stopPropagation();
-    // ✅ Open OHIF Viewer in new tab
-    window.open(`/doctor/viewer/${study._id}`, '_blank');
+    
+    setRestoringStudy(true);
+    
+    try {
+      // ✅ Use navigateWithRestore to open in new tab
+      await navigateWithRestore(
+        // Custom navigate function that opens in new tab
+        (path) => window.open(path, '_blank'),
+        `/doctor/viewer/${study._id}`,
+        study,
+        {
+          daysThreshold: 10,
+          onRestoreStart: (study) => {
+            console.log(`🔄 [View Only] Restoring study: ${study.bharatPacsId}`);
+            toast.loading(`Restoring study from backup...`, { id: `restore-${study._id}` });
+          },
+          onRestoreComplete: (data) => {
+            console.log(`✅ [View Only] Restore completed:`, data);
+            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-${study._id}` });
+          },
+          onRestoreError: (error) => {
+            console.error(`❌ [View Only] Restore failed:`, error);
+            toast.error(`Restore failed: ${error}`, { id: `restore-${study._id}` });
+          }
+        }
+      );
+    } catch (error) {
+      console.error('Error in handleViewOnlyClick:', error);
+      // Still open the viewer even if restore fails
+      window.open(`/doctor/viewer/${study._id}`, '_blank');
+    } finally {
+      setRestoringStudy(false);
+    }
   };
 
-const handleOHIFReporting = async () => {
+  // ✅ UPDATED: OHIF Reporting with Restore Check
+  const handleOHIFReporting = async () => {
+    setRestoringStudy(true);
+    
     try {
       // ✅ Lock the study first
       setTogglingLock(true);
@@ -625,9 +661,30 @@ const handleOHIFReporting = async () => {
       }
       
       toast.success('Study locked for reporting', { icon: '🔒' });
+      setTogglingLock(false);
       
-      // ✅ Open OHIF + Reporting in new tab
-      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
+      // ✅ Use navigateWithRestore to open in new tab
+      await navigateWithRestore(
+        // Custom navigate function that opens in new tab
+        (path) => window.open(path, '_blank'),
+        `/online-reporting/${study._id}?openOHIF=true`,
+        study,
+        {
+          daysThreshold: 10,
+          onRestoreStart: (study) => {
+            console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
+            toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
+          },
+          onRestoreComplete: (data) => {
+            console.log(`✅ [OHIF Reporting] Restore completed:`, data);
+            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
+          },
+          onRestoreError: (error) => {
+            console.error(`❌ [OHIF Reporting] Restore failed:`, error);
+            toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
+          }
+        }
+      );
     } catch (error) {
       console.error('Error locking study for reporting:', error);
       if (error.response?.status === 423) {
@@ -638,8 +695,12 @@ const handleOHIFReporting = async () => {
       } else {
         toast.error(error.response?.data?.message || 'Failed to lock study for reporting');
       }
+      
+      // Still try to open the reporting interface even if lock/restore fails
+      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
     } finally {
       setTogglingLock(false);
+      setRestoringStudy(false);
     }
   };
 

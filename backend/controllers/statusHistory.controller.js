@@ -3,9 +3,8 @@ import DicomStudy from '../models/dicomStudyModel.js';
 import User from '../models/userModel.js';
 
 /**
- * Get populated status history for a study
- * Populates changedBy with user details
- * Returns timeline sorted by date (most recent first)
+ * Get populated status history for a study - GROUPED WITH COUNTS
+ * Shows each unique status once with count and latest occurrence
  */
 export const getStudyStatusHistory = async (req, res) => {
     try {
@@ -24,7 +23,7 @@ export const getStudyStatusHistory = async (req, res) => {
             _id: studyId,
             organization: organizationId
         })
-        .select('statusHistory reportInfo sourceLab createdAt uploadDate organizationName')
+        .select('statusHistory reportInfo sourceLab createdAt uploadDate organizationName printHistory auditLog')
         .populate({
             path: 'statusHistory.changedBy',
             select: 'fullName username role'
@@ -42,41 +41,71 @@ export const getStudyStatusHistory = async (req, res) => {
             });
         }
 
-        // Format status history with populated data
-        const formattedHistory = study.statusHistory.map(item => ({
-            _id: item._id,
-            status: item.status,
-            changedAt: item.changedAt,
-            changedByName: item.changedBy?.fullName || 'System',
-            changedByUsername: item.changedBy?.username || '',
-            changedByRole: item.changedBy?.role || '',
-            note: item.note || ''
-        }));
+        // ✅ Group all status entries by status type with count
+        const statusGroups = {};
+        
+        study.statusHistory.forEach(item => {
+            const status = item.status;
+            
+            if (!statusGroups[status]) {
+                statusGroups[status] = {
+                    status: status,
+                    count: 0,
+                    allOccurrences: []
+                };
+            }
+            
+            statusGroups[status].count++;
+            statusGroups[status].allOccurrences.push({
+                _id: item._id,
+                changedAt: item.changedAt,
+                changedByName: item.changedBy?.fullName || 'System',
+                changedByUsername: item.changedBy?.username || '',
+                changedByRole: item.changedBy?.role || '',
+                note: item.note || ''
+            });
+        });
 
-        // Add initial upload entry
-        const uploadEntry = {
-            _id: `upload-${study._id}`,
-            status: 'study_uploaded',
-            changedAt: study.createdAt || study.uploadDate,
-            changedByName: 'System',
-            changedByUsername: '',
-            changedByRole: '',
-            note: `Study uploaded from ${study.sourceLab?.name || 'Unknown Lab'}`,
-            isUpload: true
-        };
+        // ✅ For each status group, get the LATEST occurrence
+        const timeline = Object.keys(statusGroups).map(status => {
+            const group = statusGroups[status];
+            
+            // Sort occurrences by date (most recent first)
+            group.allOccurrences.sort((a, b) => 
+                new Date(b.changedAt).getTime() - new Date(a.changedAt).getTime()
+            );
+            
+            // Get the latest occurrence
+            const latest = group.allOccurrences[0];
+            
+            return {
+                _id: latest._id,
+                status: group.status,
+                changedAt: latest.changedAt,
+                changedByName: latest.changedByName,
+                changedByUsername: latest.changedByUsername,
+                changedByRole: latest.changedByRole,
+                note: latest.note,
+                count: group.count, // ✅ Add count field
+                occurrences: group.allOccurrences.length > 1 ? 
+                    `${group.allOccurrences.length} times` : '1 time'
+            };
+        });
 
-        // Combine and sort by date (most recent first)
-        const timeline = [uploadEntry, ...formattedHistory].sort((a, b) => {
+        // ✅ Sort timeline by latest occurrence date (most recent first)
+        timeline.sort((a, b) => {
             const dateA = new Date(a.changedAt).getTime();
             const dateB = new Date(b.changedAt).getTime();
-            return dateB - dateA; // Descending order (most recent first)
+            return dateB - dateA;
         });
 
         res.status(200).json({
             success: true,
             timeline,
             reportInfo: study.reportInfo,
-            organizationName: study.organizationName
+            organizationName: study.organizationName,
+            totalEvents: timeline.length,
+            totalOccurrences: study.statusHistory.length
         });
 
     } catch (error) {

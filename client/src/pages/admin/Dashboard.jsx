@@ -9,6 +9,7 @@ import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle, FileText } fro
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
+import ManualStudyCreator from '../../components/admin/ManualStudyCreator';
 // import FileText from 'react-icons/all';
 
 const HEADER_COLOR_PRESETS = [
@@ -101,6 +102,7 @@ const Dashboard = ({ isSuperAdminView = false }) => {
     return saved ? JSON.parse(saved) : HEADER_COLOR_PRESETS[0];
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showManualStudyModal, setShowManualStudyModal] = useState(false);
 
   // ✅ CATEGORY-BASED API VALUES
   const [categoryValues, setCategoryValues] = useState({
@@ -561,6 +563,71 @@ const Dashboard = ({ isSuperAdminView = false }) => {
     { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
   ];
 
+  const handleOpenManualStudy = () => {
+    setShowManualStudyModal(true);
+  };
+
+  const handleCloseManualStudy = () => {
+    setShowManualStudyModal(false);
+  };
+
+  const handleManualStudySuccess = (data) => {
+    console.log('Manual study created:', data);
+    toast.success('Study created successfully!');
+    setShowManualStudyModal(false);
+    loadStudies(); // Reload the studies list
+  };
+
+  const navbarActions = useMemo(() => {
+    const actions = [];
+
+    // Add Create Study action
+    if (['admin', 'super_admin', 'lab_staff'].includes(currentUser?.role)) {
+      actions.push({
+        label: 'Create Study',
+        icon: Plus,
+        onClick: handleOpenManualStudy,
+        variant: 'primary',
+        tooltip: 'Create Manual Study'
+      });
+    }
+
+    // Add User Management action
+    if (['admin', 'super_admin'].includes(currentUser?.role)) {
+      actions.push({
+        label: 'User Management',
+        icon: Shield,
+        onClick: () => navigate('/admin/user-management'),
+        variant: 'secondary',
+        tooltip: 'Manage Users'
+      });
+    }
+
+    // Add Branding Settings action
+    if (['admin', 'super_admin'].includes(currentUser?.role)) {
+      actions.push({
+        label: 'Branding',
+        icon: Palette,
+        onClick: () => navigate('/admin/branding'),
+        variant: 'secondary',
+        tooltip: 'Branding Settings'
+      });
+    }
+
+    // Add Data Extraction action
+    if (['admin', 'super_admin'].includes(currentUser?.role)) {
+      actions.push({
+        label: 'System Overview',
+        icon: Database,
+        onClick: () => navigate('/admin/system-overview'),
+        variant: 'secondary',
+        tooltip: 'System Overview'
+      });
+    }
+
+    return actions;
+  }, [currentUser?.role, navigate]);
+
   return (
     <div className={`${isSuperAdminView ? 'h-full' : 'h-screen'} bg-teal-50 flex flex-col`}>
       {/* ✅ Only show navbar if NOT in super admin view */}
@@ -691,6 +758,12 @@ const Dashboard = ({ isSuperAdminView = false }) => {
           onSelectColor={handleSelectColor}
         />
       )}
+      {/* ✅ Manual Study Creator Modal */}
+      <ManualStudyCreator
+        isOpen={showManualStudyModal}
+        onClose={handleCloseManualStudy}
+        onSuccess={handleManualStudySuccess}
+      />
     </div>
   );
 };
