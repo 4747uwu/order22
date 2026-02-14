@@ -135,12 +135,7 @@ const SuperAdminDashboard = () => {
         zipCode: '',
         country: ''
       },
-      subscription: {
-        plan: 'basic',
-        maxUsers: 10,
-        maxStudiesPerMonth: 1000,
-        maxStorageGB: 100
-      },
+      
       features: {
         aiAnalysis: false,
         advancedReporting: false,
@@ -282,12 +277,12 @@ const SuperAdminDashboard = () => {
   if (currentView === 'organization-dashboard' && selectedOrganizationForDashboard) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Navbar
-          title={`${selectedOrganizationForDashboard.displayName} - Admin Dashboard`}
-          subtitle={`Viewing as Super Admin • ${selectedOrganizationForDashboard.identifier}`}
-          actions={dashboardViewNavbarActions}
-        />
-        
+       {/* // In Dashboard.jsx, line 327 */}
+<Navbar
+  title={`${selectedOrganizationForDashboard.displayName} - Admin Dashboard`}
+  subtitle={`Viewing as Super Admin • ${selectedOrganizationForDashboard.identifier}`}
+  additionalActions={dashboardViewNavbarActions}  // ⬅️ Change from 'actions' to 'additionalActions'
+/>
         {/* Organization context banner */}
         <div className="bg-teal-600 text-white px-6 py-3 shadow-md">
           <div className="max-w-[1920px] mx-auto flex items-center justify-between">
@@ -324,7 +319,7 @@ const SuperAdminDashboard = () => {
       <Navbar
         title="Super Admin Dashboard"
         subtitle="Manage all organizations"
-        actions={listViewNavbarActions}
+        additionalActions={listViewNavbarActions}  // ⬅️ Change from 'actions' to 'additionalActions'
       />
 
       <div className="max-w-[1920px] mx-auto p-6 space-y-6">

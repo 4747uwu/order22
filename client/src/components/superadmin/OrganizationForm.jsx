@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Save, RefreshCw, ChevronLeft, ChevronRight, Check, Building, User, Phone, MapPin, CreditCard, Settings } from 'lucide-react';
+import { X, Save, RefreshCw, ChevronLeft, ChevronRight, Check, Building, User, Phone, MapPin, Settings } from 'lucide-react';
 
 const OrganizationForm = ({ 
   isOpen, 
@@ -56,12 +56,6 @@ const OrganizationForm = ({
       title: 'Address', 
       icon: MapPin,
       description: 'Location details'
-    },
-    { 
-      id: 5, 
-      title: 'Subscription', 
-      icon: CreditCard,
-      description: 'Plan & limits'
     }
   ];
 
@@ -98,7 +92,7 @@ const OrganizationForm = ({
   const renderPreviewContent = () => {
     return (
       <div className="space-y-8">
-        {/* Organization Preview */}
+        {/* Organization Header */}
         <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 text-white">
           <div className="flex items-center space-x-3 mb-6">
             <div className="w-12 h-12 bg-white bg-opacity-20 rounded-xl flex items-center justify-center">
@@ -167,7 +161,7 @@ const OrganizationForm = ({
               <p>{formData.address.street}</p>
             )}
             <p>
-              { [
+              {[
                 formData.address?.city,
                 formData.address?.state,
                 formData.address?.zipCode
@@ -176,40 +170,6 @@ const OrganizationForm = ({
             {formData.address?.country && (
               <p className="font-medium">{formData.address.country}</p>
             )}
-          </div>
-        </div>
-
-        {/* Subscription Preview */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
-            <CreditCard className="h-4 w-4 mr-2" />
-            Subscription
-          </h4>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-gray-500">Plan</p>
-              <p className="font-medium capitalize">
-                {formData.subscription?.plan || 'Basic'}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-500">Max Users</p>
-              <p className="font-medium">
-                {formData.subscription?.maxUsers || 10}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-500">Studies/Month</p>
-              <p className="font-medium">
-                {formData.subscription?.maxStudiesPerMonth || 1000}
-              </p>
-            </div>
-            <div>
-              <p className="text-gray-500">Storage (GB)</p>
-              <p className="font-medium">
-                {formData.subscription?.maxStorageGB || 100}
-              </p>
-            </div>
           </div>
         </div>
       </div>
@@ -491,85 +451,9 @@ const OrganizationForm = ({
                   <option value="USA">United States</option>
                   <option value="Canada">Canada</option>
                   <option value="UK">United Kingdom</option>
+                  <option value="India">India</option>
                   <option value="Other">Other</option>
                 </select>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 5:
-        return (
-          <div className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-900 mb-2">
-                Plan Type
-              </label>
-              <div className="grid grid-cols-3 gap-3">
-                {['basic', 'professional', 'enterprise'].map(plan => (
-                  <button
-                    key={plan}
-                    type="button"
-                    onClick={() => updateFormData('subscription.plan', plan)}
-                    className={`p-4 border-2 rounded-lg text-sm font-medium transition-all ${
-                      (formData.subscription?.plan || 'basic') === plan
-                        ? 'border-black bg-black text-white'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                    disabled={isSubmitting}
-                  >
-                    <div className="capitalize font-semibold">{plan}</div>
-                    <div className="text-xs opacity-75 mt-1">
-                      {plan === 'basic' && '10 users'}
-                      {plan === 'professional' && '50 users'}
-                      {plan === 'enterprise' && 'Unlimited'}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Max Users
-                </label>
-                <input
-                  type="number"
-                  value={formData.subscription?.maxUsers || 10}
-                  onChange={(e) => updateFormData('subscription.maxUsers', parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all"
-                  min="1"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Studies/Month
-                </label>
-                <input
-                  type="number"
-                  value={formData.subscription?.maxStudiesPerMonth || 1000}
-                  onChange={(e) => updateFormData('subscription.maxStudiesPerMonth', parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all"
-                  min="1"
-                  disabled={isSubmitting}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Storage (GB)
-                </label>
-                <input
-                  type="number"
-                  value={formData.subscription?.maxStorageGB || 100}
-                  onChange={(e) => updateFormData('subscription.maxStorageGB', parseInt(e.target.value))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all"
-                  min="1"
-                  disabled={isSubmitting}
-                />
               </div>
             </div>
           </div>
@@ -585,7 +469,7 @@ const OrganizationForm = ({
       <div className="bg-white rounded-2xl max-w-7xl w-full max-h-[95vh] overflow-hidden shadow-2xl">
         <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
           
-          {/* Left Side - Preview/Slide */}
+          {/* Left Side - Preview */}
           <div className="bg-gray-50 p-8 overflow-y-auto max-h-[95vh]">
             <div className="mb-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">
@@ -606,33 +490,29 @@ const OrganizationForm = ({
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-4">
                   {visibleSteps.map((step, index) => {
-                    const StepIcon = step.icon;
                     const stepNumber = index + 1;
-                    const isCompleted = stepNumber < currentStep;
-                    const isCurrent = stepNumber === currentStep;
-                    const hasError = getStepErrors(isEdit && stepNumber >= 2 ? stepNumber + 1 : stepNumber);
-
+                    const isActive = currentStep === stepNumber;
+                    const isCompleted = currentStep > stepNumber;
+                    const hasError = getStepErrors(step.id);
+                    
                     return (
                       <button
                         key={step.id}
                         onClick={() => goToStep(stepNumber)}
-                        className={`flex items-center space-x-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                          isCurrent
-                            ? 'bg-black text-white'
-                            : isCompleted
-                            ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                        className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                          isActive 
+                            ? 'bg-black text-white' 
+                            : isCompleted 
+                            ? 'bg-green-100 text-green-700' 
                             : hasError
-                            ? 'bg-red-100 text-red-800'
+                            ? 'bg-red-100 text-red-700'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                         }`}
                         disabled={isSubmitting}
                       >
-                        {isCompleted ? (
-                          <Check className="h-4 w-4" />
-                        ) : (
-                          <StepIcon className="h-4 w-4" />
-                        )}
-                        <span className="hidden sm:block">{step.title}</span>
+                        <step.icon className="h-4 w-4" />
+                        <span className="hidden sm:inline">{step.title}</span>
+                        {isCompleted && <Check className="h-4 w-4" />}
                       </button>
                     );
                   })}
@@ -647,7 +527,7 @@ const OrganizationForm = ({
                 </button>
               </div>
 
-              {/* Current Step Info */}
+              {/* Step Title */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">
                   {visibleSteps[currentStep - 1]?.title}
