@@ -10,9 +10,18 @@ export const getRadiologistsForFilter = async (req, res) => {
             isActive: true 
         };
         
-        // For non-super admins, filter by organization
-        if (req.user.role !== 'super_admin') {
+        // ✅ FIX: Check for organizationContext from token (when super admin switches org)
+        if (req.user.role === 'super_admin' && req.user.tokenContext?.organizationIdentifier) {
+            // Super admin viewing a specific organization
+            query.organizationIdentifier = req.user.tokenContext.organizationIdentifier;
+            console.log(`🏢 [Super Admin Context] Filtering radiologists for organization: ${req.user.tokenContext.organizationIdentifier}`);
+        } else if (req.user.role !== 'super_admin') {
+            // Regular users - always filter by their organization
             query.organizationIdentifier = req.user.organizationIdentifier;
+            console.log(`🏢 [Multi-tenant] Filtering radiologists for organization: ${req.user.organizationIdentifier}`);
+        } else {
+            // Super admin without organization context - see all organizations
+            console.log(`🏢 [Super Admin] No organization filter - viewing all radiologists`);
         }
 
         const radiologists = await User.find(query)
@@ -42,9 +51,18 @@ export const getLabsForFilter = async (req, res) => {
     try {
         let query = { isActive: true };
         
-        // For non-super admins, filter by organization
-        if (req.user.role !== 'super_admin') {
+        // ✅ FIX: Check for organizationContext from token (when super admin switches org)
+        if (req.user.role === 'super_admin' && req.user.tokenContext?.organizationIdentifier) {
+            // Super admin viewing a specific organization
+            query.organizationIdentifier = req.user.tokenContext.organizationIdentifier;
+            console.log(`🏢 [Super Admin Context] Filtering labs for organization: ${req.user.tokenContext.organizationIdentifier}`);
+        } else if (req.user.role !== 'super_admin') {
+            // Regular users - always filter by their organization
             query.organizationIdentifier = req.user.organizationIdentifier;
+            console.log(`🏢 [Multi-tenant] Filtering labs for organization: ${req.user.organizationIdentifier}`);
+        } else {
+            // Super admin without organization context - see all organizations
+            console.log(`🏢 [Super Admin] No organization filter - viewing all labs`);
         }
 
         const labs = await Lab.find(query)

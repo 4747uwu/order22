@@ -160,7 +160,7 @@ const Navbar = ({
   const canAccessProfileModal = ['doctor_account', 'radiologist'].includes(currentUser?.role);
 
   // ✅ CHECK IF USER CAN CREATE MANUAL STUDIES
-  const canCreateManualStudy = ['admin', 'super_admin', 'lab_staff'].includes(currentUser?.role);
+  const canCreateManualStudy = ['admin','lab_staff'].includes(currentUser?.role);
 
   return (
     <>
@@ -192,7 +192,7 @@ const Navbar = ({
             <div className="flex items-center space-x-2">
               
               {/* ✅ ADD: COPY STUDY BUTTON - Show for admin, assignor, super_admin */}
-              {(['admin', 'assignor', 'super_admin'].includes(currentUser?.role) || 
+              {(['admin', 'assignor'].includes(currentUser?.role) || 
                 currentUser?.accountRoles?.some(role => ['admin', 'assignor', 'super_admin'].includes(role))) && (
                 <button
                   onClick={handleOpenCopyModal}

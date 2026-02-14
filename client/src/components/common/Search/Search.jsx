@@ -142,9 +142,9 @@ const Search = ({
     const isGreenTheme = theme === 'adminn';
 
     // Check user permissions for creating entities
-    const canCreateDoctor = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
-    const canCreateLab = ['super_admin', 'admin'].includes(currentUser?.role);
-    const canCreateUser = ['super_admin', 'admin', 'group_id'].includes(currentUser?.role);
+    const canCreateDoctor = ['admin', 'group_id'].includes(currentUser?.role);
+    const canCreateLab = ['admin'].includes(currentUser?.role);
+    const canCreateUser = ['admin', 'group_id'].includes(currentUser?.role);
 
     const dateOptions = [
         { value: 'today', label: 'Today' },

@@ -61,7 +61,8 @@ const SuperAdminDashboard = () => {
       const response = await api.get('/superadmin/organizations', {
         params: {
           search: searchTerm,
-          status: filterStatus !== 'all' ? filterStatus : undefined
+          status: filterStatus !== 'all' ? filterStatus : undefined,
+          limit: 1000 // ✅ ADD THIS - Fetch up to 1000 organizations (or set higher if needed)
         }
       });
       if (response.data.success) {
@@ -117,7 +118,7 @@ const SuperAdminDashboard = () => {
   const handleCreateOrganization = () => {
     setFormData({
       name: '',
-      identifier: '',
+      
       displayName: '',
       companyType: 'hospital',
       contactInfo: {
@@ -159,21 +160,37 @@ const SuperAdminDashboard = () => {
     setShowCreateModal(true);
   };
 
-  const handleEditOrganization = (org) => {
-    setSelectedOrganization(org);
-    setFormData({
-      name: org.name,
-      displayName: org.displayName,
-      companyType: org.companyType,
-      contactInfo: org.contactInfo || {},
-      address: org.address || {},
-      subscription: org.subscription || {},
-      features: org.features || {},
-      compliance: org.compliance || {},
-      notes: org.notes || ''
-    });
-    setFormErrors({});
-    setShowEditModal(true);
+  const handleEditOrganization = async (org) => {
+    try {
+        // Fetch full organization details including admin info
+        const response = await api.get(`/superadmin/organizations/${org._id}`);
+        
+        if (response.data.success) {
+            const orgData = response.data.data;
+            
+            setSelectedOrganization(orgData);
+            setFormData({
+                name: orgData.name,
+                // identifier: orgData.identifier, // ✅ ADD identifier
+                displayName: orgData.displayName,
+                companyType: orgData.companyType,
+                contactInfo: orgData.contactInfo || {},
+                address: orgData.address || {},
+                features: orgData.features || {},
+                compliance: orgData.compliance || {},
+                notes: orgData.notes || '',
+                // ✅ ADD admin details from primaryAdmin
+                adminEmail: orgData.primaryAdmin?.email || '',
+                adminPassword: orgData.primaryAdmin?.tempPassword || '', // Show temp password
+                adminFullName: orgData.primaryAdmin?.fullName || ''
+            });
+            setFormErrors({});
+            setShowEditModal(true);
+        }
+    } catch (error) {
+        console.error('Failed to fetch organization details:', error);
+        alert('Failed to load organization details');
+    }
   };
 
   const handleDeleteOrganization = async (orgId) => {
@@ -195,7 +212,7 @@ const SuperAdminDashboard = () => {
     const errors = {};
     
     if (!formData.name?.trim()) errors.name = 'Organization name is required';
-    if (!formData.identifier?.trim()) errors.identifier = 'Identifier is required';
+    // if (!formData.identifier?.trim()) errors.identifier = 'Identifier is required';
     if (!formData.displayName?.trim()) errors.displayName = 'Display name is required';
     if (!formData.companyType) errors.companyType = 'Company type is required';
     
@@ -479,10 +496,10 @@ const SuperAdminDashboard = () => {
                             <Users className="w-4 h-4" />
                             <span>{org.stats?.activeUsers || 0}</span>
                           </div>
-                          <div className="flex items-center gap-1">
+                          {/* <div className="flex items-center gap-1">
                             <Database className="w-4 h-4" />
                             <span>{org.stats?.activeLabs || 0}</span>
-                          </div>
+                          </div> */}
                           <div className="flex items-center gap-1">
                             <Shield className="w-4 h-4" />
                             <span>{org.stats?.activeDoctors || 0}</span>

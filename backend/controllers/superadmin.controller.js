@@ -5,6 +5,7 @@ import Doctor from '../models/doctorModel.js';
 import generateToken from '../utils/generateToken.js';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
+import { toNamespacedPath } from 'path';
 
 // Get all organizations (super admin only)
 export const getAllOrganizations = async (req, res) => {
@@ -101,7 +102,7 @@ export const getOrganizationById = async (req, res) => {
             });
         }
 
-        // Get detailed stats
+        // Get detailed stats and admin users WITH tempPassword
         const [userCount, labCount, doctorCount, adminUsers] = await Promise.all([
             User.countDocuments({ organization: organization._id, isActive: true }),
             Lab.countDocuments({ organization: organization._id, isActive: true }),
@@ -110,8 +111,11 @@ export const getOrganizationById = async (req, res) => {
                 organization: organization._id, 
                 role: 'admin',
                 isActive: true 
-            }).select('fullName email username')
+            }).select('fullName email username tempPassword') // ✅ ADD tempPassword
         ]);
+
+        // Get the primary admin user (first one created)
+        const primaryAdmin = adminUsers.length > 0 ? adminUsers[0] : null;
 
         res.json({
             success: true,
@@ -122,7 +126,14 @@ export const getOrganizationById = async (req, res) => {
                     activeLabs: labCount,
                     activeDoctors: doctorCount,
                     adminUsers
-                }
+                },
+                // ✅ ADD primary admin details for edit form
+                primaryAdmin: primaryAdmin ? {
+                    email: primaryAdmin.email,
+                    fullName: primaryAdmin.fullName,
+                    username: primaryAdmin.username,
+                    tempPassword: primaryAdmin.tempPassword // Plain text password for display
+                } : null
             }
         });
 
@@ -143,7 +154,6 @@ export const createOrganization = async (req, res) => {
     try {
         const {
             name,
-            identifier,
             displayName,
             companyType,
             contactInfo,
@@ -159,7 +169,7 @@ export const createOrganization = async (req, res) => {
         } = req.body;
 
         // Validate required fields
-        if (!name || !identifier || !displayName || !companyType) {
+        if (!name || !displayName || !companyType) {
             return res.status(400).json({
                 success: false,
                 message: 'Missing required organization fields'
@@ -173,17 +183,9 @@ export const createOrganization = async (req, res) => {
             });
         }
 
-        // Check if identifier is unique
-        const existingOrg = await Organization.findOne({ 
-            identifier: identifier.toUpperCase() 
-        }).session(session);
-
-        if (existingOrg) {
-            return res.status(400).json({
-                success: false,
-                message: 'Organization identifier already exists'
-            });
-        }
+        // ✅ AUTO-GENERATE UNIQUE IDENTIFIER
+        const identifier = await generateUniqueIdentifier(session);
+        console.log('✅ Generated unique identifier:', identifier);
 
         // Check if admin email is unique
         const existingUser = await User.findOne({ 
@@ -197,10 +199,10 @@ export const createOrganization = async (req, res) => {
             });
         }
 
-        // Create organization
+        // Create organization with auto-generated identifier
         const organization = new Organization({
             name: name.trim(),
-            identifier: identifier.toUpperCase().trim(),
+            identifier: identifier,
             displayName: displayName.trim(),
             companyType,
             contactInfo: contactInfo || {},
@@ -221,53 +223,14 @@ export const createOrganization = async (req, res) => {
             organizationIdentifier: organization.identifier,
             username: adminEmail.split('@')[0].toLowerCase(),
             email: adminEmail.toLowerCase().trim(),
-            password: adminPassword, // Will be hashed by pre-save hook
+            password: adminPassword,
+            tempPassword: adminPassword,
             fullName: adminFullName.trim(),
             role: 'admin',
             createdBy: req.user._id
         });
 
         await adminUser.save({ session });
-
-        // Create default labs for the organization
-        const defaultLabs = [
-            {
-                name: `${organization.identifier} Main Lab`,
-                identifier: 'MAIN',
-                organization: organization._id,
-                organizationIdentifier: organization.identifier,
-                contactPerson: adminFullName,
-                contactEmail: adminEmail,
-                contactPhone: contactInfo?.primaryContact?.phone || '',
-                address: organization.address,
-                isActive: true,
-                notes: `Default main lab for ${organization.displayName}`,
-                settings: {
-                    autoAssignStudies: true,
-                    defaultPriority: 'NORMAL',
-                    maxConcurrentStudies: 50
-                }
-            },
-            {
-                name: `${organization.identifier} Emergency Lab`,
-                identifier: 'EMERG',
-                organization: organization._id,
-                organizationIdentifier: organization.identifier,
-                contactPerson: adminFullName,
-                contactEmail: adminEmail,
-                contactPhone: contactInfo?.primaryContact?.phone || '',
-                address: organization.address,
-                isActive: true,
-                notes: `Emergency lab for ${organization.displayName}`,
-                settings: {
-                    autoAssignStudies: true,
-                    defaultPriority: 'HIGH',
-                    maxConcurrentStudies: 20
-                }
-            }
-        ];
-
-        await Lab.insertMany(defaultLabs, { session });
 
         await session.commitTransaction();
 
@@ -277,7 +240,7 @@ export const createOrganization = async (req, res) => {
 
         res.status(201).json({
             success: true,
-            message: 'Organization created successfully with admin user and default labs',
+            message: 'Organization created successfully with admin user',
             data: {
                 organization: populatedOrg,
                 adminUser: {
@@ -296,13 +259,13 @@ export const createOrganization = async (req, res) => {
         if (error.code === 11000) {
             return res.status(400).json({
                 success: false,
-                message: 'Duplicate key error - identifier or email already exists'
+                message: 'Duplicate key error - email already exists'
             });
         }
 
         res.status(500).json({
             success: false,
-            message: 'Failed to create organization'
+            message: error.message || 'Failed to create organization'
         });
     } finally {
         session.endSession();
@@ -476,4 +439,36 @@ export const getOrganizationStats = async (req, res) => {
             message: 'Failed to fetch statistics'
         });
     }
+};
+
+// Helper function to generate unique identifier
+const generateUniqueIdentifier = async (session) => {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    let identifier = '';
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 100;
+    
+    while (!isUnique && attempts < maxAttempts) {
+        // Generate 4 random capital letters
+        identifier = '';
+        for (let i = 0; i < 4; i++) {
+            identifier += characters.charAt(Math.floor(Math.random() * characters.length));
+        }
+        
+        // Check if identifier exists
+        const existing = await Organization.findOne({ identifier }).session(session);
+        
+        if (!existing) {
+            isUnique = true;
+        }
+        
+        attempts++;
+    }
+    
+    if (!isUnique) {
+        throw new Error('Failed to generate unique identifier after maximum attempts');
+    }
+    
+    return identifier;
 };

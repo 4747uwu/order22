@@ -184,6 +184,7 @@ const OrganizationForm = ({
         return (
           <div className="space-y-6">
             <div className="grid grid-cols-1 gap-6">
+              {/* Organization Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Organization Name *
@@ -201,23 +202,50 @@ const OrganizationForm = ({
                 {formErrors.name && <p className="text-sm text-red-600 mt-1">{formErrors.name}</p>}
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-900 mb-2">
-                  Identifier *
-                </label>
-                <input
-                  type="text"
-                  value={formData.identifier || ''}
-                  onChange={(e) => updateFormData('identifier', e.target.value.toUpperCase())}
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all font-mono ${
-                    formErrors.identifier ? 'border-red-500 bg-red-50' : 'border-gray-300'
-                  } ${isEdit ? 'bg-gray-100 cursor-not-allowed' : ''}`}
-                  placeholder="e.g., METRO_GEN"
-                  disabled={isEdit || isSubmitting}
-                />
-                {formErrors.identifier && <p className="text-sm text-red-600 mt-1">{formErrors.identifier}</p>}
-              </div>
+              {/* ✅ IDENTIFIER - Only show in EDIT mode, hide in CREATE mode */}
+              {isEdit && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-900 mb-2">
+                    Identifier <span className="text-xs text-gray-500">(Auto-generated, cannot be changed)</span>
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      value={formData.identifier || ''}
+                      className="w-full px-4 py-3 border rounded-lg font-mono bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600"
+                      disabled
+                      readOnly
+                    />
+                    <div className="flex-shrink-0 px-3 py-2 bg-gray-100 border border-gray-300 rounded-lg">
+                      <span className="text-xs text-gray-500 font-medium">Auto-generated</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    This 4-letter code was automatically generated and cannot be modified
+                  </p>
+                </div>
+              )}
 
+              {/* ✅ ADD: Info message in CREATE mode */}
+              {!isEdit && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-3">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-800">Auto-generated Identifier</h4>
+                      <p className="text-xs text-blue-700 mt-1">
+                        A unique 4-letter code will be automatically generated for this organization
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Display Name */}
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Display Name *
@@ -235,6 +263,7 @@ const OrganizationForm = ({
                 {formErrors.displayName && <p className="text-sm text-red-600 mt-1">{formErrors.displayName}</p>}
               </div>
 
+              {/* Company Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-900 mb-2">
                   Company Type *
@@ -262,53 +291,76 @@ const OrganizationForm = ({
       case 2:
         return (
           <div className="space-y-6">
+            {isEdit && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-blue-800">
+                  <strong>Note:</strong> Admin credentials are displayed from the organization's primary administrator account.
+                </p>
+              </div>
+            )}
+            
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Email *
+                Admin Email * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
               </label>
               <input
                 type="email"
                 value={formData.adminEmail || ''}
                 onChange={(e) => updateFormData('adminEmail', e.target.value)}
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all ${
-                  formErrors.adminEmail ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                className={`w-full px-4 py-3 border rounded-lg transition-all ${
+                  isEdit
+                    ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
+                    : formErrors.adminEmail 
+                    ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
+                    : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
                 }`}
                 placeholder="admin@organization.com"
-                disabled={isSubmitting}
+                disabled={isEdit || isSubmitting}
+                readOnly={isEdit}
               />
               {formErrors.adminEmail && <p className="text-sm text-red-600 mt-1">{formErrors.adminEmail}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Password *
+                Admin Password * {isEdit && <span className="text-xs text-gray-500">(Current password)</span>}
               </label>
               <input
-                type="password"
+                type="text"
                 value={formData.adminPassword || ''}
                 onChange={(e) => updateFormData('adminPassword', e.target.value)}
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all ${
-                  formErrors.adminPassword ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                className={`w-full px-4 py-3 border rounded-lg font-mono transition-all ${
+                  isEdit
+                    ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
+                    : formErrors.adminPassword 
+                    ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
+                    : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
                 }`}
-                placeholder="Strong password"
-                disabled={isSubmitting}
+                placeholder={isEdit ? "Current password" : "Strong password"}
+                disabled={isEdit || isSubmitting}
+                readOnly={isEdit}
               />
               {formErrors.adminPassword && <p className="text-sm text-red-600 mt-1">{formErrors.adminPassword}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Full Name *
+                Admin Full Name * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
               </label>
               <input
                 type="text"
                 value={formData.adminFullName || ''}
                 onChange={(e) => updateFormData('adminFullName', e.target.value)}
-                className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all ${
-                  formErrors.adminFullName ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                className={`w-full px-4 py-3 border rounded-lg transition-all ${
+                  isEdit
+                    ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
+                    : formErrors.adminFullName 
+                    ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
+                    : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
                 }`}
                 placeholder="Administrator's full name"
-                disabled={isSubmitting}
+                disabled={isEdit || isSubmitting}
+                readOnly={isEdit}
               />
               {formErrors.adminFullName && <p className="text-sm text-red-600 mt-1">{formErrors.adminFullName}</p>}
             </div>
