@@ -1,31 +1,26 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '../../hooks/useAuth';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Building, 
-  Users, 
-  Activity, 
-  Settings, 
-  Plus,
-  RefreshCw,
-  Edit,
-  Trash2,
-  AlertCircle,
-  CheckCircle,
-  Search,
-  Filter,
-  Eye,
-  ArrowLeft,
-  Database,
-  Zap,
-  TrendingUp,
-  Shield,
-  BarChart3
-} from 'lucide-react';
+import { useAuth } from '../../hooks/useAuth';
 import api from '../../services/api';
 import Navbar from '../../components/common/Navbar';
 import OrganizationForm from '../../components/superadmin/OrganizationForm';
 import AdminDashboard from '../admin/Dashboard';
+import {
+  Building,
+  Users,
+  Database,
+  Shield,
+  Plus,
+  RefreshCw,
+  Search,
+  Edit,
+  Trash2,
+  Eye,
+  CheckCircle,
+  ArrowLeft,
+  Power,
+  PowerOff
+} from 'lucide-react';
 
 const SuperAdminDashboard = () => {
   const { currentUser, switchOrganization } = useAuth();
@@ -59,10 +54,10 @@ const SuperAdminDashboard = () => {
     setLoading(true);
     try {
       const response = await api.get('/superadmin/organizations', {
-        params: {
+        params: { 
+          limit: 1000,
           search: searchTerm,
-          status: filterStatus !== 'all' ? filterStatus : undefined,
-          limit: 1000 // ✅ ADD THIS - Fetch up to 1000 organizations (or set higher if needed)
+          status: filterStatus !== 'all' ? filterStatus : ''
         }
       });
       if (response.data.success) {
@@ -82,7 +77,7 @@ const SuperAdminDashboard = () => {
         setOrgStats(response.data.data);
       }
     } catch (error) {
-      console.error('Failed to load org stats:', error);
+      console.error('Failed to load stats:', error);
     }
   };
 
@@ -91,20 +86,18 @@ const SuperAdminDashboard = () => {
     loadOrgStats();
   };
 
-  const handleViewOrganizationDashboard = async (org) => {
+  const handleViewOrganizationDashboard = async (org, e) => {
+    if (e) {
+      e.stopPropagation();
+    }
+    
     try {
-      // Switch organization context
-      const success = await switchOrganization(org.identifier);
-      
-      if (success) {
-        setSelectedOrganizationForDashboard(org);
-        setCurrentView('organization-dashboard');
-      } else {
-        alert('Failed to switch organization context');
-      }
+      await switchOrganization(org.identifier);
+      setSelectedOrganizationForDashboard(org);
+      setCurrentView('organization-dashboard');
     } catch (error) {
-      console.error('Error switching organization:', error);
-      alert('Failed to load organization dashboard');
+      console.error('Failed to switch organization:', error);
+      alert('Failed to switch organization context');
     }
   };
 
@@ -118,7 +111,6 @@ const SuperAdminDashboard = () => {
   const handleCreateOrganization = () => {
     setFormData({
       name: '',
-      
       displayName: '',
       companyType: 'hospital',
       contactInfo: {
@@ -136,7 +128,6 @@ const SuperAdminDashboard = () => {
         zipCode: '',
         country: ''
       },
-      
       features: {
         aiAnalysis: false,
         advancedReporting: false,
@@ -160,43 +151,65 @@ const SuperAdminDashboard = () => {
     setShowCreateModal(true);
   };
 
-  const handleEditOrganization = async (org) => {
+  const handleEditOrganization = async (org, e) => {
+    e.stopPropagation();
+    
     try {
-        // Fetch full organization details including admin info
-        const response = await api.get(`/superadmin/organizations/${org._id}`);
-        
-        if (response.data.success) {
-            const orgData = response.data.data;
-            
-            setSelectedOrganization(orgData);
-            setFormData({
-                name: orgData.name,
-                // identifier: orgData.identifier, // ✅ ADD identifier
-                displayName: orgData.displayName,
-                companyType: orgData.companyType,
-                contactInfo: orgData.contactInfo || {},
-                address: orgData.address || {},
-                features: orgData.features || {},
-                compliance: orgData.compliance || {},
-                notes: orgData.notes || '',
-                // ✅ ADD admin details from primaryAdmin
-                adminEmail: orgData.primaryAdmin?.email || '',
-                adminPassword: orgData.primaryAdmin?.tempPassword || '', // Show temp password
-                adminFullName: orgData.primaryAdmin?.fullName || ''
-            });
-            setFormErrors({});
-            setShowEditModal(true);
-        }
+      const response = await api.get(`/superadmin/organizations/${org._id}`);
+      if (response.data.success) {
+        const orgData = response.data.data;
+        setFormData({
+          _id: org._id,
+          name: orgData.name,
+          identifier: orgData.identifier,
+          displayName: orgData.displayName,
+          companyType: orgData.companyType,
+          contactInfo: orgData.contactInfo || {},
+          address: orgData.address || {},
+          features: orgData.features || {},
+          compliance: orgData.compliance || {},
+          notes: orgData.notes || '',
+          adminEmail: orgData.primaryAdmin?.email || '',
+          adminPassword: orgData.primaryAdmin?.tempPassword || '',
+          adminFullName: orgData.primaryAdmin?.fullName || ''
+        });
+        setFormErrors({});
+        setShowEditModal(true);
+      }
     } catch (error) {
-        console.error('Failed to fetch organization details:', error);
-        alert('Failed to load organization details');
+      console.error('Failed to load organization details:', error);
+      alert('Failed to load organization details');
     }
   };
 
-  const handleDeleteOrganization = async (orgId) => {
-    if (!confirm('Are you sure you want to deactivate this organization? This will deactivate all associated users, labs, and doctors.')) {
-      return;
+  const handleToggleStatus = async (org, e) => {
+    e.stopPropagation();
+    
+    const newStatus = org.status === 'active' ? 'inactive' : 'active';
+    const confirmMessage = newStatus === 'inactive'
+      ? 'Are you sure you want to deactivate this organization? This will deactivate all associated users, labs, and doctors.'
+      : 'Are you sure you want to activate this organization?';
+    
+    if (!confirm(confirmMessage)) return;
+
+    try {
+      if (newStatus === 'inactive') {
+        await api.delete(`/superadmin/organizations/${org._id}`);
+      } else {
+        await api.put(`/superadmin/organizations/${org._id}`, { status: 'active' });
+      }
+      loadOrganizations();
+      loadOrgStats();
+    } catch (error) {
+      console.error('Failed to toggle organization status:', error);
+      alert(error.response?.data?.message || 'Failed to update organization status');
     }
+  };
+
+  const handleDeleteOrganization = async (orgId, e) => {
+    e.stopPropagation();
+    
+    if (!confirm('Are you sure you want to permanently deactivate this organization? This will deactivate all associated users, labs, and doctors.')) return;
 
     try {
       await api.delete(`/superadmin/organizations/${orgId}`);
@@ -204,7 +217,7 @@ const SuperAdminDashboard = () => {
       loadOrgStats();
     } catch (error) {
       console.error('Failed to delete organization:', error);
-      alert('Failed to deactivate organization');
+      alert(error.response?.data?.message || 'Failed to delete organization');
     }
   };
 
@@ -212,7 +225,6 @@ const SuperAdminDashboard = () => {
     const errors = {};
     
     if (!formData.name?.trim()) errors.name = 'Organization name is required';
-    // if (!formData.identifier?.trim()) errors.identifier = 'Identifier is required';
     if (!formData.displayName?.trim()) errors.displayName = 'Display name is required';
     if (!formData.companyType) errors.companyType = 'Company type is required';
     
@@ -234,7 +246,7 @@ const SuperAdminDashboard = () => {
     setIsSubmitting(true);
     try {
       if (showEditModal) {
-        await api.put(`/superadmin/organizations/${selectedOrganization._id}`, formData);
+        await api.put(`/superadmin/organizations/${formData._id}`, formData);
       } else {
         await api.post('/superadmin/organizations', formData);
       }
@@ -294,32 +306,31 @@ const SuperAdminDashboard = () => {
   if (currentView === 'organization-dashboard' && selectedOrganizationForDashboard) {
     return (
       <div className="min-h-screen bg-gray-50">
-       {/* // In Dashboard.jsx, line 327 */}
-<Navbar
-  title={`${selectedOrganizationForDashboard.displayName} - Admin Dashboard`}
-  subtitle={`Viewing as Super Admin • ${selectedOrganizationForDashboard.identifier}`}
-  additionalActions={dashboardViewNavbarActions}  // ⬅️ Change from 'actions' to 'additionalActions'
-/>
+        <Navbar
+          title={`${selectedOrganizationForDashboard.displayName} - Admin Dashboard`}
+          subtitle={`Viewing as Super Admin • ${selectedOrganizationForDashboard.identifier}`}
+          additionalActions={dashboardViewNavbarActions}
+        />
         {/* Organization context banner */}
-        <div className="bg-teal-600 text-white px-6 py-3 shadow-md">
+        <div className="bg-teal-600 text-white px-6 py-2 shadow-md">
           <div className="max-w-[1920px] mx-auto flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Building className="w-5 h-5" />
+              <Building className="w-4 h-4" />
               <div>
-                <p className="font-semibold">Organization Context: {selectedOrganizationForDashboard.name}</p>
-                <p className="text-sm text-teal-100">
-                  {selectedOrganizationForDashboard.stats?.activeUsers || 0} Users • 
-                  {selectedOrganizationForDashboard.stats?.activeLabs || 0} Labs • 
-                  {selectedOrganizationForDashboard.stats?.activeDoctors || 0} Doctors
+                <p className="font-bold text-sm uppercase">ORGANIZATION: {selectedOrganizationForDashboard.name}</p>
+                <p className="text-xs font-semibold text-teal-100">
+                  {selectedOrganizationForDashboard.stats?.activeUsers || 0} USERS • 
+                  {selectedOrganizationForDashboard.stats?.activeLabs || 0} LABS • 
+                  {selectedOrganizationForDashboard.stats?.activeDoctors || 0} DOCTORS
                 </p>
               </div>
             </div>
             <button
               onClick={handleBackToList}
-              className="px-4 py-2 bg-white text-teal-600 rounded-lg hover:bg-teal-50 transition-colors font-medium flex items-center gap-2"
+              className="px-3 py-1.5 bg-white text-teal-600 rounded-lg hover:bg-teal-50 transition-colors font-bold text-xs flex items-center gap-2 uppercase"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Organizations
+              <ArrowLeft className="w-3 h-3" />
+              BACK
             </button>
           </div>
         </div>
@@ -334,77 +345,77 @@ const SuperAdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar
-        title="Super Admin Dashboard"
-        subtitle="Manage all organizations"
-        additionalActions={listViewNavbarActions}  // ⬅️ Change from 'actions' to 'additionalActions'
+        title="SUPER ADMIN DASHBOARD"
+        subtitle="MANAGE ALL ORGANIZATIONS"
+        additionalActions={listViewNavbarActions}
       />
 
-      <div className="max-w-[1920px] mx-auto p-6 space-y-6">
-        {/* Stats Overview */}
+      <div className="max-w-[1920px] mx-auto p-4 space-y-4">
+        {/* Stats Overview - Compact */}
         {orgStats && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white rounded-lg shadow p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="bg-white rounded-lg shadow p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Organizations</p>
-                  <p className="text-3xl font-bold text-gray-900 mt-1">{orgStats.totalOrganizations}</p>
+                  <p className="text-xs font-bold text-gray-600 uppercase">TOTAL ORGS</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-0.5">{orgStats.totalOrganizations}</p>
                 </div>
-                <div className="w-12 h-12 bg-teal-100 rounded-lg flex items-center justify-center">
-                  <Building className="w-6 h-6 text-teal-600" />
+                <div className="w-10 h-10 bg-teal-100 rounded-lg flex items-center justify-center">
+                  <Building className="w-5 h-5 text-teal-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Active Organizations</p>
-                  <p className="text-3xl font-bold text-green-600 mt-1">{orgStats.activeOrganizations}</p>
+                  <p className="text-xs font-bold text-gray-600 uppercase">ACTIVE ORGS</p>
+                  <p className="text-2xl font-bold text-green-600 mt-0.5">{orgStats.activeOrganizations}</p>
                 </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <CheckCircle className="w-6 h-6 text-green-600" />
+                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                  <CheckCircle className="w-5 h-5 text-green-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Users</p>
-                  <p className="text-3xl font-bold text-blue-600 mt-1">{orgStats.totalUsers}</p>
+                  <p className="text-xs font-bold text-gray-600 uppercase">TOTAL USERS</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-0.5">{orgStats.totalUsers}</p>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600" />
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Users className="w-5 h-5 text-blue-600" />
                 </div>
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Labs</p>
-                  <p className="text-3xl font-bold text-purple-600 mt-1">{orgStats.totalLabs}</p>
+                  <p className="text-xs font-bold text-gray-600 uppercase">TOTAL LABS</p>
+                  <p className="text-2xl font-bold text-purple-600 mt-0.5">{orgStats.totalLabs}</p>
                 </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Database className="w-6 h-6 text-purple-600" />
+                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Database className="w-5 h-5 text-purple-600" />
                 </div>
               </div>
             </div>
           </div>
         )}
 
-        {/* Filters and Search */}
-        <div className="bg-white rounded-lg shadow p-4">
-          <div className="flex flex-col md:flex-row gap-4">
+        {/* Filters and Search - Compact */}
+        <div className="bg-white rounded-lg shadow p-3">
+          <div className="flex flex-col md:flex-row gap-3">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search organizations..."
+                  placeholder="SEARCH ORGANIZATIONS..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full pl-9 pr-3 py-1.5 text-xs font-bold uppercase border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                 />
               </div>
             </div>
@@ -412,77 +423,81 @@ const SuperAdminDashboard = () => {
               <select
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                className="px-3 py-1.5 text-xs font-bold uppercase border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
               >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-                <option value="suspended">Suspended</option>
+                <option value="all">ALL STATUS</option>
+                <option value="active">ACTIVE</option>
+                <option value="inactive">INACTIVE</option>
+                <option value="suspended">SUSPENDED</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Organizations List */}
+        {/* Organizations List - Compact & Clickable Rows */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-gray-900 border-b border-gray-800">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Organization
+                  <th className="px-4 py-2 text-left text-xs font-bold text-white uppercase tracking-wider">
+                    ORGANIZATION
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Identifier
+                  <th className="px-4 py-2 text-left text-xs font-bold text-white uppercase tracking-wider">
+                    ID
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                  {/* <th className="px-4 py-2 text-left text-xs font-bold text-white uppercase tracking-wider">
+                    TYPE
+                  </th> */}
+                  <th className="px-4 py-2 text-left text-xs font-bold text-white uppercase tracking-wider">
+                    STATUS
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Stats
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Actions
+                  
+                  <th className="px-4 py-2 text-left text-xs font-bold text-white uppercase tracking-wider">
+                    ACTIONS
                   </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {loading ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                      <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
-                      Loading organizations...
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                      <p className="text-xs font-bold uppercase">LOADING...</p>
                     </td>
                   </tr>
                 ) : filteredOrganizations.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                      <Building className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                      No organizations found
+                    <td colSpan="6" className="px-4 py-8 text-center text-gray-500">
+                      <Building className="w-10 h-10 mx-auto mb-2 text-gray-400" />
+                      <p className="text-xs font-bold uppercase">NO ORGANIZATIONS FOUND</p>
                     </td>
                   </tr>
                 ) : (
                   filteredOrganizations.map((org) => (
-                    <tr key={org._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
+                    <tr 
+                      key={org._id} 
+                      onClick={(e) => handleViewOrganizationDashboard(org, e)}
+                      className="hover:bg-teal-50 transition-colors cursor-pointer"
+                    >
+                      <td className="px-4 py-2">
                         <div>
-                          <div className="font-medium text-gray-900">{org.name}</div>
-                          <div className="text-sm text-gray-500">{org.displayName}</div>
+                          <div className="font-bold text-sm text-gray-900 uppercase">{org.name}</div>
+                          {/* <div className="text-xs text-gray-600 font-semibold uppercase">{org.displayName}</div> */}
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded">
+                      <td className="px-4 py-2">
+                        <span className="px-2 py-1 text-xs font-bold bg-gray-900 text-white rounded uppercase">
                           {org.identifier}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-900 capitalize">
-                        {org.companyType}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 text-xs font-medium rounded ${
+                      {/* <td className="px-4 py-2">
+                        <span className="text-xs font-bold text-gray-900 uppercase">
+                          {org.companyType.replace('_', ' ')}
+                        </span>
+                      </td> */}
+                      <td className="px-4 py-2">
+                        <span className={`px-2 py-1 text-xs font-bold rounded uppercase ${
                           org.status === 'active' ? 'bg-green-100 text-green-800' :
                           org.status === 'inactive' ? 'bg-red-100 text-red-800' :
                           'bg-yellow-100 text-yellow-800'
@@ -490,42 +505,31 @@ const SuperAdminDashboard = () => {
                           {org.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-4 text-sm text-gray-600">
-                          <div className="flex items-center gap-1">
-                            <Users className="w-4 h-4" />
-                            <span>{org.stats?.activeUsers || 0}</span>
-                          </div>
-                          {/* <div className="flex items-center gap-1">
-                            <Database className="w-4 h-4" />
-                            <span>{org.stats?.activeLabs || 0}</span>
-                          </div> */}
-                          <div className="flex items-center gap-1">
-                            <Shield className="w-4 h-4" />
-                            <span>{org.stats?.activeDoctors || 0}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                      
+                      <td className="px-4 py-2">
+                        <div className="flex items-center gap-1">
                           <button
-                            onClick={() => handleViewOrganizationDashboard(org)}
-                            className="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                            title="View Dashboard"
-                          >
-                            <Eye className="w-4 h-4" />
-                          </button>
+                                  onClick={(e) => handleToggleStatus(org, e)}
+                                  className={`px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
+                                    org.status === 'active'
+                                      ? 'text-red-700 bg-red-50 hover:bg-red-100'
+                                      : 'text-green-700 bg-green-50 hover:bg-green-100'
+                                  }`}
+                                  title={org.status === 'active' ? 'Deactivate' : 'Activate'}
+                                >
+                                  {org.status === 'active' ? 'DEACTIVATE' : 'ACTIVATE'}
+                                </button>
                           <button
-                            onClick={() => handleEditOrganization(org)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            onClick={(e) => handleEditOrganization(org, e)}
+                            className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Edit"
                           >
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={() => handleDeleteOrganization(org._id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Deactivate"
+                            onClick={(e) => handleDeleteOrganization(org._id, e)}
+                            className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Permanent Delete"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
