@@ -400,6 +400,7 @@ const UnifiedStudyRow = ({
   userRole,
   userRoles = [],
   isColumnVisible,
+  columnConfig = null,
   getColumnWidth // ✅ NEW PROP
 }) => {
   const navigate = useNavigate();
@@ -1282,6 +1283,7 @@ const UnifiedWorklistTable = ({
   onPageChange,
   onRecordsPerPageChange,
   visibleColumns = [],
+  columnConfig = null,
   userRole = 'assignor',
   userRoles = []
 }) => {
@@ -1296,9 +1298,18 @@ const UnifiedWorklistTable = ({
 
   // ✅ COLUMN VISIBILITY CHECKER
   const isColumnVisible = useCallback((columnId) => {
-    if (columnId === 'actions' || columnId === 'selection') return true;
-    return visibleColumns.includes(columnId);
-  }, [visibleColumns]);
+    // Layer 1: Check backend visibleColumns
+    const isInBackend = visibleColumns.includes(columnId);
+    
+    // Layer 2: Check frontend columnConfig (if provided)
+    if (columnConfig && columnConfig[columnId]) {
+      return isInBackend && columnConfig[columnId].visible;
+    }
+    
+    // Default: show if in backend
+    return isInBackend;
+  }, [visibleColumns, columnConfig]);
+
 
 //  const isColumnVisible = useCallback((columnId) => {
 //     // Always show actions and selection

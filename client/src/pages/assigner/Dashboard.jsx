@@ -495,6 +495,7 @@ const AssignerDashboard = () => {
               onRecordsPerPageChange={handleRecordsPerPageChange}
               // ✅ PASS RESOLVED COLUMNS
               visibleColumns={visibleColumns}
+              columnConfig={columnConfig} 
               userRole={currentUser?.primaryRole || currentUser?.role || 'assignor'}
               userRoles={currentUser?.accountRoles?.length > 0 ? currentUser?.accountRoles : [currentUser?.role || 'assignor']}
             />
