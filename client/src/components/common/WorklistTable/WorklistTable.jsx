@@ -463,6 +463,7 @@ const StudyRow = ({
   // Check if report is completed
   const isReportCompleted = ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus);
   const reportCompletedAt = study.reportInfo?.finalizedAt || study.reportInfo?.draftedAt;
+  console.log(study)
 
   // Update timer every second if assigned
   useEffect(() => {
@@ -548,7 +549,7 @@ const StudyRow = ({
         }
         
         // Fetch the latest report for this study
-        const response = await api.get(`/reports/studies/${study._id}/reports`);
+        const response = await api.get(`/reports/studies/${study._id}`);
         
         if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
             toast.error('No report found for this study');
@@ -630,60 +631,102 @@ const StudyRow = ({
 
   // ✅ UPDATED: OHIF Reporting with Restore Check
   const handleOHIFReporting = async () => {
-    setRestoringStudy(true);
+  try {
+    setTogglingLock(true);
     
-    try {
-      // ✅ Lock the study first
-      setTogglingLock(true);
-      const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
+    // ✅ Get current user and check roles
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    
+    // ✅ Check if user is radiologist (only radiologists can lock/bypass)
+    const isRadiologist = accountRoles.includes('radiologist');
+    
+    // ✅ Check if user is verifier (read-only access)
+    const isVerifier = accountRoles.includes('verifier');
+    
+    // ✅ ONLY RADIOLOGISTS attempt to lock (and can bypass existing locks)
+    if (isRadiologist && !isVerifier) {
+      console.log('🔒 [Lock] Radiologist - attempting to lock study (will bypass if already locked)');
       
-      if (!lockResponse?.data?.success) {
-        throw new Error(lockResponse?.data?.message || 'Lock failed');
-      }
-      
-      toast.success('Study locked for reporting', { icon: '🔒' });
-      setTogglingLock(false);
-      
-      // ✅ Use navigateWithRestore to open in new tab
-      await navigateWithRestore(
-        // Custom navigate function that opens in new tab
-        (path) => window.open(path, '_blank'),
-        `/online-reporting/${study._id}?openOHIF=true`,
-        study,
-        {
-          daysThreshold: 10,
-          onRestoreStart: (study) => {
-            console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
-            toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
-          },
-          onRestoreComplete: (data) => {
-            console.log(`✅ [OHIF Reporting] Restore completed:`, data);
-            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
-          },
-          onRestoreError: (error) => {
-            console.error(`❌ [OHIF Reporting] Restore failed:`, error);
-            toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
-          }
+      try {
+        const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
+        
+        if (lockResponse?.data?.success) {
+          toast.success('Study locked for reporting', { 
+            icon: '🔒',
+            duration: 2000,
+            style: {
+              border: '1px solid #10b981',
+            }
+          });
         }
-      );
-    } catch (error) {
-      console.error('Error locking study for reporting:', error);
-      if (error.response?.status === 423) {
-        toast.error(`Study is locked by ${error.response.data.lockedBy}`, {
-          duration: 5000,
-          icon: '🔒'
-        });
-      } else {
-        toast.error(error.response?.data?.message || 'Failed to lock study for reporting');
+      } catch (lockError) {
+        // ✅ Radiologist can bypass locks - just show info message
+        if (lockError.response?.status === 423) {
+          const lockedBy = lockError.response.data.lockedBy || 'another user';
+          console.log(`⚠️ [Bypass] Study locked by ${lockedBy}, but radiologist can proceed`);
+          
+          toast.info(`Study locked by ${lockedBy} - Opening anyway (Radiologist bypass)`, {
+            duration: 3000,
+            icon: '⚠️',
+            style: {
+              border: '1px solid #f59e0b',
+            }
+          });
+        } else {
+          // Some other error - log but still proceed
+          console.warn('⚠️ [Lock] Lock attempt failed, proceeding anyway:', lockError);
+        }
       }
-      
-      // Still try to open the reporting interface even if lock/restore fails
-      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
-    } finally {
-      setTogglingLock(false);
-      setRestoringStudy(false);
+    } else if (isVerifier) {
+      console.log('✅ [Verifier] Read-only access - no locking');
+    } else {
+      console.log('👁️ [Viewer] Non-radiologist - no locking');
     }
-  };
+    
+    // ✅ Build URL with appropriate query params
+    const queryParams = new URLSearchParams({
+      openOHIF: 'true',
+      ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+    });
+    
+    const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
+    
+    console.log(`📂 [Open] Opening: ${reportingUrl}`);
+    
+    // ✅ Open in new tab (radiologists bypass locks, others open normally)
+    window.open(reportingUrl, '_blank');
+    
+  } catch (error) {
+    console.error('❌ [Error] OHIF reporting error:', error);
+    
+    // ✅ Only show lock errors for non-radiologists
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    const isRadiologist = accountRoles.includes('radiologist');
+    
+    if (error.response?.status === 423 && !isRadiologist) {
+      // Study is locked and user is NOT a radiologist
+      const lockedBy = error.response.data.lockedBy || 'another user';
+      
+      toast.error(`Study is locked by ${lockedBy}`, {
+        duration: 5000,
+        icon: '🔒',
+        style: {
+          border: '1px solid #ef4444',
+        }
+      });
+    } else if (error.response?.status !== 423) {
+      // Other errors (not lock-related)
+      toast.error(error.response?.data?.message || 'Failed to open study', {
+        duration: 4000,
+        icon: '❌'
+      });
+    }
+  } finally {
+    setTogglingLock(false);
+  }
+};
 
   const handleLockToggle = async (e) => {
     e.stopPropagation();
@@ -947,10 +990,14 @@ const StudyRow = ({
       </td>
 
       {/* 15. UPLOAD DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
-          <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
-        </td>
+   <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+    <div className="text-[11px] font-medium text-slate-800">
+        {formatDate(study.uploadDate || study.createdAt)}
+    </div>
+    <div className="text-[10px] text-slate-500">
+        {study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}
+    </div>
+</td>
 
 <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
   <div className="relative">
@@ -1148,14 +1195,32 @@ const StudyRow = ({
       </td>
 
       {/* 21. VERIFIED DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">
-          {formatDate(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-        </div>
-        <div className="text-[10px] text-slate-500">
-          {formatTime(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-        </div>
-      </td>
+ <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+  <div className="text-[11px] font-medium text-slate-800">
+    {(() => {
+      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
+      if (!ts) return '-';
+      try {
+        const d = new Date(ts);
+        return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      } catch {
+        return '-';
+      }
+    })()}
+  </div>
+  <div className="text-[10px] text-slate-500">
+    {(() => {
+      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
+      if (!ts) return '-';
+      try {
+        const d = new Date(ts);
+        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
+      } catch {
+        return '-';
+      }
+    })()}
+  </div>
+</td>
 
             
       {/* 22. ACTIONS - ALL ADMIN OPTIONS */}
@@ -1435,7 +1500,7 @@ const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, display
   );
 };
 
-// ✅ MAIN WORKLIST TABLE - ALL COLUMNS, NO RESTRICTIONS, RESIZABLE
+// ✅ MAIN WORKLIST TABLE - with columnConfig support
 const WorklistTable = ({ 
   studies = [], 
   loading = false, 
@@ -1460,9 +1525,16 @@ const WorklistTable = ({
   },
   onPageChange,
   onRecordsPerPageChange,
-  headerColor
+  headerColor,
+  columnConfig = null, // ✅ ADD THIS - columnConfig from Dashboard
 }) => {
   const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+
+  // ✅ ADD: Helper function to check if column is visible
+  const isColumnVisible = useCallback((columnKey) => {
+    if (!columnConfig) return true; // If no config, show all columns
+    return columnConfig[columnKey]?.visible !== false;
+  }, [columnConfig]);
 
   // ✅ ADD COLUMN RESIZING HOOK
   const { columnWidths, getColumnWidth, handleColumnResize, resetColumnWidths } = useColumnResizing(
@@ -1676,276 +1748,197 @@ const handleClosePrintModal = useCallback(() => {
   }
 
   return (
-    <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border-2 border-gray-300">
-      <div className="flex-1 overflow-x-auto overflow-y-auto">
-        <table 
-          className="border-collapse" 
-          style={{ 
-            fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-            tableLayout: 'fixed',
-            width: '100%',
-            minWidth: 'max-content'
-          }}
-        >
-          {/* ✅ DYNAMIC COLORED HEADER WITH RESIZABLE COLUMNS - ALL COLUMNS */}
-          <thead className="sticky top-0 z-10">
-            <tr className={`text-xs font-bold bg-gradient-to-r ${headerColor?.gradient || 'from-gray-800 via-gray-900 to-black'} ${headerColor?.textColor || 'text-white'} shadow-lg`}>
-              {/* 1. SELECTION */}
-              <ResizableTableHeader
-                columnId="selection"
-                label=""
-                width={getColumnWidth('selection')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.maxWidth}
-              >
-                <input
-                  type="checkbox"
-                  checked={studies.length > 0 && selectedStudies.length === studies.length}
-                  onChange={(e) => onSelectAll?.(e.target.checked)}
-                  className="w-4 h-4 rounded border-white/30"
-                />
-              </ResizableTableHeader>
+    <div className="flex-1 flex flex-col min-h-0 bg-white">
+      <div className="flex-1 overflow-auto custom-scrollbar">
+        <table className="w-full border-collapse sticky-headers min-w-max table-auto">
+          <thead>
+            <tr className={`sticky top-0 z-20 bg-gradient-to-r ${headerColor ? headerColor.gradient : 'from-gray-800 via-gray-900 to-black'} ${headerColor ? headerColor.textColor : 'text-white'} text-[10px] uppercase tracking-wider shadow-lg`}>
+              {/* Line 1628 omitted */}
+             {/* ✅ CONDITIONAL RENDERING BASED ON columnConfig */}
               
-              {/* 2. BHARAT PACS ID */}
-              <ResizableTableHeader
-                columnId="bharatPacsId"
-                label={<>BHARAT<br/>PACS ID</>}
-                width={getColumnWidth('bharatPacsId')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
-              />
-              
-              {/* 3. ORGANIZATION - Only for super_admin */}
-              {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+              {/* 1. CHECKBOX */}
+              {isColumnVisible('checkbox') && (
                 <ResizableTableHeader
-                  columnId="organization"
-                  label="ORGANIZATION"
-                  width={getColumnWidth('organization')}
+                  columnId="checkbox"
+                  label={<input type="checkbox" onChange={(e) => onSelectAll?.(e.target.checked)} checked={selectedStudies?.length === studies?.length && studies?.length > 0} className="w-4 h-4 text-black focus:ring-black focus:ring-2 rounded border-gray-300" />}
+                  width={getColumnWidth('checkbox')}
                   onResize={handleColumnResize}
-                  minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
-                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CHECKBOX.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CHECKBOX.maxWidth}
                 />
               )}
+
+              {/* 2. BP ID */}
+              {isColumnVisible('bharatPacsId') && (
+                <ResizableTableHeader
+                  columnId="bharatPacsId"
+                  label="BP ID"
+                  width={getColumnWidth('bharatPacsId')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
+                />
+              )}
+
+              {/* 3. CENTER NAME */}
+              {isColumnVisible('centerName') && (
+                <ResizableTableHeader
+                  columnId="centerName"
+                  label="CENTER"
+                  width={getColumnWidth('centerName')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+                />
+              )}
+
+              {/* 4. PATIENT NAME */}
+              {isColumnVisible('patientName') && (
+                <ResizableTableHeader
+                  columnId="patientName"
+                  label="PATIENT NAME"
+                  width={getColumnWidth('patientName')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth}
+                />
+              )}
+
+              {/* 5. PATIENT ID */}
+              {isColumnVisible('patientId') && (
+                <ResizableTableHeader
+                  columnId="patientId"
+                  label="PATIENT ID"
+                  width={getColumnWidth('patientId')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth}
+                />
+              )}
+
+              {/* 6. AGE/SEX */}
+              {isColumnVisible('ageGender') && (
+                <ResizableTableHeader
+                  columnId="ageGender"
+                  label="AGE/SEX"
+                  width={getColumnWidth('ageGender')}
+                  onResize={handleColumnResize}
+                   minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth}
+                />
+              )}
+
+              {/* 7. MODALITY */}
+              {isColumnVisible('modality') && (
+                <ResizableTableHeader
+                  columnId="modality"
+                  label="MOD"
+                  width={getColumnWidth('modality')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth}
+                />
+              )}
+
+              {/* 8. SERIES */}
+              {isColumnVisible('seriesCount') && (
+                <ResizableTableHeader
+                  columnId="seriesCount"
+                  label="SERIES"
+                  width={getColumnWidth('seriesCount')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.SERIES_COUNT.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.SERIES_COUNT.maxWidth}
+                />
+              )}
+
+              {/* 9. ACCESSION NUMBER */}
+              {isColumnVisible('accessionNumber') && (
+                <ResizableTableHeader
+                  columnId="accessionNumber"
+                  label={<>ACC.<br/>NO.</>}
+                  width={getColumnWidth('accessionNumber')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ACCESSION_NUMBER.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ACCESSION_NUMBER.maxWidth}
+                />
+              )}
+
+              {/* 10. REFERRAL DOCTOR */}
+              {isColumnVisible('referralDoctor') && (
+                <ResizableTableHeader
+                  columnId="referralDoctor"
+                  label="REFERRAL DR."
+                  width={getColumnWidth('referralDoctor')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth}
+                />
+              )}
+
+              {/* 11. CLINICAL HISTORY */}
+              {isColumnVisible('clinicalHistory') && (
+                <ResizableTableHeader
+                  columnId="clinicalHistory"
+                  label="CLINICAL HISTORY"
+                  width={getColumnWidth('clinicalHistory')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth}
+                />
+              )}
+
+              {/* 12. STUDY DATE/TIME */}
+              {isColumnVisible('studyTime') && (
+                <ResizableTableHeader
+                  columnId="studyTime"
+                  label={<>STUDY<br/>DATE/TIME</>}
+                  width={getColumnWidth('studyTime')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth}
+                />
+              )}
+
+              {/* 13. UPLOAD DATE/TIME */}
+              {isColumnVisible('uploadTime') && (
+                <ResizableTableHeader
+                  columnId="uploadTime"
+                  label={<>UPLOAD<br/>DATE/TIME</>}
+                  width={getColumnWidth('uploadTime')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth}
+                />
+              )}
+
+              {/* 14. RADIOLOGIST */}
+              {isColumnVisible('radiologist') && (
+                <ResizableTableHeader
+                  columnId="radiologist"
+                  label="RADIOLOGIST"
+                  width={getColumnWidth('radiologist')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.RADIOLOGIST.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.RADIOLOGIST.maxWidth}
+                />
+              )}
+
+              {/* 15. CASE STATUS */}
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="caseStatus"
+                  label="STATUS"
+                  width={getColumnWidth('caseStatus')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CASE_STATUS.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CASE_STATUS.maxWidth}
+                />
+              )}
+
+              {/* 16-22... ADD THE SAME PATTERN FOR REMAINING COLUMNS */}
               
-              {/* 4. CENTER NAME */}
-              <ResizableTableHeader
-                columnId="centerName"
-                label={<>CENTER<br/>NAME</>}
-                width={getColumnWidth('centerName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
-              />
-
-              <ResizableTableHeader
-                columnId="centerName"
-                label={<>Location<br/>NAME</>}
-                width={getColumnWidth('centerName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
-              />
-
-              {/* 5. TIMELINE */}
-              <ResizableTableHeader
-                columnId="timeline"
-                label=""
-                width={getColumnWidth('timeline')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}
-              >
-                <Clock className="w-4 h-4 mx-auto" />
-              </ResizableTableHeader>
-
-              {/* 6. PATIENT NAME / UHID */}
-              <ResizableTableHeader
-                columnId="patientName"
-                label={<>PT NAME /<br/>UHID</>}
-                width={getColumnWidth('patientName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth}
-              />
-
-              {/* 7. AGE/SEX */}
-              <ResizableTableHeader
-                columnId="ageGender"
-                label={<>AGE/<br/>SEX</>}
-                width={getColumnWidth('ageGender')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth}
-              />
-
-              {/* 8. MODALITY */}
-              <ResizableTableHeader
-                columnId="modality"
-                label="MODALITY"
-                width={getColumnWidth('modality')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth}
-              />
-
-              {/* 9. VIEW */}
-              <ResizableTableHeader
-                columnId="viewOnly"
-                label=""
-                width={getColumnWidth('viewOnly')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}
-              >
-                <Eye className="w-4 h-4 mx-auto" />
-              </ResizableTableHeader>
-
-              <ResizableTableHeader
-                columnId="Reporting"
-                label=""
-                width={getColumnWidth('viewOnly')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}
-              >
-                <div className="flex items-center justify-center h-full w-full">
-                  <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-                </div>
-              </ResizableTableHeader>
-
-
-              {/* 10. SERIES/IMAGES */}
-              <ResizableTableHeader
-                columnId="studySeriesImages"
-                label={<>SERIES/<br/>IMAGES</>}
-                width={getColumnWidth('studySeriesImages')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth}
-              />
-
-              {/* 11. PT ID */}
-              <ResizableTableHeader
-                columnId="patientId"
-                label="PT ID"
-                width={getColumnWidth('patientId')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth}
-              />
-
-              {/* 12. REFERRAL DOCTOR */}
-              <ResizableTableHeader
-                columnId="referralDoctor"
-                label={<>REFERRAL<br/>DOCTOR</>}
-                width={getColumnWidth('referralDoctor')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth}
-              />
-
-              {/* 13. CLINICAL HISTORY */}
-              <ResizableTableHeader
-                columnId="clinicalHistory"
-                label={<>CLINICAL<br/>HISTORY</>}
-                width={getColumnWidth('clinicalHistory')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth}
-              />
-
-              {/* 14. STUDY DATE/TIME */}
-              <ResizableTableHeader
-                columnId="studyDateTime"
-                label={<>STUDY<br/>DATE/TIME</>}
-                width={getColumnWidth('studyDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth}
-              />
-
-              {/* 15. UPLOAD DATE/TIME */}
-              <ResizableTableHeader
-                columnId="uploadDateTime"
-                label={<>UPLOAD<br/>DATE/TIME</>}
-                width={getColumnWidth('uploadDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth}
-              />
-
-              {/* 16. RADIOLOGIST */}
-              <ResizableTableHeader
-                columnId="assignedRadiologist"
-                label="RADIOLOGIST"
-                width={getColumnWidth('assignedRadiologist')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth}
-              />
-
-              {/* 17. LOCK/UNLOCK */}
-              <ResizableTableHeader
-                columnId="studyLock"
-                label={<>LOCK/<br/>UNLOCK</>}
-                width={getColumnWidth('studyLock')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth}
-              />
-
-              {/* 18. STATUS */}
-              <ResizableTableHeader
-                columnId="status"
-                label="STATUS"
-                width={getColumnWidth('status')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth}
-              />
-
-              {/* 19. PRINT REPORT */}
-              <ResizableTableHeader
-                columnId="printCount"
-                label={<>PRINT<br/>REPORT</>}
-                width={getColumnWidth('printCount')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.maxWidth}
-              />
-
-               <ResizableTableHeader
-              columnId="rejectionReason"
-              label="Rejection Reason"
-              width={getColumnWidth('rejectionReason')}
-              minWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.minWidth}
-              maxWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.maxWidth}
-              onResize={handleColumnResize}
-            />
-
-              {/* 20. VERIFIED BY */}
-              <ResizableTableHeader
-                columnId="assignedVerifier"
-                label={<>VERIFIED<br/>BY</>}
-                width={getColumnWidth('assignedVerifier')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.maxWidth}
-              />
-
-              {/* 21. VERIFIED DATE/TIME */}
-              <ResizableTableHeader
-                columnId="verifiedDateTime"
-                label={<>VERIFIED<br/>DATE/TIME</>}
-                width={getColumnWidth('verifiedDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.maxWidth}
-              />
-
-              {/* 22. ACTIONS */}
+              {/* ACTIONS - Always visible */}
               <ResizableTableHeader
                 columnId="actions"
                 label="ACTIONS"
@@ -1962,7 +1955,7 @@ const handleClosePrintModal = useCallback(() => {
               <StudyRow
                 key={study._id}
                 study={study}
-                activeViewers={activeViweres[study._id] || []} // ✅ Pass viewers
+                activeViewers={activeViweres[study._id] || []}
                 index={index}
                 selectedStudies={selectedStudies}
                 availableAssignees={availableAssignees}
@@ -1978,13 +1971,12 @@ const handleClosePrintModal = useCallback(() => {
                 onShowTimeline={handleShowTimeline}
                 onToggleLock={handleToggleStudyLock}
                 onShowDocuments={handleShowDocuments}
-                onShowRevertModal={handleShowRevertModal} // ✅ ADD THIS
-                  setPrintModal={setPrintModal}  // ✅ ADD THIS LINE
-
-
+                onShowRevertModal={handleShowRevertModal}
+                setPrintModal={setPrintModal}
                 userRole={userRole}
                 userRoles={userAccountRoles}
                 getColumnWidth={getColumnWidth}
+                isColumnVisible={isColumnVisible} // ✅ PASS THIS TO StudyRow
               />
             ))}
           </tbody>

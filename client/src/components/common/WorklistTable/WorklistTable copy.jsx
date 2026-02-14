@@ -17,7 +17,8 @@ import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColu
 import RevertModal from '../../../components/RevertModal.jsx';
 import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
-
+import useWebSocket from '../../../hooks/useWebSocket';
+import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -98,8 +99,12 @@ const formatTime = (value) => {
 };
 
 
-
 const copyToClipboard = (text, label = 'ID') => {
+  if (!text || text === 'N/A') {
+    toast.error('No value to copy', { duration: 2000 });
+    return;
+  }
+  
   navigator.clipboard.writeText(text).then(() => {
     toast.success(`${label} copied!`, {
       duration: 2000,
@@ -121,9 +126,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     referringPhysician: '',
     accessionNumber: '',
     clinicalHistory: '',
-    caseType: 'routine',
-    studyPriority: 'SELECT',
-    assignmentPriority: 'NORMAL'
+    studyPriority: 'SELECT'
   });
   const [loading, setLoading] = useState(false);
 
@@ -137,9 +140,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         referringPhysician: study.referralNumber || study.referringPhysicianName || '',
         accessionNumber: study.accessionNumber || '',
         clinicalHistory: study.clinicalHistory || '',
-        caseType: study.caseType || 'routine',
-        studyPriority: study.studyPriority || 'SELECT',
-        assignmentPriority: study.assignment?.[0]?.priority || study.priority || 'NORMAL'
+        studyPriority: study.studyPriority || 'SELECT'
       });
     }
   }, [study, isOpen]);
@@ -159,14 +160,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     }
   };
 
-  // Case Type options
-  const caseTypeOptions = [
-    { value: 'routine', label: 'Routine', color: 'bg-gray-100 text-gray-700' },
-    { value: 'urgent', label: 'Urgent', color: 'bg-amber-100 text-amber-700' },
-    { value: 'stat', label: 'STAT', color: 'bg-orange-100 text-orange-700' },
-    { value: 'emergency', label: 'Emergency', color: 'bg-red-100 text-red-700' }
-  ];
-
   // Study Priority options
   const studyPriorityOptions = [
     { value: 'SELECT', label: 'Select Priority' },
@@ -174,14 +167,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
     { value: 'MLC Case', label: '⚖️ MLC Case' },
     { value: 'Study Exception', label: '⚠️ Study Exception' }
-  ];
-
-  // Assignment Priority options
-  const assignmentPriorityOptions = [
-    { value: 'LOW', label: 'Low', color: 'bg-blue-100 text-blue-700' },
-    { value: 'NORMAL', label: 'Normal', color: 'bg-gray-100 text-gray-700' },
-    { value: 'HIGH', label: 'High', color: 'bg-amber-100 text-amber-700' },
-    { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-700' }
   ];
 
   if (!isOpen) return null;
@@ -192,9 +177,9 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         {/* Header */}
         <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold">{study?.patientName || 'Edit Study Details'}</h2>
-            <p className="text-xs text-gray-300 mt-0.5">
-              BP ID: {study?.bharatPacsId} | Modality: {study?.modality}
+            <h2 className="text-lg font-bold uppercase">{study?.patientName || 'Edit Study Details'}</h2>
+            <p className="text-xs text-gray-300 mt-0.5 uppercase">
+              BP ID: {study?.bharatPacsId} | MODALITY: {study?.modality}
             </p>
           </div>
           <button
@@ -209,135 +194,86 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           
-          {/* ✅ PRIORITY & CASE TYPE SECTION */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs">!</span>
-              Priority & Case Type
+          {/* ✅ STUDY PRIORITY SECTION ONLY */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-amber-600 text-white rounded-full flex items-center justify-center text-xs">!</span>
+              Study Priority
             </h3>
             
-            <div className="grid grid-cols-3 gap-4">
-              {/* Case Type */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Case Type
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {caseTypeOptions.map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, caseType: option.value }))}
-                      className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all ${
-                        formData.caseType === option.value || formData.caseType === option.value.toUpperCase()
-                          ? 'border-gray-900 ring-2 ring-gray-400 ' + option.color
-                          : 'border-gray-200 hover:border-gray-400 bg-white text-gray-600'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Study Priority */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Study Priority
-                </label>
-                <select
-                  value={formData.studyPriority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
-                  className={`w-full px-3 py-2 text-sm border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 ${
-                    formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50' :
-                    formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50' :
-                    formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50' :
-                    'border-gray-300'
-                  }`}
-                >
-                  {studyPriorityOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Assignment Priority */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Assignment Priority
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {assignmentPriorityOptions.map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, assignmentPriority: option.value }))}
-                      className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all ${
-                        formData.assignmentPriority === option.value
-                          ? 'border-gray-900 ring-2 ring-gray-400 ' + option.color
-                          : 'border-gray-200 hover:border-gray-400 bg-white text-gray-600'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase">
+                Priority Level
+              </label>
+              <select
+                value={formData.studyPriority}
+                onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
+                className={`w-full px-4 py-3 text-sm font-semibold border-2 rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-amber-600 uppercase ${
+                  formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50 text-red-700' :
+                  formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50 text-amber-700' :
+                  formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50 text-blue-700' :
+                  'border-gray-300'
+                }`}
+              >
+                {studyPriorityOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* ✅ PATIENT INFORMATION SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
               Patient Information
             </h3>
             
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Patient Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.patientName}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="Enter patient name"
+                  placeholder="ENTER PATIENT NAME"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Age <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.patientAge}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="e.g., 45Y"
+                  placeholder="E.G., 45Y"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Gender <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={formData.patientGender}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
                 >
-                  <option value="">Select Gender</option>
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
-                  <option value="O">Other</option>
+                  <option value="">SELECT GENDER</option>
+                  <option value="M">MALE</option>
+                  <option value="F">FEMALE</option>
+                  <option value="O">OTHER</option>
                 </select>
               </div>
             </div>
@@ -345,50 +281,50 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
           {/* ✅ STUDY INFORMATION SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
               Study Information
             </h3>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Study Name / Description <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.studyName}
                   onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="e.g., CT HEAD PLAIN"
+                  placeholder="E.G., CT HEAD PLAIN"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Accession Number
                 </label>
                 <input
                   type="text"
                   value={formData.accessionNumber}
                   onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                  placeholder="Enter accession number"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  placeholder="ENTER ACCESSION NUMBER"
                 />
               </div>
 
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Referring Physician <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.referringPhysician}
                   onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="Enter referring physician name"
+                  placeholder="ENTER REFERRING PHYSICIAN NAME"
                 />
               </div>
             </div>
@@ -396,59 +332,59 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
           {/* ✅ CLINICAL HISTORY SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs">3</span>
               Clinical History
             </h3>
             
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                 Clinical History / Notes <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={formData.clinicalHistory}
                 onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
                 rows={4}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none"
+                className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none uppercase"
                 required
-                placeholder="Enter clinical history, symptoms, or relevant notes..."
+                placeholder="ENTER CLINICAL HISTORY, SYMPTOMS, OR RELEVANT NOTES..."
               />
               <p className="text-xs text-gray-500 mt-1">
-                {formData.clinicalHistory.length} / 2000 characters
+                {formData.clinicalHistory.length} / 2000 CHARACTERS
               </p>
             </div>
           </div>
 
           {/* Footer */}
           <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-200">
-            <div className="text-xs text-gray-500">
-              <span className="text-red-500">*</span> Required fields
+            <div className="text-xs text-gray-500 uppercase">
+              <span className="text-red-500">*</span> REQUIRED FIELDS
             </div>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 font-medium transition-colors"
+                className="px-6 py-2.5 text-sm font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 transition-colors uppercase"
                 disabled={loading}
               >
-                Cancel
+                CANCEL
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 font-medium transition-colors flex items-center gap-2"
+                className="px-6 py-2.5 text-sm font-bold bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 transition-colors flex items-center gap-2 uppercase"
                 disabled={loading}
               >
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Saving...
+                    SAVING...
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Save Changes
+                    SAVE CHANGES
                   </>
                 )}
               </button>
@@ -463,6 +399,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 // ✅ STUDY ROW - ALL COLUMNS VISIBLE WITH DYNAMIC WIDTHS
 const StudyRow = ({ 
   study, 
+  activeViewers = [],
   index,
   selectedStudies,
   availableAssignees,
@@ -479,13 +416,14 @@ const StudyRow = ({
   onToggleLock,
   onShowDocuments,
   onShowRevertModal,
+  setPrintModal,
 
   userRole,
   userRoles = [],
   getColumnWidth
 }) => {
   const navigate = useNavigate();
-  console.log(study)
+  // console.log(study)
   
   const assignInputRef = useRef(null);
   const verifierInputRef = useRef(null);
@@ -498,6 +436,8 @@ const StudyRow = ({
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [downloadPosition, setDownloadPosition] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
+  const [restoringStudy, setRestoringStudy] = useState(false); // ✅ NEW STATE
+  const hasActiveViewers  = activeViewers.length > 0;
 
   const isSelected = selectedStudies?.includes(study._id);
   const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
@@ -523,6 +463,7 @@ const StudyRow = ({
   // Check if report is completed
   const isReportCompleted = ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus);
   const reportCompletedAt = study.reportInfo?.finalizedAt || study.reportInfo?.draftedAt;
+  console.log(study)
 
   // Update timer every second if assigned
   useEffect(() => {
@@ -551,6 +492,9 @@ const StudyRow = ({
       );
     }
   }, [study.verifier]);
+
+  // ✅ NEW: Direct print handler (bypasses ReportModal)
+
 
   const rowClasses = `${
     // ✅ Emergency Case takes highest priority - full red background
@@ -592,6 +536,48 @@ const StudyRow = ({
     await onAssignmentSubmit(assignmentData);
     handleCloseAssignmentModal();
   };
+  const handleDirectPrint = useCallback(async (study) => {
+    try {
+        console.log('🖨️ [Direct Print] Fetching report for study:', study._id);
+        
+        // ✅ VALIDATE WORKFLOW STATUS FIRST
+        const allowedStatuses = ['report_reprint_needed', 'report_completed', 'reprint_requested'];
+        if (!allowedStatuses.includes(study.workflowStatus)) {
+            toast.error(`Cannot print report in "${study.workflowStatus}" status. Only completed or reprint-requested reports can be printed.`);
+            console.log('❌ [Direct Print] Invalid status:', study.workflowStatus);
+            return;
+        }
+        
+        // Fetch the latest report for this study
+        const response = await api.get(`/reports/studies/${study._id}/reports`);
+        
+        if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
+            toast.error('No report found for this study');
+            return;
+        }
+        
+        // Get the latest finalized report
+        const reports = response.data.data.reports;
+        const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+        
+        if (!latestReport) {
+            toast.error('No finalized report available');
+            return;
+        }
+        
+        console.log('✅ [Direct Print] Opening print modal for report:', latestReport._id);
+        
+        // Open print modal directly
+        setPrintModal({
+            show: true,
+            report: latestReport
+        });
+        
+    } catch (error) {
+        console.error('❌ [Direct Print] Error:', error);
+        toast.error('Failed to load report for printing');
+    }
+}, []); 
 
   const handleDownloadClick = (e) => {
     e.stopPropagation();
@@ -605,40 +591,142 @@ const StudyRow = ({
     }
   };
 
-    const handleViewOnlyClick = (e) => {
+  // ✅ UPDATED: View Only with Restore Check
+  const handleViewOnlyClick = async (e) => {
     e.stopPropagation();
-    // ✅ Open OHIF Viewer in new tab
-    window.open(`/doctor/viewer/${study._id}`, '_blank');
-  };
-
-const handleOHIFReporting = async () => {
+    
+    setRestoringStudy(true);
+    
     try {
-      // ✅ Lock the study first
-      setTogglingLock(true);
-      const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
-      
-      if (!lockResponse?.data?.success) {
-        throw new Error(lockResponse?.data?.message || 'Lock failed');
-      }
-      
-      toast.success('Study locked for reporting', { icon: '🔒' });
-      
-      // ✅ Open OHIF + Reporting in new tab
-      window.open(`/online-reporting/${study._id}?openOHIF=true`, '_blank');
+      // ✅ Use navigateWithRestore to open in new tab
+      await navigateWithRestore(
+        // Custom navigate function that opens in new tab
+        (path) => window.open(path, '_blank'),
+        `/doctor/viewer/${study._id}`,
+        study,
+        {
+          daysThreshold: 1,
+          onRestoreStart: (study) => {
+            console.log(`🔄 [View Only] Restoring study: ${study.bharatPacsId}`);
+            toast.loading(`Restoring study from backup...`, { id: `restore-${study._id}` });
+          },
+          onRestoreComplete: (data) => {
+            console.log(`✅ [View Only] Restore completed:`, data);
+            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-${study._id}` });
+          },
+          onRestoreError: (error) => {
+            console.error(`❌ [View Only] Restore failed:`, error);
+            toast.error(`Restore failed: ${error}`, { id: `restore-${study._id}` });
+          }
+        }
+      );
     } catch (error) {
-      console.error('Error locking study for reporting:', error);
-      if (error.response?.status === 423) {
-        toast.error(`Study is locked by ${error.response.data.lockedBy}`, {
-          duration: 5000,
-          icon: '🔒'
-        });
-      } else {
-        toast.error(error.response?.data?.message || 'Failed to lock study for reporting');
-      }
+      console.error('Error in handleViewOnlyClick:', error);
+      // Still open the viewer even if restore fails
+      window.open(`/doctor/viewer/${study._id}`, '_blank');
     } finally {
-      setTogglingLock(false);
+      setRestoringStudy(false);
     }
   };
+
+  // ✅ UPDATED: OHIF Reporting with Restore Check
+  const handleOHIFReporting = async () => {
+  try {
+    setTogglingLock(true);
+    
+    // ✅ Get current user and check roles
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    
+    // ✅ Check if user is radiologist (only radiologists can lock/bypass)
+    const isRadiologist = accountRoles.includes('radiologist');
+    
+    // ✅ Check if user is verifier (read-only access)
+    const isVerifier = accountRoles.includes('verifier');
+    
+    // ✅ ONLY RADIOLOGISTS attempt to lock (and can bypass existing locks)
+    if (isRadiologist && !isVerifier) {
+      console.log('🔒 [Lock] Radiologist - attempting to lock study (will bypass if already locked)');
+      
+      try {
+        const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
+        
+        if (lockResponse?.data?.success) {
+          toast.success('Study locked for reporting', { 
+            icon: '🔒',
+            duration: 2000,
+            style: {
+              border: '1px solid #10b981',
+            }
+          });
+        }
+      } catch (lockError) {
+        // ✅ Radiologist can bypass locks - just show info message
+        if (lockError.response?.status === 423) {
+          const lockedBy = lockError.response.data.lockedBy || 'another user';
+          console.log(`⚠️ [Bypass] Study locked by ${lockedBy}, but radiologist can proceed`);
+          
+          toast.info(`Study locked by ${lockedBy} - Opening anyway (Radiologist bypass)`, {
+            duration: 3000,
+            icon: '⚠️',
+            style: {
+              border: '1px solid #f59e0b',
+            }
+          });
+        } else {
+          // Some other error - log but still proceed
+          console.warn('⚠️ [Lock] Lock attempt failed, proceeding anyway:', lockError);
+        }
+      }
+    } else if (isVerifier) {
+      console.log('✅ [Verifier] Read-only access - no locking');
+    } else {
+      console.log('👁️ [Viewer] Non-radiologist - no locking');
+    }
+    
+    // ✅ Build URL with appropriate query params
+    const queryParams = new URLSearchParams({
+      openOHIF: 'true',
+      ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+    });
+    
+    const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
+    
+    console.log(`📂 [Open] Opening: ${reportingUrl}`);
+    
+    // ✅ Open in new tab (radiologists bypass locks, others open normally)
+    window.open(reportingUrl, '_blank');
+    
+  } catch (error) {
+    console.error('❌ [Error] OHIF reporting error:', error);
+    
+    // ✅ Only show lock errors for non-radiologists
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    const isRadiologist = accountRoles.includes('radiologist');
+    
+    if (error.response?.status === 423 && !isRadiologist) {
+      // Study is locked and user is NOT a radiologist
+      const lockedBy = error.response.data.lockedBy || 'another user';
+      
+      toast.error(`Study is locked by ${lockedBy}`, {
+        duration: 5000,
+        icon: '🔒',
+        style: {
+          border: '1px solid #ef4444',
+        }
+      });
+    } else if (error.response?.status !== 423) {
+      // Other errors (not lock-related)
+      toast.error(error.response?.data?.message || 'Failed to open study', {
+        duration: 4000,
+        icon: '❌'
+      });
+    }
+  } finally {
+    setTogglingLock(false);
+  }
+};
 
   const handleLockToggle = async (e) => {
     e.stopPropagation();
@@ -670,30 +758,51 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 2. BHARAT PACS ID */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200">
         <div className="flex items-center justify-center gap-1.5">
-          <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
-            {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
+          <span className="text-xs font-mono font-semibold text-slate-700 truncate">
+            {study.bharatPacsId}
           </span>
-          <button
-            onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-            className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+          <button onClick={() => copyToClipboard(study.bharatPacsId, 'BP ID')}>
+            <Copy className="w-3.5 h-3.5 text-slate-500" />
           </button>
+          
+          {/* ✅ NEW: Active Viewer Indicator */}
+          {hasActiveViewers && (
+            <div 
+              className="relative group"
+              title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}
+            >
+              <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {activeViewers.length}
+              </span>
+              
+              {/* Tooltip on hover */}
+              <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50">
+                {activeViewers.map(v => (
+                  <div key={v.userId}>{v.userName} ({v.mode})</div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </td>
 
       {/* 3. ORGANIZATION */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
-        <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
-          {study.organizationName || '-'}
-        </div>
-      </td>
+      {/* 3. ORGANIZATION - Only for super_admin */}
+{(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
+    <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
+      {study.organizationName || '-'}
+    </div>
+  </td>
+)}
 
       {/* 4. CENTER NAME */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
+        <div className="text-xs font-bold text-center text-slate-900 truncate"
+ title={study.centerName}>
           {study.centerName || '-'}
         </div>
       </td>
@@ -727,7 +836,7 @@ const handleOHIFReporting = async () => {
           className="w-full text-left hover:underline decoration-gray-900"
           onClick={() => onPatienIdClick?.(study.patientId, study)}
         >
-          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
+          <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
             {study.patientName || '-'}
             {isUrgent && <span className="text-rose-500">●</span>}
             {isRejected && <span className="text-rose-600" title={`Rejected: ${rejectionReason}`}>🚫</span>}
@@ -782,10 +891,19 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 10. SERIES/IMAGES */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-        <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
-        <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-      </td>
+      <td
+  className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top"
+  style={{ width: `${getColumnWidth('studySeriesImages')}px` }}
+>
+  <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug">
+    {study.studyDescription || 'N/A'}
+  </div>
+
+  <div className="text-xs font-semibold text-slate-800 mt-1">
+    S: {study.seriesCount || 0} / {study.instanceCount || 0}
+  </div>
+</td>
+
 
       {/* 11. PT ID */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientId')}px` }}>
@@ -805,58 +923,65 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 13. CLINICAL HISTORY */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
-        <div 
-          className="text-xs text-slate-700 leading-relaxed" 
-          style={{
-            whiteSpace: 'normal',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word'
-          }}
-        >
+  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+        <div className="text-xs font-bold text-slate-700 line-clamp-2 uppercase" title={study.clinicalHistory}>
           {study.clinicalHistory || '-'}
         </div>
 
-        <div className="flex items-center gap-4 mt-3">
-          <button
-            onClick={() => onEditPatient?.(study)}
-            className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
-          >
-            <Edit className="w-4 h-4" />
-            Edit
-          </button>
+  {/* Action Buttons */}
+  <div className="flex items-center gap-4 mt-3">
+    <button
+      onClick={() => onEditPatient?.(study)}
+      className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors"
+    >
+      <Edit className="w-4 h-4" />
+      Edit
+    </button>
 
-          <button
-            onClick={() => onShowDocuments?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
-              hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
-          >
-            <Paperclip className={`w-4 h-4 ${
-              hasAttachments ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-            
-            {hasAttachments && study.attachments.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                {study.attachments.length}
-              </span>
-            )}
-          </button>
+    <button
+      onClick={() => onShowDocuments?.(study._id)}
+      className={`p-2 rounded-lg transition-all hover:scale-105 relative ${
+        hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'
+      }`}
+      title={
+        hasAttachments
+          ? `${study.attachments.length} attachment(s)`
+          : 'Manage attachments'
+      }
+    >
+      <Paperclip
+        className={`w-4 h-4 ${
+          hasAttachments ? 'text-slate-900' : 'text-slate-400'
+        }`}
+      />
 
-          <button
-            onClick={() => onShowStudyNotes?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-              hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
-          >
-            <MessageSquare className={`w-4 h-4 ${
-              hasNotes ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-          </button>
-        </div>
-      </td>
+      {hasAttachments && study.attachments.length > 0 && (
+        <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+          {study.attachments.length}
+        </span>
+      )}
+    </button>
+
+    <button
+      onClick={() => onShowStudyNotes?.(study._id)}
+      className={`p-2 rounded-lg transition-all hover:scale-105 ${
+        hasNotes ? 'bg-slate-200' : 'hover:bg-slate-100'
+      }`}
+      title={
+        hasNotes
+          ? `${study.discussions?.length || 1} note(s)`
+          : 'No notes'
+      }
+    >
+      <MessageSquare
+        className={`w-4 h-4 ${
+          hasNotes ? 'text-slate-900' : 'text-slate-400'
+        }`}
+      />
+    </button>
+  </div>
+</td>
+
 
       {/* 14. STUDY DATE/TIME */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
@@ -865,10 +990,14 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 15. UPLOAD DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
-        <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
-      </td>
+   <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+    <div className="text-[11px] font-medium text-slate-800">
+        {formatDate(study.uploadDate || study.createdAt)}
+    </div>
+    <div className="text-[10px] text-slate-500">
+        {study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}
+    </div>
+</td>
 
 <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
   <div className="relative">
@@ -980,53 +1109,60 @@ const handleOHIFReporting = async () => {
 
       {/* 19. PRINT COUNT */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
-        {study.printInfo && study.printInfo.totalPrints > 0 ? (
-          <div className="flex flex-col items-center gap-1">
-            {/* Print Button with Count */}
-            <button
-              onClick={() => onViewReport?.(study)}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:scale-105 shadow-sm ${
-                study.printInfo.totalPrints === 1 
-                  ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-300 hover:from-emerald-100 hover:to-green-100' 
-                  : 'bg-gradient-to-r from-rose-50 to-red-50 border border-rose-300 hover:from-rose-100 hover:to-red-100'
-              }`}
-              title={`${study.printInfo.totalPrints} print${study.printInfo.totalPrints > 1 ? 's' : ''} - Last: ${formatDate(study.printInfo.lastPrintedAt)}`}
-            >
-              <Printer className={`w-3.5 h-3.5 ${
-                study.printInfo.totalPrints === 1 ? 'text-emerald-600' : 'text-rose-600'
-              }`} />
-              <span className={`text-xs font-bold ${
-                study.printInfo.totalPrints === 1 ? 'text-emerald-700' : 'text-rose-700'
-              }`}>
-                {study.printInfo.totalPrints}
-              </span>
-            </button>
-            
-            {/* Print Date & Time */}
-            <div className="text-[10px] text-slate-500 text-center">
-              <div className="font-medium">{formatDate(study.printInfo.lastPrintedAt)}</div>
-              <div>{formatTime(study.printInfo.lastPrintedAt)}</div>
-            </div>
-            
-            {/* First print indicator if reprinted */}
-            {study.printInfo.totalPrints > 1 && study.printInfo.firstPrintedAt && (
-              <div className="text-[9px] text-slate-400 flex items-center gap-0.5">
-                <Clock className="w-2.5 h-2.5" />
-                <span>First: {formatDate(study.printInfo.firstPrintedAt)}</span>
-              </div>
-            )}
-          </div>
-        ) : (
-          <button
-            onClick={() => onViewReport?.(study)}
-            className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
-            title="No prints yet - Click to view report"
-          >
-            <Printer className="w-4 h-4" />
-            <span className="text-[10px]">No prints</span>
-          </button>
-        )}
-      </td>
+  {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
+    <div className="flex flex-col items-center gap-1">
+      
+      <button
+          onClick={() => handleDirectPrint(study)}
+          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
+          title="Print Report"
+      >
+          <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+      </button>
+      
+      {/* Print Date & Time */}
+      <div className="text-[10px] text-slate-500 text-center">
+        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+        <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+      </div>
+      
+      {/* Printed By */}
+      {study.lastPrintedBy && (
+        <div className="text-[9px] text-slate-600 font-medium">
+          By: {study.lastPrintedBy}
+        </div>
+      )}
+      
+      {/* Print Type Badge */}
+      {study.lastPrintType && (
+        <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${
+          study.lastPrintType === 'reprint' 
+            ? 'bg-rose-100 text-rose-700' 
+            : 'bg-emerald-100 text-emerald-700'
+        }`}>
+          {study.lastPrintType.toUpperCase()}
+        </span>
+      )}
+      
+      {/* First print indicator if reprinted - fallback to printInfo if exists */}
+      {((study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt) && (
+        <div className="text-[9px] text-slate-400 flex items-center gap-0.5">
+          <Clock className="w-2.5 h-2.5" />
+          <span>First: {formatDate(study.printInfo.firstPrintedAt)}</span>
+        </div>
+      )}
+    </div>
+  ) : (
+    <button
+      onClick={() => handleDirectPrint(study)}
+      className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
+      title="No prints yet - Click to print report"
+    >
+      <Printer className="w-4 h-4" />
+      <span className="text-[10px]">No prints</span>
+    </button>
+  )}
+</td>
 
       <td className="px-3 py-3.5 border-r border-slate-200" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
         {isRejected ? (
@@ -1059,14 +1195,32 @@ const handleOHIFReporting = async () => {
       </td>
 
       {/* 21. VERIFIED DATE/TIME */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">
-          {formatDate(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-        </div>
-        <div className="text-[10px] text-slate-500">
-          {formatTime(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-        </div>
-      </td>
+ <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+  <div className="text-[11px] font-medium text-slate-800">
+    {(() => {
+      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
+      if (!ts) return '-';
+      try {
+        const d = new Date(ts);
+        return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
+      } catch {
+        return '-';
+      }
+    })()}
+  </div>
+  <div className="text-[10px] text-slate-500">
+    {(() => {
+      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
+      if (!ts) return '-';
+      try {
+        const d = new Date(ts);
+        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
+      } catch {
+        return '-';
+      }
+    })()}
+  </div>
+</td>
 
             
       {/* 22. ACTIONS - ALL ADMIN OPTIONS */}
@@ -1381,6 +1535,10 @@ const WorklistTable = ({
     []
   );
 
+  const [activeViweres, setActiveViewers] = useState({});
+  const { sendMessage, lastMessage, readyState } = useWebSocket();
+
+
   const [detailedView, setDetailedView] = useState({ show: false, studyId: null });
   const [reportModal, setReportModal] = useState({ show: false, studyId: null, studyData: null });
   const [studyNotes, setStudyNotes] = useState({ show: false, studyId: null });
@@ -1390,6 +1548,64 @@ const WorklistTable = ({
 
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
   const[printModal, setPrintModal] = useState({ show: false, report: false });
+
+
+  useEffect(() => {
+    if (readyState === WebSocket.OPEN) {
+      // Subscribe to viewer updates
+      sendMessage({
+        type: 'subscribe_to_viewer_updates'
+      });
+
+      // Request current active viewers
+      sendMessage({
+        type: 'request_active_viewers'
+      });
+    }
+  }, [readyState, sendMessage]);
+
+  useEffect(() => {
+    if (!lastMessage) return;
+
+    const message = JSON.parse(lastMessage.data);
+
+    switch (message.type) {
+      case 'study_viewer_opened':
+        setActiveViewers(prev => {
+          const studyId = message.data.studyId;
+          const viewers = prev[studyId] || [];
+          if (!viewers.find(v => v.userId === message.data.userId)) {
+            return {
+              ...prev,
+              [studyId]: [...viewers, {
+                userId: message.data.userId,
+                userName: message.data.userName,
+                mode: message.data.mode
+              }]
+            };
+          }
+          return prev;
+        });
+        break;
+
+      case 'study_viewer_closed':
+        setActiveViewers(prev => {
+          const studyId = message.data.studyId;
+          const viewers = (prev[studyId] || []).filter(v => v.userId !== message.data.userId);
+          if (viewers.length === 0) {
+            const { [studyId]: removed, ...rest } = prev;
+            return rest;
+          }
+          return { ...prev, [studyId]: viewers };
+        });
+        break;
+
+      case 'active_viewers_list':
+        setActiveViewers(message.data);
+        break;
+    }
+  }, [lastMessage]);
+
 
   const handleShowTimeline = useCallback((study) => {
     setTimelineModal({ show: true, studyId: study._id, studyData: study });
@@ -1425,9 +1641,48 @@ const handleRevertSuccess = useCallback(() => {
   window.location.reload();
 }, []);
 
-const handleShowPrintModal = useCallback((report) => {
-  setPrintModal({ show: true, report });
-}, []);  
+const handleDirectPrint = useCallback(async (study) => {
+    try {
+        console.log('🖨️ [Direct Print] Fetching report for study:', study._id);
+        
+        // ✅ VALIDATE WORKFLOW STATUS FIRST
+        const allowedStatuses = ['report_reprint_needed', 'report_completed', 'reprint_requested'];
+        if (!allowedStatuses.includes(study.workflowStatus)) {
+            toast.error(`Cannot print report in "${study.workflowStatus}" status. Only completed or reprint-requested reports can be printed.`);
+            console.log('❌ [Direct Print] Invalid status:', study.workflowStatus);
+            return;
+        }
+        
+        // Fetch the latest report for this study
+        const response = await api.get(`/reports/studies/${study._id}`);
+        
+        if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
+            toast.error('No report found for this study');
+            return;
+        }
+        
+        // Get the latest finalized report
+        const reports = response.data.data.reports;
+        const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+        
+        if (!latestReport) {
+            toast.error('No finalized report available');
+            return;
+        }
+        
+        console.log('✅ [Direct Print] Opening print modal for report:', latestReport._id);
+        
+        // Open print modal directly
+        setPrintModal({
+            show: true,
+            report: latestReport
+        });
+        
+    } catch (error) {
+        console.error('❌ [Direct Print] Error:', error);
+        toast.error('Failed to load report for printing');
+    }
+}, []); 
 
 const handleClosePrintModal = useCallback(() => {
   setPrintModal({ show: false, report: false });
@@ -1527,15 +1782,17 @@ const handleClosePrintModal = useCallback(() => {
                 maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
               />
               
-              {/* 3. ORGANIZATION */}
-              <ResizableTableHeader
-                columnId="organization"
-                label="ORGANIZATION"
-                width={getColumnWidth('organization')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
-              />
+              {/* 3. ORGANIZATION - Only for super_admin */}
+              {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+                <ResizableTableHeader
+                  columnId="organization"
+                  label="ORGANIZATION"
+                  width={getColumnWidth('organization')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
+                />
+              )}
               
               {/* 4. CENTER NAME */}
               <ResizableTableHeader
@@ -1770,6 +2027,7 @@ const handleClosePrintModal = useCallback(() => {
               <StudyRow
                 key={study._id}
                 study={study}
+                activeViewers={activeViweres[study._id] || []} // ✅ Pass viewers
                 index={index}
                 selectedStudies={selectedStudies}
                 availableAssignees={availableAssignees}
@@ -1786,6 +2044,8 @@ const handleClosePrintModal = useCallback(() => {
                 onToggleLock={handleToggleStudyLock}
                 onShowDocuments={handleShowDocuments}
                 onShowRevertModal={handleShowRevertModal} // ✅ ADD THIS
+                  setPrintModal={setPrintModal}  // ✅ ADD THIS LINE
+
 
                 userRole={userRole}
                 userRoles={userAccountRoles}
@@ -1810,7 +2070,7 @@ const handleClosePrintModal = useCallback(() => {
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
 
 
-      {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onShowPrintModal={handleShowPrintModal} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
+      {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onShowPrintModal={handleDirectPrint} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
 
 
       {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}

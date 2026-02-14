@@ -166,6 +166,7 @@ const LabDashboard = () => {
     setLoading(true);
     setError(null);
     
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
@@ -176,44 +177,36 @@ const LabDashboard = () => {
       const params = { 
         ...activeFilters,
         page: requestPage,
-        limit: requestLimit
+        limit: requestLimit,
+        labId: currentUser.lab._id
       };
-      delete params.category;
       
-      console.log('🔍 [Lab] Fetching studies:', {
-        endpoint,
-        params,
-        currentView,
-        labId: currentUser.lab
-      });
+      console.log('🔍 LAB: Fetching studies from:', endpoint, 'with params:', params);
       
       const response = await api.get(endpoint, { params });
-      
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
-        // ✅ UPDATE PAGINATION
-        if (response.data.pagination) {
-          setPagination(response.data.pagination);
-        }
-        
-        console.log('✅ [Lab] Studies fetched:', {
-          raw: rawStudies.length,
-          formatted: formattedStudies.length,
-          pagination: response.data.pagination
+        // ✅ CRITICAL: Update pagination with our REQUESTED values
+        setPagination({
+          currentPage: requestPage,
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          recordsPerPage: requestLimit,
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
         });
       }
     } catch (err) {
-      console.error('❌ [Lab] Error fetching studies:', err);
+      console.error('❌ Error fetching lab studies:', err);
       setError('Failed to fetch studies.');
       setStudies([]);
-      toast.error('Failed to fetch studies');
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView, pagination.currentPage, pagination.recordsPerPage, currentUser.lab]);
+  }, [getApiEndpoint, searchFilters, currentView, currentUser.lab]);
 
   // ✅ FETCH ANALYTICS
   const fetchAnalytics = useCallback(async (filters = {}) => {
@@ -272,11 +265,12 @@ const LabDashboard = () => {
 
   // ✅ FETCH WHEN VIEW CHANGES
   useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
     if (Object.keys(searchFilters).length === 0) {
       return;
     }
     
-    console.log(`🔄 [Lab] View changed to: ${currentView}`);
+    console.log(`🔄 [Lab] currentView changed to: ${currentView}`);
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
   }, [currentView]);
 

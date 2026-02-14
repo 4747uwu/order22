@@ -152,18 +152,21 @@ const VerifierDashboard = () => {
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
+  // ✅ FETCH STUDIES WITH PAGINATION (lines 156-207)
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
     
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
     try {
       const endpoint = getApiEndpoint();
+      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
       const params = { 
-        ...filters,
+        ...activeFilters,
         page: requestPage,
         limit: requestLimit,
         category: currentView === 'all' ? undefined : currentView 
@@ -175,7 +178,6 @@ const VerifierDashboard = () => {
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         
-        // ✅ FORMAT STUDIES BEFORE SETTING STATE
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         console.log('✅ VERIFIER: Formatted studies:', {
           raw: rawStudies.length,
@@ -185,16 +187,15 @@ const VerifierDashboard = () => {
         
         setStudies(formattedStudies);
         
-        if (response.data.pagination) {
-          setPagination({
-            currentPage: response.data.pagination.currentPage,
-            totalPages: response.data.pagination.totalPages,
-            totalRecords: response.data.pagination.totalRecords,
-            recordsPerPage: response.data.pagination.limit,
-            hasNextPage: response.data.pagination.hasNextPage,
-            hasPrevPage: response.data.pagination.hasPrevPage
-          });
-        }
+        // ✅ CRITICAL: Update pagination with our REQUESTED values
+        setPagination({
+          currentPage: requestPage, // Use what we REQUESTED
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          recordsPerPage: requestLimit, // Use what we REQUESTED
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
+        });
       }
     } catch (err) {
       console.error('❌ Error fetching verifier studies:', err);
@@ -203,7 +204,7 @@ const VerifierDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, currentView, pagination.currentPage, pagination.recordsPerPage]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ KEEP searchFilters and currentView
 
   // ✅ SIMPLIFIED: Fetch analytics for 3 categories
   const fetchAnalytics = useCallback(async (filters = {}) => {
@@ -232,25 +233,46 @@ const VerifierDashboard = () => {
     }
   }, [searchFilters]);
 
-  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
+  // ✅ INITIAL DATA FETCH - Load saved filters or use defaults
   useEffect(() => {
-    const defaultFilters = {
-      dateFilter: 'today',
-      dateType: 'createdAt',
-      modality: 'all',
-      priority: 'all'
-    };
-    
+    const savedFilters = localStorage.getItem('verifierSearchFilters');
+    const defaultFilters = savedFilters 
+      ? JSON.parse(savedFilters)
+      : {
+          dateFilter: 'today',
+          dateType: 'createdAt',
+          modality: 'all',
+          priority: 'all'
+        };
+      
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
     fetchAnalytics(defaultFilters);
   }, []);
 
-  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  // ✅ Save filters whenever they change (exclude search term)
   useEffect(() => {
+    if (Object.keys(searchFilters).length > 0) {
+      try {
+        const filtersToSave = { ...searchFilters };
+        delete filtersToSave.search; // ✅ Don't persist search term
+        localStorage.setItem('verifierSearchFilters', JSON.stringify(filtersToSave));
+      } catch (error) {
+        console.warn('Error saving filters:', error);
+      }
+    }
+  }, [searchFilters]);
+
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES (lines 265-270)
+  useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
     console.log(`🔄 [Verifier] currentView changed to: ${currentView}`);
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
   // Auto-refresh every 5 minutes
   useEffect(() => {
@@ -267,15 +289,19 @@ const VerifierDashboard = () => {
     };
   }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
 
-  // ✅ HANDLE PAGE CHANGE
+  // ✅ HANDLE PAGE CHANGE (lines 285-289)
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Verifier] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
-  }, [fetchStudies, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+  }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
-  // ✅ HANDLE RECORDS PER PAGE CHANGE
+  // ✅ HANDLE RECORDS PER PAGE CHANGE (lines 291-295)
   const handleRecordsPerPageChange = useCallback((newLimit) => {
     console.log(`📊 [Verifier] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
   }, [fetchStudies, searchFilters]);
 
@@ -397,12 +423,14 @@ const VerifierDashboard = () => {
       />
       
       <Search
-        onSearch={handleSearch}
-        onFilterChange={handleFilterChange}
-        loading={loading}
-        totalStudies={tabCounts.all}
-        currentCategory={currentView}
-      />
+  onSearch={handleSearch}
+  onFilterChange={handleFilterChange}
+  loading={loading}
+  totalStudies={tabCounts.all}
+  currentCategory={currentView}
+  initialFilters={searchFilters}
+  onRefresh={handleRefresh}
+/>
 
       <div className="flex-1 min-h-0 p-0 px-0">
         <div className="bg-white rounded-lg shadow-sm border border-gray-400 h-full flex flex-col">

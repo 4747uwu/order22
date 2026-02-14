@@ -147,7 +147,7 @@ export const downloadAnonymizedStudy = async (req, res) => {
             throw new Error('Anonymization timeout after 2 minutes');
         }
 
-        // ✅ Stream the ZIP file through backend
+        // ✅ FIX: Get the archive as a stream with proper headers
         const archiveResponse = await axios.get(
             `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}/archive`,
             {
@@ -159,15 +159,35 @@ export const downloadAnonymizedStudy = async (req, res) => {
 
         const filename = `${study.bharatPacsId || study._id}_anonymized.zip`;
 
-        // Set headers for download
+        // ✅ FIX: Set CORS and download headers BEFORE streaming
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        
+        // ✅ FIX: Set Content-Length if available
+        if (archiveResponse.headers['content-length']) {
+            res.setHeader('Content-Length', archiveResponse.headers['content-length']);
+        }
 
-        // Pipe the stream to response
+        // ✅ FIX: Handle stream errors
+        archiveResponse.data.on('error', (streamError) => {
+            console.error('❌ Stream error:', streamError);
+            if (!res.headersSent) {
+                res.status(500).json({
+                    success: false,
+                    message: 'Stream error during download'
+                });
+            }
+        });
+
+        // ✅ FIX: Pipe the stream to response
         archiveResponse.data.pipe(res);
 
-        // Cleanup after stream ends
+        // ✅ FIX: Cleanup ONLY after stream ends successfully
         archiveResponse.data.on('end', async () => {
+            console.log('✅ Stream completed successfully');
             try {
                 await axios.delete(
                     `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}`,
@@ -179,13 +199,24 @@ export const downloadAnonymizedStudy = async (req, res) => {
             }
         });
 
+        // ✅ FIX: Handle response close/abort
+        res.on('close', () => {
+            if (!res.writableEnded) {
+                console.warn('⚠️ Client closed connection before stream completed');
+            }
+        });
+
     } catch (error) {
         console.error('❌ Error downloading anonymized study:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to download anonymized study',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        
+        // ✅ FIX: Only send JSON error if headers not sent
+        if (!res.headersSent) {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to download anonymized study',
+                error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            });
+        }
     }
 };
 

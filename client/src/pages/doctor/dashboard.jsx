@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { FileText, Clock, CheckCircle2, Edit3, RotateCcw, XCircle, UserPlus } from 'lucide-react';
@@ -132,18 +132,21 @@ const DoctorDashboard = () => {
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION
+  // ✅ FETCH STUDIES WITH PAGINATION (lines 137-184)
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
     
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
     try {
       const endpoint = getApiEndpoint();
+      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
       const params = { 
-        ...filters,
+        ...activeFilters,
         page: requestPage,
         limit: requestLimit
       };
@@ -154,7 +157,6 @@ const DoctorDashboard = () => {
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         
-        // ✅ FORMAT STUDIES BEFORE SETTING STATE
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         console.log('✅ DOCTOR: Formatted studies:', {
           raw: rawStudies.length,
@@ -164,16 +166,15 @@ const DoctorDashboard = () => {
         
         setStudies(formattedStudies);
         
-        if (response.data.pagination) {
-          setPagination({
-            currentPage: response.data.pagination.currentPage,
-            totalPages: response.data.pagination.totalPages,
-            totalRecords: response.data.pagination.totalRecords,
-            recordsPerPage: response.data.pagination.limit,
-            hasNextPage: response.data.pagination.hasNextPage,
-            hasPrevPage: response.data.pagination.hasPrevPage
-          });
-        }
+        // ✅ CRITICAL: Update pagination with our REQUESTED values
+        setPagination({
+          currentPage: requestPage, // Use what we REQUESTED
+          totalPages: response.data.pagination?.totalPages || 1,
+          totalRecords: response.data.pagination?.totalRecords || 0,
+          recordsPerPage: requestLimit, // Use what we REQUESTED
+          hasNextPage: response.data.pagination?.hasNextPage || false,
+          hasPrevPage: response.data.pagination?.hasPrevPage || false
+        });
       }
     } catch (err) {
       console.error('❌ Error fetching doctor studies:', err);
@@ -182,7 +183,7 @@ const DoctorDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, pagination.currentPage, pagination.recordsPerPage]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ KEEP searchFilters and currentView
 
   // ✅ FETCH CATEGORY VALUES (6 categories)
   const fetchCategoryValues = useCallback(async (filters = {}) => {
@@ -234,32 +235,50 @@ const DoctorDashboard = () => {
     fetchCategoryValues(defaultFilters);
   }, []);
 
-  // ✅ Save filters whenever they change
+  // ✅ Save filters whenever they change (exclude search term)
   useEffect(() => {
     if (Object.keys(searchFilters).length > 0) {
       try {
-        localStorage.setItem('doctorSearchFilters', JSON.stringify(searchFilters));
+        const filtersToSave = { ...searchFilters };
+        delete filtersToSave.search; // ✅ Don't persist search term
+        localStorage.setItem('doctorSearchFilters', JSON.stringify(filtersToSave));
       } catch (error) {
         console.warn('Error saving filters:', error);
       }
     }
   }, [searchFilters]);
 
-  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
+  // Update ref whenever searchFilters changes
+  const searchFiltersRef = useRef(searchFilters);
   useEffect(() => {
-    console.log(`🔄 [Doctor] currentView changed to: ${currentView}`);
-    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]);
+    searchFiltersRef.current = searchFilters;
+  }, [searchFilters]);
 
-  // ✅ HANDLE PAGE CHANGE
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES (lines 249-253)
+  useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
+    console.log(`🔄 [Doctor] currentView changed to: ${currentView}`);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchFilters, 1, pagination.recordsPerPage);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
+
+  // ✅ HANDLE PAGE CHANGE (lines 256-260)
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Doctor] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
   }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
-  // ✅ HANDLE RECORDS PER PAGE CHANGE
+  // ✅ HANDLE RECORDS PER PAGE CHANGE (lines 263-267)
   const handleRecordsPerPageChange = useCallback((newLimit) => {
     console.log(`📊 [Doctor] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
   }, [fetchStudies, searchFilters]);
 
@@ -267,17 +286,17 @@ const DoctorDashboard = () => {
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Doctor] NEW SEARCH:', searchParams);
     setSearchFilters(searchParams);
-    fetchStudies(searchParams, 1, pagination.recordsPerPage);
+    fetchStudies(searchParams, 1, 50); // Pass explicit filters
     fetchCategoryValues(searchParams);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+  }, [fetchStudies, fetchCategoryValues]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Doctor] FILTER CHANGE:', filters);
     setSearchFilters(filters);
-    fetchStudies(filters, 1, pagination.recordsPerPage);
+    fetchStudies(filters, 1, 50); // Pass explicit filters
     fetchCategoryValues(filters);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
-  
+  }, [fetchStudies, fetchCategoryValues]);
+
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Doctor] VIEW CHANGE: ${currentView} -> ${view}`);
     if (currentView !== view) {
@@ -299,9 +318,8 @@ const DoctorDashboard = () => {
 
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Doctor] Manual refresh');
-    fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
-    fetchCategoryValues(searchFilters);
-  }, [fetchStudies, fetchCategoryValues, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+    fetchStudies(null, pagination.currentPage, pagination.recordsPerPage); // null = use latest
+  }, [fetchStudies, pagination.currentPage, pagination.recordsPerPage]);
 
   const handleCreateTypist = useCallback(() => {
     console.log('👥 Opening create typist modal');
@@ -392,6 +410,7 @@ const DoctorDashboard = () => {
         currentCategory={currentView}
         theme="doctor"
         initialFilters={searchFilters}
+        onRefresh={handleRefresh}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">

@@ -705,7 +705,7 @@ const handleOHIFReporting = async () => {
       {isColumnVisible('viewOnly') && (
         <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
           <button
-            onClick={handleViewOnlyClick}
+            onClick={handleOHIFReporting}
             className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
             title="View Images Only (No Locking)"
           >

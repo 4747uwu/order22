@@ -52,18 +52,21 @@ const TypistDashboard = () => {
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION AND FORMATTING
+  // ✅ FETCH STUDIES WITH PAGINATION
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
     
+    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
     try {
       const endpoint = getApiEndpoint();
+      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
       const params = { 
-        ...filters,
+        ...activeFilters,
         page: requestPage,
         limit: requestLimit
       };
@@ -73,17 +76,16 @@ const TypistDashboard = () => {
       const response = await api.get(endpoint, { params });
       if (response.data.success) {
         const rawStudies = response.data.data || [];
-        
-        // ✅ FORMAT STUDIES
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
+        // ✅ CRITICAL: Update pagination with our REQUESTED values
         if (response.data.pagination) {
           setPagination({
-            currentPage: response.data.pagination.currentPage,
+            currentPage: requestPage,
             totalPages: response.data.pagination.totalPages,
             totalRecords: response.data.pagination.totalRecords,
-            recordsPerPage: response.data.pagination.limit,
+            recordsPerPage: requestLimit,
             hasNextPage: response.data.pagination.hasNextPage,
             hasPrevPage: response.data.pagination.hasPrevPage
           });
@@ -141,6 +143,11 @@ const TypistDashboard = () => {
 
   // ✅ FETCH WHEN VIEW CHANGES
   useEffect(() => {
+    // Skip if this is the initial mount (filters are empty)
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
     console.log(`🔄 [Typist] currentView changed to: ${currentView}`);
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
   }, [currentView]);

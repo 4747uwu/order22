@@ -57,7 +57,7 @@ services:
         - VITE_WS_URL=/ws              # ✅ Change IP  
         - VITE_ORTHANC_URL=http://206.189.133.52:8042         # ✅ Change IP
     ports:
-      - "80:80"
+      - "8080:80"
     depends_on:
       - backend
     restart: unless-stopped

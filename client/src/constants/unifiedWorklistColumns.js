@@ -366,7 +366,7 @@ export const SINGLE_ROLE_DEFAULTS = {
     'organization',
     'centerName',
     'location',              // ✅ NEW
-    'timeline',
+
     'patientName',
     'ageGender',
     'modality',
@@ -378,7 +378,7 @@ export const SINGLE_ROLE_DEFAULTS = {
     'clinicalHistory',
     'studyDateTime',
     'uploadDateTime',
-    'assignedRadiologist',
+  
     'studyLock',
     'status',
     'assignedVerifier',
@@ -520,7 +520,7 @@ export const MULTI_ROLE_DEFAULTS = {
     'organization',
     'centerName',
     'location',              // ✅ NEW
-    'timeline',
+    
     'patientName',
     'ageGender',
     'modality',

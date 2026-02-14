@@ -281,7 +281,7 @@ export const lockStudyForReporting = async (req, res) => {
             });
         }
 
-        console.log(`🔒 Attempting to lock study ${studyId} for user ${user.email}`);
+        console.log(`🔒 Attempting to lock study ${studyId} for user ${user.email} (role: ${user.role})`);
 
         // Find the study
         const study = await DicomStudy.findOne({
@@ -295,6 +295,10 @@ export const lockStudyForReporting = async (req, res) => {
                 message: 'Study not found'
             });
         }
+
+        // ✅ CHECK IF USER CAN BYPASS LOCKS
+        const canBypassLock = ['radiologist', 'typist', 'admin', 'super_admin'].includes(user.role) ||
+                             user.accountRoles?.some(role => ['radiologist', 'typist', 'admin', 'super_admin'].includes(role));
 
         // ✅ CHECK IF ALREADY LOCKED
         if (study.studyLock?.isLocked) {
@@ -315,9 +319,87 @@ export const lockStudyForReporting = async (req, res) => {
                         lockReason: study.studyLock.lockReason
                     }
                 });
+            } 
+            
+            // ✅ ALLOW BYPASS FOR RADIOLOGIST, TYPIST, ADMIN
+            if (canBypassLock) {
+                console.log(`⚠️ Study locked by ${study.studyLock.lockedByName}, but ${user.role} can bypass`);
+                
+                // Lock for current user (takeover)
+                const lockExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
+
+                const updatedStudy = await DicomStudy.findByIdAndUpdate(
+                    studyId,
+                    {
+                        $set: {
+                            'studyLock.isLocked': true,
+                            'studyLock.lockedBy': user._id,
+                            'studyLock.lockedByName': user.fullName || user.email,
+                            'studyLock.lockedByRole': user.role,
+                            'studyLock.lockedAt': new Date(),
+                            'studyLock.lockReason': 'reporting',
+                            'studyLock.lockExpiry': lockExpiry,
+                            
+                            workflowStatus: user.role === 'radiologist' ? 'doctor_opened_report' : 'report_in_progress',
+                            currentCategory: 'PENDING'
+                        },
+                        $push: {
+                            actionLog: {
+                                actionType: ACTION_TYPES.STUDY_LOCKED,
+                                actionCategory: 'lock',
+                                performedBy: user._id,
+                                performedByName: user.fullName || user.email,
+                                performedByRole: user.role,
+                                performedAt: new Date(),
+                                actionDetails: {
+                                    metadata: {
+                                        lockReason: 'reporting',
+                                        lockExpiry: lockExpiry,
+                                        sessionStart: new Date(),
+                                        bypassedPreviousLock: true,
+                                        previousLockedBy: study.studyLock.lockedByName
+                                    }
+                                },
+                                notes: `Study lock bypassed by ${user.fullName || user.email} (${user.role}) - previously locked by ${study.studyLock.lockedByName}`,
+                                ipAddress: req.ip,
+                                userAgent: req.get('user-agent')
+                            },
+                            statusHistory: {
+                                status: 'study_lock_bypassed',
+                                changedAt: new Date(),
+                                changedBy: user._id,
+                                note: `Lock bypassed by ${user.fullName || user.email} (${user.role})`
+                            }
+                        }
+                    },
+                    { new: true, runValidators: true }
+                )
+                .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
+                .lean();
+
+                console.log(`✅ Study ${studyId} lock bypassed and re-locked by ${user.email}`);
+
+                return res.json({
+                    success: true,
+                    message: 'Study lock bypassed - locked for you',
+                    bypassed: true,
+                    previousLockedBy: study.studyLock.lockedByName,
+                    data: {
+                        studyId: updatedStudy._id,
+                        bharatPacsId: updatedStudy.bharatPacsId,
+                        isLocked: true,
+                        lockedBy: user._id,
+                        lockedByName: user.fullName || user.email,
+                        lockedAt: new Date(),
+                        lockExpiry: lockExpiry,
+                        lockReason: 'reporting',
+                        workflowStatus: updatedStudy.workflowStatus,
+                        currentCategory: updatedStudy.currentCategory
+                    }
+                });
             } else {
-                // Locked by another user
-                console.log(`❌ Study locked by ${study.studyLock.lockedByName}`);
+                // Regular user - cannot bypass
+                console.log(`❌ Study locked by ${study.studyLock.lockedByName} - no bypass permission`);
                 return res.status(423).json({
                     success: false,
                     message: `Study is currently locked by ${study.studyLock.lockedByName}`,
@@ -328,7 +410,7 @@ export const lockStudyForReporting = async (req, res) => {
             }
         }
 
-        // ✅ LOCK THE STUDY
+        // ✅ LOCK THE STUDY (not previously locked)
         const lockExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
 
         const updatedStudy = await DicomStudy.findByIdAndUpdate(

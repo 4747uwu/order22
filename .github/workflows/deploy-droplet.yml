@@ -115,7 +115,7 @@ jobs:
           # Install and check ports
           apt update && apt install -y net-tools
           echo "=== Listening Ports ==="
-          netstat -tlnp | grep -E ':(80|3000|4000|8042|27017)' || echo "No services listening on target ports"
+          netstat -tlnp | grep -E ':(8080|3000|4000|8042|27017)' || echo "No services listening on target ports"
           
           # Clean up old images
           docker image prune -f
