@@ -1,7 +1,7 @@
 import DicomStudy from '../models/dicomStudyModel.js';
 import axios from 'axios';
 
-const ORTHANC_BASE_URL = process.env.ORTHANC_URL || 'http://localhost:8042';
+const ORTHANC_BASE_URL = 'http://206.189.133.52:8042';
 const ORTHANC_USERNAME = process.env.ORTHANC_USERNAME || 'alice';
 const ORTHANC_PASSWORD = process.env.ORTHANC_PASSWORD || 'alicePassword';
 const orthancAuth = 'Basic ' + Buffer.from(ORTHANC_USERNAME + ':' + ORTHANC_PASSWORD).toString('base64');
@@ -60,23 +60,36 @@ export const getCloudflareZipUrl = async (req, res) => {
     }
 };
 
-// ...existing code...
-
 // ✅ NEW: Proxy anonymized study download (stream through backend)
 export const downloadAnonymizedStudy = async (req, res) => {
     try {
         const { studyId } = req.params;
         const user = req.user;
 
+        console.log(`📥 Anonymized download request - Study: ${studyId}, User Org: ${user?.organizationIdentifier}`);
+
         const study = await DicomStudy.findOne({
             _id: studyId,
             organizationIdentifier: user.organizationIdentifier
         }).select('orthancStudyID bharatPacsId');
 
-        if (!study || !study.orthancStudyID) {
+        console.log(`🔍 Study lookup result:`, study);
+
+        if (!study) {
+            console.warn(`⚠️ Study not found: ${studyId} for org ${user.organizationIdentifier}`);
             return res.status(404).json({
                 success: false,
-                message: 'Study not found or Orthanc ID missing'
+                message: 'Study not found or access denied',
+                debug: { studyId, userOrg: user.organizationIdentifier }
+            });
+        }
+
+        if (!study.orthancStudyID) {
+            console.warn(`⚠️ Study found but orthancStudyID missing: ${studyId}`);
+            return res.status(404).json({
+                success: false,
+                message: 'Study not associated with Orthanc',
+                debug: { studyId, orthancStudyID: study.orthancStudyID }
             });
         }
 
@@ -231,7 +244,6 @@ export const downloadSeries = async (req, res) => {
     }
 };
 
-// ...existing code...
 // ✅ Cleanup anonymized study after download
 export const cleanupAnonymizedStudy = async (req, res) => {
     try {

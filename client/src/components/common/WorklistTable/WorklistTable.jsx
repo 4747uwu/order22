@@ -416,6 +416,7 @@ const StudyRow = ({
   onToggleLock,
   onShowDocuments,
   onShowRevertModal,
+  setPrintModal,
 
   userRole,
   userRoles = [],
@@ -491,6 +492,9 @@ const StudyRow = ({
     }
   }, [study.verifier]);
 
+  // ✅ NEW: Direct print handler (bypasses ReportModal)
+
+
   const rowClasses = `${
     // ✅ Emergency Case takes highest priority - full red background
     isEmergencyCase ? 'bg-red-100 border-l-4 border-l-red-600' :
@@ -531,6 +535,48 @@ const StudyRow = ({
     await onAssignmentSubmit(assignmentData);
     handleCloseAssignmentModal();
   };
+  const handleDirectPrint = useCallback(async (study) => {
+    try {
+        console.log('🖨️ [Direct Print] Fetching report for study:', study._id);
+        
+        // ✅ VALIDATE WORKFLOW STATUS FIRST
+        const allowedStatuses = ['report_reprint_needed', 'report_completed', 'reprint_requested'];
+        if (!allowedStatuses.includes(study.workflowStatus)) {
+            toast.error(`Cannot print report in "${study.workflowStatus}" status. Only completed or reprint-requested reports can be printed.`);
+            console.log('❌ [Direct Print] Invalid status:', study.workflowStatus);
+            return;
+        }
+        
+        // Fetch the latest report for this study
+        const response = await api.get(`/reports/studies/${study._id}/reports`);
+        
+        if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
+            toast.error('No report found for this study');
+            return;
+        }
+        
+        // Get the latest finalized report
+        const reports = response.data.data.reports;
+        const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+        
+        if (!latestReport) {
+            toast.error('No finalized report available');
+            return;
+        }
+        
+        console.log('✅ [Direct Print] Opening print modal for report:', latestReport._id);
+        
+        // Open print modal directly
+        setPrintModal({
+            show: true,
+            report: latestReport
+        });
+        
+    } catch (error) {
+        console.error('❌ [Direct Print] Error:', error);
+        toast.error('Failed to load report for printing');
+    }
+}, []); 
 
   const handleDownloadClick = (e) => {
     e.stopPropagation();
@@ -902,9 +948,9 @@ const StudyRow = ({
 
       {/* 15. UPLOAD DATE/TIME */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
-        <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
-      </td>
+          <div className="text-[11px] font-medium text-slate-800">{formatDate(study.createdAt)}</div>
+          <div className="text-[10px] text-slate-500">{formatTime(study.createdAt)}</div>
+        </td>
 
 <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
   <div className="relative">
@@ -1018,24 +1064,13 @@ const StudyRow = ({
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
   {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
     <div className="flex flex-col items-center gap-1">
-      {/* Print Button with Count */}
+      
       <button
-        onClick={() => onViewReport?.(study)}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all hover:scale-105 shadow-sm ${
-          (study.printCount === 1 || study.printInfo?.totalPrints === 1)
-            ? 'bg-gradient-to-r from-emerald-50 to-green-50 border border-emerald-300 hover:from-emerald-100 hover:to-green-100' 
-            : 'bg-gradient-to-r from-rose-50 to-red-50 border border-rose-300 hover:from-rose-100 hover:to-red-100'
-        }`}
-        title={`${study.printCount || study.printInfo?.totalPrints || 0} print${(study.printCount || study.printInfo?.totalPrints) > 1 ? 's' : ''} - Last: ${formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}`}
+          onClick={() => handleDirectPrint(study)}
+          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
+          title="Print Report"
       >
-        <Printer className={`w-3.5 h-3.5 ${
-          (study.printCount === 1 || study.printInfo?.totalPrints === 1) ? 'text-emerald-600' : 'text-rose-600'
-        }`} />
-        <span className={`text-xs font-bold ${
-          (study.printCount === 1 || study.printInfo?.totalPrints === 1) ? 'text-emerald-700' : 'text-rose-700'
-        }`}>
-          {study.printCount || study.printInfo?.totalPrints || 0}
-        </span>
+          <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
       </button>
       
       {/* Print Date & Time */}
@@ -1072,9 +1107,9 @@ const StudyRow = ({
     </div>
   ) : (
     <button
-      onClick={() => onViewReport?.(study)}
+      onClick={() => handleDirectPrint(study)}
       className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
-      title="No prints yet - Click to view report"
+      title="No prints yet - Click to print report"
     >
       <Printer className="w-4 h-4" />
       <span className="text-[10px]">No prints</span>
@@ -1541,9 +1576,48 @@ const handleRevertSuccess = useCallback(() => {
   window.location.reload();
 }, []);
 
-const handleShowPrintModal = useCallback((report) => {
-  setPrintModal({ show: true, report });
-}, []);  
+const handleDirectPrint = useCallback(async (study) => {
+    try {
+        console.log('🖨️ [Direct Print] Fetching report for study:', study._id);
+        
+        // ✅ VALIDATE WORKFLOW STATUS FIRST
+        const allowedStatuses = ['report_reprint_needed', 'report_completed', 'reprint_requested'];
+        if (!allowedStatuses.includes(study.workflowStatus)) {
+            toast.error(`Cannot print report in "${study.workflowStatus}" status. Only completed or reprint-requested reports can be printed.`);
+            console.log('❌ [Direct Print] Invalid status:', study.workflowStatus);
+            return;
+        }
+        
+        // Fetch the latest report for this study
+        const response = await api.get(`/reports/studies/${study._id}`);
+        
+        if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
+            toast.error('No report found for this study');
+            return;
+        }
+        
+        // Get the latest finalized report
+        const reports = response.data.data.reports;
+        const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+        
+        if (!latestReport) {
+            toast.error('No finalized report available');
+            return;
+        }
+        
+        console.log('✅ [Direct Print] Opening print modal for report:', latestReport._id);
+        
+        // Open print modal directly
+        setPrintModal({
+            show: true,
+            report: latestReport
+        });
+        
+    } catch (error) {
+        console.error('❌ [Direct Print] Error:', error);
+        toast.error('Failed to load report for printing');
+    }
+}, []); 
 
 const handleClosePrintModal = useCallback(() => {
   setPrintModal({ show: false, report: false });
@@ -1905,6 +1979,8 @@ const handleClosePrintModal = useCallback(() => {
                 onToggleLock={handleToggleStudyLock}
                 onShowDocuments={handleShowDocuments}
                 onShowRevertModal={handleShowRevertModal} // ✅ ADD THIS
+                  setPrintModal={setPrintModal}  // ✅ ADD THIS LINE
+
 
                 userRole={userRole}
                 userRoles={userAccountRoles}
@@ -1929,7 +2005,7 @@ const handleClosePrintModal = useCallback(() => {
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
 
 
-      {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onShowPrintModal={handleShowPrintModal} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
+      {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onShowPrintModal={handleDirectPrint} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
 
 
       {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}

@@ -118,17 +118,18 @@ export const storeDraftReport = async (req, res) => {
                 orgName: organization?.name
             });
 
-            // 4. Check if draft already exists for this study and user
-            console.log('📄 [Draft Store] Checking for existing draft');
+            // ✅ FIX: Check for ANY existing report (draft OR finalized) for this study by THIS doctor
+            console.log('📄 [Draft Store] Checking for existing report');
             let existingReport = await Report.findOne({
                 dicomStudy: studyId,
-                doctorId: currentUser._id,
-                reportStatus: 'draft'
-            }).session(session);
+                doctorId: currentUser._id
+            }).sort({ createdAt: -1 }).session(session); // Get the latest report
 
-            console.log('📄 [Draft Store] Existing draft check:', {
+            console.log('📄 [Draft Store] Existing report check:', {
                 existingReportExists: !!existingReport,
-                existingReportId: existingReport?._id
+                existingReportId: existingReport?._id,
+                existingReportStatus: existingReport?.reportStatus,
+                existingReportType: existingReport?.reportType
             });
 
             const now = new Date();
@@ -170,7 +171,7 @@ export const storeDraftReport = async (req, res) => {
 
             const reportData = {
                 // ✅ ADD: Required reportId field  
-                reportId: `RPT_${studyId}_${Date.now()}`,
+                reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
                 
                 // Core identifiers
                 organizationIdentifier: currentUser.organizationIdentifier,
@@ -251,14 +252,8 @@ export const storeDraftReport = async (req, res) => {
                 
                 // Workflow tracking
                 workflowInfo: {
-                    draftedAt: now,
-                    statusHistory: [{
-                        status: 'draft',
-                        changedAt: now,
-                        changedBy: currentUser._id,
-                        notes: 'Draft report created',
-                        userRole: currentUser.role
-                    }]
+                    draftedAt: existingReport?.workflowInfo?.draftedAt || now,
+                    statusHistory: existingReport?.workflowInfo?.statusHistory || []
                 },
                 
                 // System info
@@ -266,6 +261,15 @@ export const storeDraftReport = async (req, res) => {
                     dataSource: 'online_reporting_system'
                 }
             };
+
+            // Add status history entry
+            reportData.workflowInfo.statusHistory.push({
+                status: 'draft',
+                changedAt: now,
+                changedBy: currentUser._id,
+                notes: existingReport ? 'Draft report updated' : 'Draft report created',
+                userRole: currentUser.role
+            });
 
             // ✅ ADD: Validate report data before saving
             console.log('🔍 [Draft Store] Validating report data structure');
@@ -295,95 +299,58 @@ export const storeDraftReport = async (req, res) => {
             let savedReport;
 
             if (existingReport) {
-                // Update existing draft
-                console.log('📝 [Draft Store] Updating existing draft:', existingReport._id);
-                
+                // ✅ Update the SAME report to finalized status
+                console.log('📝 [Finalize Store] Converting existing report to finalized:', existingReport._id, `(was ${existingReport.reportStatus})`);
                 Object.assign(existingReport, reportData);
-                existingReport.workflowInfo.statusHistory.push({
-                    status: 'draft',
-                    changedAt: now,
-                    changedBy: currentUser._id,
-                    notes: 'Draft report updated',
-                    userRole: currentUser.role
-                });
-                
                 savedReport = await existingReport.save({ session });
-                console.log('✅ [Draft Store] Existing draft updated successfully');
+                console.log('✅ [Finalize Store] Existing report converted to finalized successfully');
             } else {
-                // Create new draft
-                console.log('📝 [Draft Store] Creating new draft report');
+                // ✅ Only create new if no existing report found (edge case)
+                console.log('📝 [Finalize Store] Creating new finalized report (no draft found)');
                 savedReport = new Report(reportData);
                 await savedReport.save({ session });
-                console.log('✅ [Draft Store] New draft created successfully');
+                console.log('✅ [Finalize Store] New finalized report created successfully');
             }
 
             // 5. Update DicomStudy with report reference
             console.log('🔄 [Draft Store] Updating study report status');
             await updateStudyReportStatus(study, savedReport, session);
 
-            // ✅ UPDATE WORKFLOW STATUS DIRECTLY (in same transaction)
+            // ✅ CRITICAL FIX: Set workflow status to report_drafted (NOT verification_pending)
             console.log('🔄 [Draft Store] Updating workflow status to report_drafted');
 
-            // Check if verification is required
-            const doctorInfo = await mongoose.model('Doctor').findOne({ 
-                userAccount: currentUser._id 
-            }).select('requireReportVerification').session(session);
-
-            const requiresVerification = study.sourceLab?.settings?.requireReportVerification || 
-                                        doctorInfo?.requireReportVerification;
-
-            console.log('📋 [Draft Store] Verification required:', requiresVerification);
-
-            // const now = new Date();
-
-            if (requiresVerification) {
-                study.workflowStatus = 'verification_pending';
-                study.currentCategory = 'VERIFICATION_PENDING';
-                
-                if (!study.reportInfo) study.reportInfo = {};
-                study.reportInfo.sentForVerificationAt = now;
-            } else {
-                study.workflowStatus = 'report_completed';
-                study.currentCategory = 'COMPLETED';
-                
-                if (!study.reportInfo) study.reportInfo = {};
-                study.reportInfo.completedAt = now;
-                study.reportInfo.completedWithoutVerification = true;
-            }
+            study.workflowStatus = 'report_drafted';
+            study.currentCategory = 'DRAFT';
+            
+            if (!study.reportInfo) study.reportInfo = {};
+            study.reportInfo.draftedAt = now;
+            study.reportInfo.reporterName = currentUser.fullName;
 
             // Add to status history
             if (!study.statusHistory) {
                 study.statusHistory = [];
             }
             study.statusHistory.push({
-                status: study.workflowStatus,
+                status: 'report_drafted',
                 changedAt: now,
                 changedBy: currentUser._id,
-                note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`
+                note: `Draft report ${existingReport ? 'updated' : 'created'} by ${currentUser.fullName}`
             });
 
-            // Update report info
-            study.reportInfo.finalizedAt = now;
-            study.reportInfo.reporterName = currentUser.fullName;
-
-            // Save the study (already has report references from updateStudyReportStatus)
+            // Save the study
             await study.save({ session });
-            console.log('✅ [Draft Store] Workflow status updated to:', study.workflowStatus);
+            console.log('✅ [Draft Store] Workflow status updated to: report_drafted');
 
             // ✅ COMMIT TRANSACTION
             console.log('💾 [Draft Store] Committing transaction');
             await session.commitTransaction();
 
-            const workflowResult = {
-                currentStatus: study.workflowStatus,
-                requiresVerification: requiresVerification
-            };
-
             console.log('✅ [Draft Store] Draft report stored successfully:', {
                 reportId: savedReport._id,
                 reportType: savedReport.reportType,
                 reportStatus: savedReport.reportStatus,
-                fileName: savedReport.exportInfo.fileName
+                fileName: savedReport.exportInfo.fileName,
+                studyWorkflowStatus: 'report_drafted'
             });
 
             res.status(200).json({
@@ -396,7 +363,8 @@ export const storeDraftReport = async (req, res) => {
                     reportType: savedReport.reportType,
                     reportStatus: savedReport.reportStatus,
                     createdAt: savedReport.createdAt,
-                    downloadUrl: savedReport.exportInfo.downloadUrl
+                    downloadUrl: savedReport.exportInfo.downloadUrl,
+                    studyWorkflowStatus: 'report_drafted'
                 }
             });
 
@@ -419,6 +387,7 @@ export const storeDraftReport = async (req, res) => {
     }
 };
 
+// ✅ FIXED storeFinalizedReport - Updates same report from draft to finalized
 export const storeFinalizedReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -533,17 +502,18 @@ export const storeFinalizedReport = async (req, res) => {
                 orgName: organization?.name
             });
 
-            // 4. Check if draft already exists for this study and user
-            console.log('📄 [Finalize Store] Checking for existing draft to convert');
+            // ✅ CRITICAL FIX: Find ANY existing report for this study by this doctor
+            console.log('📄 [Finalize Store] Checking for existing report to finalize');
             let existingReport = await Report.findOne({
                 dicomStudy: studyId,
-                doctorId: currentUser._id,
-                reportStatus: 'draft'
-            }).session(session);
+                doctorId: currentUser._id
+            }).sort({ createdAt: -1 }).session(session); // Get the latest report
 
-            console.log('📄 [Finalize Store] Existing draft check:', {
+            console.log('📄 [Finalize Store] Existing report check:', {
                 existingReportExists: !!existingReport,
-                existingReportId: existingReport?._id
+                existingReportId: existingReport?._id,
+                existingReportStatus: existingReport?.reportStatus,
+                existingReportType: existingReport?.reportType
             });
 
             const now = new Date();
@@ -593,7 +563,7 @@ export const storeFinalizedReport = async (req, res) => {
                 studyInstanceUID: study.studyInstanceUID || study.orthancStudyID || studyId.toString(),
                 orthancStudyID: study.orthancStudyID,
                 accessionNumber: study.accessionNumber,
-                createdBy: currentUser._id,
+                createdBy: existingReport?.createdBy || currentUser._id,
                 doctorId: currentUser._id,
                 reportContent: {
                     htmlContent: reportContent,
@@ -612,7 +582,8 @@ export const storeFinalizedReport = async (req, res) => {
                     statistics: {
                         wordCount: reportContent.split(/\s+/).length,
                         characterCount: reportContent.length,
-                        pageCount: 1
+                        pageCount: 1,
+                        imageCount: capturedImages.length
                     }
                 },
                 reportType: 'finalized',
@@ -689,12 +660,14 @@ export const storeFinalizedReport = async (req, res) => {
             let savedReport;
 
             if (existingReport) {
-                console.log('📝 [Finalize Store] Converting existing draft to finalized:', existingReport._id);
+                // ✅ Update the SAME report to finalized status
+                console.log('📝 [Finalize Store] Converting existing report to finalized:', existingReport._id, `(was ${existingReport.reportStatus})`);
                 Object.assign(existingReport, reportData);
                 savedReport = await existingReport.save({ session });
-                console.log('✅ [Finalize Store] Existing draft converted to finalized successfully');
+                console.log('✅ [Finalize Store] Existing report converted to finalized successfully');
             } else {
-                console.log('📝 [Finalize Store] Creating new finalized report');
+                // ✅ Only create new if no existing report found (edge case)
+                console.log('📝 [Finalize Store] Creating new finalized report (no draft found)');
                 savedReport = new Report(reportData);
                 await savedReport.save({ session });
                 console.log('✅ [Finalize Store] New finalized report created successfully');
@@ -704,8 +677,8 @@ export const storeFinalizedReport = async (req, res) => {
             console.log('🔄 [Finalize Store] Updating study report status');
             await updateStudyReportStatus(study, savedReport, session);
 
-            // ✅ UPDATE WORKFLOW STATUS DIRECTLY (in same transaction)
-            console.log('🔄 [Finalize Store] Updating workflow status to report_finalized');
+            // ✅ UPDATE WORKFLOW STATUS BASED ON VERIFICATION REQUIREMENT
+            console.log('🔄 [Finalize Store] Updating workflow status');
 
             // Check if verification is required
             const doctorInfo = await mongoose.model('Doctor').findOne({ 
@@ -717,20 +690,22 @@ export const storeFinalizedReport = async (req, res) => {
 
             console.log('📋 [Finalize Store] Verification required:', requiresVerification);
 
-            // const now = new Date();
-
             if (requiresVerification) {
                 study.workflowStatus = 'verification_pending';
                 study.currentCategory = 'VERIFICATION_PENDING';
                 
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.sentForVerificationAt = now;
+                study.reportInfo.finalizedAt = now;
+                study.reportInfo.reporterName = currentUser.fullName;
             } else {
                 study.workflowStatus = 'report_completed';
                 study.currentCategory = 'COMPLETED';
                 
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.completedAt = now;
+                study.reportInfo.finalizedAt = now;
+                study.reportInfo.reporterName = currentUser.fullName;
                 study.reportInfo.completedWithoutVerification = true;
             }
 
@@ -742,12 +717,8 @@ export const storeFinalizedReport = async (req, res) => {
                 status: study.workflowStatus,
                 changedAt: now,
                 changedBy: currentUser._id,
-                note: `Report ${existingReport ? 'finalized from draft' : 'created and finalized'} by ${currentUser.fullName}`
+                note: `Report finalized by ${currentUser.fullName}${requiresVerification ? ' - sent for verification' : ' - completed'}`
             });
-
-            // Update report info
-            study.reportInfo.finalizedAt = now;
-            study.reportInfo.reporterName = currentUser.fullName;
 
             // Save the study (already has report references from updateStudyReportStatus)
             await study.save({ session });
@@ -757,18 +728,13 @@ export const storeFinalizedReport = async (req, res) => {
             console.log('💾 [Finalize Store] Committing transaction');
             await session.commitTransaction();
 
-            const workflowResult = {
-                currentStatus: study.workflowStatus,
-                requiresVerification: requiresVerification
-            };
-
             console.log('✅ [Finalize Store] Finalized report stored successfully:', {
                 reportId: savedReport._id,
                 reportType: savedReport.reportType,
                 reportStatus: savedReport.reportStatus,
                 fileName: savedReport.exportInfo.fileName,
-                studyWorkflowStatus: workflowResult?.currentStatus || 'unknown',
-                requiresVerification: workflowResult?.requiresVerification || false
+                studyWorkflowStatus: study.workflowStatus,
+                requiresVerification: requiresVerification
             });
 
             res.status(200).json({
@@ -781,9 +747,9 @@ export const storeFinalizedReport = async (req, res) => {
                     reportType: savedReport.reportType,
                     reportStatus: savedReport.reportStatus,
                     finalizedAt: savedReport.workflowInfo.finalizedAt,
-                    studyWorkflowStatus: workflowResult?.currentStatus || 'report_finalized',
-                    requiresVerification: workflowResult?.requiresVerification || false,
-                    nextStep: (workflowResult?.currentStatus === 'verification_pending' || workflowResult?.requiresVerification)
+                    studyWorkflowStatus: study.workflowStatus,
+                    requiresVerification: requiresVerification,
+                    nextStep: requiresVerification
                         ? 'Report sent to verifier for approval' 
                         : 'Report completed and ready for download',
                     createdAt: savedReport.createdAt

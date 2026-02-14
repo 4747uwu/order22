@@ -127,7 +127,7 @@ const DoctorDashboard = () => {
       case 'drafted': return '/doctor/studies/drafted';
       case 'completed': return '/doctor/studies/completed';
       case 'reverted': return '/doctor/studies/reverted';
-      case 'rejected': return '/doctor/studies/rejected';
+      // case 'rejected': return '/doctor/studies/rejected';
       default: return '/doctor/studies';
     }
   }, [currentView]);
@@ -369,7 +369,7 @@ const DoctorDashboard = () => {
     { key: 'drafted', label: 'Drafted', count: categoryValues.drafted },
     { key: 'completed', label: 'Completed', count: categoryValues.completed },
     { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },
-    { key: 'rejected', label: 'Rejected', count: categoryValues.rejected }
+    // { key: 'rejected', label: 'Rejected', count: categoryValues.rejected }
   ];
 
   return (

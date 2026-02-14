@@ -1015,7 +1015,7 @@ export const getCategoryValues = async (req, res) => {
             // REPRINT NEED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                workflowStatus: { $in: ['reprint_requested', 'correction_needed'] }
+                workflowStatus: { $in: ['reprint_requested', 'correction_needed', 'report_reprint_needed'] }
             }),
             
             // ✅ NEW: REVERTED - Studies reverted back to radiologist
@@ -1180,7 +1180,7 @@ export const getStudiesByCategory = async (req, res) => {
             case 'reprint-need':
                 // REPRINT NEED: Studies needing reprint/correction
                 queryFilters.workflowStatus = { 
-                    $in: ['reprint_requested', 'correction_needed'] 
+                    $in: ['reprint_requested', 'correction_needed', 'report_reprint_needed'] 
                 };
                 break;
                 

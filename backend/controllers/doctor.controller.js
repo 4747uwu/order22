@@ -436,7 +436,8 @@ export const getValues = async (req, res) => {
             
             // Sent back for revision by verifier
             reverted: [
-                'revert_to_radiologist'
+                'revert_to_radiologist',
+                'report_rejected'
             ],
             
             // Permanently rejected
@@ -643,7 +644,6 @@ export const getCompletedStudies = async (req, res) => {
     }
 };
 
-// ✅ 5. GET REVERTED STUDIES - NEW
 export const getRevertedStudies = async (req, res) => {
     try {
         const startTime = Date.now();
@@ -657,7 +657,7 @@ export const getRevertedStudies = async (req, res) => {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
 
-        const revertedStatuses = ['revert_to_radiologist'];
+        const revertedStatuses = ['revert_to_radiologist', 'report_rejected'];
         const queryFilters = buildDoctorBaseQuery(req, user, revertedStatuses);
 
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);

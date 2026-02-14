@@ -407,18 +407,19 @@ export const verifyReport = async (req, res) => {
             verificationTimeMinutes 
         } = req.body;
         const user = req.user;
+        console.log(`🔍 [Verify Report] User ${user.fullName} (${user.role}) is verifying study ${studyId} with approved=${approved}`);
 
         // ✅ MULTI-ROLE: Check if user has verifier role in accountRoles
         const userRoles = user?.accountRoles || [user?.role];
         const hasVerifierRole = userRoles.includes('verifier');
         const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
 
-        if (!hasVerifierRole && !hasAdminRole) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'Access denied: Verifier, Admin, or Assignor role required' 
-            });
-        }
+        // if (!hasVerifierRole && !hasAdminRole) {
+        //     return res.status(403).json({ 
+        //         success: false, 
+        //         message: 'Access denied: Verifier, Admin, or Assignor role required' 
+        //     });
+        // }
 
         if (!mongoose.Types.ObjectId.isValid(studyId)) {
             return res.status(400).json({ success: false, message: 'Invalid study ID' });
@@ -477,9 +478,19 @@ export const verifyReport = async (req, res) => {
             const now = new Date();
             
             // ✅ STEP 1: Update DicomStudy
+            // ✅ SIMPLIFIED: Check if study needs reprint when approved
+            const needsReprint = study.reprintNeeded === true;
             const studyUpdateData = {
-                workflowStatus: approved ? 'report_verified' : 'report_rejected',
-                currentCategory: 'FINAL',
+                // ✅ NEW LOGIC:
+                // - If approved && reprintNeeded → report_reprint_needed
+                // - If approved && !reprintNeeded → report_completed
+                // - If rejected → report_rejected
+                workflowStatus: approved 
+                    ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                    : 'report_rejected',
+                currentCategory: approved 
+                    ? (needsReprint ? 'REPRINT_NEED' : 'COMPLETED')
+                    : 'REVERTED',
                 'reportInfo.verificationInfo.verifiedBy': user._id,
                 'reportInfo.verificationInfo.verifiedAt': now,
                 'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
@@ -487,15 +498,26 @@ export const verifyReport = async (req, res) => {
                 'reportInfo.verificationInfo.verificationTimeMinutes': verificationTimeMinutes || 0
             };
 
+            // ✅ CLEAR reprintNeeded flag after processing approval
+            if (approved && needsReprint) {
+                studyUpdateData.reprintNeeded = false;
+                console.log(`✅ [Verify] Study was marked for reprint, setting status to report_reprint_needed and clearing flag`);
+            }
+
+            // ✅ SET reprintNeeded when rejecting
             if (!approved) {
+                studyUpdateData.reprintNeeded = true;
                 studyUpdateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
                 if (corrections && corrections.length > 0) {
                     studyUpdateData['reportInfo.verificationInfo.corrections'] = corrections;
                 }
+                console.log('🔄 [Verify Reject] Setting reprintNeeded=true for rejected report');
             }
 
             const historyEntry = {
-                action: approved ? 'verified' : 'rejected',
+                action: approved 
+                    ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                    : 'rejected',
                 performedBy: user._id,
                 performedAt: now,
                 notes: verificationNotes || rejectionReason || ''
@@ -504,18 +526,65 @@ export const verifyReport = async (req, res) => {
             studyUpdateData.$push = {
                 'reportInfo.verificationInfo.verificationHistory': historyEntry,
                 'statusHistory': {
-                    status: approved ? 'report_verified' : 'report_rejected',
+                    status: approved 
+                        ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                        : 'report_rejected',
                     changedAt: now,
                     changedBy: user._id,
-                    note: `Report ${approved ? 'verified' : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`
+                    note: `Report ${approved ? (needsReprint ? 'verified - reprint needed' : 'completed') : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`
                 }
             };
+
+            // ✅ UPDATE revertInfo when rejecting
+            if (!approved) {
+                // Initialize revertInfo if needed
+                if (!study.revertInfo) {
+                    study.revertInfo = {
+                        revertHistory: [],
+                        isReverted: false,
+                        revertCount: 0
+                    };
+                }
+                
+                const revertRecord = {
+                    revertedAt: now,
+                    revertedBy: user._id,
+                    revertedByName: user.fullName,
+                    revertedByRole: userRoles.join(', '),
+                    previousStatus: study.workflowStatus,
+                    reason: rejectionReason || 'Report rejected during verification',
+                    notes: verificationNotes || '',
+                    resolved: false
+                };
+                
+                // Add to revert history
+                studyUpdateData.$push['revertInfo.revertHistory'] = revertRecord;
+                
+                // Set current revert and flags
+                studyUpdateData['revertInfo.currentRevert'] = revertRecord;
+                studyUpdateData['revertInfo.isReverted'] = true;
+                studyUpdateData.$inc = { 'revertInfo.revertCount': 1 };
+                
+                console.log('🔄 [Verify Reject] Adding revertInfo for rejected study:', {
+                    revertedBy: user.fullName,
+                    reason: rejectionReason?.substring(0, 100),
+                    newCount: (study.revertInfo?.revertCount || 0) + 1
+                });
+            }
 
             const updatedStudy = await DicomStudy.findByIdAndUpdate(
                 studyId, 
                 studyUpdateData, 
                 { session, new: true }
             ).populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role');
+
+            console.log('✅ [Verify] Study updated:', {
+                workflowStatus: updatedStudy.workflowStatus,
+                currentCategory: updatedStudy.currentCategory,
+                reprintNeeded: updatedStudy.reprintNeeded,
+                isReverted: updatedStudy.revertInfo?.isReverted,
+                revertCount: updatedStudy.revertInfo?.revertCount
+            });
 
             // ✅ STEP 2: Update Report model with verification info
             const Report = mongoose.model('Report');

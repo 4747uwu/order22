@@ -101,6 +101,7 @@ const copyToClipboard = (text, label = 'ID') => {
 };
 
 // ✅ PATIENT EDIT MODAL
+
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     patientName: '',
@@ -109,20 +110,22 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     studyName: '',
     referringPhysician: '',
     accessionNumber: '',
-    clinicalHistory: ''
+    clinicalHistory: '',
+    studyPriority: 'SELECT'
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (study && isOpen) {
       setFormData({
-        patientName: study.patientName || '',
-        patientAge: study.patientAge || '',
-        patientGender: study.patientSex || '',
-        studyName: study.studyDescription || '',
-        referringPhysician: study.referralNumber || '',
+        patientName: study.patientName || study.patientInfo?.patientName || '',
+        patientAge: study.patientAge || study.patientInfo?.age || '',
+        patientGender: study.patientSex || study.patientInfo?.gender || '',
+        studyName: study.studyDescription || study.examDescription || '',
+        referringPhysician: study.referralNumber || study.referringPhysicianName || '',
         accessionNumber: study.accessionNumber || '',
-        clinicalHistory: study.clinicalHistory || ''
+        clinicalHistory: study.clinicalHistory || '',
+        studyPriority: study.studyPriority || 'SELECT'
       });
     }
   }, [study, isOpen]);
@@ -133,137 +136,244 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     
     try {
       await onSave({ studyId: study._id, ...formData });
-      toast.success('Study details updated');
+      toast.success('Study details updated successfully');
       onClose();
     } catch (error) {
-      toast.error('Failed to update');
+      toast.error('Failed to update study details');
     } finally {
       setLoading(false);
     }
   };
 
+  // Study Priority options
+  const studyPriorityOptions = [
+    { value: 'SELECT', label: 'Select Priority' },
+    { value: 'Emergency Case', label: '🚨 Emergency Case' },
+    { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
+    { value: 'MLC Case', label: '⚖️ MLC Case' },
+    { value: 'Study Exception', label: '⚠️ Study Exception' }
+  ];
+
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden border-2 border-gray-900">
-        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white">
-          <h2 className="text-lg font-bold">{study?.patientName || 'Edit Study'}</h2>
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden border-2 border-gray-900">
+        {/* Header */}
+        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold uppercase">{study?.patientName || 'Edit Study Details'}</h2>
+            <p className="text-xs text-gray-300 mt-0.5 uppercase">
+              BP ID: {study?.bharatPacsId} | MODALITY: {study?.modality}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-          <div className="grid grid-cols-2 gap-4">
+          
+          {/* ✅ STUDY PRIORITY SECTION ONLY */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-amber-600 text-white rounded-full flex items-center justify-center text-xs">!</span>
+              Study Priority
+            </h3>
+            
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Patient Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.patientName}
-                onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Patient Age <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.patientAge}
-                onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Gender <span className="text-red-500">*</span>
+              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase">
+                Priority Level
               </label>
               <select
-                value={formData.patientGender}
-                onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                required
+                value={formData.studyPriority}
+                onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
+                className={`w-full px-4 py-3 text-sm font-semibold border-2 rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-amber-600 uppercase ${
+                  formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50 text-red-700' :
+                  formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50 text-amber-700' :
+                  formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50 text-blue-700' :
+                  'border-gray-300'
+                }`}
               >
-                <option value="">Select</option>
-                <option value="M">Male</option>
-                <option value="F">Female</option>
-                <option value="O">Other</option>
+                {studyPriorityOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Study Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.studyName}
-                onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                required
-              />
+          {/* ✅ PATIENT INFORMATION SECTION */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
+              Patient Information
+            </h3>
+            
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Patient Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.patientName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  required
+                  placeholder="ENTER PATIENT NAME"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Age <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.patientAge}
+                  onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  required
+                  placeholder="E.G., 45Y"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Gender <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.patientGender}
+                  onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  required
+                >
+                  <option value="">SELECT GENDER</option>
+                  <option value="M">MALE</option>
+                  <option value="F">FEMALE</option>
+                  <option value="O">OTHER</option>
+                </select>
+              </div>
             </div>
+          </div>
 
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Referring Physician <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                value={formData.referringPhysician}
-                onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                required
-              />
+          {/* ✅ STUDY INFORMATION SECTION */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
+              Study Information
+            </h3>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Study Name / Description <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.studyName}
+                  onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  required
+                  placeholder="E.G., CT HEAD PLAIN"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Accession Number
+                </label>
+                <input
+                  type="text"
+                  value={formData.accessionNumber}
+                  onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  placeholder="ENTER ACCESSION NUMBER"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                  Referring Physician <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={formData.referringPhysician}
+                  onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  required
+                  placeholder="ENTER REFERRING PHYSICIAN NAME"
+                />
+              </div>
             </div>
+          </div>
 
+          {/* ✅ CLINICAL HISTORY SECTION */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs">3</span>
+              Clinical History
+            </h3>
+            
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Accession Number
-              </label>
-              <input
-                type="text"
-                value={formData.accessionNumber}
-                onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-              />
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Clinical History <span className="text-red-500">*</span>
+              <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
+                Clinical History / Notes <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={formData.clinicalHistory}
                 onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
                 rows={4}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none uppercase"
                 required
+                placeholder="ENTER CLINICAL HISTORY, SYMPTOMS, OR RELEVANT NOTES..."
               />
+              <p className="text-xs text-gray-500 mt-1">
+                {formData.clinicalHistory.length} / 2000 CHARACTERS
+              </p>
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-4 border-t-2 border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 border-2 border-gray-400"
-              disabled={loading}
-            >
-              Close
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 text-sm bg-gray-900 text-white rounded hover:bg-black disabled:opacity-50 border-2 border-gray-900"
-              disabled={loading}
-            >
-              {loading ? 'Saving...' : 'Save'}
-            </button>
+          {/* Footer */}
+          <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-200">
+            <div className="text-xs text-gray-500 uppercase">
+              <span className="text-red-500">*</span> REQUIRED FIELDS
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-6 py-2.5 text-sm font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 transition-colors uppercase"
+                disabled={loading}
+              >
+                CANCEL
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2.5 text-sm font-bold bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 transition-colors flex items-center gap-2 uppercase"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    SAVING...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    SAVE CHANGES
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
@@ -669,13 +779,15 @@ const handleOHIFReporting = async () => {
           </div>
 
           <div className="flex items-center gap-4 mt-3">
-            <button
-              onClick={() => onEditPatient?.(study)}
-              className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
-            >
-              <Edit className="w-4 h-4" />
-              Edit
-            </button>
+            {(userRoles.includes('admin') || userRoles.includes('assignor') || userRole === 'admin' || userRole === 'assignor') && (
+              <button
+                onClick={() => onEditPatient?.(study)}
+                className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
+              >
+                <Edit className="w-4 h-4" />
+                Edit
+              </button>
+            )}
 
             <button
               onClick={() => onShowDocuments?.(study._id)}
@@ -1578,7 +1690,7 @@ const UnifiedWorklistTable = ({
     {isColumnVisible('rejectionReason') && (
       <ResizableTableHeader
         columnId="rejectionReason"
-        label="REJECTION REASON"
+        label="REVERTED REASON"
         width={getColumnWidth('rejectionReason')}
         onResize={handleColumnResize}
         minWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.minWidth}

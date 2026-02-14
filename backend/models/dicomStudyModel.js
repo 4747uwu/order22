@@ -33,6 +33,7 @@ const ACTION_TYPES = {
     REPORT_REVERTED: 'report_reverted',
     REPORT_RESOLVED: 'report_resolved',
     REPORT_REJECTED: 'report_rejected',
+    REPORT_REPRINT_NEEDED: 'report_reprint_needed',
     
     // Print Actions
     REPORT_PRINTED: 'report_printed',
@@ -195,7 +196,7 @@ isCopiedStudy: {
             'report_finalized',
             'final_approved',
             'revert_to_radiologist', // ✅ NEW
-
+            'report_reprint_needed',
             'report_completed', 
             
             // URGENT
@@ -236,13 +237,20 @@ isCopiedStudy: {
             'DRAFT',
             'VERIFICATION_PENDING',
             "verification_pending",
+            'REVERTED', // ✅ NEW - For studies reverted back to radiologist
             'FINAL',
             'COMPLETED', // ✅ ADD THIS - Maps to report_completed status
+            'REPRINT',
             'URGENT',
             'REPRINT_NEED'
         ],
         default: 'CREATED',
         index: { background: true }
+    },
+
+    reprintNeeded: {
+        type: Boolean,
+        default: false,
     },
     
     generated: {
@@ -629,7 +637,7 @@ isCopiedStudy: {
             },
             verificationStatus: {
                 type: String,
-                enum: ['pending', 'in_progress', 'verified', 'rejected', 'reverted'], // ✅ Added 'reverted'
+                enum: ['pending', 'in_progress', 'verified', 'rejected', 'reverted', 'report_reprint_needed'], // ✅ Added 'reverted'
                 default: 'pending',
                 index: { background: true }
             },
@@ -671,7 +679,7 @@ isCopiedStudy: {
             verificationHistory: [{
                 action: {
                     type: String,
-                    enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist'] // ✅ Added 'reverted_to_radiologist'
+                    enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist', 'report_reprint_needed'] // ✅ Added 'reverted_to_radiologist'
                 },
                 performedBy: {
                     type: mongoose.Schema.Types.ObjectId,

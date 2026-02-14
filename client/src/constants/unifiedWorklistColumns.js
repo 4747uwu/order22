@@ -256,7 +256,7 @@ export const UNIFIED_WORKLIST_COLUMNS = {
   // 22. REJECTION REASON
   REJECTION_REASON: {
     id: 'rejectionReason',
-    label: 'Rejection Reason',
+    label: 'Reverted Reason',
     description: 'Reason for report rejection',
     category: 'workflow',
     tables: ['assignor', 'radiologist', 'verifier', 'lab_staff'],

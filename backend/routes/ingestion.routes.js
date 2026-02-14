@@ -872,7 +872,7 @@ async function processStableStudy(job) {
       institutionName: institutionName,
       
       // IDs and paths
-      orthancStudyId: orthancStudyId,
+      orthancStudyID: orthancStudyId,
       
       // Workflow status
       workflowStatus: existingStudy ? existingStudy.workflowStatus : 'unassigned',
@@ -934,7 +934,7 @@ console.log(`[StableStudy] 📦 Queuing ZIP creation for study: ${orthancStudyId
 
 try {
     const zipJob = await CloudflareR2ZipService.addZipJob({
-        orthancStudyId: orthancStudyId,
+        orthancStudyID: orthancStudyId,
         studyDatabaseId: savedStudy._id,
         studyInstanceUID: savedStudy.studyInstanceUID || orthancStudyId,
         instanceCount: totalInstances,
@@ -1223,7 +1223,7 @@ router.post('/create-zip/:orthancStudyId', async (req, res) => {
         
         // Queue new ZIP creation job
         const zipJob = await CloudflareR2ZipService.addZipJob({
-            orthancStudyId: orthancStudyId,
+            orthancStudyID: orthancStudyId,
             studyDatabaseId: study._id,
             studyInstanceUID: study.studyInstanceUID || orthancStudyId,
             instanceCount: study.instanceCount || 0,

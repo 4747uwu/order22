@@ -234,6 +234,7 @@ capturedImages: [{
             'finalized',
             'verified',
             'rejected',
+            'report_reprint_needed',
             'archived'
         ],
         required: true,
@@ -325,7 +326,7 @@ capturedImages: [{
     verificationInfo: {
         verificationStatus: {
             type: String,
-            enum: ['pending', 'in_progress', 'verified', 'rejected'],
+            enum: ['pending', 'in_progress', 'verified', 'rejected', 'report_reprint_needed'], // ✅ Added 'report_reprint_needed'
             default: 'pending',
             index: { background: true }
         },
@@ -375,7 +376,7 @@ capturedImages: [{
         verificationHistory: [{
             action: {
                 type: String,
-                enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested']
+                enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist', 'report_reprint_needed'] // ✅ Added 'report_reprint_needed'
             },
             performedBy: {
                 type: mongoose.Schema.Types.ObjectId,

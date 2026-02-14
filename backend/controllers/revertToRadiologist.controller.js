@@ -92,6 +92,10 @@ export const revertToRadiologist = async (req, res) => {
         study.workflowStatus = 'revert_to_radiologist';
         study.currentCategory = 'PENDING';
 
+        // ✅ NEW: Mark study as needing reprint when reverted
+        study.reprintNeeded = true;
+        console.log('🔄 [Revert] Marking study as needing reprint (reprintNeeded = true)');
+
         // ✅ NEW: Clear verification info when reverting
         if (study.reportInfo?.verificationInfo) {
             console.log('🧹 [Revert] Clearing verification info');
@@ -118,7 +122,9 @@ export const revertToRadiologist = async (req, res) => {
         // Initialize revertInfo if not exists
         if (!study.revertInfo) {
             study.revertInfo = {
-                revertHistory: []
+                revertHistory: [],
+                isReverted: false,
+                revertCount: 0
             };
         }
 
@@ -135,7 +141,7 @@ export const revertToRadiologist = async (req, res) => {
         };
 
         study.revertInfo.revertHistory.push(revertRecord);
-        
+
         // Update current revert info
         study.revertInfo.currentRevert = revertRecord;
         study.revertInfo.isReverted = true;
@@ -148,6 +154,10 @@ export const revertToRadiologist = async (req, res) => {
             changedBy: userId,
             note: `Report reverted to radiologist. Reason: ${reason.substring(0, 200)}`
         });
+
+        // ✅ CRITICAL: Save the study to persist reprintNeeded and revertInfo changes
+        await study.save();
+        console.log('✅ [Revert] Study saved with reprintNeeded=true and revertInfo updated');
 
         // Clear lock if study was locked
         if (study.isLocked) {
