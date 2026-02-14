@@ -99,8 +99,12 @@ const formatTime = (value) => {
 };
 
 
-
 const copyToClipboard = (text, label = 'ID') => {
+  if (!text || text === 'N/A') {
+    toast.error('No value to copy', { duration: 2000 });
+    return;
+  }
+  
   navigator.clipboard.writeText(text).then(() => {
     toast.success(`${label} copied!`, {
       duration: 2000,
@@ -122,9 +126,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     referringPhysician: '',
     accessionNumber: '',
     clinicalHistory: '',
-    caseType: 'routine',
-    studyPriority: 'SELECT',
-    assignmentPriority: 'NORMAL'
+    studyPriority: 'SELECT'
   });
   const [loading, setLoading] = useState(false);
 
@@ -138,9 +140,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         referringPhysician: study.referralNumber || study.referringPhysicianName || '',
         accessionNumber: study.accessionNumber || '',
         clinicalHistory: study.clinicalHistory || '',
-        caseType: study.caseType || 'routine',
-        studyPriority: study.studyPriority || 'SELECT',
-        assignmentPriority: study.assignment?.[0]?.priority || study.priority || 'NORMAL'
+        studyPriority: study.studyPriority || 'SELECT'
       });
     }
   }, [study, isOpen]);
@@ -160,14 +160,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     }
   };
 
-  // Case Type options
-  const caseTypeOptions = [
-    { value: 'routine', label: 'Routine', color: 'bg-gray-100 text-gray-700' },
-    { value: 'urgent', label: 'Urgent', color: 'bg-amber-100 text-amber-700' },
-    { value: 'stat', label: 'STAT', color: 'bg-orange-100 text-orange-700' },
-    { value: 'emergency', label: 'Emergency', color: 'bg-red-100 text-red-700' }
-  ];
-
   // Study Priority options
   const studyPriorityOptions = [
     { value: 'SELECT', label: 'Select Priority' },
@@ -175,14 +167,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
     { value: 'MLC Case', label: '⚖️ MLC Case' },
     { value: 'Study Exception', label: '⚠️ Study Exception' }
-  ];
-
-  // Assignment Priority options
-  const assignmentPriorityOptions = [
-    { value: 'LOW', label: 'Low', color: 'bg-blue-100 text-blue-700' },
-    { value: 'NORMAL', label: 'Normal', color: 'bg-gray-100 text-gray-700' },
-    { value: 'HIGH', label: 'High', color: 'bg-amber-100 text-amber-700' },
-    { value: 'URGENT', label: 'Urgent', color: 'bg-red-100 text-red-700' }
   ];
 
   if (!isOpen) return null;
@@ -193,9 +177,9 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         {/* Header */}
         <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold">{study?.patientName || 'Edit Study Details'}</h2>
-            <p className="text-xs text-gray-300 mt-0.5">
-              BP ID: {study?.bharatPacsId} | Modality: {study?.modality}
+            <h2 className="text-lg font-bold uppercase">{study?.patientName || 'Edit Study Details'}</h2>
+            <p className="text-xs text-gray-300 mt-0.5 uppercase">
+              BP ID: {study?.bharatPacsId} | MODALITY: {study?.modality}
             </p>
           </div>
           <button
@@ -210,135 +194,86 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           
-          {/* ✅ PRIORITY & CASE TYPE SECTION */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg border border-gray-200">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
-              <span className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs">!</span>
-              Priority & Case Type
+          {/* ✅ STUDY PRIORITY SECTION ONLY */}
+          <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
+              <span className="w-6 h-6 bg-amber-600 text-white rounded-full flex items-center justify-center text-xs">!</span>
+              Study Priority
             </h3>
             
-            <div className="grid grid-cols-3 gap-4">
-              {/* Case Type */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Case Type
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {caseTypeOptions.map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, caseType: option.value }))}
-                      className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all ${
-                        formData.caseType === option.value || formData.caseType === option.value.toUpperCase()
-                          ? 'border-gray-900 ring-2 ring-gray-400 ' + option.color
-                          : 'border-gray-200 hover:border-gray-400 bg-white text-gray-600'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Study Priority */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Study Priority
-                </label>
-                <select
-                  value={formData.studyPriority}
-                  onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
-                  className={`w-full px-3 py-2 text-sm border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 ${
-                    formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50' :
-                    formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50' :
-                    formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50' :
-                    'border-gray-300'
-                  }`}
-                >
-                  {studyPriorityOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Assignment Priority */}
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-2">
-                  Assignment Priority
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {assignmentPriorityOptions.map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setFormData(prev => ({ ...prev, assignmentPriority: option.value }))}
-                      className={`px-3 py-2 text-xs font-medium rounded-lg border-2 transition-all ${
-                        formData.assignmentPriority === option.value
-                          ? 'border-gray-900 ring-2 ring-gray-400 ' + option.color
-                          : 'border-gray-200 hover:border-gray-400 bg-white text-gray-600'
-                      }`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase">
+                Priority Level
+              </label>
+              <select
+                value={formData.studyPriority}
+                onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
+                className={`w-full px-4 py-3 text-sm font-semibold border-2 rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-amber-600 uppercase ${
+                  formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50 text-red-700' :
+                  formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50 text-amber-700' :
+                  formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50 text-blue-700' :
+                  'border-gray-300'
+                }`}
+              >
+                {studyPriorityOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           {/* ✅ PATIENT INFORMATION SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
               Patient Information
             </h3>
             
             <div className="grid grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Patient Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.patientName}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="Enter patient name"
+                  placeholder="ENTER PATIENT NAME"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Age <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.patientAge}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="e.g., 45Y"
+                  placeholder="E.G., 45Y"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Gender <span className="text-red-500">*</span>
                 </label>
                 <select
                   value={formData.patientGender}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
                 >
-                  <option value="">Select Gender</option>
-                  <option value="M">Male</option>
-                  <option value="F">Female</option>
-                  <option value="O">Other</option>
+                  <option value="">SELECT GENDER</option>
+                  <option value="M">MALE</option>
+                  <option value="F">FEMALE</option>
+                  <option value="O">OTHER</option>
                 </select>
               </div>
             </div>
@@ -346,50 +281,50 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
           {/* ✅ STUDY INFORMATION SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
               Study Information
             </h3>
             
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Study Name / Description <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.studyName}
                   onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="e.g., CT HEAD PLAIN"
+                  placeholder="E.G., CT HEAD PLAIN"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Accession Number
                 </label>
                 <input
                   type="text"
                   value={formData.accessionNumber}
                   onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
-                  placeholder="Enter accession number"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+                  placeholder="ENTER ACCESSION NUMBER"
                 />
               </div>
 
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1">
+                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Referring Physician <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={formData.referringPhysician}
                   onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
                   required
-                  placeholder="Enter referring physician name"
+                  placeholder="ENTER REFERRING PHYSICIAN NAME"
                 />
               </div>
             </div>
@@ -397,59 +332,59 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 
           {/* ✅ CLINICAL HISTORY SECTION */}
           <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs">3</span>
               Clinical History
             </h3>
             
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                 Clinical History / Notes <span className="text-red-500">*</span>
               </label>
               <textarea
                 value={formData.clinicalHistory}
                 onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
                 rows={4}
-                className="w-full px-3 py-2 text-sm border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none"
+                className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none uppercase"
                 required
-                placeholder="Enter clinical history, symptoms, or relevant notes..."
+                placeholder="ENTER CLINICAL HISTORY, SYMPTOMS, OR RELEVANT NOTES..."
               />
               <p className="text-xs text-gray-500 mt-1">
-                {formData.clinicalHistory.length} / 2000 characters
+                {formData.clinicalHistory.length} / 2000 CHARACTERS
               </p>
             </div>
           </div>
 
           {/* Footer */}
           <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-200">
-            <div className="text-xs text-gray-500">
-              <span className="text-red-500">*</span> Required fields
+            <div className="text-xs text-gray-500 uppercase">
+              <span className="text-red-500">*</span> REQUIRED FIELDS
             </div>
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-6 py-2.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 font-medium transition-colors"
+                className="px-6 py-2.5 text-sm font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 transition-colors uppercase"
                 disabled={loading}
               >
-                Cancel
+                CANCEL
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 text-sm bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 font-medium transition-colors flex items-center gap-2"
+                className="px-6 py-2.5 text-sm font-bold bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 transition-colors flex items-center gap-2 uppercase"
                 disabled={loading}
               >
                 {loading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    Saving...
+                    SAVING...
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    Save Changes
+                    SAVE CHANGES
                   </>
                 )}
               </button>
@@ -487,7 +422,7 @@ const StudyRow = ({
   getColumnWidth
 }) => {
   const navigate = useNavigate();
-  console.log(study)
+  // console.log(study)
   
   const assignInputRef = useRef(null);
   const verifierInputRef = useRef(null);
@@ -777,7 +712,8 @@ const StudyRow = ({
 
       {/* 4. CENTER NAME */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-        <div className="text-xs text-slate-600 truncate" title={study.centerName}>
+        <div className="text-xs font-bold text-center text-slate-900 truncate"
+ title={study.centerName}>
           {study.centerName || '-'}
         </div>
       </td>
@@ -811,7 +747,7 @@ const StudyRow = ({
           className="w-full text-left hover:underline decoration-gray-900"
           onClick={() => onPatienIdClick?.(study.patientId, study)}
         >
-          <div className="text-xs font-semibold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
+          <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
             {study.patientName || '-'}
             {isUrgent && <span className="text-rose-500">●</span>}
             {isRejected && <span className="text-rose-600" title={`Rejected: ${rejectionReason}`}>🚫</span>}
@@ -866,10 +802,19 @@ const StudyRow = ({
       </td>
 
       {/* 10. SERIES/IMAGES */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-        <div className="text-[11px] text-slate-600 truncate">{study.studyDescription || 'N/A'}</div>
-        <div className="text-xs font-medium text-slate-800">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-      </td>
+      <td
+  className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top"
+  style={{ width: `${getColumnWidth('studySeriesImages')}px` }}
+>
+  <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug">
+    {study.studyDescription || 'N/A'}
+  </div>
+
+  <div className="text-xs font-semibold text-slate-800 mt-1">
+    S: {study.seriesCount || 0} / {study.instanceCount || 0}
+  </div>
+</td>
+
 
       {/* 11. PT ID */}
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientId')}px` }}>
@@ -889,58 +834,65 @@ const StudyRow = ({
       </td>
 
       {/* 13. CLINICAL HISTORY */}
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
-        <div 
-          className="text-xs text-slate-700 leading-relaxed" 
-          style={{
-            whiteSpace: 'normal',
-            overflowWrap: 'break-word',
-            wordBreak: 'break-word'
-          }}
-        >
+  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+        <div className="text-xs font-bold text-slate-700 line-clamp-2 uppercase" title={study.clinicalHistory}>
           {study.clinicalHistory || '-'}
         </div>
 
-        <div className="flex items-center gap-4 mt-3">
-          <button
-            onClick={() => onEditPatient?.(study)}
-            className="flex items-center gap-1 text-[10px] text-gray-700 hover:text-gray-900 hover:underline mt-1.5 font-medium"
-          >
-            <Edit className="w-4 h-4" />
-            Edit
-          </button>
+  {/* Action Buttons */}
+  <div className="flex items-center gap-4 mt-3">
+    <button
+      onClick={() => onEditPatient?.(study)}
+      className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors"
+    >
+      <Edit className="w-4 h-4" />
+      Edit
+    </button>
 
-          <button
-            onClick={() => onShowDocuments?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${
-              hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
-          >
-            <Paperclip className={`w-4 h-4 ${
-              hasAttachments ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-            
-            {hasAttachments && study.attachments.length > 0 && (
-              <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                {study.attachments.length}
-              </span>
-            )}
-          </button>
+    <button
+      onClick={() => onShowDocuments?.(study._id)}
+      className={`p-2 rounded-lg transition-all hover:scale-105 relative ${
+        hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'
+      }`}
+      title={
+        hasAttachments
+          ? `${study.attachments.length} attachment(s)`
+          : 'Manage attachments'
+      }
+    >
+      <Paperclip
+        className={`w-4 h-4 ${
+          hasAttachments ? 'text-slate-900' : 'text-slate-400'
+        }`}
+      />
 
-          <button
-            onClick={() => onShowStudyNotes?.(study._id)}
-            className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-              hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
-            }`}
-            title={hasNotes ? `${study.discussions?.length || '1'} note(s)` : 'No notes'}
-          >
-            <MessageSquare className={`w-4 h-4 ${
-              hasNotes ? 'text-gray-900' : 'text-slate-400'
-            } group-hover:text-gray-900`} />
-          </button>
-        </div>
-      </td>
+      {hasAttachments && study.attachments.length > 0 && (
+        <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+          {study.attachments.length}
+        </span>
+      )}
+    </button>
+
+    <button
+      onClick={() => onShowStudyNotes?.(study._id)}
+      className={`p-2 rounded-lg transition-all hover:scale-105 ${
+        hasNotes ? 'bg-slate-200' : 'hover:bg-slate-100'
+      }`}
+      title={
+        hasNotes
+          ? `${study.discussions?.length || 1} note(s)`
+          : 'No notes'
+      }
+    >
+      <MessageSquare
+        className={`w-4 h-4 ${
+          hasNotes ? 'text-slate-900' : 'text-slate-400'
+        }`}
+      />
+    </button>
+  </div>
+</td>
+
 
       {/* 14. STUDY DATE/TIME */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>

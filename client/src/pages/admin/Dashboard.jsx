@@ -116,7 +116,8 @@ const Dashboard = ({ isSuperAdminView = false }) => {
     verification_pending: 0,
     final: 0,
     urgent: 0,
-    reprint_need: 0
+    reprint_need: 0,
+    reverted: 0  // ✅ NEW
   });
 
   // Column configuration
@@ -173,6 +174,7 @@ const Dashboard = ({ isSuperAdminView = false }) => {
       case 'final': return '/admin/studies/category/final';
       case 'urgent': return '/admin/studies/category/urgent';
       case 'reprint_need': return '/admin/studies/category/reprint-need';
+      case 'reverted': return '/admin/studies/category/reverted';  // ✅ NEW
       default: return '/admin/studies';
     }
   }, [currentView]);
@@ -241,36 +243,38 @@ const Dashboard = ({ isSuperAdminView = false }) => {
   // ✅ FETCH CATEGORY VALUES
   const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
-      const params = Object.keys(filters).length > 0 ? filters : searchFilters;
-      
-      console.log('🔍 [Admin] Fetching category values with params:', params);
-      
-      const response = await api.get('/admin/category-values', { params });
-      if (response.data.success) {
-        setCategoryValues({
-          all: response.data.all || 0,
-          created: response.data.created || 0,
-          history_created: response.data.history_created || 0,
-          unassigned: response.data.unassigned || 0,
-          assigned: response.data.assigned || 0,
-          pending: response.data.pending || 0,
-          draft: response.data.draft || 0,
-          verification_pending: response.data.verification_pending || 0,
-          final: response.data.final || 0,
-          urgent: response.data.urgent || 0,
-          reprint_need: response.data.reprint_need || 0
-        });
+        const params = Object.keys(filters).length > 0 ? filters : searchFilters;
+        
+        console.log('🔍 [Admin] Fetching category values with params:', params);
+        
+        const response = await api.get('/admin/category-values', { params });
+        if (response.data.success) {
+            setCategoryValues({
+                all: response.data.all || 0,
+                created: response.data.created || 0,
+                history_created: response.data.history_created || 0,
+                unassigned: response.data.unassigned || 0,
+                assigned: response.data.assigned || 0,
+                pending: response.data.pending || 0,
+                draft: response.data.draft || 0,
+                verification_pending: response.data.verification_pending || 0,
+                final: response.data.final || 0,
+                urgent: response.data.urgent || 0,
+                reprint_need: response.data.reprint_need || 0,
+                reverted: response.data.reverted || 0  // ✅ NEW
+            });
 
-        console.log('📊 [Admin] CATEGORY VALUES UPDATED:', response.data);
-      }
+            console.log('📊 [Admin] CATEGORY VALUES UPDATED:', response.data);
+        }
     } catch (error) {
-      console.error('Error fetching category values:', error);
-      setCategoryValues({
-        all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
-        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, reprint_need: 0
-      });
+        console.error('Error fetching category values:', error);
+        setCategoryValues({
+            all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
+            pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, 
+            reprint_need: 0, reverted: 0  // ✅ NEW
+        });
     }
-  }, [searchFilters]);
+}, [searchFilters]);
 
   // ✅ FETCH AVAILABLE ASSIGNEES
   const fetchAvailableAssignees = useCallback(async () => {
@@ -315,16 +319,21 @@ const Dashboard = ({ isSuperAdminView = false }) => {
   }, []); // ✅ Empty deps - only run once on mount
 
   // ✅ Save filters whenever they change
-  useEffect(() => {
-    if (Object.keys(searchFilters).length > 0) {
-      try {
-        localStorage.setItem('adminDashboardFilters', JSON.stringify(searchFilters));
-        console.log('💾 [Admin] Saved filters to localStorage:', searchFilters);
-      } catch (error) {
-        console.warn('Error saving filters:', error);
-      }
+ // Line 318-327: Update the localStorage save to exclude search term
+useEffect(() => {
+  if (Object.keys(searchFilters).length > 0) {
+    try {
+      // ✅ FIX: Don't save search term to localStorage
+      const filtersToSave = { ...searchFilters };
+      delete filtersToSave.search; // Remove search before saving
+      
+      localStorage.setItem('adminDashboardFilters', JSON.stringify(filtersToSave));
+      console.log('💾 [Admin] Saved filters to localStorage (without search):', filtersToSave);
+    } catch (error) {
+      console.warn('Error saving filters:', error);
     }
-  }, [searchFilters]);
+  }
+}, [searchFilters]);
 
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES (SINGLE useEffect - Remove duplicate)
   useEffect(() => {
@@ -559,6 +568,7 @@ const Dashboard = ({ isSuperAdminView = false }) => {
     { key: 'draft', label: 'Draft', count: categoryValues.draft },
     { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
     { key: 'final', label: 'Final', count: categoryValues.final },
+    { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },  // ✅ NEW
     { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
     { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
   ];

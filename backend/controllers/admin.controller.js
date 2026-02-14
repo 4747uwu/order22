@@ -367,7 +367,8 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
             { accessionNumber: { $regex: req.query.search, $options: 'i' } },
             { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
             { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } }
+            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } },
+            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } }
         ];
     }
 
@@ -924,7 +925,8 @@ export const getCategoryValues = async (req, res) => {
             verificationPendingCount,
             finalCount,
             urgentCount,
-            reprintNeedCount
+            reprintNeedCount,
+            revertedCount  // ✅ NEW: Add reverted count
         ] = await Promise.all([
             // ALL
             DicomStudy.countDocuments(queryFilters),
@@ -944,7 +946,21 @@ export const getCategoryValues = async (req, res) => {
             // UNASSIGNED
             DicomStudy.countDocuments({
                 ...queryFilters,
-                workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] }
+                $or: [
+                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
+                    { assignment: { $exists: false } },
+                    { assignment: { $size: 0 } },
+                    { assignment: null },
+                    { 
+                        assignment: { 
+                            $not: { 
+                                $elemMatch: { 
+                                    assignedTo: { $exists: true, $ne: null }
+                                } 
+                            } 
+                        }
+                    }
+                ]
             }),
             
             // ASSIGNED
@@ -971,27 +987,26 @@ export const getCategoryValues = async (req, res) => {
                 workflowStatus: { $in: ['verification_pending', 'verification_in_progress'] }
             }),
             
-            // FINAL - All finalized, completed, downloaded, verified, archived
+            // FINAL - Remove revert_to_radiologist from here
             DicomStudy.countDocuments({
                 ...queryFilters,
                 workflowStatus: { 
                     $in: [
                         'report_finalized', 
                         'final_approved', 
-                        'revert_to_radiologist',
                         'report_completed',
                         'report_uploaded',
                         'report_downloaded_radiologist',
                         'report_downloaded',
                         'final_report_downloaded',
                         'report_verified',
-                        'report_rejected',
+                        // 'report_rejected',
                         'archived'
                     ] 
                 }
             }),
             
-            // ✅ URGENT - Based on studyPriority = 'Emergency Case'
+            // URGENT - Based on studyPriority = 'Emergency Case'
             DicomStudy.countDocuments({
                 ...queryFilters,
                 studyPriority: 'Emergency Case'
@@ -1001,6 +1016,15 @@ export const getCategoryValues = async (req, res) => {
             DicomStudy.countDocuments({
                 ...queryFilters,
                 workflowStatus: { $in: ['reprint_requested', 'correction_needed'] }
+            }),
+            
+            // ✅ NEW: REVERTED - Studies reverted back to radiologist
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                workflowStatus: { 
+                    $in: ['revert_to_radiologist',  'report_rejected']
+
+                }
             })
         ]);
 
@@ -1021,6 +1045,7 @@ export const getCategoryValues = async (req, res) => {
             final: finalCount,
             urgent: urgentCount,
             reprint_need: reprintNeedCount,
+            reverted: revertedCount,  // ✅ NEW: Add reverted count
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
@@ -1082,10 +1107,23 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
                 
             case 'unassigned':
-                // UNASSIGNED: Studies awaiting assignment
-                queryFilters.workflowStatus = { 
-                    $in: ['pending_assignment', 'awaiting_radiologist'] 
-                };
+                // UNASSIGNED: Studies awaiting assignment OR with no valid assignments
+                queryFilters.$or = [
+                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
+                    { assignment: { $exists: false } },
+                    { assignment: { $size: 0 } },
+                    { assignment: null },
+                    { 
+                        assignment: { 
+                            $not: { 
+                                $elemMatch: { 
+                                    assignedTo: { $exists: true, $ne: null }
+                                } 
+                            } 
+                        }
+                    }
+                ];
+                console.log(`📋 [UNASSIGNED] Filtering by workflow status OR empty/invalid assignments`);
                 break;
                 
             case 'assigned':
@@ -1117,26 +1155,24 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
                 
             case 'final':
-                // FINAL: Finalized reports (including completed and archived)
+                // FINAL: Finalized reports (removed revert_to_radiologist from here)
                 queryFilters.workflowStatus = { 
                     $in: [
                         'report_finalized', 
                         'final_approved', 
-                        'revert_to_radiologist',
                         'report_completed',
                         'report_uploaded',
                         'report_downloaded_radiologist',
                         'report_downloaded',
                         'final_report_downloaded',
                         'report_verified',
-                        'report_rejected',
                         'archived'
                     ] 
                 };
                 break;
                 
             case 'urgent':
-                // ✅ URGENT: Filter by studyPriority = 'Emergency Case' (not workflowStatus)
+                // URGENT: Filter by studyPriority = 'Emergency Case'
                 queryFilters.studyPriority = 'Emergency Case';
                 console.log(`🚨 [URGENT] Filtering by studyPriority: 'Emergency Case'`);
                 break;
@@ -1148,6 +1184,18 @@ export const getStudiesByCategory = async (req, res) => {
                 };
                 break;
                 
+            // ✅ NEW: REVERTED category
+            case 'reverted':
+                // REVERTED: Studies reverted back to radiologist
+//                 queryFilters.workflowStatus = {'revert_to_radiologist',  'report_rejected',
+// };
+            queryFilters.workflowStatus = { 
+                    $in: ['revert_to_radiologist',  'report_rejected']
+
+                };
+                console.log(`🔄 [REVERTED] Filtering reverted studies`);
+                break;
+            
             default:
                 // 'all' - no workflow status filter
                 break;

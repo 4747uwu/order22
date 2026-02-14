@@ -2,36 +2,34 @@
 
 export const formatStudyForWorklist = (rawStudy) => {
   try {
-    // ✅ BHARAT PACS ID
-    const bharatPacsId = rawStudy.bharatPacsId || 'N/A';
+    // ✅ BHARAT PACS ID - UPPERCASE
+    const bharatPacsId = (rawStudy.bharatPacsId || 'N/A').toUpperCase();
 
-    // ✅ ORGANIZATION INFO - from populated organization
-    const organizationName = rawStudy.organization?.name || 
+    // ✅ ORGANIZATION INFO - UPPERCASE
+    const organizationName = (rawStudy.organization?.name || 
                             rawStudy.organizationIdentifier || 
-                            'Unknown Organization';
+                            'Unknown Organization').toUpperCase();
 
-    // ✅ CENTER/LAB INFO - from populated sourceLab
-    const centerName = rawStudy.sourceLab?.name || 
+    // ✅ CENTER/LAB INFO - BOLD & UPPERCASE (styling will be done in component)
+    const centerName = (rawStudy.sourceLab?.name || 
                       rawStudy.sourceLab?.labName || 
                       rawStudy.sourceLab?.location || 
-                      'Unknown Center';
+                      'Unknown Center').toUpperCase();
 
-    // const centerName = rawStudy?.institutionName || '-'
+    const location = (rawStudy?.labLocation || '-').toUpperCase();
 
-        const location = rawStudy?.labLocation || '-'
-
-    // ✅ PATIENT INFO - handle multiple possible sources
-    const patientName = rawStudy.patientInfo?.patientName ||
+    // ✅ PATIENT INFO - UPPERCASE
+    const patientName = (rawStudy.patientInfo?.patientName ||
                        rawStudy.patient?.patientNameRaw || 
                        (rawStudy.patient?.firstName || '') + ' ' + (rawStudy.patient?.lastName || '') ||
-                       'Unknown Patient';
+                       'Unknown Patient').toUpperCase();
     
-    const patientId = rawStudy.patient?.patientID || 
+    const patientId = (rawStudy.patient?.patientID || 
                      rawStudy.patientId || 
                      rawStudy.patientInfo?.patientID ||
-                     'N/A';
+                     'N/A').toUpperCase();
 
-    // ✅ AGE/GENDER FORMATTING
+    // ✅ AGE/GENDER FORMATTING - UPPERCASE
     const age = rawStudy.patient?.age || 
                 rawStudy.patientInfo?.age || 
                 'N/A';
@@ -42,36 +40,35 @@ export const formatStudyForWorklist = (rawStudy) => {
                      `${age}${gender.charAt(0).toUpperCase()}` : 
                      'N/A';
 
-    // ✅ MODALITY
+    // ✅ MODALITY - UPPERCASE
     const modality = rawStudy.modalitiesInStudy?.length > 0 ? 
-                    rawStudy.modalitiesInStudy.join(', ') : 
-                    (rawStudy.modality || 'N/A');
+                    rawStudy.modalitiesInStudy.join(', ').toUpperCase() : 
+                    (rawStudy.modality || 'N/A').toUpperCase();
 
     // ✅ SERIES COUNT
     const seriesCount = rawStudy.seriesCount || 0;
     const seriesImages = `${rawStudy.seriesCount || 0}/${rawStudy.instanceCount || 0}`;
 
-    // ✅ ACCESSION NUMBER
-    const accessionNumber = rawStudy.accessionNumber || 'N/A';
+    // ✅ ACCESSION NUMBER - UPPERCASE
+    const accessionNumber = (rawStudy.accessionNumber || 'N/A').toUpperCase();
 
-    // ✅ REFERRAL NUMBER (from referring physician or accession)
-    const referralNumber = rawStudy?.referringPhysicianName ||
-                          'N/A';
+    // ✅ REFERRAL NUMBER - UPPERCASE
+    const referralNumber = (rawStudy?.referringPhysicianName || 'N/A').toUpperCase();
 
-    // ✅ CLINICAL HISTORY
-    const clinicalHistory = rawStudy.clinicalHistory?.clinicalHistory || 
-                           'No history provided';
+    // ✅ CLINICAL HISTORY - BOLD & UPPERCASE (styling will be done in component)
+    const clinicalHistory = (rawStudy.clinicalHistory?.clinicalHistory || 
+                           'No history provided').toUpperCase();
 
-    // ✅ STUDY TIME
-    const studyTime = rawStudy.studyTime || 'N/A';
+    // ✅ STUDY TIME - UPPERCASE
+    const studyTime = (rawStudy.studyTime || 'N/A').toUpperCase();
     const studyDate = rawStudy.studyDate ? 
                      new Date(rawStudy.studyDate).toLocaleDateString('en-US', {
                        month: 'short',
                        day: '2-digit',
                        year: 'numeric'
-                     }) : 'N/A';
+                     }).toUpperCase() : 'N/A';
 
-    // ✅ UPLOAD TIME
+    // ✅ UPLOAD TIME - UPPERCASE
     const uploadTime = rawStudy.createdAt ? 
                       new Date(rawStudy.createdAt).toLocaleString('en-US', {
                         month: 'short',
@@ -80,15 +77,15 @@ export const formatStudyForWorklist = (rawStudy) => {
                         hour: '2-digit',
                         minute: '2-digit',
                         hour12: false
-                      }) : 'N/A';
+                      }).toUpperCase() : 'N/A';
 
-    // ✅ RADIOLOGIST INFO - from assignment or category tracking
+    // ✅ RADIOLOGIST INFO - UPPERCASE
     const getRadiologistInfo = (study) => {
       // Method 1: From category tracking (most recent)
       if (study.categoryTracking?.assigned?.assignedTo) {
         const assignee = study.categoryTracking.assigned.assignedTo;
         return {
-          radiologistName: assignee.fullName || `${assignee.firstName} ${assignee.lastName}`,
+          radiologistName: (assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
           radiologistEmail: assignee.email,
           radiologistRole: assignee.role
         };
@@ -104,7 +101,7 @@ export const formatStudyForWorklist = (rawStudy) => {
           const assignee = latestAssignment.assignedTo;
           if (typeof assignee === 'object') {
             return {
-              radiologistName: assignee.fullName || `${assignee.firstName} ${assignee.lastName}`,
+              radiologistName: (assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
               radiologistEmail: assignee.email,
               radiologistRole: assignee.role
             };
@@ -116,14 +113,14 @@ export const formatStudyForWorklist = (rawStudy) => {
       if (study.currentReportStatus?.lastReportedBy) {
         const reporter = study.currentReportStatus.lastReportedBy;
         return {
-          radiologistName: reporter.fullName || `${reporter.firstName} ${reporter.lastName}`,
+          radiologistName: (reporter.fullName || `${reporter.firstName} ${reporter.lastName}`).toUpperCase(),
           radiologistEmail: reporter.email,
           radiologistRole: reporter.role
         };
       }
 
       return {
-        radiologistName: 'Unassigned',
+        radiologistName: 'UNASSIGNED',
         radiologistEmail: null,
         radiologistRole: null
       };
@@ -131,7 +128,7 @@ export const formatStudyForWorklist = (rawStudy) => {
 
     const radiologistInfo = getRadiologistInfo(rawStudy);
 
-    // ✅ CASE STATUS - comprehensive workflow status
+    // ✅ CASE STATUS - UPPERCASE
     const getCaseStatus = (study) => {
       // Priority cases
       if (study.studyPriority === 'Emergency Case' || 
@@ -147,15 +144,15 @@ export const formatStudyForWorklist = (rawStudy) => {
 
       // Check current category
       const categoryMap = {
-        'CREATED': { label: 'Study Created', color: 'blue' },
-        'HISTORY_CREATED': { label: 'History Added', color: 'cyan' },
-        'UNASSIGNED': { label: 'Pending Assignment', color: 'orange' },
-        'ASSIGNED': { label: 'Assigned', color: 'purple' },
-        'PENDING': { label: 'In Progress', color: 'yellow' },
-        'DRAFT': { label: 'Draft Report', color: 'amber' },
-        'VERIFICATION_PENDING': { label: 'Verification Pending', color: 'indigo' },
-        'FINAL': { label: 'Finalized', color: 'green' },
-        'REPRINT_NEED': { label: 'Reprint Required', color: 'red' }
+        'CREATED': { label: 'STUDY CREATED', color: 'blue' },
+        'HISTORY_CREATED': { label: 'HISTORY ADDED', color: 'cyan' },
+        'UNASSIGNED': { label: 'PENDING ASSIGNMENT', color: 'orange' },
+        'ASSIGNED': { label: 'ASSIGNED', color: 'purple' },
+        'PENDING': { label: 'IN PROGRESS', color: 'yellow' },
+        'DRAFT': { label: 'DRAFT REPORT', color: 'amber' },
+        'VERIFICATION_PENDING': { label: 'VERIFICATION PENDING', color: 'indigo' },
+        'FINAL': { label: 'FINALIZED', color: 'green' },
+        'REPRINT_NEED': { label: 'REPRINT REQUIRED', color: 'red' }
       };
 
       const categoryInfo = categoryMap[study.currentCategory] || categoryMap['CREATED'];
@@ -170,23 +167,22 @@ export const formatStudyForWorklist = (rawStudy) => {
 
     const caseStatus = getCaseStatus(rawStudy);
 
-    // ✅ STUDY LOCK INFO
+    // ✅ STUDY LOCK INFO - UPPERCASE
     const isLocked = rawStudy.studyLock?.isLocked || false;
-    const lockedBy = rawStudy.studyLock?.lockedByName || null;
+    const lockedBy = rawStudy.studyLock?.lockedByName?.toUpperCase() || null;
     const lockedAt = rawStudy.studyLock?.lockedAt || null;
 
-
-    // ✅ HAS NOTES / ATTACHMENTS FLAGS (prefer explicit DB flags, fallback to arrays)
+    // ✅ HAS NOTES / ATTACHMENTS FLAGS
     const hasStudyNotes = rawStudy.hasStudyNotes === true || (rawStudy.discussions && rawStudy.discussions.length > 0);
     const attachments = rawStudy.attachments || [];
     const hasAttachments = rawStudy.hasAttachments === true || attachments.length > 0;
 
-    // ✅ ASSIGNMENT INFO - handle multiple active assignments
+    // ✅ ASSIGNMENT INFO - UPPERCASE
     const assignmentInfo = formatAssignmentInfo(rawStudy.assignment);
 
-    // ✅ VERIFICATION INFO
+    // ✅ VERIFICATION INFO - UPPERCASE
     const verificationInfo = getVerificationInfo(rawStudy);
-    const verificationNotes = rawStudy.reportInfo?.verificationInfo?.rejectionReason || '-'
+    const verificationNotes = (rawStudy.reportInfo?.verificationInfo?.rejectionReason || '-').toUpperCase();
 
     // ✅ PRINT HISTORY
     const printCount = rawStudy.printHistory?.length || 0;
@@ -197,48 +193,48 @@ export const formatStudyForWorklist = (rawStudy) => {
       studyInstanceUID: rawStudy.studyInstanceUID,
       orthancStudyID: rawStudy.orthancStudyID,
       
-      // ✅ NEW FIELDS
+      // ✅ ALL UPPERCASE FIELDS
       bharatPacsId,
       organizationName,
-      centerName,
+      centerName, // Will be styled bold in component
       location,
       
-      // ✅ PATIENT INFO
+      // ✅ PATIENT INFO - UPPERCASE
       patientId,
-      patientName: patientName.trim() || 'Unknown Patient',
+      patientName,
       patientAge: age,
       patientSex: gender,
       ageGender,
       
-      // ✅ STUDY INFO
+      // ✅ STUDY INFO - UPPERCASE
       modality,
       seriesCount,
       instanceCount: rawStudy.instanceCount || 0,
       seriesImages,
       accessionNumber,
       referralNumber,
-      clinicalHistory,
-      studyDescription: rawStudy.studyDescription || rawStudy.examDescription || 'No Description',
+      clinicalHistory, // Will be styled bold in component
+      studyDescription: (rawStudy.studyDescription || rawStudy.examDescription || 'NO DESCRIPTION').toUpperCase(),
       
-      // ✅ DATES & TIMES
+      // ✅ DATES & TIMES - UPPERCASE
       studyDate,
       studyTime,
       uploadTime,
       uploadDate: rawStudy.createdAt,
       createdAt: rawStudy.createdAt,
       
-      // ✅ RADIOLOGIST INFO
+      // ✅ RADIOLOGIST INFO - UPPERCASE
       radiologist: radiologistInfo.radiologistName,
       radiologistEmail: radiologistInfo.radiologistEmail,
       radiologistRole: radiologistInfo.radiologistRole,
       
-      // ✅ CASE STATUS
+      // ✅ CASE STATUS - UPPERCASE
       caseStatus: caseStatus.status,
       caseStatusCategory: caseStatus.category,
       caseStatusColor: caseStatus.color,
       workflowStatus: caseStatus.workflowStatus,
       
-      // ✅ STUDY LOCK
+      // ✅ STUDY LOCK - UPPERCASE
       isLocked,
       lockedBy,
       lockedAt,
@@ -247,7 +243,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       hasStudyNotes,
       hasAttachments,
       
-      // ✅ ASSIGNMENT INFO
+      // ✅ ASSIGNMENT INFO - UPPERCASE
       isAssigned: assignmentInfo.isAssigned,
       assignedTo: assignmentInfo.assignedToDisplay,
       assignedToIds: assignmentInfo.assignedToIds,
@@ -257,21 +253,20 @@ export const formatStudyForWorklist = (rawStudy) => {
       assignmentPriority: assignmentInfo.priority,
       dueDate: assignmentInfo.latestDueDate,
       
-      // ✅ VERIFICATION
+      // ✅ VERIFICATION - UPPERCASE
       verificationStatus: verificationInfo.verificationStatus,
       verifiedBy: verificationInfo.verifiedBy,
       verifiedAt: verificationInfo.verifiedAt,
-      verificationNotes: verificationNotes
-,
+      verificationNotes,
       
       // ✅ PRINT INFO
       printCount,
       lastPrintedAt: lastPrint?.printedAt,
-      lastPrintedBy: lastPrint?.printedByName,
+      lastPrintedBy: lastPrint?.printedByName?.toUpperCase(),
       lastPrintType: lastPrint?.printType,
       
       // ✅ TECHNICAL
-      priority: rawStudy.priority || rawStudy.studyPriority || 'NORMAL',
+      priority: (rawStudy.priority || rawStudy.studyPriority || 'NORMAL').toUpperCase(),
       organizationIdentifier: rawStudy.organizationIdentifier,
       
       // ✅ CATEGORY TRACKING
@@ -299,13 +294,13 @@ export const formatStudyForWorklist = (rawStudy) => {
       _id: rawStudy._id,
       bharatPacsId: 'ERROR',
       patientId: 'ERROR',
-      patientName: 'Formatting Error',
+      patientName: 'FORMATTING ERROR',
       _raw: rawStudy
     };
   }
 };
 
-// ✅ VERIFICATION INFO EXTRACTOR
+// ✅ VERIFICATION INFO EXTRACTOR - UPPERCASE
 const getVerificationInfo = (study) => {
   const verificationInfo = study.reportInfo?.verificationInfo;
   
@@ -315,7 +310,7 @@ const getVerificationInfo = (study) => {
       verifiedByEmail: null,
       verifiedByRole: null,
       verifiedAt: null,
-      verificationStatus: 'pending',
+      verificationStatus: 'PENDING',
       verificationNotes: null
     };
   }
@@ -326,13 +321,13 @@ const getVerificationInfo = (study) => {
   
   if (verificationInfo.verifiedBy) {
     if (typeof verificationInfo.verifiedBy === 'object') {
-      verifiedBy = verificationInfo.verifiedBy.fullName || 
-                  `${verificationInfo.verifiedBy.firstName} ${verificationInfo.verifiedBy.lastName}`;
+      verifiedBy = (verificationInfo.verifiedBy.fullName || 
+                  `${verificationInfo.verifiedBy.firstName} ${verificationInfo.verifiedBy.lastName}`).toUpperCase();
       verifiedByEmail = verificationInfo.verifiedBy.email;
       verifiedByRole = verificationInfo.verifiedBy.role;
     } else {
-      verifiedBy = `User ${verificationInfo.verifiedBy.toString().substring(0, 8)}...`;
-      verifiedByRole = 'verifier';
+      verifiedBy = `USER ${verificationInfo.verifiedBy.toString().substring(0, 8).toUpperCase()}...`;
+      verifiedByRole = 'VERIFIER';
     }
   }
   
@@ -341,12 +336,12 @@ const getVerificationInfo = (study) => {
     verifiedByEmail,
     verifiedByRole,
     verifiedAt: verificationInfo.verifiedAt,
-    verificationStatus: verificationInfo.verificationStatus || 'pending',
+    verificationStatus: (verificationInfo.verificationStatus || 'PENDING').toUpperCase(),
     verificationNotes: verificationInfo.verificationNotes
   };
 };
 
-// ✅ ASSIGNMENT INFO FORMATTER
+// ✅ ASSIGNMENT INFO FORMATTER - UPPERCASE
 const formatAssignmentInfo = (assignmentArray) => {
   if (!assignmentArray || !Array.isArray(assignmentArray) || assignmentArray.length === 0) {
     return {
@@ -393,23 +388,23 @@ const formatAssignmentInfo = (assignmentArray) => {
     if (typeof assignedTo === 'object' && assignedTo._id) {
       doctorInfo = {
         id: assignedTo._id.toString(),
-        name: assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim(),
+        name: (assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim()).toUpperCase(),
         email: assignedTo.email,
         role: assignedTo.role
       };
     } else if (typeof assignedTo === 'string') {
       doctorInfo = {
         id: assignedTo,
-        name: 'Unknown Doctor',
+        name: 'UNKNOWN DOCTOR',
         email: null,
-        role: 'radiologist'
+        role: 'RADIOLOGIST'
       };
     } else {
       doctorInfo = {
         id: 'unknown',
-        name: 'Unknown Doctor',
+        name: 'UNKNOWN DOCTOR',
         email: null,
-        role: 'radiologist'
+        role: 'RADIOLOGIST'
       };
     }
 
@@ -418,7 +413,7 @@ const formatAssignmentInfo = (assignmentArray) => {
       assignedAt: assignment.assignedAt,
       priority: assignment.priority || 'NORMAL',
       dueDate: assignment.dueDate,
-      status: assignment.status || 'assigned'
+      status: assignment.status || 'ASSIGNED'
     };
   });
 
@@ -429,7 +424,7 @@ const formatAssignmentInfo = (assignmentArray) => {
   const assignedToIds = uniqueDoctors.map(doctor => doctor.id);
   const assignedToDisplay = uniqueDoctors.length === 1 
     ? uniqueDoctors[0].name
-    : `${uniqueDoctors.length} Doctors`;
+    : `${uniqueDoctors.length} DOCTORS`;
 
   const latestAssignment = sortedAssignments[0];
 
@@ -442,7 +437,7 @@ const formatAssignmentInfo = (assignmentArray) => {
     latestAssignedAt: latestAssignment.assignedAt,
     priority: latestAssignment.priority || 'NORMAL',
     latestDueDate: latestAssignment.dueDate,
-    status: 'assigned'
+    status: 'ASSIGNED'
   };
 };
 

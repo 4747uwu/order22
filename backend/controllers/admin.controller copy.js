@@ -367,12 +367,46 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
             { accessionNumber: { $regex: req.query.search, $options: 'i' } },
             { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
             { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } }
+            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } },
+            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } }
         ];
     }
 
     // 🔬 MODALITY FILTERING - Single or Multiple
-    if (req.query.modality && req.query.modality !== 'all') {
+    if (req.query.modalities) {
+        let modalityList = [];
+        
+        // Handle both array and comma-separated string formats
+        if (Array.isArray(req.query.modalities)) {
+            modalityList = req.query.modalities;
+        } else if (typeof req.query.modalities === 'string') {
+            // Single value or comma-separated
+            modalityList = req.query.modalities.includes(',') 
+                ? req.query.modalities.split(',').map(m => m.trim()).filter(Boolean)
+                : [req.query.modalities];
+        }
+        
+        console.log('🔬 [Modality Filter - Raw]:', {
+            rawParam: req.query.modalities,
+            isArray: Array.isArray(req.query.modalities),
+            parsedModalities: modalityList
+        });
+        
+        if (modalityList.length > 0) {
+            // Query studies where modality OR modalitiesInStudy matches any of the selected modalities
+            queryFilters.$or = [
+                { modality: { $in: modalityList } },
+                { modalitiesInStudy: { $in: modalityList } }
+            ];
+            
+            console.log('✅ [Modality Filter Applied]:', {
+                modalityCount: modalityList.length,
+                modalities: modalityList,
+                filter: queryFilters.$or
+            });
+        }
+    } else if (req.query.modality && req.query.modality !== 'all') {
+        // Fallback to single modality filter for backward compatibility
         queryFilters.$or = [
             { modality: req.query.modality },
             { modalitiesInStudy: req.query.modality }
@@ -397,115 +431,113 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         }
     }
 
-  // ✅ NEW: RADIOLOGIST MULTI-SELECT FILTER
-// When filtering by radiologists, we need to check the assignment array
-if (req.query.radiologists) {
-    let radiologistIds = [];
-    
-    // Handle both array and comma-separated string formats
-    if (Array.isArray(req.query.radiologists)) {
-        radiologistIds = req.query.radiologists;
-    } else if (typeof req.query.radiologists === 'string') {
-        // Single value or comma-separated
-        radiologistIds = req.query.radiologists.includes(',') 
-            ? req.query.radiologists.split(',').map(id => id.trim()).filter(Boolean)
-            : [req.query.radiologists];
-    }
-    
-    console.log('🔍 [Radiologist Filter - Raw]:', {
-        rawParam: req.query.radiologists,
-        isArray: Array.isArray(req.query.radiologists),
-        parsedIds: radiologistIds
-    });
-    
-    if (radiologistIds.length > 0) {
-        // Convert to ObjectIds and validate
-        const validObjectIds = radiologistIds
-            .filter(id => mongoose.Types.ObjectId.isValid(id))
-            .map(id => new mongoose.Types.ObjectId(id));
+    // ✅ NEW: RADIOLOGIST MULTI-SELECT FILTER
+    if (req.query.radiologists) {
+        let radiologistIds = [];
         
-        if (validObjectIds.length > 0) {
-            // Query the assignment array to find studies assigned to these radiologists
-            queryFilters['assignment.assignedTo'] = { $in: validObjectIds };
-            
-            console.log('✅ [Radiologist Filter Applied]:', {
-                radiologistCount: validObjectIds.length,
-                radiologistIds: validObjectIds.map(id => id.toString()),
-                filter: queryFilters['assignment.assignedTo']
-            });
-        } else {
-            console.warn('⚠️ [Radiologist Filter] No valid ObjectIds found');
+        // Handle both array and comma-separated string formats
+        if (Array.isArray(req.query.radiologists)) {
+            radiologistIds = req.query.radiologists;
+        } else if (typeof req.query.radiologists === 'string') {
+            // Single value or comma-separated
+            radiologistIds = req.query.radiologists.includes(',') 
+                ? req.query.radiologists.split(',').map(id => id.trim()).filter(Boolean)
+                : [req.query.radiologists];
         }
-    }
-}
-
-// ✅ NEW: LAB/CENTER MULTI-SELECT FILTER
-// When filtering by labs, we need to check the sourceLab field
-if (req.query.labs) {
-    let labIds = [];
-    
-    // Handle both array and comma-separated string formats
-    if (Array.isArray(req.query.labs)) {
-        labIds = req.query.labs;
-    } else if (typeof req.query.labs === 'string') {
-        // Single value or comma-separated
-        labIds = req.query.labs.includes(',')
-            ? req.query.labs.split(',').map(id => id.trim()).filter(Boolean)
-            : [req.query.labs];
-    }
-    
-    console.log('🔍 [Lab Filter - Raw]:', {
-        rawParam: req.query.labs,
-        isArray: Array.isArray(req.query.labs),
-        parsedIds: labIds
-    });
-    
-    if (labIds.length > 0) {
-        // Convert to ObjectIds and validate
-        const validObjectIds = labIds
-            .filter(id => mongoose.Types.ObjectId.isValid(id))
-            .map(id => new mongoose.Types.ObjectId(id));
         
-        if (validObjectIds.length > 0) {
-            // Check if there's already a sourceLab filter from assignor restrictions
-            if (queryFilters.sourceLab && queryFilters.sourceLab.$in) {
-                // Find intersection of assignor's labs and selected labs
-                const assignorLabIds = queryFilters.sourceLab.$in.map(id => id.toString());
-                const selectedLabIds = validObjectIds.map(id => id.toString());
-                const intersection = assignorLabIds.filter(id => selectedLabIds.includes(id));
+        console.log('🔍 [Radiologist Filter - Raw]:', {
+            rawParam: req.query.radiologists,
+            isArray: Array.isArray(req.query.radiologists),
+            parsedIds: radiologistIds
+        });
+        
+        if (radiologistIds.length > 0) {
+            // Convert to ObjectIds and validate
+            const validObjectIds = radiologistIds
+                .filter(id => mongoose.Types.ObjectId.isValid(id))
+                .map(id => new mongoose.Types.ObjectId(id));
+            
+            if (validObjectIds.length > 0) {
+                // Query the assignment array to find studies assigned to these radiologists
+                queryFilters['assignment.assignedTo'] = { $in: validObjectIds };
                 
-                console.log('🔍 [Lab Filter - Intersection with Assignor]:', {
-                    assignorLabs: assignorLabIds,
-                    selectedLabs: selectedLabIds,
-                    intersection: intersection
+                console.log('✅ [Radiologist Filter Applied]:', {
+                    radiologistCount: validObjectIds.length,
+                    radiologistIds: validObjectIds.map(id => id.toString()),
+                    filter: queryFilters['assignment.assignedTo']
                 });
-                
-                if (intersection.length > 0) {
-                    queryFilters.sourceLab = { $in: intersection.map(id => new mongoose.Types.ObjectId(id)) };
-                } else {
-                    // No intersection, return empty results
-                    console.warn('⚠️ [Lab Filter] No intersection between assignor labs and selected labs');
-                    queryFilters.sourceLab = null; // This will return no results
-                }
             } else {
-                // No assignor restriction, apply selected labs directly
-                queryFilters.sourceLab = { $in: validObjectIds };
+                console.warn('⚠️ [Radiologist Filter] No valid ObjectIds found');
             }
-            
-            console.log('✅ [Lab Filter Applied]:', {
-                labCount: validObjectIds.length,
-                labIds: validObjectIds.map(id => id.toString()),
-                finalFilter: queryFilters.sourceLab
-            });
-        } else {
-            console.warn('⚠️ [Lab Filter] No valid ObjectIds found');
         }
     }
-}
 
-console.log('🎯 [Final Query Filters]:', JSON.stringify(queryFilters, null, 2));
+    // ✅ NEW: LAB/CENTER MULTI-SELECT FILTER
+    if (req.query.labs) {
+        let labIds = [];
+        
+        // Handle both array and comma-separated string formats
+        if (Array.isArray(req.query.labs)) {
+            labIds = req.query.labs;
+        } else if (typeof req.query.labs === 'string') {
+            // Single value or comma-separated
+            labIds = req.query.labs.includes(',')
+                ? req.query.labs.split(',').map(id => id.trim()).filter(Boolean)
+                : [req.query.labs];
+        }
+        
+        console.log('🔍 [Lab Filter - Raw]:', {
+            rawParam: req.query.labs,
+            isArray: Array.isArray(req.query.labs),
+            parsedIds: labIds
+        });
+        
+        if (labIds.length > 0) {
+            // Convert to ObjectIds and validate
+            const validObjectIds = labIds
+                .filter(id => mongoose.Types.ObjectId.isValid(id))
+                .map(id => new mongoose.Types.ObjectId(id));
+            
+            if (validObjectIds.length > 0) {
+                // Check if there's already a sourceLab filter from assignor restrictions
+                if (queryFilters.sourceLab && queryFilters.sourceLab.$in) {
+                    // Find intersection of assignor's labs and selected labs
+                    const assignorLabIds = queryFilters.sourceLab.$in.map(id => id.toString());
+                    const selectedLabIds = validObjectIds.map(id => id.toString());
+                    const intersection = assignorLabIds.filter(id => selectedLabIds.includes(id));
+                    
+                    console.log('🔍 [Lab Filter - Intersection with Assignor]:', {
+                        assignorLabs: assignorLabIds,
+                        selectedLabs: selectedLabIds,
+                        intersection: intersection
+                    });
+                    
+                    if (intersection.length > 0) {
+                        queryFilters.sourceLab = { $in: intersection.map(id => new mongoose.Types.ObjectId(id)) };
+                    } else {
+                        // No intersection, return empty results
+                        console.warn('⚠️ [Lab Filter] No intersection between assignor labs and selected labs');
+                        queryFilters.sourceLab = null; // This will return no results
+                    }
+                } else {
+                    // No assignor restriction, apply selected labs directly
+                    queryFilters.sourceLab = { $in: validObjectIds };
+                }
+                
+                console.log('✅ [Lab Filter Applied]:', {
+                    labCount: validObjectIds.length,
+                    labIds: validObjectIds.map(id => id.toString()),
+                    finalFilter: queryFilters.sourceLab
+                });
+            } else {
+                console.warn('⚠️ [Lab Filter] No valid ObjectIds found');
+            }
+        }
+    }
 
-return queryFilters;
+    console.log('🎯 [Final Query Filters]:', JSON.stringify(queryFilters, null, 2));
+
+    return queryFilters;
 };
 
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {
@@ -893,7 +925,8 @@ export const getCategoryValues = async (req, res) => {
             verificationPendingCount,
             finalCount,
             urgentCount,
-            reprintNeedCount
+            reprintNeedCount,
+            revertedCount  // ✅ NEW: Add reverted count
         ] = await Promise.all([
             // ALL
             DicomStudy.countDocuments(queryFilters),
@@ -940,14 +973,13 @@ export const getCategoryValues = async (req, res) => {
                 workflowStatus: { $in: ['verification_pending', 'verification_in_progress'] }
             }),
             
-            // FINAL - All finalized, completed, downloaded, verified, archived
+            // FINAL - Remove revert_to_radiologist from here
             DicomStudy.countDocuments({
                 ...queryFilters,
                 workflowStatus: { 
                     $in: [
                         'report_finalized', 
                         'final_approved', 
-                        'revert_to_radiologist',
                         'report_completed',
                         'report_uploaded',
                         'report_downloaded_radiologist',
@@ -960,21 +992,28 @@ export const getCategoryValues = async (req, res) => {
                 }
             }),
             
-            // URGENT
+            // URGENT - Based on studyPriority = 'Emergency Case'
             DicomStudy.countDocuments({
                 ...queryFilters,
-                workflowStatus: { $in: ['urgent_priority', 'emergency_case'] }
+                studyPriority: 'Emergency Case'
             }),
             
             // REPRINT NEED
             DicomStudy.countDocuments({
                 ...queryFilters,
                 workflowStatus: { $in: ['reprint_requested', 'correction_needed'] }
+            }),
+            
+            // ✅ NEW: REVERTED - Studies reverted back to radiologist
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                workflowStatus: 'revert_to_radiologist'
             })
         ]);
 
         const processingTime = Date.now() - startTime;
         console.log(`🎯 Category values fetched in ${processingTime}ms`);
+        console.log(`🚨 URGENT (Emergency Case) count: ${urgentCount}`);
 
         const response = {
             success: true,
@@ -989,6 +1028,7 @@ export const getCategoryValues = async (req, res) => {
             final: finalCount,
             urgent: urgentCount,
             reprint_need: reprintNeedCount,
+            reverted: revertedCount,  // ✅ NEW: Add reverted count
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
@@ -1085,12 +1125,11 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
                 
             case 'final':
-                // FINAL: Finalized reports (including completed and archived)
+                // FINAL: Finalized reports (removed revert_to_radiologist from here)
                 queryFilters.workflowStatus = { 
                     $in: [
                         'report_finalized', 
                         'final_approved', 
-                        'revert_to_radiologist',
                         'report_completed',
                         'report_uploaded',
                         'report_downloaded_radiologist',
@@ -1104,10 +1143,9 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
                 
             case 'urgent':
-                // URGENT: Emergency/urgent cases
-                queryFilters.workflowStatus = { 
-                    $in: ['urgent_priority', 'emergency_case'] 
-                };
+                // URGENT: Filter by studyPriority = 'Emergency Case'
+                queryFilters.studyPriority = 'Emergency Case';
+                console.log(`🚨 [URGENT] Filtering by studyPriority: 'Emergency Case'`);
                 break;
                 
             case 'reprint-need':
@@ -1117,12 +1155,23 @@ export const getStudiesByCategory = async (req, res) => {
                 };
                 break;
                 
+            // ✅ NEW: REVERTED category
+            case 'reverted':
+                // REVERTED: Studies reverted back to radiologist
+                queryFilters.workflowStatus = 'revert_to_radiologist';
+                console.log(`🔄 [REVERTED] Filtering reverted studies`);
+                break;
+            
             default:
                 // 'all' - no workflow status filter
                 break;
         }
 
-        console.log(`🔍 [${category.toUpperCase()}] workflow status filter:`, queryFilters.workflowStatus);
+        console.log(`🔍 [${category.toUpperCase()}] Query filter:`, 
+            category === 'urgent' 
+                ? `studyPriority: ${queryFilters.studyPriority}` 
+                : `workflowStatus: ${JSON.stringify(queryFilters.workflowStatus)}`
+        );
 
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
@@ -1144,7 +1193,11 @@ export const getStudiesByCategory = async (req, res) => {
             },
             metadata: {
                 category: category,
-                workflowStatusesIncluded: queryFilters.workflowStatus?.$in || 'all',
+                // ✅ Show correct filter type in metadata
+                filterType: category === 'urgent' ? 'studyPriority' : 'workflowStatus',
+                filterValue: category === 'urgent' 
+                    ? queryFilters.studyPriority 
+                    : (queryFilters.workflowStatus?.$in || 'all'),
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
                 userRole: user.role,
                 processingTime: processingTime

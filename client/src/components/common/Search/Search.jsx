@@ -69,23 +69,28 @@ const Search = ({
     const [radiologistOptions, setRadiologistOptions] = useState([]);
     const [labOptions, setLabOptions] = useState([]);
 
-    // ✅ Sync filters when initialFilters prop changes
-    useEffect(() => {
-        if (initialFilters && Object.keys(initialFilters).length > 0) {
-            console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
-            
-            setFilters(prevFilters => ({
-                ...prevFilters,
-                ...initialFilters
-            }));
-            
-            if (initialFilters.search) {
-                setSearchTerm(initialFilters.search);
-            } else {
-                setSearchTerm('');
-            }
-        }
-    }, [initialFilters]);
+// Line 73-89: Make the sync more defensive
+// Line 73-97: Make the sync more defensive and NEVER restore search term from initialFilters
+useEffect(() => {
+    if (initialFilters && Object.keys(initialFilters).length > 0) {
+        console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
+        
+        // ✅ Create new filters WITHOUT search
+        const filtersToSync = { ...initialFilters };
+        
+        // ✅ ALWAYS remove search from synced filters - don't persist it
+        delete filtersToSync.search;
+        
+        setFilters(prevFilters => ({
+            ...prevFilters,
+            ...filtersToSync
+        }));
+        
+        // ✅ NEVER restore search term from initialFilters
+        // Search term should only be controlled by user input, not by saved state
+        // Keep current searchTerm as-is, don't sync it
+    }
+}, [initialFilters]);
 
     // ✅ NEW: Auto-refresh timer effect
     useEffect(() => {
@@ -196,7 +201,7 @@ const Search = ({
         
         if (value === '' || value.trim() === '') {
             const searchParams = { ...filters };
-            delete searchParams.search;
+            delete searchParams.search; // ✅ Remove search key entirely
             
             Object.keys(searchParams).forEach(key => {
                 if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
@@ -205,7 +210,7 @@ const Search = ({
             });
             
             console.log('🗑️ [Search] CLEARING SEARCH TERM:', searchParams);
-            onSearch?.(searchParams);
+            onSearch?.(searchParams); // ✅ This updates Dashboard's searchFilters
             onFilterChange?.(searchParams);
             return;
         }
@@ -215,7 +220,7 @@ const Search = ({
         }, 300);
         
         setSearchTimeout(newTimeout);
-    }, [searchTimeout, filters, onSearch, onFilterChange]);
+    }, [filters, onSearch, onFilterChange]); // ✅ REMOVED searchTimeout from deps
 
     // Execute search
     const handleSearch = useCallback((term = searchTerm) => {
@@ -253,43 +258,48 @@ const Search = ({
     }, [searchTerm, filters, onSearch]);
 
     // Handle filter changes
-    const handleFilterChange = useCallback((key, value) => {
-        const newFilters = { ...filters, [key]: value };
-        setFilters(newFilters);
-        
-        const searchParams = { ...newFilters };
-        
-        if (searchTerm && searchTerm.trim()) {
-            searchParams.search = searchTerm.trim();
+// Line 265-303: Handle filter changes
+const handleFilterChange = useCallback((key, value) => {
+    const newFilters = { ...filters, [key]: value };
+    setFilters(newFilters);
+    
+    const searchParams = { ...newFilters };
+    
+    // ✅ Only add search if it's currently set AND not empty
+    if (searchTerm && searchTerm.trim()) {
+        searchParams.search = searchTerm.trim();
+    } else {
+        // ✅ Explicitly remove search if empty
+        delete searchParams.search;
+    }
+    
+    // ✅ NEW: Handle modalities multi-select
+    if (newFilters.modalities && newFilters.modalities.length > 0) {
+        searchParams.modalities = newFilters.modalities;
+    }
+    
+    if (newFilters.radiologists && newFilters.radiologists.length > 0) {
+        searchParams.radiologists = newFilters.radiologists;
+    }
+    
+    if (newFilters.labs && newFilters.labs.length > 0) {
+        searchParams.labs = newFilters.labs;
+    }
+    
+    Object.keys(searchParams).forEach(key => {
+        const value = searchParams[key];
+        if (value === '' || value === 'all' || value === undefined) {
+            delete searchParams[key];
         }
-        
-        // ✅ NEW: Handle modalities multi-select
-        if (newFilters.modalities && newFilters.modalities.length > 0) {
-            searchParams.modalities = newFilters.modalities;
+        if (Array.isArray(value) && value.length === 0) {
+            delete searchParams[key];
         }
-        
-        if (newFilters.radiologists && newFilters.radiologists.length > 0) {
-            searchParams.radiologists = newFilters.radiologists;
-        }
-        
-        if (newFilters.labs && newFilters.labs.length > 0) {
-            searchParams.labs = newFilters.labs;
-        }
-        
-        Object.keys(searchParams).forEach(key => {
-            const value = searchParams[key];
-            if (value === '' || value === 'all' || value === undefined) {
-                delete searchParams[key];
-            }
-            if (Array.isArray(value) && value.length === 0) {
-                delete searchParams[key];
-            }
-        });
-        
-        console.log('🔍 [Search] Filter changed:', { key, value, params: searchParams });
-        onSearch?.(searchParams);
-        onFilterChange?.(searchParams);
-    }, [filters, searchTerm, onSearch, onFilterChange]);
+    });
+    
+    console.log('🔍 [Search] Filter changed:', { key, value, params: searchParams });
+    onSearch?.(searchParams);
+    onFilterChange?.(searchParams);
+}, [filters, searchTerm, onSearch, onFilterChange]);
 
     // Clear all filters
     const clearAllFilters = useCallback(() => {
