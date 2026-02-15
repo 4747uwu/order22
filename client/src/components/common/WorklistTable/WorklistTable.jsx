@@ -630,10 +630,11 @@ const StudyRow = ({
   };
 
   // ✅ UPDATED: OHIF Reporting with Restore Check
-  const handleOHIFReporting = async () => {
+// ✅ UPDATED: OHIF Reporting with Restore Check + Role-based Lock Logic
+const handleOHIFReporting = async () => {
+  setRestoringStudy(true);
+  
   try {
-    setTogglingLock(true);
-    
     // ✅ Get current user and check roles
     const currentUser = sessionManager.getCurrentUser();
     const accountRoles = currentUser?.accountRoles || [currentUser?.role];
@@ -649,6 +650,7 @@ const StudyRow = ({
       console.log('🔒 [Lock] Radiologist - attempting to lock study (will bypass if already locked)');
       
       try {
+        setTogglingLock(true);
         const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
         
         if (lockResponse?.data?.success) {
@@ -660,7 +662,9 @@ const StudyRow = ({
             }
           });
         }
+        setTogglingLock(false);
       } catch (lockError) {
+        setTogglingLock(false);
         // ✅ Radiologist can bypass locks - just show info message
         if (lockError.response?.status === 423) {
           const lockedBy = lockError.response.data.lockedBy || 'another user';
@@ -692,10 +696,28 @@ const StudyRow = ({
     
     const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
     
-    console.log(`📂 [Open] Opening: ${reportingUrl}`);
-    
-    // ✅ Open in new tab (radiologists bypass locks, others open normally)
-    window.open(reportingUrl, '_blank');
+    // ✅ USE navigateWithRestore TO CHECK 10-DAY THRESHOLD AND RESTORE IF NEEDED
+    await navigateWithRestore(
+      // Custom navigate function that opens in new tab
+      (path) => window.open(path, '_blank'),
+      reportingUrl,
+      study,
+      {
+        daysThreshold: 10, // ✅ 10-day threshold for restore
+        onRestoreStart: (study) => {
+          console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
+          toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
+        },
+        onRestoreComplete: (data) => {
+          console.log(`✅ [OHIF Reporting] Restore completed:`, data);
+          toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
+        },
+        onRestoreError: (error) => {
+          console.error(`❌ [OHIF Reporting] Restore failed:`, error);
+          toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
+        }
+      }
+    );
     
   } catch (error) {
     console.error('❌ [Error] OHIF reporting error:', error);
@@ -723,8 +745,17 @@ const StudyRow = ({
         icon: '❌'
       });
     }
+    
+    // ✅ Still try to open the reporting interface even if lock/restore fails
+    const queryParams = new URLSearchParams({
+      openOHIF: 'true',
+      ...(accountRoles.includes('verifier') && { verifierMode: 'true', action: 'verify' })
+    });
+    window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+    
   } finally {
     setTogglingLock(false);
+    setRestoringStudy(false);
   }
 };
 
@@ -870,7 +901,7 @@ const StudyRow = ({
       {/* 9. VIEW */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
         <button
-          onClick={handleViewOnlyClick}
+          onClick={handleOHIFReporting}
           className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
           title="View Images Only (No Locking)"
         >

@@ -21,7 +21,7 @@ export const AuthProvider = ({ children }) => {
   const [availableOrganizations, setAvailableOrganizations] = useState([]);
   const [currentOrganizationContext, setCurrentOrganizationContext] = useState(null);
 
-  // Check if user is already logged in
+
   useEffect(() => {
     const checkLoggedIn = async () => {
       try {

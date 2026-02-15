@@ -47,7 +47,7 @@ const AssignerDashboard = () => {
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
-  // ✅ UPDATED: CATEGORY-BASED API VALUES (same as admin)
+  // ✅ UPDATED: CATEGORY-BASED API VALUES (ADD REVERTED)
   const [categoryValues, setCategoryValues] = useState({
     all: 0,
     created: 0,
@@ -59,7 +59,8 @@ const AssignerDashboard = () => {
     verification_pending: 0,
     final: 0,
     urgent: 0,
-    reprint_need: 0
+    reprint_need: 0,
+    reverted: 0  // ✅ ADD THIS
   });
 
   // Column configuration
@@ -208,7 +209,8 @@ const AssignerDashboard = () => {
           verification_pending: response.data.verification_pending || 0,
           final: response.data.final || 0,
           urgent: response.data.urgent || 0,
-          reprint_need: response.data.reprint_need || 0
+          reprint_need: response.data.reprint_need || 0,
+          reverted: response.data.reverted || 0
         });
 
         console.log('📊 [Assignor] CATEGORY VALUES UPDATED:', response.data);

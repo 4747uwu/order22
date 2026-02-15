@@ -495,41 +495,60 @@ const UnifiedStudyRow = ({
   };
 
 const handleOHIFReporting = async () => {
+  setRestoringStudy(true);
+  
   try {
-    setTogglingLock(true);
-    
     // ✅ Get current user and check roles
     const currentUser = sessionManager.getCurrentUser();
     const accountRoles = currentUser?.accountRoles || [currentUser?.role];
     
-    // ✅ Check if user should lock (radiologist or doctor_account)
-    const shouldLockStudy = accountRoles.includes('radiologist') || 
-                           accountRoles.includes('doctor_account');
+    // ✅ Check if user is radiologist (only radiologists can lock/bypass)
+    const isRadiologist = accountRoles.includes('radiologist');
     
-    // ✅ Check if user is verifier
+    // ✅ Check if user is verifier (read-only access)
     const isVerifier = accountRoles.includes('verifier');
     
-    // ✅ Only attempt to lock if user is radiologist or doctor
-    if (shouldLockStudy && !isVerifier) {
-      console.log('🔒 [Lock] Radiologist/Doctor - attempting to lock study');
+    // ✅ ONLY RADIOLOGISTS attempt to lock (and can bypass existing locks)
+    if (isRadiologist && !isVerifier) {
+      console.log('🔒 [Lock] Radiologist - attempting to lock study (will bypass if already locked)');
       
-      const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
-      
-      if (!lockResponse?.data?.success) {
-        throw new Error(lockResponse?.data?.message || 'Lock failed');
-      }
-      
-      toast.success('Study locked for reporting', { 
-        icon: '🔒',
-        duration: 2000,
-        style: {
-          border: '1px solid #10b981',
+      try {
+        setTogglingLock(true);
+        const lockResponse = await api.post(`/admin/studies/${study._id}/lock`);
+        
+        if (lockResponse?.data?.success) {
+          toast.success('Study locked for reporting', { 
+            icon: '🔒',
+            duration: 2000,
+            style: {
+              border: '1px solid #10b981',
+            }
+          });
         }
-      });
+        setTogglingLock(false);
+      } catch (lockError) {
+        setTogglingLock(false);
+        // ✅ Radiologist can bypass locks - just show info message
+        if (lockError.response?.status === 423) {
+          const lockedBy = lockError.response.data.lockedBy || 'another user';
+          console.log(`⚠️ [Bypass] Study locked by ${lockedBy}, but radiologist can proceed`);
+          
+          toast.info(`Study locked by ${lockedBy} - Opening anyway (Radiologist bypass)`, {
+            duration: 3000,
+            icon: '⚠️',
+            style: {
+              border: '1px solid #f59e0b',
+            }
+          });
+        } else {
+          // Some other error - log but still proceed
+          console.warn('⚠️ [Lock] Lock attempt failed, proceeding anyway:', lockError);
+        }
+      }
     } else if (isVerifier) {
-      console.log('✅ [Verifier] Bypassing lock check - opening for verification');
-      
-      
+      console.log('✅ [Verifier] Read-only access - no locking');
+    } else {
+      console.log('👁️ [Viewer] Non-radiologist - no locking');
     }
     
     // ✅ Build URL with appropriate query params
@@ -540,16 +559,39 @@ const handleOHIFReporting = async () => {
     
     const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
     
-    console.log(`📂 [Open] Opening: ${reportingUrl}`);
-    
-    // ✅ Open in new tab
-    window.open(reportingUrl, '_blank');
+    // ✅ USE navigateWithRestore TO CHECK 10-DAY THRESHOLD AND RESTORE IF NEEDED
+    await navigateWithRestore(
+      // Custom navigate function that opens in new tab
+      (path) => window.open(path, '_blank'),
+      reportingUrl,
+      study,
+      {
+        daysThreshold: 10, // ✅ 10-day threshold for restore
+        onRestoreStart: (study) => {
+          console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
+          toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
+        },
+        onRestoreComplete: (data) => {
+          console.log(`✅ [OHIF Reporting] Restore completed:`, data);
+          toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
+        },
+        onRestoreError: (error) => {
+          console.error(`❌ [OHIF Reporting] Restore failed:`, error);
+          toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
+        }
+      }
+    );
     
   } catch (error) {
     console.error('❌ [Error] OHIF reporting error:', error);
     
-    if (error.response?.status === 423) {
-      // Study is locked by someone else
+    // ✅ Only show lock errors for non-radiologists
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    const isRadiologist = accountRoles.includes('radiologist');
+    
+    if (error.response?.status === 423 && !isRadiologist) {
+      // Study is locked and user is NOT a radiologist
       const lockedBy = error.response.data.lockedBy || 'another user';
       
       toast.error(`Study is locked by ${lockedBy}`, {
@@ -559,14 +601,24 @@ const handleOHIFReporting = async () => {
           border: '1px solid #ef4444',
         }
       });
-    } else {
+    } else if (error.response?.status !== 423) {
+      // Other errors (not lock-related)
       toast.error(error.response?.data?.message || 'Failed to open study', {
         duration: 4000,
         icon: '❌'
       });
     }
+    
+    // ✅ Still try to open the reporting interface even if lock/restore fails
+    const queryParams = new URLSearchParams({
+      openOHIF: 'true',
+      ...(accountRoles.includes('verifier') && { verifierMode: 'true', action: 'verify' })
+    });
+    window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+    
   } finally {
     setTogglingLock(false);
+    setRestoringStudy(false);
   }
 };
 
