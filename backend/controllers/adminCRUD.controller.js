@@ -187,30 +187,28 @@ export const createDoctor = async (req, res) => {
 };
 
 // ✅ CREATE LAB WITH USER ACCOUNT and verification settings
+// Backend update for adminCRUD.controller.js - createLab function
+
 export const createLab = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
         const {
-            // Lab details
             name,
-            identifier,
+            identifier, // Now auto-generated from frontend
             contactPerson,
             contactEmail,
             contactPhone,
             address,
-            notes,
             settings,
-            
-            // ✅ NEW: User account details for lab staff
             staffUserDetails: {
                 fullName,
                 email: staffEmail,
                 username,
                 password,
-                role = 'lab_staff', // Default role
-                visibleColumns = [] // ✅ NEW
+                role = 'lab_staff',
+                visibleColumns = []
             } = {}
         } = req.body;
 
@@ -223,11 +221,18 @@ export const createLab = async (req, res) => {
         }
 
         // Validate required fields
-        if (!name || !identifier) {
+        if (!name || !contactPerson) {
             return res.status(400).json({
                 success: false,
-                message: 'Lab name and identifier are required'
+                message: 'Lab name and contact person are required'
             });
+        }
+
+        // ✅ Auto-generate identifier if not provided
+        let finalIdentifier = identifier;
+        if (!finalIdentifier) {
+            const cleaned = name.replace(/[^a-zA-Z]/g, '').toUpperCase();
+            finalIdentifier = cleaned.substring(0, 5).padEnd(5, 'X');
         }
 
         // ✅ VALIDATE: Staff user details if provided
@@ -253,7 +258,7 @@ export const createLab = async (req, res) => {
         // Check if lab identifier already exists in the organization
         const existingLab = await Lab.findOne({
             organizationIdentifier: userOrgIdentifier,
-            identifier: identifier.toUpperCase().trim()
+            identifier: finalIdentifier.toUpperCase().trim()
         });
 
         if (existingLab) {
@@ -272,46 +277,44 @@ export const createLab = async (req, res) => {
             });
 
             if (existingStaffUser) {
+                await session.abortTransaction();
                 return res.status(409).json({
                     success: false,
                     message: 'Staff email already exists in this organization'
                 });
             }
 
-            // Generate username if not provided
             const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
-
-            // Check if username exists in organization
+            
             const existingUsername = await User.findOne({
                 username: finalUsername,
                 organizationIdentifier: userOrgIdentifier
             });
 
             if (existingUsername) {
+                await session.abortTransaction();
                 return res.status(409).json({
                     success: false,
-                    message: 'Staff username already exists in this organization'
+                    message: 'Username already exists in this organization'
                 });
             }
         }
 
-        // ✅ CREATE LAB with verification settings
+        // ✅ CREATE LAB (removed notes field)
         const newLab = new Lab({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
             name: name.trim(),
-            identifier: identifier.toUpperCase().trim(),
+            identifier: finalIdentifier.toUpperCase().trim(),
             contactPerson: contactPerson?.trim() || '',
             contactEmail: contactEmail?.toLowerCase().trim() || '',
             contactPhone: contactPhone?.trim() || '',
             address: address || {},
             isActive: true,
-            notes: notes?.trim() || '',
             settings: {
                 autoAssignStudies: settings?.autoAssignStudies || false,
                 defaultPriority: settings?.defaultPriority || 'NORMAL',
                 maxConcurrentStudies: settings?.maxConcurrentStudies || 100,
-                // ✅ NEW: Add verification settings
                 requireReportVerification: settings?.requireReportVerification !== undefined 
                     ? settings.requireReportVerification 
                     : true,
@@ -328,49 +331,43 @@ export const createLab = async (req, res) => {
 
         console.log('✅ [CreateLab] Lab created successfully:', {
             labId: newLab._id,
-            requireVerification: newLab.settings.requireReportVerification,
-            verificationEnabledAt: newLab.settings.verificationEnabledAt
+            identifier: newLab.identifier,
+            requireVerification: newLab.settings.requireReportVerification
         });
 
         // ✅ CREATE: Staff user account if details provided
         if (staffEmail) {
             const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
-
+            
             staffUser = new User({
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
                 username: finalUsername,
                 email: staffEmail.toLowerCase().trim(),
-                password: password, // Will be hashed by pre-save hook
+                password: password,
                 fullName: fullName.trim(),
                 role: role,
                 createdBy: req.user._id,
                 isActive: true,
-                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [] // ✅ NEW
+                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [],
+                hierarchy: {
+                    createdBy: req.user._id,
+                    parentUser: req.user._id
+                }
             });
 
             await staffUser.save({ session });
 
-            // ✅ ADD: Staff user to lab's staffUsers array
-            newLab.staffUsers.push({
+            console.log('✅ [CreateLab] Staff user created:', {
                 userId: staffUser._id,
-                role: role,
-                addedAt: new Date(),
-                isActive: true
-            });
-
-            await newLab.save({ session });
-
-            console.log('✅ [CreateLab] Staff user created and linked to lab:', {
-                userId: staffUser._id,
-                userEmail: staffUser.email,
-                role: role
+                email: staffUser.email,
+                username: staffUser.username
             });
         }
 
         await session.commitTransaction();
 
-        // Return created lab with populated organization and staff user
+        // Return created lab with staff user
         const createdLab = await Lab.findById(newLab._id)
             .populate('organization', 'name displayName');
 
@@ -401,7 +398,7 @@ export const createLab = async (req, res) => {
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: 'Lab identifier already exists'
+                message: 'Lab with this identifier already exists'
             });
         }
 

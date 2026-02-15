@@ -713,38 +713,75 @@ async function processStableStudy(job) {
     let tags = {};
     
     if (firstInstanceId) {
+      console.log(`[StableStudy] 🔍 Getting tags from single instance: ${firstInstanceId}`);
+      
       try {
-        const instanceTagsUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/tags?simplify`;
-        console.log(`[StableStudy] 🌐 Fetching tags from first instance: ${instanceTagsUrl}`);
-        
-        const tagsResponse = await axios.get(instanceTagsUrl, {
+        const metadataUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/tags`;
+        const metadataResponse = await axios.get(metadataUrl, {
           headers: { 'Authorization': orthancAuth },
-          timeout: 10000
+          timeout: 8000
         });
         
-        tags = tagsResponse.data;
-        console.log(`[StableStudy] 📊 Tags extracted from first instance`);
+        const rawTags = metadataResponse.data;
         
-        // Log important tags for debugging
-        console.log(`[StableStudy] 📋 Key DICOM Tags:`, {
-          PatientID: tags.PatientID,
-          PatientName: tags.PatientName,
-          StudyDate: tags.StudyDate,
-          StudyDescription: tags.StudyDescription,
-          AccessionNumber: tags.AccessionNumber,
-          Modality: tags.Modality,
-          ReferringPhysicianName: tags.ReferringPhysicianName,
-          InstitutionName: tags.InstitutionName,
-          StudyInstanceUID: tags.StudyInstanceUID,
-          'OrgTag_0021,0010': tags["0021,0010"],
-          'OrgTag_0043,0010': tags["0043,0010"],
-          'LabTag_0013,0010': tags["0013,0010"],
-          'LabTag_0015,0010': tags["0015,0010"]
-        });
-        
-      } catch (error) {
-        console.error(`[StableStudy] ❌ Error fetching tags from instance ${firstInstanceId}:`, error.message);
+        // 🔧 OPTIMIZED: Extract all necessary tags in one pass
         tags = {};
+        for (const [tagKey, tagData] of Object.entries(rawTags)) {
+          if (tagData && typeof tagData === 'object' && tagData.Value !== undefined) {
+            tags[tagKey] = tagData.Value;
+          } else if (typeof tagData === 'string') {
+            tags[tagKey] = tagData;
+          }
+        }
+        
+        // Map common DICOM fields
+        tags.PatientName = rawTags["0010,0010"]?.Value || tags.PatientName;
+        tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
+        tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
+        tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
+        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription;
+        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;
+        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;
+        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;
+        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;
+        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName;
+        
+        // 🔧 CRITICAL: Extract private tags for organization and lab identification  
+        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null; // Lab identifier
+        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null; // Lab identifier
+        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null; // Organization identifier
+        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null; // Organization identifier
+        
+        console.log(`[StableStudy] ✅ Got tags from single instance:`, {
+          PatientName: tags.PatientName,
+          PatientID: tags.PatientID,
+          StudyDescription: tags.StudyDescription,
+          LabTags: {
+            "0013,0010": tags["0013,0010"],
+            "0015,0010": tags["0015,0010"]
+          },
+          OrganizationTags: {
+            "0021,0010": tags["0021,0010"],
+            "0043,0010": tags["0043,0010"]
+          }
+        });
+        
+      } catch (metadataError) {
+        console.warn(`[StableStudy] ⚠️ Could not get instance metadata:`, metadataError.message);
+        
+        // 🔧 FALLBACK: Try simplified-tags if /tags fails
+        try {
+          const simplifiedUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/simplified-tags`;
+          const simplifiedResponse = await axios.get(simplifiedUrl, {
+            headers: { 'Authorization': orthancAuth },
+            timeout: 8000
+          });
+          
+          tags = { ...simplifiedResponse.data };
+          console.log(`[StableStudy] ✅ Got simplified metadata as fallback`);
+        } catch (simplifiedError) {
+          console.warn(`[StableStudy] ⚠️ Simplified tags also failed:`, simplifiedError.message);
+        }
       }
     } else {
       console.warn(`[StableStudy] ⚠️ No instances found in any series, using empty tags`);
