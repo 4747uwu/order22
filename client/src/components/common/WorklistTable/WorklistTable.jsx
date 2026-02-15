@@ -141,7 +141,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         referringPhysician: study.referralNumber || study.referringPhysicianName || '',
         accessionNumber: study.accessionNumber || '',
         clinicalHistory: study.clinicalHistory || '',
-        studyPriority: study.studyPriority || 'SELECT'
+        studyPriority: study.priority || 'SELECT'
       });
     }
   }, [study, isOpen]);
@@ -164,7 +164,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   // Study Priority options
   const studyPriorityOptions = [
     { value: 'SELECT', label: 'Select Priority' },
-    { value: 'Emergency Case', label: '🚨 Emergency Case' },
+    { value: 'EMERGENCY CASE', label: '🚨 Emergency Case' },
     { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
     { value: 'MLC Case', label: '⚖️ MLC Case' },
     { value: 'Study Exception', label: '⚠️ Study Exception' }
@@ -451,7 +451,7 @@ const StudyRow = ({
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
 
   // ✅ Check if study is an Emergency Case
-  const isEmergencyCase = study?.priority === 'Emergency Case';
+  const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
 
   const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 

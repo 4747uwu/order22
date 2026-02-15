@@ -126,7 +126,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         referringPhysician: study.referralNumber || study.referringPhysicianName || '',
         accessionNumber: study.accessionNumber || '',
         clinicalHistory: study.clinicalHistory || '',
-        studyPriority: study.studyPriority || 'SELECT'
+        studyPriority: study.priority || 'SELECT'
       });
     }
   }, [study, isOpen]);
@@ -149,7 +149,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   // Study Priority options
   const studyPriorityOptions = [
     { value: 'SELECT', label: 'Select Priority' },
-    { value: 'Emergency Case', label: '🚨 Emergency Case' },
+    { value: 'EMERGENCY CASE', label: '🚨 Emergency Case' },
     { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
     { value: 'MLC Case', label: '⚖️ MLC Case' },
     { value: 'Study Exception', label: '⚠️ Study Exception' }
@@ -429,7 +429,7 @@ const UnifiedStudyRow = ({
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
   
   // ✅ Check if study is an Emergency Case
-  const isEmergencyCase = study.studyPriority === 'Emergency Case';
+  const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
 
   useEffect(() => {
     if (!inputFocused && !showAssignmentModal) {
@@ -478,6 +478,7 @@ const UnifiedStudyRow = ({
     handleCloseAssignmentModal();
   };
 
+  
   const handleDownloadClick = (e) => {
     e.stopPropagation();
     if (downloadButtonRef.current) {

@@ -349,6 +349,35 @@ const AssignerDashboard = () => {
     }
   }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
 
+    const handleUpdateStudyDetails = useCallback(async (formData) => {
+    try {
+      console.log('🔄 Updating study details:', formData);
+      
+      const response = await api.put(`/admin/studies/${formData.studyId}/details`, {
+        patientName: formData.patientName,
+        patientAge: formData.patientAge,
+        patientGender: formData.patientGender,
+        studyName: formData.studyName,
+        referringPhysician: formData.referringPhysician,
+        accessionNumber: formData.accessionNumber,
+        clinicalHistory: formData.clinicalHistory,
+        caseType: formData.caseType,
+        studyPriority: formData.studyPriority,
+        assignmentPriority: formData.assignmentPriority
+      });
+
+      if (response.data.success) {
+        toast.success('Study details updated successfully');
+        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+        fetchCategoryValues(searchFilters);
+      }
+    } catch (error) {
+      console.error('Error updating study details:', error);
+      toast.error(error.response?.data?.message || 'Failed to update study details');
+      throw error;
+    }
+  }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
+
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
       ...prev,
@@ -491,6 +520,7 @@ const AssignerDashboard = () => {
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
+               onUpdateStudyDetails={handleUpdateStudyDetails}
               // userRole={currentUser?.role || 'assignor'}
               pagination={pagination}
               onPageChange={handlePageChange}
