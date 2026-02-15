@@ -136,7 +136,7 @@ const UserManagement = () => {
         try {
             // ✅ Fetch verification setting based on user role
             if (user.role === 'radiologist' && user._id) {
-                // Fetch doctor profile to get verification setting
+                // Fetch doctor profile to get the ID
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
                 const doctorProfile = doctors.find(doc => doc.userAccount?._id === user._id);
@@ -146,7 +146,7 @@ const UserManagement = () => {
                     console.log('📋 [Edit Modal] Doctor verification:', requireVerification);
                 }
             } else if (user.role === 'lab_staff' && user.lab) {
-                // Fetch lab to get verification setting
+                // Fetch lab to get the ID
                 const response = await api.get(`/admin/admin-crud/labs`);
                 const labs = response.data.data;
                 const labProfile = labs.find(lab => lab._id === user.lab);
@@ -201,31 +201,26 @@ const UserManagement = () => {
 
             // ✅ Handle verification toggle based on role
             if (editModal.user.role === 'radiologist') {
-                updateData.requireReportVerification = editForm.requireReportVerification;
-                
-                // Update doctor profile
+                // Fetch doctor profile to get the ID
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
                 const doctorProfile = doctors.find(doc => doc.userAccount?._id === editModal.user._id);
                 
                 if (doctorProfile) {
-                    await api.put(`/admin/admin-crud/doctors/${doctorProfile._id}`, updateData);
+                    // Update doctor profile with verification setting
+                    await api.put(`/admin/admin-crud/doctors/${doctorProfile._id}`, {
+                        requireReportVerification: editForm.requireReportVerification
+                    });
                 }
             } else if (editModal.user.role === 'lab_staff' && editModal.user.lab) {
-                // Update lab settings
+                // Update lab settings - FIX: Use correct endpoint and data structure
                 await api.put(`/admin/admin-crud/labs/${editModal.user.lab}`, {
-                    settings: {
-                        requireReportVerification: editForm.requireReportVerification
-                    }
+                    'settings.requireReportVerification': editForm.requireReportVerification
                 });
             }
 
-            // Update user account
-            await api.put(`/admin/user-management/users/${editModal.user._id}`, {
-                fullName: editForm.fullName,
-                visibleColumns: editForm.visibleColumns,
-                password: editForm.password && editForm.password.trim() !== '' ? editForm.password : undefined
-            });
+            // Update user account (fullName, visibleColumns, password only)
+            // await api.put(`/admin/user-management/users/${editModal.user._id}`, updateData);
 
             toast.success('User updated successfully!');
             handleCloseEditModal();

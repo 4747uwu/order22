@@ -456,6 +456,24 @@ async function findOrCreatePatientFromTags(tags, organization) {
     organization: organization._id 
   });
 
+  // If patient exists but name doesn't match, create a new unique patient
+  if (patient && patient.patientNameRaw && nameInfo.formattedForDisplay) {
+    const existingName = patient.patientNameRaw.trim().toUpperCase();
+    const newName = nameInfo.formattedForDisplay.trim().toUpperCase();
+    
+    if (existingName !== newName) {
+      console.log(`⚠️ Patient MRN collision detected!`);
+      console.log(`   - MRN: ${patientIdDicom}`);
+      console.log(`   - Existing: ${patient.patientNameRaw}`);
+      console.log(`   - New Study: ${nameInfo.formattedForDisplay}`);
+      console.log(`   - Creating separate patient record with modified MRN`);
+      
+      // Create new patient with modified MRN to avoid collision
+      patient = null; // Force creation of new patient below
+      patientIdDicom = `${patientIdDicom}_${nameInfo.lastName || Date.now()}`;
+    }
+  }
+
   if (!patient) {
     patient = new Patient({
       organization: organization._id,
