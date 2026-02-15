@@ -16,6 +16,7 @@ import ResizableTableHeader from './ResizableTableHeader';
 import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColumns';
 import PrintModal from '../../PrintModal';
 import sessionManager from '../../../services/sessionManager';
+import { navigateWithRestore } from '../../../utils/backupRestoreHelper'; 
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -415,6 +416,7 @@ const UnifiedStudyRow = ({
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [downloadPosition, setDownloadPosition] = useState(null);
   const [togglingLock, setTogglingLock] = useState(false);
+  const [restoringStudy, setRestoringStudy] = useState(false);
 
   const isSelected = selectedStudies?.includes(study._id);
   const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
