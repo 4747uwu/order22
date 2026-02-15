@@ -169,7 +169,7 @@ const Navbar = ({
         <div className="max-w-8xl mx-auto px-3">
           <div className="flex justify-between items-center h-12">
             
-            {/* ✅ LEFT SECTION - More compact */}
+            {/* ✅ LEFT SECTION - Logo + Title */}
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
@@ -178,12 +178,20 @@ const Navbar = ({
                 {showMobileMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>
               
-              <div className="hidden md:block">
-                <div className="flex items-center space-x-2">
-                  <h1 className="text-lg font-bold text-black tracking-tight">{title}</h1>
-                  {subtitle && (
-                    <span className="text-xs text-gray-500 font-medium">• {subtitle}</span>
-                  )}
+              {/* ✅ ADD: Bharat PACS Logo */}
+              <div className="flex items-center space-x-2.5">
+                <img 
+                  src="/bharat.png" 
+                  alt="Bharat PACS" 
+                  className="h-8 w-8 object-contain"
+                />
+                <div className="hidden md:block">
+                  <div className="flex items-center space-x-2">
+                    <h1 className="text-lg font-bold text-black tracking-tight">{title}</h1>
+                    {subtitle && (
+                      <span className="text-xs text-gray-500 font-medium">• {subtitle}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

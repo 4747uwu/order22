@@ -521,24 +521,9 @@ const CreateLab = () => {
                                                     onColumnToggle={handleColumnToggle}
                                                     onSelectAll={handleSelectAllColumns}
                                                     onClearAll={handleClearAllColumns}
-                                                    userRoles={[formData.staffUserDetails.role]}
-                                                    formData={{ 
-                                                        role: formData.staffUserDetails.role, 
-                                                        visibleColumns: formData.staffUserDetails.visibleColumns 
-                                                    }}
-                                                    setFormData={(updateFn) => {
-                                                        const updated = updateFn({ 
-                                                            role: formData.staffUserDetails.role, 
-                                                            visibleColumns: formData.staffUserDetails.visibleColumns 
-                                                        });
-                                                        setFormData(prev => ({
-                                                            ...prev,
-                                                            staffUserDetails: {
-                                                                ...prev.staffUserDetails,
-                                                                visibleColumns: updated.visibleColumns
-                                                            }
-                                                        }));
-                                                    }}
+                                                    userRoles={['lab_staff']}
+                                                    formData={{}}
+                                                    setFormData={() => {}}
                                                     useMultiRole={false}
                                                 />
                                             </div>

@@ -135,15 +135,24 @@ const LoginPage = () => {
       {/* CENTERED LOGIN FORM */}
       <div className="relative z-20 w-full max-w-md px-6">
         
-        {/* Header with animated icon */}
-        <div className="text-center space-y-6 mb-8">
-          <AnimatedMedicalIcon />
+        {/* Header with logo */}
+        <div className="text-center space-y-4 mb-8">
+          {/* ✅ REPLACE: Use Bharat PACS logo instead of animated icon */}
+          <div className="flex justify-center">
+            <div className="relative w-20 h-20 bg-gradient-to-br from-black to-gray-700 rounded-2xl shadow-2xl p-3 animate-pulse">
+              <img 
+                src="/bharat.png" 
+                alt="Bharat PACS" 
+                className="w-full h-full object-contain"
+              />
+            </div>
+          </div>
           <div>
             <h2 className="text-3xl font-bold text-white drop-shadow-lg">
               Welcome Back
             </h2>
             <p className="mt-2 text-sm text-white/90 drop-shadow">
-              Sign in to access your dashboard
+              Sign in to access your Bharat PACS dashboard
             </p>
           </div>
         </div>
@@ -271,11 +280,15 @@ const LoginPage = () => {
 
         {/* Logo/Branding */}
         <div className="text-center mt-8">
-          <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
-            <Activity className="h-4 w-4 text-gray-200" />
-            <span className="text-sm font-semibold text-gray-200">Xcentic Pacs</span>
+          <div className="inline-flex items-center space-x-2.5 bg-white/10 backdrop-blur-sm px-4 py-2 rounded-full border border-white/10">
+            <img 
+              src="/bharat.png" 
+              alt="Bharat PACS" 
+              className="h-5 w-5 object-contain"
+            />
+            <span className="text-sm font-semibold text-gray-200">Bharat PACS</span>
           </div>
-          <p className="text-xs text-gray-400 mt-2">XCENTIC X CODINGWODING</p>
+          <p className="text-xs text-gray-400 mt-2">Powering Healthcare Imaging</p>
         </div>
       </div>
     </div>

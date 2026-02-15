@@ -897,6 +897,7 @@ async function processStableStudy(job) {
       
       // Always update these fields
       patient: patientRecord._id,
+      patientId: patientRecord.patientID, // ✅ FIXED: Added required field
       patientName: patientRecord.patientNameRaw || patientRecord.computed?.fullName,
       studyInstanceUID: studyInstanceUID,
       studyDate: studyDate,
@@ -912,7 +913,7 @@ async function processStableStudy(job) {
       orthancStudyID: orthancStudyId,
       
       // Workflow status
-      workflowStatus: existingStudy ? existingStudy.workflowStatus : 'unassigned',
+      workflowStatus: existingStudy ? existingStudy.workflowStatus : 'new_study_received', // ✅ FIXED: Changed from 'unassigned'
       caseStatus: existingStudy ? existingStudy.caseStatus : 'pending',
       urgency: existingStudy ? existingStudy.urgency : 'normal',
       
