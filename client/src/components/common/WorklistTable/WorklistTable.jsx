@@ -19,6 +19,7 @@ import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
 import useWebSocket from '../../../hooks/useWebSocket';
 import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
+import sessionManager from '../../../services/sessionManager.jsx';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
