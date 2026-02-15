@@ -337,31 +337,38 @@ export const createLab = async (req, res) => {
 
         // ✅ CREATE: Staff user account if details provided
         if (staffEmail) {
-            const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
-            
+            const finalStaffUsername = username || staffEmail.split('@')[0].toLowerCase();
+
             staffUser = new User({
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
-                username: finalUsername,
+                lab: newLab._id,  // ✅ CRITICAL: Link to lab
+                username: finalStaffUsername,
                 email: staffEmail.toLowerCase().trim(),
                 password: password,
                 fullName: fullName.trim(),
                 role: role,
                 createdBy: req.user._id,
                 isActive: true,
-                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [],
-                hierarchy: {
-                    createdBy: req.user._id,
-                    parentUser: req.user._id
-                }
+                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : []
             });
 
             await staffUser.save({ session });
 
-            console.log('✅ [CreateLab] Staff user created:', {
+            // ✅ ADD USER TO LAB'S STAFF LIST
+            newLab.staffUsers.push({
                 userId: staffUser._id,
-                email: staffUser.email,
-                username: staffUser.username
+                role: role,
+                addedAt: new Date(),
+                isActive: true
+            });
+            
+            await newLab.save({ session });
+
+            console.log('✅ [CreateLab] Staff user created and linked to lab:', {
+                userId: staffUser._id,
+                labId: newLab._id,
+                email: staffEmail
             });
         }
 

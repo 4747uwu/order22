@@ -406,20 +406,7 @@ const CreateLab = () => {
                             </div>
 
                             {/* Staff Account Toggle */}
-                            <div>
-                                <label className="flex items-center space-x-2 cursor-pointer p-3 border-2 border-dashed border-slate-300 rounded-lg hover:border-purple-400 hover:bg-purple-50 transition-all">
-                                    <input
-                                        type="checkbox"
-                                        checked={createStaffAccount}
-                                        onChange={(e) => setCreateStaffAccount(e.target.checked)}
-                                        className="w-4 h-4 text-purple-600 border-slate-300 rounded focus:ring-purple-500"
-                                    />
-                                    <div>
-                                        <div className="text-sm font-medium text-slate-700">Create Staff Account</div>
-                                        <div className="text-xs text-slate-500">Set up a user account for lab staff</div>
-                                    </div>
-                                </label>
-                            </div>
+                           
 
                             {/* Staff Account Fields (conditional) */}
                             {createStaffAccount && (

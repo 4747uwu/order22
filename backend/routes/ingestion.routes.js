@@ -1036,7 +1036,7 @@ console.log(`[StableStudy] 📦 Queuing ZIP creation for study: ${orthancStudyId
 
 try {
     const zipJob = await CloudflareR2ZipService.addZipJob({
-        orthancStudyID: orthancStudyId,
+        orthancStudyId: orthancStudyId,
         studyDatabaseId: dicomStudyDoc._id,
         studyInstanceUID: dicomStudyDoc.studyInstanceUID || orthancStudyId,
         instanceCount: totalInstances,

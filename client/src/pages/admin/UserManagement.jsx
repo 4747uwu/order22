@@ -129,14 +129,47 @@ const UserManagement = () => {
 
     // ✅ OPEN EDIT MODAL
     const handleOpenEditModal = async (user) => {
-        setEditModal({ show: true, user, loading: false });
+        setEditModal({ show: true, user, loading: true });
+        
+        let requireVerification = false;
+        
+        try {
+            // ✅ Fetch verification setting based on user role
+            if (user.role === 'radiologist' && user._id) {
+                // Fetch doctor profile to get verification setting
+                const response = await api.get(`/admin/admin-crud/doctors`);
+                const doctors = response.data.data;
+                const doctorProfile = doctors.find(doc => doc.userAccount?._id === user._id);
+                
+                if (doctorProfile) {
+                    requireVerification = doctorProfile.requireReportVerification || false;
+                    console.log('📋 [Edit Modal] Doctor verification:', requireVerification);
+                }
+            } else if (user.role === 'lab_staff' && user.lab) {
+                // Fetch lab to get verification setting
+                const response = await api.get(`/admin/admin-crud/labs`);
+                const labs = response.data.data;
+                const labProfile = labs.find(lab => lab._id === user.lab);
+                
+                if (labProfile) {
+                    requireVerification = labProfile.settings?.requireReportVerification || false;
+                    console.log('📋 [Edit Modal] Lab verification:', requireVerification);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching verification settings:', error);
+            toast.error('Failed to load verification settings');
+        }
+        
         setEditForm({
             fullName: user.fullName || '',
             email: user.email || '',
             password: '',
             visibleColumns: user.visibleColumns || [],
-            requireReportVerification: user.requireReportVerification || false
+            requireReportVerification: requireVerification
         });
+        
+        setEditModal({ show: true, user, loading: false });
     };
 
     // ✅ CLOSE EDIT MODAL
@@ -158,19 +191,46 @@ const UserManagement = () => {
             
             const updateData = {
                 fullName: editForm.fullName,
-                email: editForm.email,
                 visibleColumns: editForm.visibleColumns,
-                requireReportVerification: editForm.requireReportVerification
             };
-            
+
+            // ✅ Handle password update if provided
             if (editForm.password && editForm.password.trim() !== '') {
                 updateData.password = editForm.password;
             }
-            
-            await api.put(`admin/manage-users/${editModal.user._id}`, updateData);
-            toast.success('User updated successfully');
+
+            // ✅ Handle verification toggle based on role
+            if (editModal.user.role === 'radiologist') {
+                updateData.requireReportVerification = editForm.requireReportVerification;
+                
+                // Update doctor profile
+                const response = await api.get(`/admin/admin-crud/doctors`);
+                const doctors = response.data.data;
+                const doctorProfile = doctors.find(doc => doc.userAccount?._id === editModal.user._id);
+                
+                if (doctorProfile) {
+                    await api.put(`/admin/admin-crud/doctors/${doctorProfile._id}`, updateData);
+                }
+            } else if (editModal.user.role === 'lab_staff' && editModal.user.lab) {
+                // Update lab settings
+                await api.put(`/admin/admin-crud/labs/${editModal.user.lab}`, {
+                    settings: {
+                        requireReportVerification: editForm.requireReportVerification
+                    }
+                });
+            }
+
+            // Update user account
+            await api.put(`/admin/user-management/users/${editModal.user._id}`, {
+                fullName: editForm.fullName,
+                visibleColumns: editForm.visibleColumns,
+                password: editForm.password && editForm.password.trim() !== '' ? editForm.password : undefined
+            });
+
+            toast.success('User updated successfully!');
             handleCloseEditModal();
             fetchOrganizationUsers();
+            
         } catch (error) {
             console.error('Error updating user:', error);
             toast.error(error.response?.data?.message || 'Failed to update user');
