@@ -892,77 +892,141 @@ async function processStableStudy(job) {
     
     // Prepare study data
     const studyData = {
-      // Preserved fields (if existing study)
-      ...preservedFields,
+      organization: organizationRecord._id,
+      organizationIdentifier: organizationRecord.identifier,
       
-      // Always update these fields
-      patient: patientRecord._id,
-      patientId: patientRecord.patientID, // ✅ FIXED: Added required field
-      patientName: patientRecord.patientNameRaw || patientRecord.computed?.fullName,
       studyInstanceUID: studyInstanceUID,
-      studyDate: studyDate,
-      studyDescription: studyDescription,
-      accessionNumber: accessionNumber,
-      modalities: Array.from(modalitiesSet),
-      numberOfStudyRelatedSeries: allSeries.length,
-      numberOfStudyRelatedInstances: totalInstances,
-      referringPhysicianName: referringPhysicianName,
-      institutionName: institutionName,
-      
-      // IDs and paths
       orthancStudyID: orthancStudyId,
       
-      // Workflow status
-      workflowStatus: existingStudy ? existingStudy.workflowStatus : 'new_study_received', // ✅ FIXED: Changed from 'unassigned'
-      caseStatus: existingStudy ? existingStudy.caseStatus : 'pending',
-      urgency: existingStudy ? existingStudy.urgency : 'normal',
+      accessionNumber: accessionNumber,
+      patient: patientRecord._id,
+      patientId: patientRecord.patientID,
+      sourceLab: labRecord._id,
+      labLocation: labLocation,
       
-      // Storage info
-      storageInfo: {
-        provider: 'cloudflare-r2',
-        bucket: process.env.R2_BUCKET_NAME || 'orthanc-dicom-storage',
-        zipPath: `studies/${orthancStudyId}/${orthancStudyId}.zip`,
-        uploadedAt: new Date(),
-        fileSize: 0,
-        compressionEnabled: labRecord?.settings?.enableCompression || false
+      studyDate: studyDate,
+      studyTime: tags.StudyTime || '',
+      modalitiesInStudy: Array.from(modalitiesSet),
+      examDescription: studyDescription,  // ✅ CHANGED from studyDescription to examDescription
+      institutionName: institutionName,
+      workflowStatus: totalInstances > 0 ? 'new_study_received' : 'new_metadata_only',
+      
+      seriesCount: allSeries.length,  // ✅ ADDED
+      instanceCount: totalInstances,  // ✅ ADDED
+      seriesImages: `${allSeries.length}/${totalInstances}`,  // ✅ ADDED
+      
+      patientInfo: {
+        patientID: patientRecord.patientID,
+        patientName: patientRecord.patientNameRaw,
+        gender: patientRecord.gender || '',
+        dateOfBirth: tags.PatientBirthDate || ''
       },
       
-      // Lab location
-      labLocation: labLocation || '',
+      referringPhysicianName: referringPhysicianName,
+      physicians: {
+        referring: {
+          name: referringPhysicianName,
+          email: '',
+          mobile: tags.ReferringPhysicianTelephoneNumbers || '',
+          institution: tags.ReferringPhysicianAddress || ''
+        },
+        requesting: {
+          name: tags.RequestingPhysician || '',
+          email: '',
+          mobile: '',
+          institution: tags.RequestingService || ''
+        }
+      },
       
-      // Metadata
-      dicomMetadata: {
-        rawTags: tags,
-        extractedAt: new Date()
+      technologist: {
+        name: tags.OperatorName || tags.PerformingPhysicianName || '',
+        mobile: '',
+        comments: '',
+        reasonToSend: tags.ReasonForStudy || tags.RequestedProcedureDescription || ''
+      },
+      
+      studyPriority: tags.StudyPriorityID || 'SELECT',
+      caseType: tags.RequestPriority || 'routine',
+      
+      equipment: {
+        manufacturer: tags.Manufacturer || '',
+        model: tags.ManufacturerModelName || '',
+        stationName: tags.StationName || '',
+        softwareVersion: tags.SoftwareVersions || ''
+      },
+      
+      protocolName: tags.ProtocolName || '',
+      bodyPartExamined: tags.BodyPartExamined || '',
+      contrastBolusAgent: tags.ContrastBolusAgent || '',
+      contrastBolusRoute: tags.ContrastBolusRoute || '',
+      acquisitionDate: tags.AcquisitionDate || '',
+      acquisitionTime: tags.AcquisitionTime || '',
+      studyComments: tags.StudyComments || '',
+      additionalPatientHistory: tags.AdditionalPatientHistory || '',
+      
+      customLabInfo: {
+        organizationId: organizationRecord._id,
+        organizationIdentifier: organizationRecord.identifier,
+        organizationName: organizationRecord.name,
+        labId: labRecord._id,
+        labIdentifier: labRecord.identifier,
+        labName: labRecord.name,
+        labIdSource: (tags["0013,0010"] || tags["0015,0010"]) ? 'dicom_lab_tags' : 'default_unknown_lab',
+        orgIdSource: (tags["0021,0010"] || tags["0043,0010"]) ? 'dicom_org_tags' : 'default_test_org',
+        detectionMethod: 'separated_tag_lookup'
+      },
+      
+      storageInfo: {
+        type: 'orthanc',
+        orthancStudyId: orthancStudyId,
+        studyInstanceUID: studyInstanceUID,
+        receivedAt: new Date(),
+        isStableStudy: true,
+        instancesFound: totalInstances,
+        processingMethod: totalInstances > 0 ? 'optimized_with_instances' : 'metadata_only',
+        debugInfo: {
+          apiCallsUsed: 3,
+          studyInfoUsed: true,
+          seriesApiUsed: true,
+          singleInstanceTagsUsed: true,
+          modalitiesExtracted: Array.from(modalitiesSet),
+          organizationTagsFound: {
+            "0021,0010": tags["0021,0010"] || null,
+            "0043,0010": tags["0043,0010"] || null
+          },
+          labTagsFound: {
+            "0013,0010": tags["0013,0010"] || null,
+            "0015,0010": tags["0015,0010"] || null
+          }
+        }
       }
     };
     
-    // Only set organization fields if not preserved (new study)
-    if (!existingStudy) {
-      studyData.organization = organizationRecord._id;
-      studyData.organizationIdentifier = organizationRecord.identifier;
-      studyData.sourceLab = labRecord._id;
-      studyData.identifier = `${organizationRecord.identifier}_${accessionNumber}`;
-    }
+    // ✅ CHANGED: Remove the conditional logic and always create or update
+    let dicomStudyDoc = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
     
-    console.log(`[StableStudy] 💾 ${existingStudy ? 'Updating' : 'Creating'} study in database...`);
-    
-    let savedStudy;
-    if (existingStudy) {
-      // Update existing study
-      Object.assign(existingStudy, studyData);
-      savedStudy = await existingStudy.save();
-      console.log(`[StableStudy] ✅ Study updated: ${savedStudy._id}`);
-      console.log(`[StableStudy] 🔒 Preserved fields verified:`);
-      console.log(`  - Organization: ${savedStudy.organizationIdentifier} (unchanged)`);
-      console.log(`  - Source Lab: ${savedStudy.sourceLab} (unchanged)`);
-      console.log(`  - Identifier: ${savedStudy.identifier} (unchanged)`);
+    if (dicomStudyDoc) {
+      console.log(`[StableStudy] 📝 Updating existing study with UID: ${studyInstanceUID}`);
+      Object.assign(dicomStudyDoc, studyData);
+      dicomStudyDoc.statusHistory.push({
+        status: studyData.workflowStatus,
+        changedAt: new Date(),
+        note: `Study updated: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
+      });
     } else {
-      // Create new study
-      const newStudy = new DicomStudy(studyData);
-      savedStudy = await newStudy.save();
-      console.log(`[StableStudy] ✅ Study created: ${savedStudy._id}`);
+      console.log(`[StableStudy] 🆕 Creating new study with UID: ${studyInstanceUID}`);
+      dicomStudyDoc = new DicomStudy({
+        ...studyData,
+        statusHistory: [{
+          status: studyData.workflowStatus,
+          changedAt: new Date(),
+          note: `Study created: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
+        }]
+      });
     }
+    
+    await dicomStudyDoc.save();
+    console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
     
     job.progress = 90;
     
@@ -973,8 +1037,8 @@ console.log(`[StableStudy] 📦 Queuing ZIP creation for study: ${orthancStudyId
 try {
     const zipJob = await CloudflareR2ZipService.addZipJob({
         orthancStudyID: orthancStudyId,
-        studyDatabaseId: savedStudy._id,
-        studyInstanceUID: savedStudy.studyInstanceUID || orthancStudyId,
+        studyDatabaseId: dicomStudyDoc._id,
+        studyInstanceUID: dicomStudyDoc.studyInstanceUID || orthancStudyId,
         instanceCount: totalInstances,
         seriesCount: allSeries.length
     });
@@ -989,7 +1053,7 @@ try {
     job.status = 'completed';
     job.result = {
       success: true,
-      studyId: savedStudy._id.toString(),
+      studyId: dicomStudyDoc._id.toString(),
       studyInstanceUID: studyInstanceUID,
       action: existingStudy ? 'updated' : 'created',
       preservedFields: existingStudy ? Object.keys(preservedFields) : [],
@@ -1261,7 +1325,7 @@ router.post('/create-zip/:orthancStudyId', async (req, res) => {
         
         // Queue new ZIP creation job
         const zipJob = await CloudflareR2ZipService.addZipJob({
-            orthancStudyID: orthancStudyId,
+            orthancStudyId: orthancStudyId,
             studyDatabaseId: study._id,
             studyInstanceUID: study.studyInstanceUID || orthancStudyId,
             instanceCount: study.instanceCount || 0,
