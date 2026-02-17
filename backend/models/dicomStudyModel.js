@@ -225,6 +225,12 @@ isCopiedStudy: {
         default: 'ohif1'
 
     },
+
+    notesCount:{
+        type: Number,
+        default: 0
+    },
+    
     currentCategory: {
         type: String,
         enum: [

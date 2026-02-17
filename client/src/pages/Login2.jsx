@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import ColorBends from '../creative/maxColor';
 
-const LoginPage = () => {
+const Login2Page = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -72,7 +72,7 @@ const LoginPage = () => {
               Welcome Back
             </h2>
             <p className="mt-2 text-sm text-gray-500 leading-relaxed">
-              Enter your credentials to access the secure Radiology Information System.
+              Access the most advanced Cloud-Native PACS ecosystem for modern radiology.
             </p>
           </div>
 
@@ -96,7 +96,7 @@ const LoginPage = () => {
                     required
                     value={formData.email}
                     onChange={handleInputChange}
-                    placeholder="doctor@hospital.com"
+                    placeholder="radiologist@hospital.com"
                     className="block w-full pl-10 py-3 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all text-sm bg-gray-50 hover:bg-white hover:border-gray-300"
                   />
                 </div>
@@ -170,78 +170,115 @@ const LoginPage = () => {
               <Shield className="h-3 w-3" />
               <span>HIPAA Compliant • ISO 27001 Certified</span>
             </div>
-            {/* <p className="mt-4 text-center text-[10px] text-gray-300">
-              © 2026 Bharat PACS. All rights
-            </p> */}
             <p className="mt-4 text-center text-[10px] text-gray-300">
-              © 2026 RIS Portal. All rights{' '}
-              <button 
-                onClick={() => navigate('/login2')}
-                className="hover:text-gray-400 transition-colors cursor-default"
-                style={{ background: 'none', border: 'none', padding: 0, font: 'inherit' }}
-              >
-                reserved
-              </button>
-              .
+              © 2026 Bharat PACS. All rights reserved.
             </p>
           </div>
         </div>
       </div>
 
-      {/* ================= RIGHT SIDE (Dominant Logo) ================= */}
-      <div className="hidden lg:flex lg:w-[60%] relative overflow-hidden bg-gray-50 flex-col items-center justify-center">
+      {/* ================= RIGHT SIDE (Branded Bharat PACS) ================= */}
+      <div className="hidden lg:flex lg:w-[60%] relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex-col items-center justify-center">
         
-        {/* Animated Background */}
+        {/* Advanced Animated Background with ColorBends */}
         <div className="absolute inset-0 z-0">
            <ColorBends
-            colors={["#f8fafc", "#f1f5f9", "#e2e8f0", "#cbd5e1", "#94a3b8", "#ffffff"]}
-            rotation={120}
-            speed={0.15}
-            scale={1.4}
-            frequency={0.8}
-            warpStrength={0.6}
-            transparent
+            colors={["#0f172a", "#1e3a8a", "#1e40af", "#3b82f6", "#60a5fa", "#93c5fd"]}
+            rotation={320}
+            speed={0.12}
+            scale={1.2}
+            frequency={0.95}
+            warpStrength={0.865}
+            mouseInfluence={0.6}
+            parallax={1.9}
+            noise={0.03}
+            transparent={true}
           />
         </div>
 
-        {/* Decorative Big Background Icon (Very faint) */}
-        <div className="absolute -right-20 -bottom-20 z-0 opacity-[0.03] pointer-events-none">
-          <Activity className="w-[600px] h-[600px] text-gray-900" />
-        </div>
+        {/* Gradient Overlay for depth */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/20 z-[1]"></div>
+
+        {/* Decorative Grid Pattern */}
+        {/* <div className="absolute inset-0 z-[2] opacity-[0.03]" 
+             style={{
+               backgroundImage: `
+                 linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px),
+                 linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px)
+               `,
+               backgroundSize: '50px 50px'
+             }}>
+        </div> */}
 
         {/* Hero Content - Centered & Dominant */}
         <div className="relative z-10 flex flex-col items-center justify-center p-12 text-center w-full max-w-2xl">
           
-          {/* Glass Effect Card behind logo for pop */}
-          <div className="bg-white/30 backdrop-blur-md border border-white/50 rounded-[3rem] p-12 shadow-[0_8px_32px_rgba(0,0,0,0.05)] mb-8 transform hover:scale-105 transition-transform duration-500 ease-out">
+          {/* Premium Glass Card with Logo */}
+          {/* <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-[3rem] p-14 shadow-[0_20px_80px_rgba(0,0,0,0.3)] mb-10 transform hover:scale-105 transition-all duration-700 ease-out hover:shadow-[0_30px_100px_rgba(59,130,246,0.4)]">
             <img 
               src="/bharat.png" 
               alt="Bharat PACS Logo" 
-              className="w-64 h-64 lg:w-80 lg:h-80 object-contain drop-shadow-xl"
+              className="w-72 h-72 lg:w-80 lg:h-80 object-contain drop-shadow-2xl filter brightness-110"
             />
-          </div>
+          </div> */}
 
-          <h1 className="text-5xl font-black text-gray-900 tracking-tight drop-shadow-sm mb-4">
-            Bharat PACS
+          <h1 className="text-6xl font-black text-black tracking-tight drop-shadow-2xl mb-4 bg-clip-text text-transparent bg-gradient-to-r from-white via-blue-100 to-white">
+            XCENTIC PACS
           </h1>
           
-          <p className="text-xl text-gray-600 font-medium max-w-lg leading-relaxed">
+          <p className="text-2xl text-blue-100 font-semibold max-w-xl leading-relaxed drop-shadow-lg mb-2">
             Next-Generation Cloud Imaging
           </p>
           
-          {/* Minimalist Feature Tags */}
-          <div className="mt-8 flex flex-wrap justify-center gap-3">
-             <span className="px-4 py-1.5 bg-white/60 backdrop-blur border border-white/40 rounded-full text-xs font-semibold text-gray-600 shadow-sm">
-               DICOM 3.0
+          <p className="text-sm text-blue-200/80 max-w-lg leading-relaxed drop-shadow mb-8">
+            Enterprise-grade DICOM infrastructure with AI-powered workflows, 
+            zero-footprint viewers, and global CDN distribution.
+          </p>
+          
+          {/* Premium Feature Pills */}
+          <div className="mt-6 flex flex-wrap justify-center gap-3 mb-8">
+             <span className="px-5 py-2 bg-white/15 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white shadow-lg hover:bg-white/20 transition-all">
+               🔒 AES-256 Encrypted
              </span>
-             <span className="px-4 py-1.5 bg-white/60 backdrop-blur border border-white/40 rounded-full text-xs font-semibold text-gray-600 shadow-sm">
-               AI Analysis
+             <span className="px-5 py-2 bg-white/15 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white shadow-lg hover:bg-white/20 transition-all">
+               ⚡ Sub-50ms Latency
              </span>
-             <span className="px-4 py-1.5 bg-white/60 backdrop-blur border border-white/40 rounded-full text-xs font-semibold text-gray-600 shadow-sm">
-               Cloud Native
+             <span className="px-5 py-2 bg-white/15 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white shadow-lg hover:bg-white/20 transition-all">
+               🤖 AI Analysis Ready
+             </span>
+             <span className="px-5 py-2 bg-white/15 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white shadow-lg hover:bg-white/20 transition-all">
+               ☁️ Multi-Cloud Native
+             </span>
+             <span className="px-5 py-2 bg-white/15 backdrop-blur-md border border-white/30 rounded-full text-xs font-bold text-white shadow-lg hover:bg-white/20 transition-all">
+               📊 Real-Time Analytics
              </span>
           </div>
 
+          {/* Tech Stack Badges */}
+          <div className="flex items-center justify-center gap-4 text-xs text-black font-medium mt-4">
+            <span className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              DICOM 3.0 Compliant
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              HL7 FHIR Integrated
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              99.99% Uptime SLA
+            </span>
+          </div>
+
+        </div>
+
+        {/* Bottom Watermark */}
+        <div className="absolute bottom-8 left-0 right-0 z-10 text-center">
+          <p className="text-xs text-blue-200/40 font-medium tracking-wider">
+            POWERED BY XCENTIC × CODINGWODING
+          </p>
         </div>
 
       </div>
@@ -250,4 +287,4 @@ const LoginPage = () => {
   );
 };
 
-export default LoginPage;
+export default Login2Page;

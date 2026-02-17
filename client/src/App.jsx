@@ -24,6 +24,7 @@ import SystemOverview from './pages/admin/SystemOverview';
 import BrandingSettings from './pages/admin/BrandingSettings';
 import AdminTemplates from './pages/admin/Templates';
 import LabBrandingSettings from './pages/lab/LabBrandingSettings';
+import Login2Page from './pages/Login2';
 
 
 // Protected Route Component - Updated for multi-role support with better fallback
@@ -97,6 +98,7 @@ const AppRoutes = () => {
     <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/login2" element={<Login2Page />} />
       
       {/* ✅ SUPER ADMIN ROUTES */}
       <Route 

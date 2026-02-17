@@ -995,22 +995,23 @@ const handleOHIFReporting = async () => {
     </button>
 
     <button
-      onClick={() => onShowStudyNotes?.(study._id)}
-      className={`p-2 rounded-lg transition-all hover:scale-105 ${
-        hasNotes ? 'bg-slate-200' : 'hover:bg-slate-100'
-      }`}
-      title={
-        hasNotes
-          ? `${study.discussions?.length || 1} note(s)`
-          : 'No notes'
-      }
-    >
-      <MessageSquare
-        className={`w-4 h-4 ${
-          hasNotes ? 'text-slate-900' : 'text-slate-400'
-        }`}
-      />
-    </button>
+                  onClick={() => onShowStudyNotes?.(study._id)}
+                  className={`relative p-2 rounded-lg transition-all group hover:scale-110 ${
+                    hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
+                  }`}
+                  title={hasNotes ? `${study.notesCount || '1'} note(s)` : 'No notes'}
+                >
+                  <div className="flex items-center gap-1">
+                    <MessageSquare className={`w-4 h-4 ${
+                      hasNotes ? 'text-gray-900' : 'text-slate-400'
+                    } group-hover:text-gray-900`} />
+                    {study.notesCount > 0 && (
+                      <span className="bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
+                        {study.notesCount}
+                      </span>
+                    )}
+                  </div>
+                </button>
   </div>
 </td>
 

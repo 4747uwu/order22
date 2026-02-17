@@ -325,10 +325,12 @@ const buildLabQuery = (req, user, workflowStatuses = null) => {
     // Search filtering
     if (req.query.search) {
         queryFilters.$or = [
+            { bharatPacsId: { $regex: req.query.search, $options: 'i' } },
             { accessionNumber: { $regex: req.query.search, $options: 'i' } },
             { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
             { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } }
+            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } },
+            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } }
         ];
     }
 
@@ -349,18 +351,36 @@ const buildLabQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
-// ✅ EXECUTE LAB STUDY QUERY WITH PAGINATION
+// ✅ FIXED: Execute lab study query with COMPLETE population matching admin controller
 const executeLabStudyQuery = async (queryFilters, page = 1, limit = 50) => {
     try {
         const skip = (page - 1) * limit;
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
         const studies = await DicomStudy.find(queryFilters)
-            .populate('assignment.assignedTo', 'fullName email role')
-            .populate('assignment.assignedBy', 'fullName email role')
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role')
-            .populate('sourceLab', 'name labName identifier location contactPerson')
-            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth')
+            .populate('organization', 'name identifier contactEmail contactPhone address')
+            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
+            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
+            
+            // ✅ CRITICAL: Assignment information with firstName/lastName for fallback
+            .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
+            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: Report and verification info
+            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role')
+            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: CategoryTracking populations (THIS WAS MISSING!)
+            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
+            
+            // ✅ Study lock info
+            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
+            
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(limit)
@@ -369,6 +389,16 @@ const executeLabStudyQuery = async (queryFilters, page = 1, limit = 50) => {
         const totalPages = Math.ceil(totalStudies / limit);
         const hasNextPage = page < totalPages;
         const hasPrevPage = page > 1;
+
+        // ✅ DEBUG: Log first study's assignment info
+        if (studies.length > 0) {
+            console.log('🔍 [LAB] FIRST STUDY ASSIGNMENT INFO:', {
+                bharatPacsId: studies[0].bharatPacsId,
+                assignmentAssignedTo: studies[0].assignment?.[0]?.assignedTo?.fullName || 'NOT POPULATED',
+                categoryTrackingAssignedTo: studies[0].categoryTracking?.assigned?.assignedTo?.fullName || 'NOT POPULATED',
+                currentReportedBy: studies[0].currentReportStatus?.lastReportedBy?.fullName || 'NOT POPULATED'
+            });
+        }
 
         console.log(`📊 LAB QUERY EXECUTED: Found ${studies.length} studies, Total: ${totalStudies}, Page: ${page}/${totalPages}`);
         

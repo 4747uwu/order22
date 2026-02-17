@@ -376,7 +376,7 @@ capturedImages: [{
         verificationHistory: [{
             action: {
                 type: String,
-                enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist', 'report_reprint_needed'] // ✅ Added 'report_reprint_needed'
+                enum: ['assigned_for_verification', 'verification_started', 'verified', 'rejected', 'corrections_requested', 'reverted_to_radiologist', 'report_reprint_needed', 'report_completed'] // ✅ Added 'report_reprint_needed'
             },
             performedBy: {
                 type: mongoose.Schema.Types.ObjectId,

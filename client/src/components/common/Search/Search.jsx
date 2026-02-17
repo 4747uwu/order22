@@ -69,8 +69,7 @@ const Search = ({
     const [radiologistOptions, setRadiologistOptions] = useState([]);
     const [labOptions, setLabOptions] = useState([]);
 
-// Line 73-89: Make the sync more defensive
-// Line 73-97: Make the sync more defensive and NEVER restore search term from initialFilters
+
 useEffect(() => {
     if (initialFilters && Object.keys(initialFilters).length > 0) {
         console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
@@ -78,7 +77,6 @@ useEffect(() => {
         // ✅ Create new filters WITHOUT search
         const filtersToSync = { ...initialFilters };
         
-        // ✅ ALWAYS remove search from synced filters - don't persist it
         delete filtersToSync.search;
         
         setFilters(prevFilters => ({
@@ -86,9 +84,7 @@ useEffect(() => {
             ...filtersToSync
         }));
         
-        // ✅ NEVER restore search term from initialFilters
-        // Search term should only be controlled by user input, not by saved state
-        // Keep current searchTerm as-is, don't sync it
+       
     }
 }, [initialFilters]);
 
@@ -115,6 +111,10 @@ useEffect(() => {
 
         return () => clearInterval(interval);
     }, [autoRefreshEnabled, refreshInterval, lastRefreshTime, onRefresh]);
+
+const advancedGridCols = filters.dateFilter === 'custom'
+  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3'
+  : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3';
 
     // ✅ NEW: Save auto-refresh settings to localStorage
     useEffect(() => {
@@ -258,48 +258,49 @@ useEffect(() => {
     }, [searchTerm, filters, onSearch]);
 
     // Handle filter changes
-// Line 265-303: Handle filter changes
-const handleFilterChange = useCallback((key, value) => {
-    const newFilters = { ...filters, [key]: value };
-    setFilters(newFilters);
-    
-    const searchParams = { ...newFilters };
-    
-    // ✅ Only add search if it's currently set AND not empty
-    if (searchTerm && searchTerm.trim()) {
-        searchParams.search = searchTerm.trim();
-    } else {
-        // ✅ Explicitly remove search if empty
-        delete searchParams.search;
-    }
-    
-    // ✅ NEW: Handle modalities multi-select
-    if (newFilters.modalities && newFilters.modalities.length > 0) {
-        searchParams.modalities = newFilters.modalities;
-    }
-    
-    if (newFilters.radiologists && newFilters.radiologists.length > 0) {
-        searchParams.radiologists = newFilters.radiologists;
-    }
-    
-    if (newFilters.labs && newFilters.labs.length > 0) {
-        searchParams.labs = newFilters.labs;
-    }
-    
-    Object.keys(searchParams).forEach(key => {
-        const value = searchParams[key];
-        if (value === '' || value === 'all' || value === undefined) {
-            delete searchParams[key];
+    const handleFilterChange = useCallback((key, value) => {
+        const newFilters = { ...filters, [key]: value };
+        setFilters(newFilters);
+
+        // ✅ Auto-open advanced panel when custom date range is selected
+        if (key === 'dateFilter' && value === 'custom') {
+            setShowAdvanced(true);
         }
-        if (Array.isArray(value) && value.length === 0) {
-            delete searchParams[key];
+        
+        const searchParams = { ...newFilters };
+        
+        if (searchTerm && searchTerm.trim()) {
+            searchParams.search = searchTerm.trim();
+        } else {
+            delete searchParams.search;
         }
-    });
-    
-    console.log('🔍 [Search] Filter changed:', { key, value, params: searchParams });
-    onSearch?.(searchParams);
-    onFilterChange?.(searchParams);
-}, [filters, searchTerm, onSearch, onFilterChange]);
+        
+        if (newFilters.modalities && newFilters.modalities.length > 0) {
+            searchParams.modalities = newFilters.modalities;
+        }
+        
+        if (newFilters.radiologists && newFilters.radiologists.length > 0) {
+            searchParams.radiologists = newFilters.radiologists;
+        }
+        
+        if (newFilters.labs && newFilters.labs.length > 0) {
+            searchParams.labs = newFilters.labs;
+        }
+        
+        Object.keys(searchParams).forEach(key => {
+            const value = searchParams[key];
+            if (value === '' || value === 'all' || value === undefined) {
+                delete searchParams[key];
+            }
+            if (Array.isArray(value) && value.length === 0) {
+                delete searchParams[key];
+            }
+        });
+        
+        console.log('🔍 [Search] Filter changed:', { key, value, params: searchParams });
+        onSearch?.(searchParams);
+        onFilterChange?.(searchParams);
+    }, [filters, searchTerm, onSearch, onFilterChange]);
 
     // Clear all filters
     const clearAllFilters = useCallback(() => {
@@ -558,7 +559,6 @@ const handleFilterChange = useCallback((key, value) => {
                         <option value="today">Today</option>
                         <option value="yesterday">Yesterday</option>
                         <option value="last7days">Last 7 Days</option>
-                        {/* <option value="last30days">Last 30 Days</option> */}
                         <option value="custom">Custom</option>
                     </select>
                 </div>
@@ -576,17 +576,6 @@ const handleFilterChange = useCallback((key, value) => {
                                 <span className="hidden lg:inline">Manage</span>
                             </button>
                         )}
-                        
-                        {/* {canCreateUser && (
-                            <button
-                                onClick={handleCreateUser}
-                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700' : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'} text-white text-xs font-medium rounded transition-colors`}
-                                title="Create New User"
-                            >
-                                <Users size={12} />
-                                <span className="hidden lg:inline">User</span>
-                            </button>
-                        )} */}
                         
                         {canCreateDoctor && (
                             <button
@@ -712,18 +701,20 @@ const handleFilterChange = useCallback((key, value) => {
             </div>
 
             {/* ADVANCED FILTERS PANEL */}
-            {showAdvanced && (
+                       {/* ADVANCED FILTERS PANEL */}
+            {(showAdvanced || filters.dateFilter === 'custom') && (
                 <div className={`mt-2.5 pt-2.5 border-t border-${themeColors.borderLight}`}>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                        
-                        <div className="col-span-2">
+                    <div className="flex flex-wrap items-end gap-3">
+
+                        {/* Date Range */}
+                        <div className="flex flex-col min-w-[140px]">
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Range
                             </label>
                             <select
                                 value={filters.dateFilter || 'today'}
                                 onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="">All Time</option>
                                 {dateOptions.map(option => (
@@ -734,78 +725,55 @@ const handleFilterChange = useCallback((key, value) => {
                             </select>
                         </div>
 
-                        <div>
+                        {/* Date Type */}
+                        <div className="flex flex-col min-w-[110px]">
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Type
                             </label>
                             <select
                                 value={filters.dateType || 'createdAt'}
                                 onChange={(e) => handleFilterChange('dateType', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="createdAt">Upload Date</option>
                                 <option value="StudyDate">Study Date</option>
                             </select>
                         </div>
 
+                        {/* From Date — only when custom */}
                         {filters.dateFilter === 'custom' && (
-                            <>
-                                <div>
-                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                        From Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={filters.customDateFrom || ''}
-                                        onChange={(e) => handleFilterChange('customDateFrom', e.target.value)}
-                                        className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                                    />
-                                </div>
-                                <div>
-                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                        To Date
-                                    </label>
-                                    <input
-                                        type="date"
-                                        value={filters.customDateTo || ''}
-                                        onChange={(e) => handleFilterChange('customDateTo', e.target.value)}
-                                        className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                                    />
-                                </div>
-                            </>
+                            <div className="flex flex-col min-w-[130px]">
+                                <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                                    From Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={filters.customDateFrom || ''}
+                                    onChange={(e) => handleFilterChange('customDateFrom', e.target.value)}
+                                    className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                />
+                            </div>
                         )}
 
-                        <div>
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                Lab
-                            </label>
-                            <select
-                                value={filters.labId || 'all'}
-                                onChange={(e) => handleFilterChange('labId', e.target.value)}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                            >
-                                <option value="all">All Labs</option>
-                            </select>
-                        </div>
+                        {/* To Date — only when custom */}
+                        {filters.dateFilter === 'custom' && (
+                            <div className="flex flex-col min-w-[130px]">
+                                <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
+                                    To Date
+                                </label>
+                                <input
+                                    type="date"
+                                    value={filters.customDateTo || ''}
+                                    onChange={(e) => handleFilterChange('customDateTo', e.target.value)}
+                                    className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                />
+                            </div>
+                        )}
 
-                        <div>
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                Per Page
-                            </label>
-                            <select
-                                value={filters.limit}
-                                onChange={(e) => handleFilterChange('limit', parseInt(e.target.value))}
-                                className={`w-full px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                            >
-                                <option value={20}>20</option>
-                                <option value={50}>50</option>
-                                <option value={100}>100</option>
-                                <option value={200}>200</option>
-                            </select>
-                        </div>
                     </div>
                 </div>
             )}
+  
         </div>
     );
 };

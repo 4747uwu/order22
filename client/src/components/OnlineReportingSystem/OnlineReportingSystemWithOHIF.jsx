@@ -543,25 +543,45 @@ const cleanTemplateHTML = (html) => {
             
             {/* Left Section - Study Info */}
             <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
+              <div className="flex  items-center space-x-2">
                 <div className="p-1 bg-gray-600 rounded">
                   <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <div className="text-xs">
-                  <span className="font-medium text-gray-900">
-                    {patientData?.fullName || 'Loading...'}
-                  </span>
-                  <span className="text-gray-500 ml-2">
-                    {studyData?.accessionNumber || studyId?.substring(0, 8) + '...' || ''}
-                  </span>
-                  {isVerifierMode && (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded">
-                      VERIFIER
-                    </span>
-                  )}
-                </div>
+
+               <div className="text-xs">
+  <div className="flex flex-row gap-4">
+    <div className="flex items-center gap-4">
+      <span
+        className="font-medium text-gray-900 truncate uppercase"
+        title={patientData?.fullName || ''}
+      >
+        {(patientData?.fullName || 'Loading...').toString().toUpperCase()}
+      </span>
+
+      <span className="text-gray-500 text-[11px] uppercase">
+        {(studyData?.accessionNumber || (studyId ? `${String(studyId).substring(0, 8)}...` : '')).toString().toUpperCase()}
+      </span>
+
+      <span className="text-[11px] text-gray-600 ml-2 uppercase">
+        <strong className="font-medium">AGE:</strong>{' '}
+        {(patientData?.age || studyData?.patientAge || 'N/A').toString().toUpperCase()}
+        {(patientData?.gender || studyData?.patientSex) ? ` / ${(patientData?.gender || studyData?.patientSex).toString().toUpperCase()}` : ''}
+      </span>
+    </div>
+
+    <div
+      className="text-[12px] text-gray-700 truncate max-w-xs"
+      title={reportData?.clinicalHistory || patientData?.clinicalHistory || studyData?.clinicalHistory || 'No clinical history'}
+    >
+      <span className="font-medium text-gray-600 mr-1 uppercase">CLINICAL HISTORY:</span>
+      <span className="font-normal uppercase">
+        {(reportData?.clinicalHistory || patientData?.clinicalHistory || studyData?.clinicalHistory || 'No clinical history').toString().toUpperCase()}
+      </span>
+    </div>
+  </div>
+</div>
               </div>
               
               <div className="flex items-center space-x-3 text-xs text-gray-600">

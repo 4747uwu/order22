@@ -146,13 +146,16 @@ export const createStudyNote = async (req, res) => {
         // ✅ Ensure DicomStudy.hasStudyNotes is true so frontend can show indicator immediately
         try {
             await DicomStudy.findByIdAndUpdate(
-              studyId,
-              { $set: { hasStudyNotes: true } },
-              { new: false }
+                studyId,
+                {
+                    $inc: { notesCount: 1 },
+                    $set: { hasStudyNotes: true }
+                },
+                { new: false }
             );
-            console.log(`✅ [Study Notes] Marked DicomStudy ${studyId} hasStudyNotes=true`);
+            console.log(`✅ [Study Notes] Marked DicomStudy ${studyId} hasStudyNotes=true, incremented notesCount`);
         } catch (updateErr) {
-            console.warn(`⚠️ [Study Notes] Failed to mark hasStudyNotes for ${studyId}:`, updateErr.message);
+            console.warn(`⚠️ [Study Notes] Failed to update notesCount for ${studyId}:`, updateErr.message);
         }
 
         res.status(201).json({
@@ -337,6 +340,23 @@ export const deleteNote = async (req, res) => {
         }
 
         await StudyNotes.findByIdAndDelete(noteId);
+
+        // ✅ Decrement notesCount; if it hits 0, set hasStudyNotes=false
+        try {
+            const remainingCount = await StudyNotes.countDocuments({ studyId: note.studyId });
+            await DicomStudy.findByIdAndUpdate(
+                note.studyId,
+                {
+                    $set: {
+                        notesCount: remainingCount,
+                        hasStudyNotes: remainingCount > 0
+                    }
+                }
+            );
+            console.log(`✅ [Study Notes] Updated DicomStudy ${note.studyId}: notesCount=${remainingCount}, hasStudyNotes=${remainingCount > 0}`);
+        } catch (updateErr) {
+            console.warn(`⚠️ [Study Notes] Failed to update notesCount on delete for ${note.studyId}:`, updateErr.message);
+        }
 
         console.log(`✅ [Study Notes] Deleted note: ${noteId} by ${user.fullName}`);
 

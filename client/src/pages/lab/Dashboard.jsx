@@ -2,84 +2,35 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
-import WorklistTable from '../../components/common/WorklistTable/WorklistTable';
+import UnifiedWorklistTable from '../../components/common/WorklistTable/UnifiedWorklistTable.jsx';
 import ColumnConfigurator from '../../components/common/WorklistTable/ColumnConfigurator';
 import api from '../../services/api';
-import { Building, Palette, CheckCircle } from 'lucide-react';
+import { Building, Palette } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
-
-// ✅ HEADER COLOR PRESETS (same as admin)
-const HEADER_COLOR_PRESETS = [
-  { name: 'Dark Gray', gradient: 'from-gray-800 via-gray-900 to-black', textColor: 'text-white' },
-  { name: 'Blue', gradient: 'from-blue-700 via-blue-800 to-blue-900', textColor: 'text-white' },
-  { name: 'Green', gradient: 'from-green-700 via-green-800 to-green-900', textColor: 'text-white' },
-  { name: 'Purple', gradient: 'from-purple-700 via-purple-800 to-purple-900', textColor: 'text-white' },
-  { name: 'Red', gradient: 'from-red-700 via-red-800 to-red-900', textColor: 'text-white' },
-  { name: 'Indigo', gradient: 'from-indigo-700 via-indigo-800 to-indigo-900', textColor: 'text-white' },
-  { name: 'Teal', gradient: 'from-teal-700 via-teal-800 to-teal-900', textColor: 'text-white' },
-  { name: 'Orange', gradient: 'from-orange-700 via-orange-800 to-orange-900', textColor: 'text-white' },
-  { name: 'Pink', gradient: 'from-pink-700 via-pink-800 to-pink-900', textColor: 'text-white' },
-  { name: 'Cyan', gradient: 'from-cyan-700 via-cyan-800 to-cyan-900', textColor: 'text-white' }
-];
-
-// ✅ HEADER COLOR PICKER COMPONENT
-const HeaderColorPicker = ({ isOpen, onClose, currentColor, onSelectColor }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border-2 border-gray-300">
-        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Palette className="w-5 h-5" />
-            <h2 className="text-lg font-bold">Choose Header Color</h2>
-          </div>
-          <button onClick={onClose} className="text-white hover:text-gray-300">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-        
-        <div className="p-6">
-          <div className="grid grid-cols-2 gap-3">
-            {HEADER_COLOR_PRESETS.map((preset, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  onSelectColor(preset);
-                  onClose();
-                }}
-                className={`relative px-4 py-3 rounded-lg transition-all border-2 ${
-                  currentColor.name === preset.name 
-                    ? 'border-gray-900 scale-105 shadow-lg' 
-                    : 'border-gray-300 hover:border-gray-500'
-                }`}
-              >
-                <div className={`h-8 rounded bg-gradient-to-r ${preset.gradient} flex items-center justify-center ${preset.textColor} text-sm font-bold`}>
-                  {preset.name}
-                </div>
-                {currentColor.name === preset.name && (
-                  <div className="absolute top-1 right-1 bg-white rounded-full p-0.5">
-                    <CheckCircle className="w-4 h-4 text-green-600 fill-current" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+import { resolveUserVisibleColumns } from '../../utils/columnResolver';
 
 const LabDashboard = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
-  // ✅ PAGINATION STATE
+  // ✅ RESOLVE VISIBLE COLUMNS ONCE
+  const visibleColumns = useMemo(() => {
+    return resolveUserVisibleColumns(currentUser);
+  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+  console.log('🎯 Lab Dashboard Visible Columns:', {
+    total: visibleColumns.length,
+    columns: visibleColumns,
+    user: {
+      primaryRole: currentUser?.primaryRole,
+      accountRoles: currentUser?.accountRoles,
+      visibleColumns: currentUser?.visibleColumns
+    }
+  });
+
+  // ✅ PAGINATION STATE - Single source of truth
   const [pagination, setPagination] = useState({
     currentPage: 1,
     totalPages: 1,
@@ -95,8 +46,9 @@ const LabDashboard = () => {
   const [error, setError] = useState(null);
   const [searchFilters, setSearchFilters] = useState({});
   const [currentView, setCurrentView] = useState('all');
-  
-  // ✅ CATEGORY VALUES (3 categories only)
+  const [selectedStudies, setSelectedStudies] = useState([]);
+
+  // ✅ CATEGORY VALUES (lab-specific categories)
   const [categoryValues, setCategoryValues] = useState({
     all: 0,
     pending: 0,
@@ -104,38 +56,40 @@ const LabDashboard = () => {
     completed: 0
   });
 
-  // ✅ HEADER COLOR STATE
-  const [headerColor, setHeaderColor] = useState(() => {
-    const saved = localStorage.getItem('labWorklistTableHeaderColor');
-    return saved ? JSON.parse(saved) : HEADER_COLOR_PRESETS[1]; // Default to Blue
-  });
-  const [showColorPicker, setShowColorPicker] = useState(false);
-
-  // ✅ COLUMN CONFIGURATION
+  // Column configuration
   const getDefaultColumnConfig = () => ({
     checkbox: { visible: false, order: 1, label: 'Select' },
     bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
     centerName: { visible: true, order: 3, label: 'Center' },
-    patientName: { visible: true, order: 4, label: 'Patient Name' },
-    patientId: { visible: true, order: 5, label: 'Patient ID' },
-    ageGender: { visible: true, order: 6, label: 'Age/Sex' },
-    modality: { visible: true, order: 7, label: 'Modality' },
-    seriesCount: { visible: true, order: 8, label: 'Series' },
-    accessionNumber: { visible: true, order: 9, label: 'Acc. No.' },
-    referralDoctor: { visible: false, order: 10, label: 'Referral Dr.' },
-    clinicalHistory: { visible: false, order: 11, label: 'History' },
-    studyTime: { visible: true, order: 12, label: 'Study Time' },
-    uploadTime: { visible: true, order: 13, label: 'Upload Time' },
-    assignedRadiologist: { visible: true, order: 14, label: 'Radiologist' }, // ✅ CHANGED from 'radiologist' to 'assignedRadiologist'
-    caseStatus: { visible: true, order: 15, label: 'Status' },
-    actions: { visible: true, order: 16, label: 'Actions' }
+    location: { visible: false, order: 4, label: 'Location' },
+    timeline: { visible: true, order: 5, label: 'Timeline' },
+    patientName: { visible: true, order: 6, label: 'Patient Name' },
+    ageGender: { visible: true, order: 7, label: 'Age/Sex' },
+    modality: { visible: true, order: 8, label: 'Modality' },
+    viewOnly: { visible: true, order: 9, label: 'View' },
+    reporting: { visible: false, order: 10, label: 'Reporting' },
+    studySeriesImages: { visible: true, order: 11, label: 'Series' },
+    patientId: { visible: true, order: 12, label: 'Patient ID' },
+    referralDoctor: { visible: false, order: 13, label: 'Referral Dr.' },
+    clinicalHistory: { visible: false, order: 14, label: 'History' },
+    studyDateTime: { visible: true, order: 15, label: 'Study Time' },
+    uploadDateTime: { visible: true, order: 16, label: 'Upload Time' },
+    assignedRadiologist: { visible: true, order: 17, label: 'Radiologist' },
+    studyLock: { visible: false, order: 18, label: 'Lock' },
+    status: { visible: true, order: 19, label: 'Status' },
+    printCount: { visible: true, order: 20, label: 'Print' },
+    rejectionReason: { visible: false, order: 21, label: 'Rejection' },
+    assignedVerifier: { visible: false, order: 22, label: 'Verifier' },
+    verifiedDateTime: { visible: false, order: 23, label: 'Verified' },
+    actions: { visible: true, order: 24, label: 'Actions' }
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
     try {
       const saved = localStorage.getItem('labWorklistColumnConfig');
       if (saved) {
-        return { ...getDefaultColumnConfig(), ...JSON.parse(saved) };
+        const parsedConfig = JSON.parse(saved);
+        return { ...getDefaultColumnConfig(), ...parsedConfig };
       }
     } catch (error) {
       console.warn('Error loading lab column config:', error);
@@ -151,7 +105,7 @@ const LabDashboard = () => {
     }
   }, [columnConfig]);
 
-  // ✅ ENDPOINT MAPPING
+  // ✅ ENDPOINT MAPPING (lab-specific endpoints)
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
       case 'pending': return '/lab/studies/pending';
@@ -161,7 +115,7 @@ const LabDashboard = () => {
     }
   }, [currentView]);
 
-  // ✅ FETCH STUDIES WITH PAGINATION
+  // ✅ FETCH STUDIES WITH PAGINATION (EXACT SAME AS ASSIGNOR)
   const fetchStudies = useCallback(async (filters = {}, page = null, limit = null) => {
     setLoading(true);
     setError(null);
@@ -177,19 +131,25 @@ const LabDashboard = () => {
       const params = { 
         ...activeFilters,
         page: requestPage,
-        limit: requestLimit,
-        labId: currentUser.lab._id
+        limit: requestLimit
       };
+      delete params.category; // ✅ Don't send category in params
       
-      console.log('🔍 LAB: Fetching studies from:', endpoint, 'with params:', params);
+      console.log('🔍 [Lab] Fetching studies:', {
+        endpoint,
+        requestPage,
+        requestLimit,
+        filters: params
+      });
       
       const response = await api.get(endpoint, { params });
+      
       if (response.data.success) {
         const rawStudies = response.data.data || [];
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
-        // ✅ CRITICAL: Update pagination with our REQUESTED values
+        // ✅ CRITICAL: Update pagination with response data but keep our requested values
         setPagination({
           currentPage: requestPage,
           totalPages: response.data.pagination?.totalPages || 1,
@@ -198,20 +158,29 @@ const LabDashboard = () => {
           hasNextPage: response.data.pagination?.hasNextPage || false,
           hasPrevPage: response.data.pagination?.hasPrevPage || false
         });
+        
+        console.log('✅ [Lab] Studies loaded:', {
+          count: formattedStudies.length,
+          page: requestPage,
+          limit: requestLimit,
+          total: response.data.pagination?.totalRecords
+        });
       }
     } catch (err) {
-      console.error('❌ Error fetching lab studies:', err);
+      console.error('❌ [Lab] Error fetching studies:', err);
       setError('Failed to fetch studies.');
       setStudies([]);
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView, currentUser.lab]);
+  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
 
-  // ✅ FETCH ANALYTICS
-  const fetchAnalytics = useCallback(async (filters = {}) => {
+  // ✅ FETCH CATEGORY VALUES (lab-specific)
+  const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
+      
+      console.log('🔍 [Lab] Fetching category values with params:', params);
       
       const response = await api.get('/lab/values', { params });
       if (response.data.success) {
@@ -221,106 +190,125 @@ const LabDashboard = () => {
           inprogress: response.data.inprogress || 0,
           completed: response.data.completed || 0
         });
+
+        console.log('📊 [Lab] CATEGORY VALUES UPDATED:', response.data);
       }
     } catch (error) {
-      console.error('Error fetching lab analytics:', error);
-      setCategoryValues({ all: 0, pending: 0, inprogress: 0, completed: 0 });
+      console.error('Error fetching lab category values:', error);
+      setCategoryValues({
+        all: 0, pending: 0, inprogress: 0, completed: 0
+      });
     }
   }, [searchFilters]);
 
-  // ✅ INITIAL DATA FETCH
+  // ✅ INITIAL DATA FETCH WITH TODAY AS DEFAULT
   useEffect(() => {
-    const savedFilters = localStorage.getItem('labDashboardFilters');
-    
-    let defaultFilters = {
+    const defaultFilters = {
       dateFilter: 'today',
       dateType: 'createdAt',
       modality: 'all',
       priority: 'all'
     };
     
-    if (savedFilters) {
-      try {
-        defaultFilters = JSON.parse(savedFilters);
-      } catch (error) {
-        console.warn('Error loading saved filters:', error);
-      }
-    }
-    
     setSearchFilters(defaultFilters);
     fetchStudies(defaultFilters, 1, 50);
-    fetchAnalytics(defaultFilters);
-  }, []);
+    fetchCategoryValues(defaultFilters);
+  }, []); // ✅ Empty deps - only run once on mount
 
-  // ✅ SAVE FILTERS
+  // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
-    if (Object.keys(searchFilters).length > 0) {
-      try {
-        localStorage.setItem('labDashboardFilters', JSON.stringify(searchFilters));
-      } catch (error) {
-        console.warn('Error saving filters:', error);
-      }
-    }
-  }, [searchFilters]);
-
-  // ✅ FETCH WHEN VIEW CHANGES
-  useEffect(() => {
-    // Skip if this is the initial mount (filters are empty)
-    if (Object.keys(searchFilters).length === 0) {
-      return;
-    }
-    
     console.log(`🔄 [Lab] currentView changed to: ${currentView}`);
+    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]);
+  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
 
-  // ✅ HANDLERS
+  // ✅ SIMPLIFIED: Handle page change
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Lab] Changing page: ${pagination.currentPage} -> ${newPage}`);
+    
+    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
   }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
+  // ✅ SIMPLIFIED: Handle records per page change
   const handleRecordsPerPageChange = useCallback((newLimit) => {
     console.log(`📊 [Lab] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
+    
+    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
   }, [fetchStudies, searchFilters]);
 
+  // Handlers
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 [Lab] NEW SEARCH:', searchParams);
+    setSearchFilters(searchParams);
     
-    const cleanedParams = { ...searchParams };
-    if (!cleanedParams.search || cleanedParams.search.trim() === '') {
-      delete cleanedParams.search;
-    }
-    
-    setSearchFilters(cleanedParams);
-    fetchStudies(cleanedParams, 1, pagination.recordsPerPage);
-    fetchAnalytics(cleanedParams);
-  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(searchParams, 1, pagination.recordsPerPage);
+    fetchCategoryValues(searchParams);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 [Lab] FILTER CHANGE:', filters);
+    setSearchFilters(filters);
     
-    const cleanedFilters = { ...filters };
-    if (!cleanedFilters.search || cleanedFilters.search.trim() === '') {
-      delete cleanedFilters.search;
-    }
-    
-    setSearchFilters(cleanedFilters);
-    fetchStudies(cleanedFilters, 1, pagination.recordsPerPage);
-    fetchAnalytics(cleanedFilters);
-  }, [fetchStudies, fetchAnalytics, pagination.recordsPerPage]);
+    // ✅ Reset to page 1, keep current limit
+    fetchStudies(filters, 1, pagination.recordsPerPage);
+    fetchCategoryValues(filters);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
+  // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
-    console.log(`📊 [Lab] TAB CHANGE: ${currentView} -> ${view}`);
+    console.log(`🔄 [Lab] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
   }, [currentView]);
+
+  const handleSelectAll = useCallback((checked) => {
+    setSelectedStudies(checked ? studies.map(study => study._id) : []);
+  }, [studies]);
+
+  const handleSelectStudy = useCallback((studyId) => {
+    setSelectedStudies(prev => 
+      prev.includes(studyId) 
+        ? prev.filter(id => id !== studyId) 
+        : [...prev, studyId]
+    );
+  }, []);
 
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Lab] Manual refresh');
     fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
-    fetchAnalytics(searchFilters);
-  }, [fetchStudies, fetchAnalytics, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+    fetchCategoryValues(searchFilters);
+  }, [fetchStudies, fetchCategoryValues, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+
+  const handleUpdateStudyDetails = useCallback(async (formData) => {
+    try {
+      console.log('🔄 [Lab] Updating study details:', formData);
+      
+      const response = await api.put(`/admin/studies/${formData.studyId}/details`, {
+        patientName: formData.patientName,
+        patientAge: formData.patientAge,
+        patientGender: formData.patientGender,
+        studyName: formData.studyName,
+        referringPhysician: formData.referringPhysician,
+        accessionNumber: formData.accessionNumber,
+        clinicalHistory: formData.clinicalHistory,
+        caseType: formData.caseType,
+        studyPriority: formData.studyPriority,
+        assignmentPriority: formData.assignmentPriority
+      });
+
+      if (response.data.success) {
+        toast.success('Study details updated successfully');
+        fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+        fetchCategoryValues(searchFilters);
+      }
+    } catch (error) {
+      console.error('Error updating study details:', error);
+      toast.error(error.response?.data?.message || 'Failed to update study details');
+      throw error;
+    }
+  }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
 
   const handleColumnChange = useCallback((columnKey, visible) => {
     setColumnConfig(prev => ({
@@ -337,15 +325,6 @@ const LabDashboard = () => {
     setColumnConfig(defaultConfig);
   }, []);
 
-  const handleSelectColor = useCallback((color) => {
-    setHeaderColor(color);
-    localStorage.setItem('labWorklistTableHeaderColor', JSON.stringify(color));
-    toast.success(`Header color changed to ${color.name}`, {
-      duration: 2000,
-      position: 'top-center'
-    });
-  }, []);
-
   // Check if user has lab access
   if (!currentUser?.lab) {
     return (
@@ -359,14 +338,6 @@ const LabDashboard = () => {
     );
   }
 
-  // ✅ CATEGORY TABS (3 categories only)
-  const categoryTabs = [
-    { key: 'all', label: 'All', count: categoryValues.all },
-    { key: 'pending', label: 'Pending', count: categoryValues.pending },
-    { key: 'inprogress', label: 'In Progress', count: categoryValues.inprogress },
-    { key: 'completed', label: 'Completed', count: categoryValues.completed }
-  ];
-
   const additionalActions = [
     {
       label: 'Branding',
@@ -377,6 +348,14 @@ const LabDashboard = () => {
     }
   ];
 
+  // ✅ CATEGORY TABS (lab-specific - 4 categories)
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: categoryValues.all },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending },
+    { key: 'inprogress', label: 'In Progress', count: categoryValues.inprogress },
+    { key: 'completed', label: 'Completed', count: categoryValues.completed }
+  ];
+
   return (
     <div className="h-screen bg-blue-50 flex flex-col">
       <Navbar
@@ -385,7 +364,7 @@ const LabDashboard = () => {
         showOrganizationSelector={false}
         onRefresh={handleRefresh}
         additionalActions={additionalActions}
-        theme="lab"
+        notifications={0}
       />
       
       <Search
@@ -394,25 +373,29 @@ const LabDashboard = () => {
         loading={loading}
         totalStudies={categoryValues.all}
         currentCategory={currentView}
-        theme="lab"
-        initialFilters={searchFilters}
+                onRefresh={handleRefresh}
+
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
-        <div className="bg-white rounded-lg shadow-sm border border-blue-100 h-full flex flex-col">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
-          {/* ✅ COMPACT WORKLIST HEADER WITH CATEGORY TABS */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-blue-200 bg-gradient-to-r from-blue-50 to-white">
+          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
-              <h2 className="text-xs font-bold text-blue-700 uppercase tracking-wider">
+              <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
                 Lab Worklist
               </h2>
-              <span className="text-[10px] text-blue-600 bg-blue-100 px-2 py-0.5 rounded-md font-medium">
+              <span className="text-[10px] text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md font-medium">
                 {studies.length} loaded
               </span>
+              {selectedStudies.length > 0 && (
+                <span className="text-[10px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md font-medium border border-blue-200">
+                  {selectedStudies.length} selected
+                </span>
+              )}
             </div>
 
-            {/* ✅ COMPACT MODERN CATEGORY TABS */}
+            {/* ✅ COMPACT MODERN CATEGORY TABS (same style as assignor) */}
             <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
               <div className="flex items-center gap-1.5 min-w-max">
                 {categoryTabs.map((tab) => (
@@ -422,7 +405,7 @@ const LabDashboard = () => {
                     className={`group relative px-2.5 py-1 text-[11px] font-medium rounded-md transition-all duration-200 ${
                       currentView === tab.key
                         ? 'bg-blue-600 text-white shadow-md scale-[1.02]'
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200 hover:shadow-sm'
+                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-1.5">
@@ -430,13 +413,12 @@ const LabDashboard = () => {
                       <span className={`min-w-[18px] h-[18px] flex items-center justify-center rounded-full text-[9px] font-bold transition-colors ${
                         currentView === tab.key 
                           ? 'bg-white text-blue-600' 
-                          : 'bg-white text-blue-600'
+                          : 'bg-white text-slate-600'
                       }`}>
                         {tab.count}
                       </span>
                     </div>
                     
-                    {/* Active indicator */}
                     {currentView === tab.key && (
                       <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-3/4 h-0.5 bg-white rounded-full" />
                     )}
@@ -446,48 +428,35 @@ const LabDashboard = () => {
             </div>
             
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setShowColorPicker(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-[11px] font-medium bg-gradient-to-r from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 border border-blue-300 rounded-lg transition-all shadow-sm"
-                title="Change table header color"
-              >
-                <Palette className="w-4 h-4" />
-                <span>Header Color</span>
-              </button>
               <ColumnConfigurator
                 columnConfig={columnConfig}
                 onColumnChange={handleColumnChange}
                 onResetToDefault={handleResetColumns}
-                theme="lab"
               />
             </div>
           </div>
 
           <div className="flex-1 min-h-0">
-            <WorklistTable
+            <UnifiedWorklistTable
               studies={studies}
               loading={loading}
-              columnConfig={columnConfig}
+              selectedStudies={selectedStudies}
+              onSelectAll={handleSelectAll}
+              onSelectStudy={handleSelectStudy}
+              onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
+              onUpdateStudyDetails={handleUpdateStudyDetails}
               pagination={pagination}
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
-              theme="lab"
-              headerColor={headerColor}
-              userRole={currentUser?.role || 'viewer'}
-              userRoles={currentUser?.roles || []}
+              // ✅ PASS RESOLVED COLUMNS
+              visibleColumns={visibleColumns}
+              columnConfig={columnConfig} 
+              userRole={currentUser?.primaryRole || currentUser?.role || 'lab_staff'}
+              userRoles={currentUser?.accountRoles?.length > 0 ? currentUser?.accountRoles : [currentUser?.role || 'lab_staff']}
             />
           </div>
         </div>
       </div>
-
-      {showColorPicker && (
-        <HeaderColorPicker
-          isOpen={showColorPicker}
-          onClose={() => setShowColorPicker(false)}
-          currentColor={headerColor}
-          onSelectColor={handleSelectColor}
-        />
-      )}
     </div>
   );
 };

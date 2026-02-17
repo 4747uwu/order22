@@ -44,6 +44,8 @@ export const formatStudyForWorklist = (rawStudy) => {
     const modality = rawStudy.modalitiesInStudy?.length > 0 ? 
                     rawStudy.modalitiesInStudy.join(', ').toUpperCase() : 
                     (rawStudy.modality || 'N/A').toUpperCase();
+    
+    const notesCount = rawStudy.notesCount || 0;
 
     // ✅ SERIES COUNT
     const seriesCount = rawStudy.seriesCount || 0;
@@ -205,6 +207,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       patientAge: age,
       patientSex: gender,
       ageGender,
+      notesCount,
       
       // ✅ STUDY INFO - UPPERCASE
       modality,

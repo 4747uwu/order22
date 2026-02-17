@@ -27,6 +27,7 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
                 'verification_in_progress',
                 'report_verified',
                 'report_rejected',
+                'report_completed',
                 'revert_to_radiologist' // ✅ NEW: Show reverted studies
             ] 
         }
@@ -92,13 +93,30 @@ const executeStudyQuery = async (queryFilters, limit) => {
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
         const studies = await DicomStudy.find(queryFilters)
-            .populate('assignment.assignedTo', 'fullName email role specialization')
-            .populate('assignment.assignedBy', 'fullName email role')
-            // ✅ FIXED: Properly populate verification info
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role specialization')
-            // ✅ NEW: Populate modern reports and their creators
+            .populate('organization', 'name identifier contactEmail contactPhone address')
+            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
+            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
+            
+            // ✅ CRITICAL: Assignment information with firstName/lastName for fallback
+            .populate('assignment.assignedTo', 'fullName firstName lastName email role specialization organizationIdentifier')
+            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: Report and verification info
+            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role specialization')
             .populate('reportInfo.modernReports.reportId', 'doctorId createdBy workflowInfo')
-            .populate('sourceLab', 'name identifier location contactPerson')
+            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: CategoryTracking populations (THIS WAS MISSING!)
+            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
+            
+            // ✅ Study lock info
+            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
+            
             .sort({ 
                 'reportInfo.finalizedAt': -1, 
                 'reportInfo.verificationInfo.verifiedAt': -1,
@@ -107,96 +125,20 @@ const executeStudyQuery = async (queryFilters, limit) => {
             .limit(limit)
             .lean();
 
-        // ✅ ENHANCED: Second populate for nested report references
-        const populatedStudies = [];
-        
-        for (const study of studies) {
-            // Try to get additional report creator info if needed
-            if (study.reportInfo?.modernReports?.length > 0) {
-                const reportId = study.reportInfo.modernReports[0].reportId;
-                if (reportId) {
-                    const Report = mongoose.model('Report');
-                    const reportDetails = await Report.findById(reportId)
-                        .populate('doctorId', 'fullName email role specialization')
-                        .populate('createdBy', 'fullName email role specialization')
-                        .lean();
-                    
-                    if (reportDetails) {
-                        // Add populated report creator info to study
-                        study._reportCreator = reportDetails.doctorId || reportDetails.createdBy;
-                    }
-                }
-            }
-            
-            populatedStudies.push(study);
+        // ✅ DEBUG: Log first study's assignment info
+        if (studies.length > 0) {
+            console.log('🔍 [VERIFIER] FIRST STUDY ASSIGNMENT INFO:', {
+                bharatPacsId: studies[0].bharatPacsId,
+                assignmentAssignedTo: studies[0].assignment?.[0]?.assignedTo?.fullName || 'NOT POPULATED',
+                categoryTrackingAssignedTo: studies[0].categoryTracking?.assigned?.assignedTo?.fullName || 'NOT POPULATED',
+                currentReportedBy: studies[0].currentReportStatus?.lastReportedBy?.fullName || 'NOT POPULATED'
+            });
         }
 
-        return { studies: populatedStudies, totalStudies };
+        return { studies, totalStudies };
         
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
-        
-        // ✅ FALLBACK: If complex populate fails, try simpler version
-        if (error.message.includes('strictPopulate') || error.message.includes('Cannot populate')) {
-            console.log('⚠️ Falling back to simpler query without complex population');
-            
-            const studies = await DicomStudy.find(queryFilters)
-                .populate('assignment.assignedTo', 'fullName email role specialization')
-                .populate('assignment.assignedBy', 'fullName email role')
-                .populate('sourceLab', 'name identifier location contactPerson')
-                .sort({ 
-                    'reportInfo.finalizedAt': -1, 
-                    createdAt: -1 
-                })
-                .limit(limit)
-                .lean();
-
-            // ✅ MANUAL POPULATION: Manually populate verification info
-            const enhancedStudies = [];
-            const User = mongoose.model('User');
-            
-            for (const study of studies) {
-                // Manually populate verifiedBy if it exists
-                if (study.reportInfo?.verificationInfo?.verifiedBy) {
-                    try {
-                        const verifier = await User.findById(study.reportInfo.verificationInfo.verifiedBy)
-                            .select('fullName email role specialization')
-                            .lean();
-                        
-                        if (verifier) {
-                            study.reportInfo.verificationInfo.verifiedBy = verifier;
-                        }
-                    } catch (err) {
-                        console.warn('⚠️ Failed to populate verifiedBy:', err.message);
-                    }
-                }
-                
-                // Try to get report creator info
-                if (study.reportInfo?.modernReports?.length > 0) {
-                    try {
-                        const reportId = study.reportInfo.modernReports[0].reportId;
-                        if (reportId) {
-                            const Report = mongoose.model('Report');
-                            const reportDetails = await Report.findById(reportId)
-                                .populate('doctorId', 'fullName email role specialization')
-                                .populate('createdBy', 'fullName email role specialization')
-                                .lean();
-                            
-                            if (reportDetails) {
-                                study._reportCreator = reportDetails.doctorId || reportDetails.createdBy;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('⚠️ Failed to get report creator:', err.message);
-                    }
-                }
-                
-                enhancedStudies.push(study);
-            }
-
-            return { studies: enhancedStudies, totalStudies };
-        }
-        
         throw error;
     }
 };
@@ -460,6 +402,7 @@ export const verifyReport = async (req, res) => {
                 const verifiableStatuses = [
                     'verification_pending',
                     'report_finalized', 
+                    // 'report_completed',
                     
                     'verification_in_progress'
                 ];

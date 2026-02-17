@@ -255,95 +255,12 @@ const StudyNotesComponent = ({ studyId, isOpen, onClose }) => {
                     </button>
                 </div>
 
-                {/* ✅ FILTERS */}
-                <div className="p-4 border-b border-gray-200 bg-gray-50">
-                    <div className="flex flex-wrap gap-4">
-                        <select 
-                            value={filter.noteType}
-                            onChange={(e) => setFilter(prev => ({ ...prev, noteType: e.target.value }))}
-                            className="text-sm border border-gray-300 rounded-md px-3 py-1"
-                        >
-                            <option value="">All Types</option>
-                            <option value="general">General</option>
-                            <option value="clinical">Clinical</option>
-                            <option value="technical">Technical</option>
-                            <option value="administrative">Administrative</option>
-                            <option value="quality">Quality</option>
-                            <option value="followup">Follow-up</option>
-                            <option value="priority">Priority</option>
-                            <option value="discussion">Discussion</option>
-                            <option value="correction">Correction</option>
-                            <option value="verification">Verification</option>
-                        </select>
-
-                        <select 
-                            value={filter.status}
-                            onChange={(e) => setFilter(prev => ({ ...prev, status: e.target.value }))}
-                            className="text-sm border border-gray-300 rounded-md px-3 py-1"
-                        >
-                            <option value="">All Status</option>
-                            <option value="active">Active</option>
-                            <option value="resolved">Resolved</option>
-                            <option value="archived">Archived</option>
-                        </select>
-
-                        <select 
-                            value={filter.priority}
-                            onChange={(e) => setFilter(prev => ({ ...prev, priority: e.target.value }))}
-                            className="text-sm border border-gray-300 rounded-md px-3 py-1"
-                        >
-                            <option value="">All Priorities</option>
-                            <option value="urgent">Urgent</option>
-                            <option value="high">High</option>
-                            <option value="normal">Normal</option>
-                            <option value="low">Low</option>
-                        </select>
-                    </div>
-                </div>
+                
 
                 {/* ✅ NEW NOTE FORM */}
                 <div className="p-4 border-b border-gray-200">
                     <form onSubmit={handleCreateNote} className="space-y-3">
-                        <div className="flex space-x-3">
-                            <select 
-                                value={newNote.noteType}
-                                onChange={(e) => setNewNote(prev => ({ ...prev, noteType: e.target.value }))}
-                                className="text-sm border border-gray-300 rounded-md px-3 py-2"
-                            >
-                                <option value="general">General</option>
-                                <option value="clinical">Clinical</option>
-                                <option value="technical">Technical</option>
-                                <option value="administrative">Administrative</option>
-                                <option value="quality">Quality</option>
-                                <option value="followup">Follow-up</option>
-                                <option value="priority">Priority</option>
-                                <option value="discussion">Discussion</option>
-                                <option value="correction">Correction</option>
-                                <option value="verification">Verification</option>
-                            </select>
-
-                            <select 
-                                value={newNote.priority}
-                                onChange={(e) => setNewNote(prev => ({ ...prev, priority: e.target.value }))}
-                                className="text-sm border border-gray-300 rounded-md px-3 py-2"
-                            >
-                                <option value="low">Low</option>
-                                <option value="normal">Normal</option>
-                                <option value="high">High</option>
-                                <option value="urgent">Urgent</option>
-                            </select>
-
-                            <select 
-                                value={newNote.visibility}
-                                onChange={(e) => setNewNote(prev => ({ ...prev, visibility: e.target.value }))}
-                                className="text-sm border border-gray-300 rounded-md px-3 py-2"
-                            >
-                                <option value="public">Public</option>
-                                <option value="medical">Medical Staff</option>
-                                <option value="admin">Admin Only</option>
-                                <option value="private">Private</option>
-                            </select>
-                        </div>
+                        
 
                         <textarea
                             value={newNote.noteText}

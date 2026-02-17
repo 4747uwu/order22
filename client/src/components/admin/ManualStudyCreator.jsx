@@ -6,8 +6,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Upload, Trash2, AlertCircle, CheckCircle, Loader, Package, Info, FileImage, FolderArchive } from 'lucide-react';
 import api from '../../services/api';
 import axios from 'axios';
+import { useAuth } from '../../hooks/useAuth'; // ✅ IMPORT useAuth
 
 const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
+    const { currentUser } = useAuth(); // ✅ GET CURRENT USER
+    const isLabStaff = currentUser?.role === 'lab_staff'; // ✅ CHECK IF LAB STAFF
+    
     const [step, setStep] = useState(1); // 1: Mode Selection, 2: Form/Upload, 3: Progress
     const [uploadMode, setUploadMode] = useState(null); // 'images' or 'zip'
     
@@ -49,10 +53,23 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
 
     useEffect(() => {
         if (isOpen) {
-            fetchLabs();
+            // ✅ NEW: Auto-set lab for lab_staff users
+            if (isLabStaff && currentUser.lab) {
+                console.log('🔐 Lab Staff detected - auto-setting lab:', currentUser.lab);
+                setFormData(prev => ({
+                    ...prev,
+                    labId: currentUser.lab._id,
+                    organizationId: currentUser.organization?._id || currentUser.organizationId,
+                    institutionName: currentUser.lab.name || 'XCENTIC Medical Center'
+                }));
+                // Don't fetch labs for lab_staff - they can't change it
+            } else {
+                // For admin/super_admin, fetch available labs
+                fetchLabs();
+            }
             resetForm();
         }
-    }, [isOpen]);
+    }, [isOpen, isLabStaff, currentUser]);
 
     const fetchLabs = async () => {
         try {
@@ -60,8 +77,8 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
             if (response.data.success) {
                 setAvailableLabs(response.data.data);
                 
-                // Auto-select first lab if available
-                if (response.data.data.length > 0) {
+                // Auto-select first lab if available (for non-lab_staff users)
+                if (response.data.data.length > 0 && !isLabStaff) {
                     setFormData(prev => ({
                         ...prev,
                         labId: response.data.data[0]._id,
@@ -226,7 +243,9 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
     const resetForm = () => {
         setStep(1);
         setUploadMode(null);
-        setFormData({
+        
+        // ✅ UPDATED: Preserve lab info for lab_staff users
+        const baseFormData = {
             patientName: '',
             patientId: '',
             patientBirthDate: '',
@@ -237,13 +256,29 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
             modality: 'CT',
             bodyPartExamined: '',
             accessionNumber: '',
-            labId: availableLabs.length > 0 ? availableLabs[0]._id : '',
-            organizationId: availableLabs.length > 0 ? availableLabs[0].organization : '',
             clinicalHistory: '',
             referringPhysician: '',
             institutionName: 'XCENTIC Medical Center',
             urgency: 'routine'
-        });
+        };
+        
+        if (isLabStaff && currentUser?.lab) {
+            // Keep lab info for lab_staff
+            setFormData({
+                ...baseFormData,
+                labId: currentUser.lab._id,
+                organizationId: currentUser.organization?._id || currentUser.organizationId,
+                institutionName: currentUser.lab.name || 'XCENTIC Medical Center'
+            });
+        } else {
+            // Reset everything for admin
+            setFormData({
+                ...baseFormData,
+                labId: availableLabs.length > 0 ? availableLabs[0]._id : '',
+                organizationId: availableLabs.length > 0 ? availableLabs[0].organization : ''
+            });
+        }
+        
         setSelectedFiles([]);
         setSelectedZip(null);
         setUploading(false);
@@ -273,7 +308,15 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                 <div className="relative z-10 w-full max-w-4xl bg-white rounded-lg shadow-2xl overflow-hidden">
                     {/* Header */}
                     <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-teal-600 to-green-600">
-                        <h2 className="text-xl font-bold text-white">Create Manual Study</h2>
+                        <div>
+                            <h2 className="text-xl font-bold text-white">Create Manual Study</h2>
+                            {/* ✅ NEW: Show lab name for lab_staff */}
+                            {isLabStaff && currentUser?.lab && (
+                                <p className="text-sm text-teal-100 mt-1">
+                                    📍 Lab: {currentUser.lab.name}
+                                </p>
+                            )}
+                        </div>
                         <button
                             onClick={handleClose}
                             className="text-white hover:text-gray-200 transition-colors"
@@ -353,7 +396,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                                                     </li>
                                                     <li className="flex items-center">
                                                         <CheckCircle className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
-                                                        <span>Only lab selection needed</span>
+                                                        <span>{isLabStaff ? 'Auto-assigned to your lab' : 'Only lab selection needed'}</span>
                                                     </li>
                                                 </ul>
                                             </div>
@@ -399,7 +442,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                                                     </li>
                                                     <li className="flex items-center">
                                                         <CheckCircle className="h-4 w-4 text-green-500 mr-2 flex-shrink-0" />
-                                                        <span>For non-DICOM sources</span>
+                                                        <span>Supports any image format</span>
                                                     </li>
                                                 </ul>
                                             </div>
@@ -425,51 +468,61 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                         {/* Step 2: Upload Form */}
                         {step === 2 && (
                             <div className="p-6 space-y-6">
-                                {/* ZIP Upload Mode */}
+                                {/* ZIP MODE - Simplified Form */}
                                 {uploadMode === 'zip' && (
                                     <div className="space-y-6">
-                                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                                            <div className="flex items-start">
-                                                <FolderArchive className="h-5 w-5 text-teal-600 mt-0.5 mr-3 flex-shrink-0" />
-                                                <div className="text-sm text-teal-800">
-                                                    <p className="font-medium">ZIP Upload - Automatic Mode</p>
-                                                    <p className="mt-1">
-                                                        All patient and study information will be automatically extracted from DICOM files. 
-                                                        You only need to select the lab.
-                                                    </p>
-                                                </div>
+                                        <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 flex items-start">
+                                            <FolderArchive className="h-5 w-5 text-teal-600 mr-3 flex-shrink-0 mt-0.5" />
+                                            <div className="text-sm text-teal-800">
+                                                <p className="font-semibold mb-1">ZIP File Upload Mode</p>
+                                                <p>Patient and study information will be automatically extracted from DICOM files.</p>
                                             </div>
                                         </div>
 
-                                        {/* Lab Selection */}
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                Select Lab <span className="text-red-500">*</span>
-                                            </label>
-                                            <select
-                                                value={formData.labId}
-                                                onChange={handleLabChange}
-                                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
-                                                required
-                                            >
-                                                <option value="">Select lab...</option>
-                                                {availableLabs.map(lab => (
-                                                    <option key={lab._id} value={lab._id}>{lab.name}</option>
-                                                ))}
-                                            </select>
-                                            {errors.labId && (
-                                                <p className="text-red-500 text-xs mt-1">{errors.labId}</p>
-                                            )}
-                                        </div>
+                                        {/* ✅ UPDATED: Conditional Lab Selection */}
+                                        {isLabStaff ? (
+                                            // Read-only lab display for lab_staff
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Assigned Lab
+                                                </label>
+                                                <div className="w-full px-4 py-2 border-2 border-teal-300 bg-teal-50 rounded-lg text-teal-900 font-semibold flex items-center">
+                                                    <Package className="h-5 w-5 mr-2" />
+                                                    {currentUser?.lab?.name || 'Unknown Lab'}
+                                                </div>
+                                                <p className="text-xs text-gray-500 mt-1">
+                                                    📍 Studies will be automatically assigned to your lab
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            // Dropdown for admin/super_admin
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                    Select Lab <span className="text-red-500">*</span>
+                                                </label>
+                                                <select
+                                                    value={formData.labId}
+                                                    onChange={handleLabChange}
+                                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                    required
+                                                >
+                                                    <option value="">Select lab...</option>
+                                                    {availableLabs.map(lab => (
+                                                        <option key={lab._id} value={lab._id}>{lab.name}</option>
+                                                    ))}
+                                                </select>
+                                                {errors.labId && (
+                                                    <p className="text-red-500 text-xs mt-1">{errors.labId}</p>
+                                                )}
+                                            </div>
+                                        )}
 
                                         {/* ZIP File Upload */}
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">
                                                 Upload ZIP File <span className="text-red-500">*</span>
                                             </label>
-                                            <div className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                                                selectedZip ? 'border-teal-500 bg-teal-50' : 'border-gray-300 hover:border-teal-400'
-                                            }`}>
+                                            <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
                                                 <input
                                                     type="file"
                                                     accept=".zip"
@@ -478,39 +531,54 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                                                     id="zip-upload"
                                                 />
                                                 <label htmlFor="zip-upload" className="cursor-pointer">
-                                                    <Package className={`mx-auto h-16 w-16 ${selectedZip ? 'text-teal-600' : 'text-gray-400'}`} />
-                                                    <p className="mt-2 text-sm font-medium text-gray-700">
-                                                        {selectedZip ? selectedZip.name : 'Click to upload ZIP file'}
+                                                    <FolderArchive className="mx-auto h-16 w-16 text-teal-600" />
+                                                    <p className="mt-3 text-sm text-gray-600 font-medium">
+                                                        Click to select a ZIP file
                                                     </p>
-                                                    {selectedZip && (
-                                                        <p className="mt-1 text-xs text-teal-600">
-                                                            Size: {(selectedZip.size / 1024 / 1024).toFixed(2)} MB
-                                                        </p>
-                                                    )}
                                                     <p className="mt-1 text-xs text-gray-500">
-                                                        ZIP file containing DICOM files (max 200MB)
+                                                        ZIP files containing DICOM studies (max 500MB)
                                                     </p>
                                                 </label>
                                             </div>
                                             {errors.zip && (
                                                 <p className="text-red-500 text-xs mt-1">{errors.zip}</p>
                                             )}
+
+                                            {/* Selected ZIP File */}
+                                            {selectedZip && (
+                                                <div className="mt-4 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center space-x-3">
+                                                            <FolderArchive className="h-8 w-8 text-teal-600" />
+                                                            <div>
+                                                                <p className="text-sm font-medium text-gray-900">{selectedZip.name}</p>
+                                                                <p className="text-xs text-gray-500">
+                                                                    {(selectedZip.size / 1024 / 1024).toFixed(2)} MB
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => setSelectedZip(null)}
+                                                            className="text-red-500 hover:text-red-700"
+                                                            type="button"
+                                                        >
+                                                            <Trash2 className="h-5 w-5" />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
 
-                                {/* Images Upload Mode */}
+                                {/* IMAGES MODE - Full Form (same as before but with conditional lab selection) */}
                                 {uploadMode === 'images' && (
                                     <div className="space-y-6">
-                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                                            <div className="flex items-start">
-                                                <FileImage className="h-5 w-5 text-blue-600 mt-0.5 mr-3 flex-shrink-0" />
-                                                <div className="text-sm text-blue-800">
-                                                    <p className="font-medium">Image Upload - Manual Mode</p>
-                                                    <p className="mt-1">
-                                                        Please fill in all required patient and study information below.
-                                                    </p>
-                                                </div>
+                                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start">
+                                            <FileImage className="h-5 w-5 text-blue-600 mr-3 flex-shrink-0 mt-0.5" />
+                                            <div className="text-sm text-blue-800">
+                                                <p className="font-semibold mb-1">Image Files Upload Mode</p>
+                                                <p>You need to manually enter patient and study information.</p>
                                             </div>
                                         </div>
 
@@ -546,7 +614,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                                                         name="patientId"
                                                         value={formData.patientId}
                                                         onChange={handleInputChange}
-                                                        placeholder="P123456"
+                                                        placeholder="P12345"
                                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                         required
                                                     />
@@ -557,7 +625,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
 
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Birth Date
+                                                        Date of Birth
                                                     </label>
                                                     <input
                                                         type="date"
@@ -570,7 +638,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
 
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Sex
+                                                        Gender
                                                     </label>
                                                     <select
                                                         name="patientSex"
@@ -586,14 +654,14 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
 
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Age
+                                                        Age (Years)
                                                     </label>
                                                     <input
-                                                        type="text"
+                                                        type="number"
                                                         name="patientAge"
                                                         value={formData.patientAge}
                                                         onChange={handleInputChange}
-                                                        placeholder="e.g., 045Y"
+                                                        placeholder="30"
                                                         className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                                     />
                                                 </div>
@@ -605,21 +673,29 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                                             <h3 className="text-lg font-semibold text-gray-900 border-b pb-2">Study Information</h3>
                                             
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                {/* ✅ UPDATED: Conditional Lab Selection (same as ZIP mode) */}
                                                 <div>
                                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                                        Select Lab <span className="text-red-500">*</span>
+                                                        {isLabStaff ? 'Assigned Lab' : 'Select Lab'} <span className="text-red-500">*</span>
                                                     </label>
-                                                    <select
-                                                        value={formData.labId}
-                                                        onChange={handleLabChange}
-                                                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                        required
-                                                    >
-                                                        <option value="">Select lab...</option>
-                                                        {availableLabs.map(lab => (
-                                                            <option key={lab._id} value={lab._id}>{lab.name}</option>
-                                                        ))}
-                                                    </select>
+                                                    {isLabStaff ? (
+                                                        <div className="w-full px-4 py-2 border-2 border-blue-300 bg-blue-50 rounded-lg text-blue-900 font-semibold flex items-center">
+                                                            <Package className="h-5 w-5 mr-2" />
+                                                            {currentUser?.lab?.name || 'Unknown Lab'}
+                                                        </div>
+                                                    ) : (
+                                                        <select
+                                                            value={formData.labId}
+                                                            onChange={handleLabChange}
+                                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                            required
+                                                        >
+                                                            <option value="">Select lab...</option>
+                                                            {availableLabs.map(lab => (
+                                                                <option key={lab._id} value={lab._id}>{lab.name}</option>
+                                                            ))}
+                                                        </select>
+                                                    )}
                                                     {errors.labId && (
                                                         <p className="text-red-500 text-xs mt-1">{errors.labId}</p>
                                                     )}
@@ -827,7 +903,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                             </div>
                         )}
 
-                        {/* Step 3: Progress/Result */}
+                        {/* Step 3: Progress/Result (remains the same) */}
                         {step === 3 && (
                             <div className="p-6">
                                 {uploading && (

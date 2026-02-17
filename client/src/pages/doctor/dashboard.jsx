@@ -143,7 +143,7 @@ const DoctorDashboard = () => {
     
     try {
       const endpoint = getApiEndpoint();
-      const activeFilters = Object.keys(filters).length > 0 ? filters : searchFilters;
+      const activeFilters = filters && Object.keys(filters).length > 0 ? filters : searchFilters;
       
       const params = { 
         ...activeFilters,
@@ -188,8 +188,7 @@ const DoctorDashboard = () => {
   // ✅ FETCH CATEGORY VALUES (6 categories)
   const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
-      const params = Object.keys(filters).length > 0 ? filters : searchFilters;
-      
+      const params = filters && Object.keys(filters).length > 0 ? filters : searchFilters;      
       console.log('🔍 DOCTOR ANALYTICS: Fetching with params:', params);
       
       const response = await api.get('/doctor/values', { params });
