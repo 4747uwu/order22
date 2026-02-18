@@ -37,7 +37,7 @@ const OHIFViewerPage = () => {
 
         if (studyUIDs) {
           // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
-                    const OHIF_BASE = 'https://viewer.pacs.xcentic.com';
+          const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
 
           const url = `${OHIF_BASE}/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
           setOhifUrl(url);

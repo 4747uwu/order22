@@ -18,8 +18,7 @@ export const updateStudyDetails = async (req, res) => {
             referringPhysician,
             accessionNumber,
             clinicalHistory,
-            // ✅ Priority fields
-            studyPriority
+            priority
         } = req.body;
 
         const user = req.user;
@@ -34,7 +33,7 @@ export const updateStudyDetails = async (req, res) => {
             studyName,
             referringPhysician,
             clinicalHistory: clinicalHistory?.substring(0, 50) + '...',
-            studyPriority
+            priority
         });
 
         // Find study
@@ -44,10 +43,7 @@ export const updateStudyDetails = async (req, res) => {
         });
 
         if (!study) {
-            return res.status(404).json({
-                success: false,
-                message: 'Study not found'
-            });
+            return res.status(404).json({ success: false, message: 'Study not found' });
         }
 
         // ✅ CHECK IF STUDY IS LOCKED
@@ -97,19 +93,19 @@ export const updateStudyDetails = async (req, res) => {
             changes.accessionNumber = accessionNumber;
         }
 
-        // ✅ Handle studyPriority update
-        if (studyPriority) {
-            const validStudyPriorities = ['SELECT', 'Emergency Case', 'Meet referral doctor', 'MLC Case', 'Study Exception'];
-            if (validStudyPriorities.includes(studyPriority)) {
-                updateData.studyPriority = studyPriority;
-                changes.studyPriority = { from: study.studyPriority, to: studyPriority };
-                console.log(`✅ studyPriority updated: ${study.studyPriority} → ${studyPriority}`);
+        // ✅ Handle priority update (5-type system: NORMAL, EMERGENCY, PRIORITY, MLC, STAT)
+        if (priority !== undefined) {
+            const validPriorities = ['NORMAL', 'EMERGENCY', 'PRIORITY', 'MLC', 'STAT'];
+            const newPriority = (priority || '').toUpperCase().trim();
+            if (validPriorities.includes(newPriority)) {
+                updateData.priority = newPriority;
+                changes.priority = { from: study.priority, to: newPriority };
+                console.log(`✅ priority updated: ${study.priority} → ${newPriority}`);
             }
         }
         
         // ✅ UPDATED: Only change workflow if clinical history is actually changing
         if (clinicalHistory !== undefined) {
-            // ✅ CHECK IF CLINICAL HISTORY IS ACTUALLY BEING UPDATED (NOT JUST RE-SENT)
             const existingHistory = study.clinicalHistory?.clinicalHistory || '';
             const isHistoryChanging = existingHistory !== clinicalHistory;
             
@@ -118,29 +114,20 @@ export const updateStudyDetails = async (req, res) => {
             updateData['clinicalHistory.lastModifiedAt'] = new Date();
             updateData['clinicalHistory.lastModifiedFrom'] = 'admin_panel';
 
-            // ✅ ONLY UPDATE CATEGORY/WORKFLOW IF HISTORY IS ACTUALLY CHANGING
             if (isHistoryChanging) {
                 console.log(`📝 Clinical history is being updated - changing workflow to history_created`);
-                console.log(`   From: "${existingHistory.substring(0, 50)}..."`);
-                console.log(`   To: "${clinicalHistory.substring(0, 50)}..."`);
-                
                 updateData.currentCategory = 'HISTORY_CREATED';
                 updateData.workflowStatus = 'history_created';
-
-                // update categoryTracking.historyCreated metadata
                 updateData['categoryTracking.historyCreated.lastUpdatedAt'] = new Date();
                 updateData['categoryTracking.historyCreated.lastUpdatedBy'] = user._id;
                 updateData['categoryTracking.historyCreated.isComplete'] = true;
-                
                 changes.clinicalHistoryUpdated = true;
-            } else {
-                console.log(`📝 Clinical history unchanged - keeping current workflow status: ${study.workflowStatus}`);
             }
         }
 
         // ✅ Build descriptive note for priority changes
         const priorityChanges = [];
-        if (changes.studyPriority) priorityChanges.push(`Study Priority: ${changes.studyPriority.to}`);
+        if (changes.priority) priorityChanges.push(`Priority: ${changes.priority.from || 'NORMAL'} → ${changes.priority.to}`);
 
         const actionNote = priorityChanges.length > 0 
             ? `Study details updated via patient edit modal. Priority changes: ${priorityChanges.join(', ')}`

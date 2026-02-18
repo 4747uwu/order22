@@ -13,20 +13,33 @@ dotenv.config();
 export const loginUser = async (req, res) => {
     console.log(req.body);
     const { email, password } = req.body;
-    console.log('Login attempt with email:', email);
+    console.log('Login attempt:', email);
 
     if (!email || !password) {
         return res.status(400).json({ 
             success: false, 
-            message: 'Please provide email and password.' 
+            message: 'Please provide email/username and password.' 
         });
     }
 
     try {
-        // Find user by email only - let backend determine role and context
-        let user = await User.findOne({ 
-            email: email.trim().toLowerCase() 
-        })
+        const loginInput = email.trim().toLowerCase();
+
+        // Support login by username OR email
+        // If no @ symbol, treat as username OR auto-append @bharatpacs.com
+        let userQuery;
+        if (loginInput.includes('@')) {
+            userQuery = { email: loginInput };
+        } else {
+            userQuery = {
+                $or: [
+                    { username: loginInput },
+                    { email: `${loginInput}@bharatpacs.com` }
+                ]
+            };
+        }
+
+        let user = await User.findOne(userQuery)
         .select('+password')
         .populate('organization', 'name identifier status displayName features subscription')
         .populate('lab', 'name identifier isActive fullIdentifier settings');

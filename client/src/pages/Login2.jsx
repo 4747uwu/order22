@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, Mail, Lock, AlertCircle, Loader, 
   Shield, Activity 
 } from 'lucide-react';
-import ColorBends from '../creative/maxColor';
+// import ColorBends from '../creative/maxColor';
 
 const Login2Page = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -181,7 +181,7 @@ const Login2Page = () => {
       <div className="hidden lg:flex lg:w-[60%] relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-800 flex-col items-center justify-center">
         
         {/* Advanced Animated Background with ColorBends */}
-        <div className="absolute inset-0 z-0">
+        {/* <div className="absolute inset-0 z-0">
            <ColorBends
             colors={["#0f172a", "#1e3a8a", "#1e40af", "#3b82f6", "#60a5fa", "#93c5fd"]}
             rotation={320}
@@ -194,7 +194,7 @@ const Login2Page = () => {
             noise={0.03}
             transparent={true}
           />
-        </div>
+        </div> */}
 
         {/* Gradient Overlay for depth */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/20 z-[1]"></div>

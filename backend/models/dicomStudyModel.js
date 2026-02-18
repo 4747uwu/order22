@@ -230,7 +230,7 @@ isCopiedStudy: {
         type: Number,
         default: 0
     },
-    
+
     currentCategory: {
         type: String,
         enum: [
@@ -564,7 +564,7 @@ isCopiedStudy: {
         },
         priority: {
             type: String,
-            enum: ['LOW', 'NORMAL', 'HIGH', 'URGENT'],
+            enum: ['EMERGENCY', 'PRIORITY', 'MLC', 'NORMAL', 'STAT'],
             default: 'NORMAL',
             index: { background: true }
         }
@@ -598,12 +598,12 @@ isCopiedStudy: {
         lastDownloaded: { type: Date }
     },
 
-    studyPriority: {
-        type: String,
-        enum: ['SELECT', 'Emergency Case', 'Meet referral doctor', 'MLC Case', 'Study Exception'],
-        default: 'SELECT',
-        index: { background: true }
-    },
+    priority: {
+    type: String,
+    enum: ['NORMAL', 'EMERGENCY', 'PRIORITY', 'MLC', 'STAT'],
+    default: 'NORMAL',
+    index: { background: true }
+},
 
     lastAssignedDoctor: [{
         doctorId: {
@@ -1460,10 +1460,11 @@ DicomStudySchema.statics.findByOrganization = function(orgIdentifier, status = n
 };
 
 DicomStudySchema.virtual('isUrgent').get(function() {
-    return this.assignment?.priority === 'URGENT' || 
-           this.studyPriority === 'Emergency Case' ||
+    return this.priority === 'EMERGENCY' || 
+           this.assignment?.some(a => a.priority === 'EMERGENCY') ||
            this.caseType === 'emergency';
 });
+
 
 DicomStudySchema.methods.toSummary = function() {
     return {

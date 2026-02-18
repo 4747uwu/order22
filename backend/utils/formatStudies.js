@@ -140,7 +140,7 @@ const formatStudyForWorklist = (study, userMap = new Map(), labMap = new Map()) 
         const labInfo = formatLabInfo(study, labMap);
 
         // Determine priority from assignment or study level
-        const priority = assignmentInfo?.priority || study.studyPriority || 'NORMAL';
+        const priority = study.priority || study.studyPriority || 'NORMAL';
 
         return {
             _id: study._id,
@@ -192,7 +192,7 @@ const formatStudyForWorklist = (study, userMap = new Map(), labMap = new Map()) 
             caseStatusColor: getCaseStatusColor(study.workflowStatus),
             
             // Priority
-            priority: study.studyPriority || 'SELECT',
+            priority: priority,
             
             // ✅ FIXED: Assignment info (flattened for easy access)
             isAssigned: assignmentInfo.isAssigned,
@@ -271,7 +271,7 @@ export const formatStudiesForWorklist = (studies) => {
         const labInfo = formatLabInfo(study, labMap);
 
         // Determine priority from assignment or study level
-        const priority = assignmentInfo?.priority || study.studyPriority || 'NORMAL';
+        const priority = study.priority || study.studyPriority || 'NORMAL';
 
         const formatted = {
             _id: study._id,
@@ -323,7 +323,7 @@ export const formatStudiesForWorklist = (studies) => {
             caseStatusColor: getCaseStatusColor(study.workflowStatus),
             
             // Priority
-            priority: study.studyPriority || 'SELECT',
+            priority: priority,
             
             // ✅ FIXED: Assignment info (flattened for easy access)
             isAssigned: assignmentInfo.isAssigned,

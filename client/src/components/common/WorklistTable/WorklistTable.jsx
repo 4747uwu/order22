@@ -117,6 +117,62 @@ const copyToClipboard = (text, label = 'ID') => {
   });
 };
 
+const PRIORITY_SORT_ORDER = {
+  'EMERGENCY': 0,
+  'PRIORITY':  1,
+  'MLC':       2,
+  'NORMAL':    3,
+  'STAT':      4,
+};
+
+
+const getPriorityWeight = (study) => {
+  const p = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase();
+  return PRIORITY_SORT_ORDER[p] ?? 3; // default to NORMAL weight
+};
+
+const sortStudiesByPriority = (studies) => {
+  return [...studies].sort((a, b) => getPriorityWeight(a) - getPriorityWeight(b));
+};
+
+// Priority tag badge renderer
+const getPriorityTag = (study) => {
+  const raw = study.priority || study.assignment?.[0]?.priority || '';
+  const p = raw.toUpperCase();
+
+  switch (p) {
+    case 'EMERGENCY':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-red-600 bg-red-50 border border-red-200">
+          🚨 Emergency
+        </span>
+      );
+    case 'PRIORITY':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-purple-700 bg-purple-50 border border-purple-200">
+          ⭐ Priority
+        </span>
+      );
+    case 'MLC':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-gray-700 bg-gray-100 border border-gray-300">
+          ⚖️ MLC
+        </span>
+      );
+    case 'STAT':
+      return (
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-sky-700 bg-sky-50 border border-sky-200">
+          ⏱️ STAT
+        </span>
+      );
+    case 'NORMAL':
+      return null; // no badge for normal — keep UI clean
+    default:
+      return null;
+  }
+};
+
+
 
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
@@ -127,21 +183,26 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     referringPhysician: '',
     accessionNumber: '',
     clinicalHistory: '',
-    studyPriority: 'SELECT'
+    priority: 'NORMAL',
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (study && isOpen) {
+      // Normalize existing priority to one of our 5 canonical values
+      const rawPriority = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase().trim();
+      const validValues = CASE_PRIORITY_OPTIONS.map(o => o.value);
+      const resolvedPriority = validValues.includes(rawPriority) ? rawPriority : 'NORMAL';
+
       setFormData({
-        patientName: study.patientName || study.patientInfo?.patientName || '',
-        patientAge: study.patientAge || study.patientInfo?.age || '',
-        patientGender: study.patientSex || study.patientInfo?.gender || '',
-        studyName: study.studyDescription || study.examDescription || '',
-        referringPhysician: study.referralNumber || study.referringPhysicianName || '',
-        accessionNumber: study.accessionNumber || '',
-        clinicalHistory: study.clinicalHistory || '',
-        studyPriority: study.priority || 'SELECT'
+        patientName:       study.patientName || study.patientInfo?.patientName || '',
+        patientAge:        study.patientAge  || study.patientInfo?.age          || '',
+        patientGender:     study.patientSex  || study.patientInfo?.gender       || '',
+        studyName:         study.studyDescription || study.examDescription      || '',
+        referringPhysician:study.referralNumber   || study.referringPhysicianName || '',
+        accessionNumber:   study.accessionNumber  || '',
+        clinicalHistory:   study.clinicalHistory  || '',
+        priority:          resolvedPriority,
       });
     }
   }, [study, isOpen]);
@@ -149,7 +210,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
     try {
       await onSave({ studyId: study._id, ...formData });
       toast.success('Study details updated successfully');
@@ -161,20 +221,14 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
     }
   };
 
-  // Study Priority options
-  const studyPriorityOptions = [
-    { value: 'SELECT', label: 'Select Priority' },
-    { value: 'EMERGENCY CASE', label: '🚨 Emergency Case' },
-    { value: 'Meet referral doctor', label: '👨‍⚕️ Meet Referral Doctor' },
-    { value: 'MLC Case', label: '⚖️ MLC Case' },
-    { value: 'Study Exception', label: '⚠️ Study Exception' }
-  ];
+  const selectedOption = CASE_PRIORITY_OPTIONS.find(o => o.value === formData.priority) || CASE_PRIORITY_OPTIONS[0];
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
       <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden border-2 border-gray-900">
+
         {/* Header */}
         <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
@@ -183,10 +237,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               BP ID: {study?.bharatPacsId} | MODALITY: {study?.modality}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -194,44 +245,55 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-          
-          {/* ✅ STUDY PRIORITY SECTION ONLY */}
-          <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border-2 border-amber-200">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
-              <span className="w-6 h-6 bg-amber-600 text-white rounded-full flex items-center justify-center text-xs">!</span>
-              Study Priority
+
+          {/* ── PRIORITY PICKER ─────────────────────────────────────────── */}
+          <div className={`mb-6 p-4 rounded-lg border-2 ${selectedOption.border} ${selectedOption.bg} transition-all`}>
+            <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 uppercase">
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                formData.priority === 'EMERGENCY' ? 'bg-red-600'    :
+                formData.priority === 'PRIORITY'  ? 'bg-purple-600' :
+                formData.priority === 'MLC'       ? 'bg-amber-600'  :
+                formData.priority === 'STAT'      ? 'bg-sky-600'    :
+                'bg-gray-500'
+              }`}>!</span>
+              Case Priority
             </h3>
-            
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-2 uppercase">
-                Priority Level
-              </label>
-              <select
-                value={formData.studyPriority}
-                onChange={(e) => setFormData(prev => ({ ...prev, studyPriority: e.target.value }))}
-                className={`w-full px-4 py-3 text-sm font-semibold border-2 rounded-lg focus:ring-2 focus:ring-amber-600 focus:border-amber-600 uppercase ${
-                  formData.studyPriority === 'Emergency Case' ? 'border-red-500 bg-red-50 text-red-700' :
-                  formData.studyPriority === 'MLC Case' ? 'border-amber-500 bg-amber-50 text-amber-700' :
-                  formData.studyPriority !== 'SELECT' ? 'border-blue-500 bg-blue-50 text-blue-700' :
-                  'border-gray-300'
-                }`}
-              >
-                {studyPriorityOptions.map(option => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+
+            {/* Card-style selector */}
+            <div className="grid grid-cols-5 gap-2 mb-3">
+              {CASE_PRIORITY_OPTIONS.map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, priority: opt.value }))}
+                  className={`p-2 rounded-lg border-2 text-center transition-all hover:scale-105 ${
+                    formData.priority === opt.value
+                      ? `${opt.border} ${opt.bg} ${opt.text} shadow-md font-bold`
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-400'
+                  }`}
+                >
+                  <div className="text-lg leading-none mb-1">
+                    {opt.label.split(' ')[0]}
+                  </div>
+                  <div className="text-[10px] font-bold leading-tight">
+                    {opt.label.split(' ').slice(1).join(' ')}
+                  </div>
+                </button>
+              ))}
             </div>
+
+            {/* Description of selected */}
+            <p className={`text-xs ${selectedOption.text} font-medium`}>
+              {selectedOption.desc}
+            </p>
           </div>
 
-          {/* ✅ PATIENT INFORMATION SECTION */}
+          {/* ── PATIENT INFORMATION ────────────────────────────────────── */}
           <div className="mb-6">
             <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
               Patient Information
             </h3>
-            
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
@@ -246,7 +308,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                   placeholder="ENTER PATIENT NAME"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Age <span className="text-red-500">*</span>
@@ -260,7 +321,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                   placeholder="E.G., 45Y"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Gender <span className="text-red-500">*</span>
@@ -280,13 +340,12 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* ✅ STUDY INFORMATION SECTION */}
+          {/* ── STUDY INFORMATION ──────────────────────────────────────── */}
           <div className="mb-6">
             <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
               Study Information
             </h3>
-            
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
@@ -301,7 +360,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                   placeholder="E.G., CT HEAD PLAIN"
                 />
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Accession Number
@@ -314,7 +372,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                   placeholder="ENTER ACCESSION NUMBER"
                 />
               </div>
-
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                   Referring Physician <span className="text-red-500">*</span>
@@ -331,13 +388,12 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* ✅ CLINICAL HISTORY SECTION */}
+          {/* ── CLINICAL HISTORY ───────────────────────────────────────── */}
           <div className="mb-6">
             <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
               <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs">3</span>
               Clinical History
             </h3>
-            
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
                 Clinical History / Notes <span className="text-red-500">*</span>
@@ -356,7 +412,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* Footer */}
+          {/* ── FOOTER ─────────────────────────────────────────────────── */}
           <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-200">
             <div className="text-xs text-gray-500 uppercase">
               <span className="text-red-500">*</span> REQUIRED FIELDS
@@ -372,7 +428,13 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 text-sm font-bold bg-gray-900 text-white rounded-lg hover:bg-black disabled:opacity-50 border-2 border-gray-900 transition-colors flex items-center gap-2 uppercase"
+                className={`px-6 py-2.5 text-sm font-bold text-white rounded-lg disabled:opacity-50 border-2 transition-colors flex items-center gap-2 uppercase ${
+                  formData.priority === 'EMERGENCY' ? 'bg-red-600 border-red-600 hover:bg-red-700'       :
+                  formData.priority === 'PRIORITY'  ? 'bg-purple-600 border-purple-600 hover:bg-purple-700' :
+                  formData.priority === 'MLC'        ? 'bg-amber-600 border-amber-600 hover:bg-amber-700'  :
+                  formData.priority === 'STAT'       ? 'bg-sky-600 border-sky-600 hover:bg-sky-700'       :
+                  'bg-gray-900 border-gray-900 hover:bg-black'
+                }`}
                 disabled={loading}
               >
                 {loading ? (
@@ -441,8 +503,12 @@ const StudyRow = ({
   const hasActiveViewers  = activeViewers.length > 0;
 
   const isSelected = selectedStudies?.includes(study._id);
-  const isUrgent = study.priority === 'URGENT' || study.priority === 'EMERGENCY';
-  const isAssigned = study.isAssigned;
+  const studyPriority = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase();
+  const isEmergencyCase = studyPriority === 'EMERGENCY';
+  const isPriorityCase  = studyPriority === 'PRIORITY';
+  const isMLCCase       = studyPriority === 'MLC';
+  const isStatCase      = studyPriority === 'STAT';
+  const isUrgent = isEmergencyCase;   const isAssigned = study.isAssigned;
   const isLocked = study?.isLocked || false;
   const hasNotes = study.hasStudyNotes === true || (study.discussions && study.discussions.length > 0);
   const hasAttachments = study.attachments && study.attachments.length > 0;
@@ -451,7 +517,7 @@ const StudyRow = ({
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
 
   // ✅ Check if study is an Emergency Case
-  const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
+  // const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
 
   const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
@@ -478,6 +544,11 @@ const StudyRow = ({
   }, [isAssignedStatus, assignedAt]);
 
 
+  // ✅ PRIORITY SYSTEM
+// Sort order: Emergency (top) → Priority → MLC → Normal → STAT (bottom)
+
+
+
   useEffect(() => {
     if (!inputFocused && !showAssignmentModal) {
       setAssignInputValue(isAssigned && study.assignedTo ? study.assignedTo : '');
@@ -498,12 +569,18 @@ const StudyRow = ({
 
 
   const rowClasses = `${
-    // ✅ Emergency Case takes highest priority - full red background
-    isEmergencyCase ? 'bg-red-100 border-l-4 border-l-red-600' :
-    isSelected ? 'bg-gray-100 border-l-2 border-l-gray-900' : 
-    isAssigned ? 'bg-gray-50' : 
+    isEmergencyCase ? 'border-l-4 border-l-red-600' :     // Emergency: red left border only
+    isPriorityCase  ? 'border-l-4 border-l-purple-500' :  // Priority: purple left border
+    isStatCase      ? 'opacity-90' :                       // STAT: slightly muted
+    isSelected      ? 'bg-gray-100 border-l-2 border-l-gray-900' :
+    isAssigned      ? 'bg-gray-50' :
     index % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'
-  } ${!isEmergencyCase && isUrgent ? 'border-l-4 border-l-rose-500' : ''} ${!isEmergencyCase && isRejected ? 'border-l-4 border-l-rose-600' : ''} ${isEmergencyCase ? 'hover:bg-red-200' : 'hover:bg-gray-100'} transition-all duration-200 border-b border-slate-100`;
+  } ${isRejected && !isEmergencyCase ? 'border-l-4 border-l-rose-600' : ''} ${
+    isEmergencyCase ? 'hover:bg-red-50' :
+    isPriorityCase  ? 'hover:bg-purple-50' :
+    'hover:bg-gray-100'
+  } transition-all duration-200 border-b border-slate-100`;
+
 
   const handleAssignInputFocus = (e) => {
     if (isLocked) {
@@ -550,7 +627,7 @@ const StudyRow = ({
         }
         
         // Fetch the latest report for this study
-        const response = await api.get(`/reports/studies/${study._id}/reports`);
+        const response = await api.get(`/reports/studies/${study._id}`);
         
         if (!response.data.success || !response.data.data.reports || response.data.data.reports.length === 0) {
             toast.error('No report found for this study');
@@ -877,6 +954,7 @@ const handleOHIFReporting = async () => {
             UHID: {study.patientId || '-'}
           </div>
         </button>
+        {getPriorityTag(study)}
       </td>
 
       {/* 7. AGE/SEX */}
@@ -902,7 +980,7 @@ const handleOHIFReporting = async () => {
       {/* 9. VIEW */}
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
         <button
-          onClick={handleOHIFReporting}
+          onClick={handleViewOnlyClick}
           className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
           title="View Images Only (No Locking)"
         >
@@ -2054,38 +2132,35 @@ const handleClosePrintModal = useCallback(() => {
               />
             </tr>
           </thead>
-
-          <tbody>
-            {studies.map((study, index) => (
-              <StudyRow
-                key={study._id}
-                study={study}
-                activeViewers={activeViweres[study._id] || []} // ✅ Pass viewers
-                index={index}
-                selectedStudies={selectedStudies}
-                availableAssignees={availableAssignees}
-                onSelectStudy={onSelectStudy}
-                onPatienIdClick={onPatienIdClick}
-                onAssignDoctor={onAssignDoctor}
-                onShowDetailedView={handleShowDetailedView}
-                onViewReport={handleViewReport}
-                onShowStudyNotes={handleShowStudyNotes}
-                onViewStudy={handleViewStudy}
-                onEditPatient={handleEditPatient}
-                onAssignmentSubmit={onAssignmentSubmit}
-                onShowTimeline={handleShowTimeline}
-                onToggleLock={handleToggleStudyLock}
-                onShowDocuments={handleShowDocuments}
-                onShowRevertModal={handleShowRevertModal} // ✅ ADD THIS
-                  setPrintModal={setPrintModal}  // ✅ ADD THIS LINE
-
-
-                userRole={userRole}
-                userRoles={userAccountRoles}
-                getColumnWidth={getColumnWidth}
-              />
-            ))}
-          </tbody>
+<tbody>
+  {sortStudiesByPriority(studies).map((study, index) => (
+    <StudyRow
+      key={study._id}
+      study={study}
+      activeViewers={activeViweres[study._id] || []}
+      index={index}
+      selectedStudies={selectedStudies}
+      availableAssignees={availableAssignees}
+      onSelectStudy={onSelectStudy}
+      onPatienIdClick={onPatienIdClick}
+      onAssignDoctor={onAssignDoctor}
+      onShowDetailedView={handleShowDetailedView}
+      onViewReport={handleViewReport}
+      onShowStudyNotes={handleShowStudyNotes}
+      onViewStudy={handleViewStudy}
+      onEditPatient={handleEditPatient}
+      onAssignmentSubmit={onAssignmentSubmit}
+      onShowTimeline={handleShowTimeline}
+      onToggleLock={handleToggleStudyLock}
+      onShowDocuments={handleShowDocuments}
+      onShowRevertModal={handleShowRevertModal}
+      setPrintModal={setPrintModal}
+      userRole={userRole}
+      userRoles={userAccountRoles}
+      getColumnWidth={getColumnWidth}
+    />
+  ))}
+</tbody>
         </table>
       </div>
 

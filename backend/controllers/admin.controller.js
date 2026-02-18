@@ -419,7 +419,22 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     }
 
     // ⚡ PRIORITY FILTERING
-    if (req.query.priority && req.query.priority !== 'all') {
+       // ⚡ PRIORITY FILTERING - Single or Multiple
+    if (req.query.priorities) {
+        let priorityList = [];
+        if (Array.isArray(req.query.priorities)) {
+            priorityList = req.query.priorities.filter(Boolean);
+        } else if (typeof req.query.priorities === 'string') {
+            priorityList = req.query.priorities.split(',').map(p => p.trim()).filter(Boolean);
+        }
+        console.log('⚡ [Priority Multi-Filter]:', priorityList);
+        if (priorityList.length === 1) {
+            queryFilters['assignment.priority'] = priorityList[0];
+        } else if (priorityList.length > 1) {
+            queryFilters['assignment.priority'] = { $in: priorityList };
+        }
+    } else if (req.query.priority && req.query.priority !== 'all') {
+        // Legacy single-select fallback
         queryFilters['assignment.priority'] = req.query.priority;
     }
 

@@ -7,16 +7,12 @@ import {
     RefreshCw,
     ChevronDown,
     Filter,
-    UserPlus,
-    Building,
-    Users,
-    Shield,
-    Crown,
-    Clock,
+    Settings,
     Play,
     Pause
 } from 'lucide-react';
 import MultiSelect from '../MultiSelect';
+import SettingsModal from '../SettingsModal';
 import api from '../../../services/api';
 
 const Search = ({ 
@@ -28,10 +24,13 @@ const Search = ({
     analytics = null,
     theme = 'default',
     initialFilters = null,
-    onRefresh // ✅ NEW: Callback for manual refresh
+    onRefresh
 }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
+    
+    // ✅ NEW: Settings modal state
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
     
     // ✅ NEW: Auto-refresh state
     const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
@@ -52,9 +51,10 @@ const Search = ({
     const [filters, setFilters] = useState({
         category: currentCategory,
         modality: 'all',
-        modalities: [], // ✅ NEW: Multi-select modalities
+        modalities: [],
         labId: 'all',
         priority: 'all',
+        priorities: [],           // ✅ NEW: Multi-select priorities
         assigneeRole: 'all',
         dateFilter: 'today',
         dateType: 'createdAt',
@@ -69,24 +69,19 @@ const Search = ({
     const [radiologistOptions, setRadiologistOptions] = useState([]);
     const [labOptions, setLabOptions] = useState([]);
 
-
-useEffect(() => {
-    if (initialFilters && Object.keys(initialFilters).length > 0) {
-        console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
-        
-        // ✅ Create new filters WITHOUT search
-        const filtersToSync = { ...initialFilters };
-        
-        delete filtersToSync.search;
-        
-        setFilters(prevFilters => ({
-            ...prevFilters,
-            ...filtersToSync
-        }));
-        
-       
-    }
-}, [initialFilters]);
+    useEffect(() => {
+        if (initialFilters && Object.keys(initialFilters).length > 0) {
+            console.log('🔄 [Search] Syncing with initial filters:', initialFilters);
+            
+            const filtersToSync = { ...initialFilters };
+            delete filtersToSync.search;
+            
+            setFilters(prevFilters => ({
+                ...prevFilters,
+                ...filtersToSync
+            }));
+        }
+    }, [initialFilters]);
 
     // ✅ NEW: Auto-refresh timer effect
     useEffect(() => {
@@ -111,10 +106,6 @@ useEffect(() => {
 
         return () => clearInterval(interval);
     }, [autoRefreshEnabled, refreshInterval, lastRefreshTime, onRefresh]);
-
-const advancedGridCols = filters.dateFilter === 'custom'
-  ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3'
-  : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3';
 
     // ✅ NEW: Save auto-refresh settings to localStorage
     useEffect(() => {
@@ -146,10 +137,11 @@ const advancedGridCols = filters.dateFilter === 'custom'
     const isAssignor = currentUser?.role === 'assignor';
     const isGreenTheme = theme === 'adminn';
 
-    // Check user permissions for creating entities
+    // Check user permissions for settings access
     const canCreateDoctor = ['admin', 'group_id'].includes(currentUser?.role);
     const canCreateLab = ['admin'].includes(currentUser?.role);
     const canCreateUser = ['admin', 'group_id'].includes(currentUser?.role);
+    const hasSettingsAccess = canCreateDoctor || canCreateLab || canCreateUser || isAdmin;
 
     const dateOptions = [
         { value: 'today', label: 'Today' },
@@ -201,16 +193,20 @@ const advancedGridCols = filters.dateFilter === 'custom'
         
         if (value === '' || value.trim() === '') {
             const searchParams = { ...filters };
-            delete searchParams.search; // ✅ Remove search key entirely
+            delete searchParams.search;
             
             Object.keys(searchParams).forEach(key => {
-                if (searchParams[key] === '' || searchParams[key] === 'all' || searchParams[key] === undefined) {
+                const val = searchParams[key];
+                if (val === '' || val === 'all' || val === undefined) {
+                    delete searchParams[key];
+                }
+                if (Array.isArray(val) && val.length === 0) {
                     delete searchParams[key];
                 }
             });
             
             console.log('🗑️ [Search] CLEARING SEARCH TERM:', searchParams);
-            onSearch?.(searchParams); // ✅ This updates Dashboard's searchFilters
+            onSearch?.(searchParams);
             onFilterChange?.(searchParams);
             return;
         }
@@ -220,7 +216,7 @@ const advancedGridCols = filters.dateFilter === 'custom'
         }, 300);
         
         setSearchTimeout(newTimeout);
-    }, [filters, onSearch, onFilterChange]); // ✅ REMOVED searchTimeout from deps
+    }, [filters, onSearch, onFilterChange]);
 
     // Execute search
     const handleSearch = useCallback((term = searchTerm) => {
@@ -230,9 +226,13 @@ const advancedGridCols = filters.dateFilter === 'custom'
             searchParams.search = term.trim();
         }
         
-        // ✅ NEW: Handle modalities multi-select
         if (filters.modalities && filters.modalities.length > 0) {
             searchParams.modalities = filters.modalities;
+        }
+        
+        // ✅ ADD THIS: Handle priorities multi-select
+        if (filters.priorities && filters.priorities.length > 0) {
+            searchParams.priorities = filters.priorities;
         }
         
         if (filters.radiologists && filters.radiologists.length > 0) {
@@ -262,7 +262,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
         const newFilters = { ...filters, [key]: value };
         setFilters(newFilters);
 
-        // ✅ Auto-open advanced panel when custom date range is selected
         if (key === 'dateFilter' && value === 'custom') {
             setShowAdvanced(true);
         }
@@ -277,6 +276,11 @@ const advancedGridCols = filters.dateFilter === 'custom'
         
         if (newFilters.modalities && newFilters.modalities.length > 0) {
             searchParams.modalities = newFilters.modalities;
+        }
+        
+        // ✅ ADD THIS: Handle priorities multi-select
+        if (newFilters.priorities && newFilters.priorities.length > 0) {
+            searchParams.priorities = newFilters.priorities;
         }
         
         if (newFilters.radiologists && newFilters.radiologists.length > 0) {
@@ -309,9 +313,10 @@ const advancedGridCols = filters.dateFilter === 'custom'
         setSearchTerm('');
         const defaultFilters = {
             modality: 'all',
-            modalities: [], // ✅ NEW: Reset modalities
+            modalities: [],
             labId: 'all',
             priority: 'all',
+            priorities: [],           // ✅ ADD THIS
             assigneeRole: 'all',
             dateFilter: 'today',
             dateType: 'createdAt',
@@ -353,19 +358,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
         setTimeUntilRefresh(newInterval * 60);
     }, []);
 
-    // Admin action handlers
-    const handleCreateDoctor = useCallback(() => {
-        navigate('/admin/create-doctor');
-    }, [navigate]);
-
-    const handleCreateLab = useCallback(() => {
-        navigate('/admin/create-lab');
-    }, [navigate]);
-
-    const handleCreateUser = useCallback(() => {
-        navigate('/admin/create-user');
-    }, [navigate]);
-
     // Options
     const modalityMultiSelectOptions = [
         { value: 'CT', label: 'CT' },
@@ -382,11 +374,12 @@ const advancedGridCols = filters.dateFilter === 'custom'
         { value: 'OT', label: 'Other' }
     ];
 
-    const priorityOptions = [
-        { value: 'all', label: 'All' },
-        { value: 'STAT', label: 'STAT' },
-        { value: 'URGENT', label: 'Urgent' },
-        { value: 'NORMAL', label: 'Normal' }
+       const priorityOptions = [
+        { value: 'EMERGENCY', label: '🚨 Emergency' },
+        { value: 'PRIORITY', label: '⭐ Priority' },
+        { value: 'MLC',      label: '⚖️ MLC' },
+        { value: 'NORMAL',   label: '🟢 Normal' },
+        { value: 'STAT',     label: '⏱️ STAT' },
     ];
 
     const hasActiveFilters = searchTerm || Object.values(filters).some(v => v !== 'all' && v !== 'today' && v !== 'createdAt' && v !== '' && v !== 50);
@@ -395,14 +388,16 @@ const advancedGridCols = filters.dateFilter === 'custom'
     useEffect(() => {
         const fetchFilterOptions = async () => {
             try {
-                const radResponse = await api.get('/admin/filters/radiologists');
-                if (radResponse.data.success) {
-                    setRadiologistOptions(radResponse.data.data);
-                }
-
-                const labResponse = await api.get('/admin/filters/labs');
-                if (labResponse.data.success) {
-                    setLabOptions(labResponse.data.data);
+                const response = await api.get('/api/filter-options');
+                if (response.data.success) {
+                    setRadiologistOptions(response.data.radiologists.map(r => ({
+                        value: r._id,
+                        label: r.name
+                    })));
+                    setLabOptions(response.data.labs.map(l => ({
+                        value: l._id,
+                        label: l.labName
+                    })));
                 }
             } catch (error) {
                 console.error('Error fetching filter options:', error);
@@ -412,15 +407,14 @@ const advancedGridCols = filters.dateFilter === 'custom'
         fetchFilterOptions();
     }, []);
 
-    // ✅ NEW: Check if user can access radiologist and lab filters
     const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(currentUser?.role);
 
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
-            {/* MAIN SEARCH ROW - Made responsive with flex-wrap */}
+            {/* MAIN SEARCH ROW */}
             <div className="flex flex-wrap items-center gap-2">
                 
-                {/* SEARCH INPUT - Responsive width */}
+                {/* SEARCH INPUT */}
                 <div className="relative w-full sm:w-36 md:w-40 lg:w-44 xl:w-48 flex-shrink-0 order-1">
                     <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
                     <input
@@ -440,9 +434,8 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     )}
                 </div>
 
-                {/* QUICK FILTERS - Responsive with wrap */}
+                {/* QUICK FILTERS */}
                 <div className="flex flex-wrap items-center gap-1 order-2">
-                    {/* ✅ UPDATED: Modality Multi-Select */}
                     <MultiSelect
                         options={modalityMultiSelectOptions}
                         selected={filters.modalities}
@@ -451,19 +444,14 @@ const advancedGridCols = filters.dateFilter === 'custom'
                         className="w-20 sm:w-24"
                     />
 
-                    <select
-                        value={filters.priority}
-                        onChange={(e) => handleFilterChange('priority', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-14 sm:min-w-16`}
-                    >
-                        {priorityOptions.map(option => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
+                    <MultiSelect
+                        options={priorityOptions}
+                        selected={filters.priorities}
+                        onChange={(selected) => handleFilterChange('priorities', selected)}
+                        placeholder="Priority"
+                        className="w-20 sm:w-24"
+                    />
 
-                    {/* ✅ RESTRICTED: Radiologist filter - only for admin, super_admin, assignor */}
                     {canAccessAdvancedFilters && (
                         <MultiSelect
                             options={radiologistOptions}
@@ -474,7 +462,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                         />
                     )}
 
-                    {/* ✅ RESTRICTED: Lab/Center filter - only for admin, super_admin, assignor */}
                     {canAccessAdvancedFilters && (
                         <MultiSelect
                             options={labOptions}
@@ -498,14 +485,13 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     )}
                 </div>
 
-                {/* TIME FILTERS - Hidden on very small screens, shown in advanced panel instead */}
+                {/* TIME FILTERS */}
                 <div className="hidden md:flex items-center gap-1 order-3">
                     {['Today', 'Yesterday', '7 Days'].map((period) => {
                         const isActive = 
                             (period === 'Today' && filters.dateFilter === 'today') ||
                             (period === 'Yesterday' && filters.dateFilter === 'yesterday') ||
                             (period === '7 Days' && filters.dateFilter === 'last7days')
-                            
                         
                         const value = 
                             period === 'Today' ? 'today' :
@@ -548,7 +534,7 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     </div>
                 </div>
 
-                {/* Mobile date filter dropdown - shown only on small screens */}
+                {/* Mobile date filter dropdown */}
                 <div className="flex md:hidden items-center order-3">
                     <select
                         value={filters.dateFilter || 'today'}
@@ -563,45 +549,25 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     </select>
                 </div>
 
-                {/* ADMIN BUTTONS - Responsive with flex-wrap */}
-                {(canCreateDoctor || canCreateLab || canCreateUser) && (
-                    <div className={`flex flex-wrap items-center gap-1 pl-2 border-l border-${themeColors.border} order-4`}>
-                        {isAdmin && (
-                            <button
-                                onClick={() => navigate('/admin/user-management')}
-                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' : 'bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700'} text-white text-xs font-medium rounded transition-colors`}
-                                title="Manage Users"
-                            >
-                                <Shield size={12} />
-                                <span className="hidden lg:inline">Manage</span>
-                            </button>
-                        )}
-                        
-                        {canCreateDoctor && (
-                            <button
-                                onClick={handleCreateDoctor}
-                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-teal-700 hover:bg-teal-800' : 'bg-black hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
-                                title="Create Doctor Account"
-                            >
-                                <UserPlus size={12} />
-                                <span className="hidden lg:inline">Doctor</span>
-                            </button>
-                        )}
-                        
-                        {canCreateLab && (
-                            <button
-                                onClick={handleCreateLab}
-                                className={`flex items-center gap-1 px-2 py-1.5 ${isGreenTheme ? 'bg-slate-600 hover:bg-slate-700' : 'bg-gray-700 hover:bg-gray-800'} text-white text-xs font-medium rounded transition-colors`}
-                                title="Create Lab"
-                            >
-                                <Building size={12} />
-                                <span className="hidden lg:inline">Lab</span>
-                            </button>
-                        )}
+                {/* ✅ NEW: SETTINGS BUTTON */}
+                {hasSettingsAccess && (
+                    <div className={`flex items-center pl-2 border-l border-${themeColors.border} order-4`}>
+                        <button
+                            onClick={() => setShowSettingsModal(true)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 ${
+                                isGreenTheme 
+                                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' 
+                                    : 'bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black'
+                            } text-white text-xs font-medium rounded transition-all shadow-sm hover:shadow-md transform hover:scale-105`}
+                            title="Open Settings"
+                        >
+                            <Settings size={14} />
+                            <span className="hidden sm:inline">Settings</span>
+                        </button>
                     </div>
                 )}
 
-                {/* ASSIGNOR ANALYTICS - Hidden on small screens */}
+                {/* ASSIGNOR ANALYTICS */}
                 {isAssignor && analytics && (
                     <div className={`hidden lg:flex items-center gap-2 pl-2 border-l border-${themeColors.border} order-5`}>
                         <div className="text-xs">
@@ -619,9 +585,8 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     </div>
                 )}
 
-                {/* ✅ AUTO-REFRESH CONTROLS - Compact on small screens */}
+                {/* AUTO-REFRESH CONTROLS */}
                 <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border} order-6`}>
-                    {/* Refresh interval selector - hidden on very small screens */}
                     <select
                         value={refreshInterval}
                         onChange={(e) => handleRefreshIntervalChange(parseInt(e.target.value))}
@@ -635,7 +600,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                         ))}
                     </select>
 
-                    {/* Auto-refresh toggle */}
                     <button
                         onClick={handleToggleAutoRefresh}
                         className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
@@ -660,7 +624,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
 
                 {/* ACTION BUTTONS */}
                 <div className="flex items-center gap-1 order-7">
-                    {/* Advanced Toggle */}
                     <button
                         onClick={() => setShowAdvanced(!showAdvanced)}
                         className={`px-2 py-1.5 text-xs font-medium rounded border transition-colors flex items-center gap-1 ${
@@ -678,7 +641,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                         <ChevronDown size={10} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
                     </button>
 
-                    {/* Clear Button */}
                     {hasActiveFilters && (
                         <button
                             onClick={clearAllFilters}
@@ -688,25 +650,25 @@ const advancedGridCols = filters.dateFilter === 'custom'
                         </button>
                     )}
 
-                    {/* Manual Refresh Button */}
+                    {/* ✅ UPDATED: Larger Manual Refresh Button */}
                     <button
                         onClick={handleRefreshClick}
                         disabled={loading}
-                        className={`p-1.5 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded transition-colors disabled:opacity-50`}
+                        className={`p-2 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded-lg transition-all disabled:opacity-50 border border-transparent hover:border-${themeColors.border} ${
+                            loading ? 'cursor-wait' : 'cursor-pointer'
+                        }`}
                         title="Manual refresh"
                     >
-                        <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
                     </button>
                 </div>                
             </div>
 
             {/* ADVANCED FILTERS PANEL */}
-                       {/* ADVANCED FILTERS PANEL */}
             {(showAdvanced || filters.dateFilter === 'custom') && (
                 <div className={`mt-2.5 pt-2.5 border-t border-${themeColors.borderLight}`}>
                     <div className="flex flex-wrap items-end gap-3">
 
-                        {/* Date Range */}
                         <div className="flex flex-col min-w-[140px]">
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Range
@@ -725,7 +687,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                             </select>
                         </div>
 
-                        {/* Date Type */}
                         <div className="flex flex-col min-w-[110px]">
                             <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
                                 Date Type
@@ -740,7 +701,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                             </select>
                         </div>
 
-                        {/* From Date — only when custom */}
                         {filters.dateFilter === 'custom' && (
                             <div className="flex flex-col min-w-[130px]">
                                 <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
@@ -755,7 +715,6 @@ const advancedGridCols = filters.dateFilter === 'custom'
                             </div>
                         )}
 
-                        {/* To Date — only when custom */}
                         {filters.dateFilter === 'custom' && (
                             <div className="flex flex-col min-w-[130px]">
                                 <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
@@ -773,6 +732,14 @@ const advancedGridCols = filters.dateFilter === 'custom'
                     </div>
                 </div>
             )}
+
+            {/* ✅ NEW: Settings Modal */}
+            <SettingsModal
+                isOpen={showSettingsModal}
+                onClose={() => setShowSettingsModal(false)}
+                onNavigate={navigate}
+                theme={theme}
+            />
   
         </div>
     );

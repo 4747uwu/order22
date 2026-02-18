@@ -137,20 +137,17 @@ export const createUserWithRole = async (req, res) => {
             }
         }
 
+        // Auto-append @bharatpacs.com if no domain given
+        const finalEmail = email.includes('@')
+            ? email.toLowerCase().trim()
+            : `${email.toLowerCase().trim()}@bharatpacs.com`;
+
         // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
+        if (!emailRegex.test(finalEmail)) {
             return res.status(400).json({
                 success: false,
                 message: 'Please provide a valid email address'
-            });
-        }
-
-        // Validate password strength
-        if (password.length < 6) {
-            return res.status(400).json({
-                success: false,
-                message: 'Password must be at least 6 characters long'
             });
         }
 
@@ -166,7 +163,7 @@ export const createUserWithRole = async (req, res) => {
 
         // Check if email already exists in the organization
         const existingUser = await User.findOne({
-            email: email.toLowerCase().trim(),
+            email: finalEmail,
             organizationIdentifier: userOrgIdentifier
         });
 
@@ -177,8 +174,14 @@ export const createUserWithRole = async (req, res) => {
             });
         }
 
-        // Generate username if not provided
-        const finalUsername = username || email.split('@')[0].toLowerCase();
+        // Generate username if not provided; enforce min 6 chars
+        const finalUsername = username || finalEmail.split('@')[0].toLowerCase();
+        if (finalUsername.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username must be at least 6 characters long'
+            });
+        }
 
         // Check if username exists in organization
         const existingUsername = await User.findOne({
@@ -242,7 +245,7 @@ export const createUserWithRole = async (req, res) => {
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
             username: finalUsername,
-            email: email.toLowerCase().trim(),
+            email: finalEmail,
             password: password,
             fullName: fullName.trim(),
             role: role, 

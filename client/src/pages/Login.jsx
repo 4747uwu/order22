@@ -5,7 +5,7 @@ import {
   Eye, EyeOff, Mail, Lock, AlertCircle, Loader, 
   Shield, Activity 
 } from 'lucide-react';
-import ColorBends from '../creative/maxColor';
+// import ColorBends from '../creative/maxColor';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
@@ -192,7 +192,7 @@ const LoginPage = () => {
       <div className="hidden lg:flex lg:w-[60%] relative overflow-hidden bg-gray-50 flex-col items-center justify-center">
         
         {/* Animated Background */}
-        <div className="absolute inset-0 z-0">
+        {/* <div className="absolute inset-0 z-0">
            <ColorBends
             colors={["#f8fafc", "#f1f5f9", "#e2e8f0", "#cbd5e1", "#94a3b8", "#ffffff"]}
             rotation={120}
@@ -202,7 +202,7 @@ const LoginPage = () => {
             warpStrength={0.6}
             transparent
           />
-        </div>
+        </div> */}
 
         {/* Decorative Big Background Icon (Very faint) */}
         <div className="absolute -right-20 -bottom-20 z-0 opacity-[0.03] pointer-events-none">

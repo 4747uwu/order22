@@ -1,6 +1,8 @@
 import User from '../models/userModel.js';
 import Organization from '../models/organisation.js';
+import Doctor from '../models/doctorModel.js'; // ✅ NEW: Import Doctor model
 import mongoose from 'mongoose';
+import { determinePrimaryRole } from '../constant/role.js';
 
 // Add this helper function at the top of your userManagement.controller.js
 const sanitizeRoleConfig = (roleConfig, role) => {
@@ -10,7 +12,7 @@ const sanitizeRoleConfig = (roleConfig, role) => {
 
     const sanitized = { ...roleConfig };
 
-    // Fields that should be ObjectIds - remove if empty string
+    // Fields that should be ObjectId - remove if empty string
     const objectIdFields = [
         'linkedRadiologist',
         'parentUser',
@@ -27,14 +29,27 @@ const sanitizeRoleConfig = (roleConfig, role) => {
     const arrayFields = [
         'assignedRadiologists',
         'assignableUsers',
-        'allowedPatients'
+        'allowedPatients',
+        'assignedLabs' // ✅ NEW: Add assignedLabs
     ];
 
     arrayFields.forEach(field => {
         if (sanitized[field] && !Array.isArray(sanitized[field])) {
-            sanitized[field] = [];
+            sanitized[field] = [sanitized[field]];
         }
     });
+
+    // ✅ NEW: Ensure labAccessMode has valid value
+    if (role === 'assignor') {
+        if (!['all', 'selected', 'none'].includes(sanitized.labAccessMode)) {
+            sanitized.labAccessMode = 'all'; // Default to 'all'
+        }
+        
+        // If mode is not 'selected', clear assignedLabs
+        if (sanitized.labAccessMode !== 'selected') {
+            sanitized.assignedLabs = [];
+        }
+    }
 
     // Role-specific validation and defaults
     switch (role) {
@@ -66,7 +81,7 @@ const sanitizeRoleConfig = (roleConfig, role) => {
     return sanitized;
 };
 
-// ✅ CREATE USER WITH NEW ROLE SYSTEM
+// ✅ CREATE USER WITH NEW ROLE SYSTEM (with Doctor profile for radiologists)
 export const createUserWithRole = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -79,7 +94,17 @@ export const createUserWithRole = async (req, res) => {
             username,
             role,
             roleConfig = {},
-            organizationType = 'teleradiology_company'
+            organizationType = 'teleradiology_company',
+            // ✅ NEW: Radiologist/Doctor-specific fields
+            specialization,
+            licenseNumber,
+            department,
+            qualifications = [],
+            yearsOfExperience,
+            contactPhoneOffice,
+            requireReportVerification, // ✅ NEW: Verification toggle
+            signature,
+            signatureMetadata
         } = req.body;
 
         console.log('🔥 Creating user with role:', { role, fullName, email, creatorRole: req.user.role });
@@ -100,6 +125,16 @@ export const createUserWithRole = async (req, res) => {
                 success: false,
                 message: 'Full name, email, password, and role are required'
             });
+        }
+
+        // ✅ NEW: If creating radiologist, validate doctor-specific fields
+        if (role === 'radiologist') {
+            if (!specialization) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Specialization is required for radiologist role'
+                });
+            }
         }
 
         // Validate email format
@@ -163,13 +198,46 @@ export const createUserWithRole = async (req, res) => {
         try {
             sanitizedRoleConfig = sanitizeRoleConfig(roleConfig, role);
         } catch (error) {
-            return res.status(400).json({
-                success: false,
-                message: error.message
+            console.error('❌ Error sanitizing role config:', error);
+            sanitizedRoleConfig = {};
+        }
+
+        // Prepare optional fields from request
+        const { visibleColumns = [], accountRoles = [], primaryRole = '', linkedLabs = [] } = req.body;
+
+        // ✅ AUTO-DETERMINE PRIMARY ROLE based on hierarchy
+        let finalPrimaryRole = primaryRole;
+        if (Array.isArray(accountRoles) && accountRoles.length > 0) {
+            finalPrimaryRole = primaryRole || accountRoles[0];
+        } else {
+            finalPrimaryRole = role;
+        }
+
+        // Basic validation for linkedLabs structure (optional)
+        const sanitizedLinkedLabs = Array.isArray(linkedLabs)
+          ? linkedLabs.map(l => {
+              if (typeof l === 'string') {
+                  return { labId: l, permissions: { canViewStudies: true, canAssignStudies: false } };
+              }
+              return {
+                  labId: l.labId,
+                  permissions: l.permissions || { canViewStudies: true, canAssignStudies: false }
+              };
+          }).filter(l => l.labId)
+          : [];
+
+        // ✅ NEW: For assignor role, populate roleConfig.assignedLabs from linkedLabs
+        if (role === 'assignor' || (accountRoles && accountRoles.includes('assignor'))) {
+            sanitizedRoleConfig.assignedLabs = sanitizedLinkedLabs.map(l => l.labId);
+            sanitizedRoleConfig.labAccessMode = sanitizedLinkedLabs.length > 0 ? 'selected' : 'all';
+            
+            console.log('🔐 Assignor lab access configured:', {
+                assignedLabsCount: sanitizedRoleConfig.assignedLabs.length,
+                labAccessMode: sanitizedRoleConfig.labAccessMode
             });
         }
 
-        // Create new user
+        // Create new user (include new feature fields)
         const newUser = new User({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
@@ -177,18 +245,73 @@ export const createUserWithRole = async (req, res) => {
             email: email.toLowerCase().trim(),
             password: password,
             fullName: fullName.trim(),
-            role: role,
+            role: role, 
             hierarchy: {
                 createdBy: req.user._id,
                 parentUser: req.user._id,
                 organizationType: organizationType
             },
-            roleConfig: sanitizedRoleConfig, // Use sanitized config
+            roleConfig: sanitizedRoleConfig,
+            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns.map(String) : [],
+            accountRoles: Array.isArray(accountRoles) && accountRoles.length > 0 
+              ? accountRoles.map(String) 
+              : [role],
+            primaryRole: finalPrimaryRole,
+            linkedLabs: sanitizedLinkedLabs,
             createdBy: req.user._id,
             isActive: true
         });
 
         await newUser.save({ session });
+
+        // ✅ NEW: If role is radiologist, create Doctor profile
+        let doctorProfile = null;
+        if (role === 'radiologist') {
+            const doctorData = {
+                organization: userOrgId,
+                organizationIdentifier: userOrgIdentifier,
+                userAccount: newUser._id,
+                specialization: specialization.trim(),
+                licenseNumber: licenseNumber?.trim() || '',
+                department: department?.trim() || '',
+                qualifications: Array.isArray(qualifications) ? qualifications : [],
+                yearsOfExperience: yearsOfExperience || 0,
+                contactPhoneOffice: contactPhoneOffice?.trim() || '',
+                assigned: false,
+                isActiveProfile: true,
+                
+                // ✅ NEW: Add verification settings
+                requireReportVerification: requireReportVerification !== undefined ? requireReportVerification : true,
+                verificationEnabledAt: requireReportVerification !== undefined ? new Date() : undefined,
+                verificationEnabledBy: requireReportVerification !== undefined ? req.user._id : undefined
+            };
+
+            // ✅ ADD SIGNATURE IF PROVIDED
+            if (signature) {
+                doctorData.signature = signature;
+                doctorData.signatureMetadata = {
+                    uploadedAt: new Date(),
+                    originalSize: signatureMetadata?.originalSize || 0,
+                    optimizedSize: signatureMetadata?.optimizedSize || 0,
+                    originalName: signatureMetadata?.originalName || 'signature.png',
+                    mimeType: signatureMetadata?.mimeType || 'image/png',
+                    lastUpdated: new Date(),
+                    format: signatureMetadata?.format || 'base64',
+                    width: signatureMetadata?.width || 400,
+                    height: signatureMetadata?.height || 200
+                };
+            }
+
+            doctorProfile = new Doctor(doctorData);
+            await doctorProfile.save({ session });
+
+            console.log('✅ [CreateUser] Doctor profile created for radiologist:', {
+                doctorId: doctorProfile._id,
+                userId: newUser._id,
+                requireVerification: doctorProfile.requireReportVerification,
+                hasSignature: !!signature
+            });
+        }
 
         // Update creator's child users
         await User.findByIdAndUpdate(
@@ -206,12 +329,25 @@ export const createUserWithRole = async (req, res) => {
             .populate('roleConfig.linkedRadiologist', 'fullName email')
             .select('-password');
 
-        console.log('✅ User created successfully:', { userId: createdUser._id, role, email });
+        console.log('✅ User created successfully:', { 
+            userId: createdUser._id, 
+            role, 
+            email,
+            hasDoctorProfile: !!doctorProfile 
+        });
 
         res.status(201).json({
             success: true,
-            message: `${role.replace('_', ' ').toUpperCase()} created successfully`,
-            data: createdUser
+            message: `${role.replace('_', ' ').toUpperCase()} created successfully${doctorProfile ? ' with doctor profile' : ''}`,
+            data: {
+                user: createdUser,
+                doctorProfile: doctorProfile ? {
+                    _id: doctorProfile._id,
+                    specialization: doctorProfile.specialization,
+                    requireReportVerification: doctorProfile.requireReportVerification,
+                    hasSignature: !!signature
+                } : null
+            }
         });
 
     } catch (error) {

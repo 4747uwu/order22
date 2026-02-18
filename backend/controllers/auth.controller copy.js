@@ -29,7 +29,7 @@ export const loginUser = async (req, res) => {
         })
         .select('+password')
         .populate('organization', 'name identifier status displayName features subscription')
-        .populate('lab', 'name identifier isActive fullIdentifier');
+        .populate('lab', 'name identifier isActive fullIdentifier settings');
 
         // Verify user exists and password is correct
         if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -102,7 +102,12 @@ export const loginUser = async (req, res) => {
             isLoggedIn: true,
             organizationIdentifier: user.organizationIdentifier,
             lastLoginAt: user.lastLoginAt,
-            loginCount: user.loginCount
+            loginCount: user.loginCount,
+            // ✅ ADD NEW FIELDS
+            visibleColumns: user.visibleColumns || [],
+            accountRoles: user.accountRoles || [],
+            primaryRole: user.primaryRole || user.role,
+            linkedLabs: user.linkedLabs || []
         };
 
         // Add organization data for non-super admin users
@@ -130,8 +135,11 @@ export const loginUser = async (req, res) => {
                 name: user.lab.name,
                 identifier: user.lab.identifier,
                 fullIdentifier: user.lab.fullIdentifier,
-                isActive: user.lab.isActive
+                isActive: user.lab.isActive,
+                settings: user.lab.settings
             };
+
+        console.log('Lab data added to response for lab_staff:', userResponseData.lab);
         } else if (user.role === 'doctor_account') {
             const doctorProfile = await Doctor.findOne({ 
                 userAccount: user._id,
@@ -223,7 +231,8 @@ export const getMe = async (req, res) => {
                 organizationIdentifier: req.user.organizationIdentifier
             })
             .populate('organization', 'name identifier status displayName features subscription')
-            .populate('lab', 'name identifier isActive fullIdentifier');
+            .populate('lab', 'name identifier isActive fullIdentifier settings');
+
         }
 
         const user = await userQuery.exec();
@@ -268,6 +277,12 @@ export const getMe = async (req, res) => {
                 activeLabs: labCount
             };
         }
+
+        // ✅ Ensure new fields are included
+        if (!userPayload.visibleColumns) userPayload.visibleColumns = [];
+        if (!userPayload.accountRoles) userPayload.accountRoles = [];
+        if (!userPayload.primaryRole) userPayload.primaryRole = userPayload.role;
+        if (!userPayload.linkedLabs) userPayload.linkedLabs = [];
 
         res.status(200).json({
             success: true,
@@ -478,7 +493,7 @@ export const labConnectorLogin = async (req, res) => {
         const user = await User.findOne({ email: email.trim().toLowerCase() })
             .select('+password')
             .populate('organization', 'name identifier status')
-            .populate('lab', 'name identifier isActive');
+            .populate('lab', 'name identifier isActive settings');
 
         // 3. Verify Credentials
         if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -543,7 +558,9 @@ export const labConnectorLogin = async (req, res) => {
                 organizationIdentifier: user.organization.identifier,
                 lab: {
                     identifier: user.lab.identifier,
-                    name: user.lab.name
+                    name: user.lab.name,
+                    isActive: user.lab.isActive,
+                    settings: user.lab.settings
                 }
             }
         });

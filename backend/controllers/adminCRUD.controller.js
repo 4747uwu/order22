@@ -51,20 +51,15 @@ export const createDoctor = async (req, res) => {
             });
         }
 
-        const userOrgId = req.user.organization;
-        const userOrgIdentifier = req.user.organizationIdentifier;
-
-        if (!userOrgId || !userOrgIdentifier) {
-            return res.status(400).json({
-                success: false,
-                message: 'Admin must belong to an organization'
-            });
-        }
+        // Auto-append @bharatpacs.com if no domain given
+        const finalEmail = email.includes('@')
+            ? email.toLowerCase().trim()
+            : `${email.toLowerCase().trim()}@bharatpacs.com`;
 
         // Check if email already exists in the organization
         const existingUser = await User.findOne({
-            email: email.toLowerCase().trim(),
-            organizationIdentifier: userOrgIdentifier
+            email: finalEmail,
+            organizationIdentifier: req.user.organizationIdentifier
         });
 
         if (existingUser) {
@@ -74,13 +69,19 @@ export const createDoctor = async (req, res) => {
             });
         }
 
-        // Generate username if not provided
-        const finalUsername = username || email.split('@')[0].toLowerCase();
+        // Generate username if not provided; enforce min 6 chars
+        const finalUsername = username || finalEmail.split('@')[0].toLowerCase();
+        if (finalUsername.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'Username must be at least 6 characters long'
+            });
+        }
 
         // Check if username exists in organization
         const existingUsername = await User.findOne({
             username: finalUsername,
-            organizationIdentifier: userOrgIdentifier
+            organizationIdentifier: req.user.organizationIdentifier
         });
 
         if (existingUsername) {
@@ -92,10 +93,10 @@ export const createDoctor = async (req, res) => {
 
         // Create user account
         const newUser = new User({
-            organization: userOrgId,
-            organizationIdentifier: userOrgIdentifier,
+            organization: req.user.organization,
+            organizationIdentifier: req.user.organizationIdentifier,
             username: finalUsername,
-            email: email.toLowerCase().trim(),
+            email: finalEmail,
             password: password, // Will be hashed by pre-save hook
             
             fullName: fullName.trim(),
@@ -109,8 +110,8 @@ export const createDoctor = async (req, res) => {
 
         // ✅ PREPARE SIGNATURE DATA
         const doctorData = {
-            organization: userOrgId,
-            organizationIdentifier: userOrgIdentifier,
+            organization: req.user.organization,
+            organizationIdentifier: req.user.organizationIdentifier,
             userAccount: newUser._id,
             specialization: specialization.trim(),
             licenseNumber: licenseNumber?.trim() || '',
@@ -235,7 +236,8 @@ export const createLab = async (req, res) => {
             finalIdentifier = cleaned.substring(0, 5).padEnd(5, 'X');
         }
 
-        // ✅ VALIDATE: Staff user details if provided
+        // ✅ VALIDATE: Staff user details if provided + auto-append @bharatpacs.com
+        let finalStaffEmail = null;
         if (staffEmail || fullName || username || password) {
             if (!staffEmail || !fullName || !password) {
                 return res.status(400).json({
@@ -243,6 +245,10 @@ export const createLab = async (req, res) => {
                     message: 'Staff email, full name, and password are required for lab staff account'
                 });
             }
+            // Auto-append @bharatpacs.com if no domain given
+            finalStaffEmail = staffEmail.includes('@')
+                ? staffEmail.toLowerCase().trim()
+                : `${staffEmail.toLowerCase().trim()}@bharatpacs.com`;
         }
 
         const userOrgId = req.user.organization;
@@ -270,9 +276,9 @@ export const createLab = async (req, res) => {
 
         // ✅ CHECK: If staff email already exists
         let staffUser = null;
-        if (staffEmail) {
+        if (finalStaffEmail) {
             const existingStaffUser = await User.findOne({
-                email: staffEmail.toLowerCase().trim(),
+                email: finalStaffEmail,
                 organizationIdentifier: userOrgIdentifier
             });
 
@@ -284,8 +290,15 @@ export const createLab = async (req, res) => {
                 });
             }
 
-            const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
-            
+            const finalUsername = username || finalStaffEmail.split('@')[0].toLowerCase();
+            if (finalUsername.length < 6) {
+                await session.abortTransaction();
+                return res.status(400).json({
+                    success: false,
+                    message: 'Username must be at least 6 characters long'
+                });
+            }
+
             const existingUsername = await User.findOne({
                 username: finalUsername,
                 organizationIdentifier: userOrgIdentifier
@@ -300,7 +313,7 @@ export const createLab = async (req, res) => {
             }
         }
 
-        // ✅ CREATE LAB (removed notes field)
+        // ✅ CREATE LAB
         const newLab = new Lab({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
@@ -336,15 +349,15 @@ export const createLab = async (req, res) => {
         });
 
         // ✅ CREATE: Staff user account if details provided
-        if (staffEmail) {
-            const finalStaffUsername = username || staffEmail.split('@')[0].toLowerCase();
+        if (finalStaffEmail) {
+            const finalStaffUsername = username || finalStaffEmail.split('@')[0].toLowerCase();
 
             staffUser = new User({
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
-                lab: newLab._id,  // ✅ CRITICAL: Link to lab
+                lab: newLab._id,
                 username: finalStaffUsername,
-                email: staffEmail.toLowerCase().trim(),
+                email: finalStaffEmail,
                 password: password,
                 fullName: fullName.trim(),
                 role: role,

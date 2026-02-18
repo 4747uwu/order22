@@ -25,12 +25,14 @@ export const createDoctor = async (req, res) => {
             qualifications,
             yearsOfExperience,
             contactPhoneOffice,
-
             requireReportVerification,
             
             // ✅ SIGNATURE DATA
             signature,
-            signatureMetadata
+            signatureMetadata,
+            
+            // ✅ NEW: Column configuration
+            visibleColumns = []
         } = req.body;
 
         // Validate admin permissions
@@ -97,9 +99,10 @@ export const createDoctor = async (req, res) => {
             password: password, // Will be hashed by pre-save hook
             
             fullName: fullName.trim(),
-            role: 'radiologist',
+            role: 'radiologist', // ✅ Changed from 'doctor_account'
             createdBy: req.user._id,
-            isActive: true
+            isActive: true,
+            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [] // ✅ NEW
         });
 
         await newUser.save({ session });
@@ -184,29 +187,28 @@ export const createDoctor = async (req, res) => {
 };
 
 // ✅ CREATE LAB WITH USER ACCOUNT and verification settings
+// Backend update for adminCRUD.controller.js - createLab function
+
 export const createLab = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
 
     try {
         const {
-            // Lab details
             name,
-            identifier,
+            identifier, // Now auto-generated from frontend
             contactPerson,
             contactEmail,
             contactPhone,
             address,
-            notes,
             settings,
-            
-            // ✅ NEW: User account details for lab staff
             staffUserDetails: {
                 fullName,
                 email: staffEmail,
                 username,
                 password,
-                role = 'lab_staff' // Default role
+                role = 'lab_staff',
+                visibleColumns = []
             } = {}
         } = req.body;
 
@@ -219,11 +221,18 @@ export const createLab = async (req, res) => {
         }
 
         // Validate required fields
-        if (!name || !identifier) {
+        if (!name || !contactPerson) {
             return res.status(400).json({
                 success: false,
-                message: 'Lab name and identifier are required'
+                message: 'Lab name and contact person are required'
             });
+        }
+
+        // ✅ Auto-generate identifier if not provided
+        let finalIdentifier = identifier;
+        if (!finalIdentifier) {
+            const cleaned = name.replace(/[^a-zA-Z]/g, '').toUpperCase();
+            finalIdentifier = cleaned.substring(0, 5).padEnd(5, 'X');
         }
 
         // ✅ VALIDATE: Staff user details if provided
@@ -249,7 +258,7 @@ export const createLab = async (req, res) => {
         // Check if lab identifier already exists in the organization
         const existingLab = await Lab.findOne({
             organizationIdentifier: userOrgIdentifier,
-            identifier: identifier.toUpperCase().trim()
+            identifier: finalIdentifier.toUpperCase().trim()
         });
 
         if (existingLab) {
@@ -268,46 +277,44 @@ export const createLab = async (req, res) => {
             });
 
             if (existingStaffUser) {
+                await session.abortTransaction();
                 return res.status(409).json({
                     success: false,
                     message: 'Staff email already exists in this organization'
                 });
             }
 
-            // Generate username if not provided
             const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
-
-            // Check if username exists in organization
+            
             const existingUsername = await User.findOne({
                 username: finalUsername,
                 organizationIdentifier: userOrgIdentifier
             });
 
             if (existingUsername) {
+                await session.abortTransaction();
                 return res.status(409).json({
                     success: false,
-                    message: 'Staff username already exists in this organization'
+                    message: 'Username already exists in this organization'
                 });
             }
         }
 
-        // ✅ CREATE LAB with verification settings
+        // ✅ CREATE LAB (removed notes field)
         const newLab = new Lab({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
             name: name.trim(),
-            identifier: identifier.toUpperCase().trim(),
+            identifier: finalIdentifier.toUpperCase().trim(),
             contactPerson: contactPerson?.trim() || '',
             contactEmail: contactEmail?.toLowerCase().trim() || '',
             contactPhone: contactPhone?.trim() || '',
             address: address || {},
             isActive: true,
-            notes: notes?.trim() || '',
             settings: {
                 autoAssignStudies: settings?.autoAssignStudies || false,
                 defaultPriority: settings?.defaultPriority || 'NORMAL',
                 maxConcurrentStudies: settings?.maxConcurrentStudies || 100,
-                // ✅ NEW: Add verification settings
                 requireReportVerification: settings?.requireReportVerification !== undefined 
                     ? settings.requireReportVerification 
                     : true,
@@ -324,48 +331,50 @@ export const createLab = async (req, res) => {
 
         console.log('✅ [CreateLab] Lab created successfully:', {
             labId: newLab._id,
-            requireVerification: newLab.settings.requireReportVerification,
-            verificationEnabledAt: newLab.settings.verificationEnabledAt
+            identifier: newLab.identifier,
+            requireVerification: newLab.settings.requireReportVerification
         });
 
         // ✅ CREATE: Staff user account if details provided
         if (staffEmail) {
-            const finalUsername = username || staffEmail.split('@')[0].toLowerCase();
+            const finalStaffUsername = username || staffEmail.split('@')[0].toLowerCase();
 
             staffUser = new User({
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
-                username: finalUsername,
+                lab: newLab._id,  // ✅ CRITICAL: Link to lab
+                username: finalStaffUsername,
                 email: staffEmail.toLowerCase().trim(),
-                password: password, // Will be hashed by pre-save hook
+                password: password,
                 fullName: fullName.trim(),
                 role: role,
                 createdBy: req.user._id,
-                isActive: true
+                isActive: true,
+                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : []
             });
 
             await staffUser.save({ session });
 
-            // ✅ ADD: Staff user to lab's staffUsers array
+            // ✅ ADD USER TO LAB'S STAFF LIST
             newLab.staffUsers.push({
                 userId: staffUser._id,
                 role: role,
                 addedAt: new Date(),
                 isActive: true
             });
-
+            
             await newLab.save({ session });
 
             console.log('✅ [CreateLab] Staff user created and linked to lab:', {
                 userId: staffUser._id,
-                userEmail: staffUser.email,
-                role: role
+                labId: newLab._id,
+                email: staffEmail
             });
         }
 
         await session.commitTransaction();
 
-        // Return created lab with populated organization and staff user
+        // Return created lab with staff user
         const createdLab = await Lab.findById(newLab._id)
             .populate('organization', 'name displayName');
 
@@ -396,7 +405,7 @@ export const createLab = async (req, res) => {
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: 'Lab identifier already exists'
+                message: 'Lab with this identifier already exists'
             });
         }
 
@@ -752,6 +761,88 @@ export const deleteLab = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to delete lab'
+        });
+    }
+};
+
+// ✅ GET ALL USERS IN ADMIN'S ORGANIZATION WITH CREDENTIALS AND VERIFICATION STATUS
+export const getOrganizationUsers = async (req, res) => {
+    try {
+        // Only admin can access this
+        if (!['admin', 'super_admin'].includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admin can access user credentials'
+            });
+        }
+
+        let query = { isActive: true };
+        
+        // For admin, limit to their organization
+        if (req.user.role === 'admin') {
+            query.organizationIdentifier = req.user.organizationIdentifier;
+        }
+
+        // Get users with passwords and tempPassword (sensitive operation)
+        const users = await User.find(query)
+            .populate('hierarchy.createdBy', 'fullName email role')
+            .populate('hierarchy.parentUser', 'fullName email role')
+            .populate('roleConfig.linkedRadiologist', 'fullName email')
+            .populate('organization', 'name displayName identifier')
+            .select('+password +tempPassword') // ✅ Include both password fields
+            .sort({ role: 1, createdAt: -1 });
+
+        // ✅ Fetch all doctors and labs for verification status
+        const doctors = await Doctor.find({
+            organizationIdentifier: req.user.organizationIdentifier
+        }).select('userAccount requireReportVerification');
+
+        const labs = await Lab.find({
+            organizationIdentifier: req.user.organizationIdentifier
+        }).select('_id settings.requireReportVerification');
+
+        // ✅ Create lookup maps
+        const doctorMap = new Map(doctors.map(d => [d.userAccount.toString(), d.requireReportVerification]));
+        const labMap = new Map(labs.map(l => [l._id.toString(), l.settings?.requireReportVerification]));
+
+        // ✅ Enhance users with verification status
+        const enhancedUsers = users.map(user => {
+            const userObj = user.toObject();
+            
+            // Add verification status for radiologists
+            if (user.role === 'radiologist') {
+                userObj.requireReportVerification = doctorMap.get(user._id.toString()) || false;
+            }
+            
+            // Add verification status for lab_staff
+            if (user.role === 'lab_staff' && user.linkedLabs?.[0]?.labId) {
+                userObj.requireReportVerification = labMap.get(user.linkedLabs[0].labId.toString()) || false;
+            }
+            
+            return userObj;
+        });
+
+        // Get organization info
+        const organization = await Organization.findOne({
+            identifier: req.user.organizationIdentifier
+        });
+
+        console.log(`🔐 Admin ${req.user.email} accessed credentials for ${users.length} users`);
+
+        res.json({
+            success: true,
+            data: {
+                organization: organization,
+                users: enhancedUsers
+            },
+            count: enhancedUsers.length
+        });
+
+    } catch (error) {
+        console.error('❌ Get organization users error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch organization users'
         });
     }
 };
