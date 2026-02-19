@@ -344,6 +344,16 @@ export const createManualStudy = async (req, res) => {
 
             console.log(`🆔 [Manual Study] Orthanc Study ID: ${orthancStudyId}`);
 
+            // ✅ FIXED: Map urgency to valid uppercase priority enum values
+            const priorityMap = {
+                'stat':      'STAT',
+                'urgent':    'PRIORITY',      // ✅ 'urgent' → 'PRIORITY' (not 'EMERGENCY')
+                'emergency': 'EMERGENCY',      // If needed
+                'normal':    'NORMAL',
+                'routine':   'NORMAL',
+            };
+            const resolvedPriority = priorityMap[(urgency || '').toLowerCase()] || 'NORMAL';
+
             // ✅ Create DICOM study record in database with lab name as institution
             const newStudy = new DicomStudy({
                 organization: organization._id,
@@ -363,27 +373,43 @@ export const createManualStudy = async (req, res) => {
                 
                 studyDate: new Date(),
                 studyDescription: studyDescription || 'Manual Upload Study',
+                examDescription: studyDescription || 'Manual Upload Study',  // ✅ ADDED: Also set examDescription
                 modality: modality,
-                bodyPart: bodyPartExamined || '',
+                bodyPartExamined: bodyPartExamined || '',
                 
                 sourceLab: lab._id,
                 labLocation: labLocation || '',
                 institutionName: lab.name,  // ✅ Store lab name as institution
                 
                 workflowStatus: 'new_study_received',
-                priority: urgency === 'stat' ? 'stat' : urgency === 'urgent' ? 'urgent' : 'routine',
+                // ✅ FIXED: Use valid uppercase priority
+                priority: resolvedPriority,
                 
                 // 🔧 Series and instance counts
                 seriesCount: 1,
                 instanceCount: filesProcessed,
                 seriesImages: `1/${filesProcessed}`,
                 
+                // ✅ ADDED: modalitiesInStudy for consistency
+                modalitiesInStudy: [modality],
+                
                 clinicalHistory: {
-                    symptoms: clinicalHistory || '',
+                    clinicalHistory: clinicalHistory || '',  // ✅ FIXED: Use correct field name
+                    symptoms: clinicalHistory || '',         // Keep for backwards compatibility
                     relevantMedicalHistory: '',
                     referringPhysician: referringPhysician || '',
                     indication: '',
                     clinicalContext: []
+                },
+                
+                referringPhysicianName: referringPhysician || '',  // ✅ ADDED
+                physicians: {
+                    referring: {
+                        name: referringPhysician || '',
+                        email: '',
+                        mobile: '',
+                        institution: ''
+                    }
                 },
                 
                 storageInfo: {
@@ -404,7 +430,8 @@ export const createManualStudy = async (req, res) => {
                         filesProcessed: filesProcessed,
                         instancesUploaded: filesProcessed,
                         labName: lab.name,
-                        labLocation: labLocation
+                        labLocation: labLocation,
+                        priority: resolvedPriority  // ✅ Log the mapped priority
                     }
                 }],
                 
@@ -417,6 +444,7 @@ export const createManualStudy = async (req, res) => {
             console.log(`✅ [Manual Study] Study created successfully: ${newStudy._id}`);
             console.log(`📍 [Manual Study] Stored lab location: ${labLocation || 'N/A'}`);
             console.log(`🏥 [Manual Study] Stored institution name: ${lab.name}`);
+            console.log(`⚡ [Manual Study] Stored priority: ${resolvedPriority} (mapped from urgency: ${urgency})`);
 
             res.status(201).json({
                 success: true,

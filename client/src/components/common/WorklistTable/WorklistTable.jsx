@@ -1035,7 +1035,7 @@ const handleOHIFReporting = async () => {
     )}
     
     {/* 4b. CENTER LOCATION (From original code) */}
-    {isColumnVisible('centerName') && (
+    {isColumnVisible('location') && (
         <td className="px-2 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('centerName')}px` }}>
             <div className="flex items-start justify-center text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">{study?.location || '-'}</div>
         </td>
@@ -1813,11 +1813,11 @@ const handleShowDocuments = useCallback((study) => {
                   maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
                 />
               )}
-              {isColumnVisible('centerName') && (
+              {isColumnVisible('location') && (
                 <ResizableTableHeader
-                  columnId="centerName"
+                  columnId="location"
                   label={<>Location<br/>NAME</>}
-                  width={getColumnWidth('centerName')}
+                  width={getColumnWidth('location')}
                   onResize={handleColumnResize}
                   minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
                   maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
