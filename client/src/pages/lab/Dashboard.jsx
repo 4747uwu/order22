@@ -294,7 +294,7 @@ const LabDashboard = () => {
         accessionNumber: formData.accessionNumber,
         clinicalHistory: formData.clinicalHistory,
         caseType: formData.caseType,
-        studyPriority: formData.studyPriority,
+        priority: formData.priority,
         assignmentPriority: formData.assignmentPriority
       });
 

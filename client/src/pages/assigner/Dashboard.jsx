@@ -276,23 +276,35 @@ const AssignerDashboard = () => {
   }, [fetchStudies, searchFilters]);
 
   // Handlers
-  const handleSearch = useCallback((searchParams) => {
-    console.log('🔍 [Assignor] NEW SEARCH:', searchParams);
-    setSearchFilters(searchParams);
-    
-    // ✅ Reset to page 1, keep current limit
-    fetchStudies(searchParams, 1, pagination.recordsPerPage);
-    fetchCategoryValues(searchParams);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+const handleSearch = useCallback((searchParams) => {
+  console.log('🔍 [Assignor] NEW SEARCH:', searchParams);
+  setSearchFilters(searchParams);
+  
+  // ✅ Save filters (excluding live search term)
+  try {
+    const toSave = { ...searchParams };
+    delete toSave.search;
+    localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
+  } catch (e) {}
+  
+  fetchStudies(searchParams, 1, pagination.recordsPerPage);
+  fetchCategoryValues(searchParams);
+}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
-  const handleFilterChange = useCallback((filters) => {
-    console.log('🔍 [Assignor] FILTER CHANGE:', filters);
-    setSearchFilters(filters);
-    
-    // ✅ Reset to page 1, keep current limit
-    fetchStudies(filters, 1, pagination.recordsPerPage);
-    fetchCategoryValues(filters);
-  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+const handleFilterChange = useCallback((filters) => {
+  console.log('🔍 [Assignor] FILTER CHANGE:', filters);
+  setSearchFilters(filters);
+  
+  // ✅ Save filters (excluding live search term)
+  try {
+    const toSave = { ...filters };
+    delete toSave.search;
+    localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
+  } catch (e) {}
+  
+  fetchStudies(filters, 1, pagination.recordsPerPage);
+  fetchCategoryValues(filters);
+}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
   // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
@@ -362,7 +374,7 @@ const AssignerDashboard = () => {
         accessionNumber: formData.accessionNumber,
         clinicalHistory: formData.clinicalHistory,
         caseType: formData.caseType,
-        studyPriority: formData.studyPriority,
+        priority: formData.priority,  
         assignmentPriority: formData.assignmentPriority
       });
 

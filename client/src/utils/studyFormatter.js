@@ -59,7 +59,7 @@ export const formatStudyForWorklist = (rawStudy) => {
 
     // ✅ CLINICAL HISTORY - BOLD & UPPERCASE (styling will be done in component)
     const clinicalHistory = (rawStudy.clinicalHistory?.clinicalHistory || 
-                           'No history provided').toUpperCase();
+                           '').toUpperCase();
 
     // ✅ STUDY TIME - UPPERCASE
     const studyTime = (rawStudy.studyTime || 'N/A').toUpperCase();

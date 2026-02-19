@@ -93,7 +93,7 @@ export const updateStudyDetails = async (req, res) => {
             changes.accessionNumber = accessionNumber;
         }
 
-        // ✅ Handle priority update (5-type system: NORMAL, EMERGENCY, PRIORITY, MLC, STAT)
+        // ✅ Handle priority update — NO workflow status change
         if (priority !== undefined) {
             const validPriorities = ['NORMAL', 'EMERGENCY', 'PRIORITY', 'MLC', 'STAT'];
             const newPriority = (priority || '').toUpperCase().trim();
@@ -104,12 +104,16 @@ export const updateStudyDetails = async (req, res) => {
             }
         }
         
-        // ✅ UPDATED: Only change workflow if clinical history is actually changing
+        // ✅ Only touch workflow if clinical history string actually changed
         if (clinicalHistory !== undefined) {
-            const existingHistory = study.clinicalHistory?.clinicalHistory || '';
-            const isHistoryChanging = existingHistory !== clinicalHistory;
-            
-            updateData['clinicalHistory.clinicalHistory'] = clinicalHistory;
+            const DEFAULT_PLACEHOLDERS = ['no history provided', 'no history provided...', ''];
+            const existingNormalized = existingHistory.trim().toLowerCase();
+            const incomingNormalized = incomingHistory.trim().toLowerCase();
+            // Treat both being "empty/placeholder" as no change
+            const bothAreEmpty = DEFAULT_PLACEHOLDERS.includes(existingNormalized) && DEFAULT_PLACEHOLDERS.includes(incomingNormalized);
+            const isHistoryChanging = !bothAreEmpty && existingNormalized !== incomingNormalized;
+
+            updateData['clinicalHistory.clinicalHistory'] = incomingHistory;
             updateData['clinicalHistory.lastModifiedBy'] = user._id;
             updateData['clinicalHistory.lastModifiedAt'] = new Date();
             updateData['clinicalHistory.lastModifiedFrom'] = 'admin_panel';
@@ -146,7 +150,11 @@ export const updateStudyDetails = async (req, res) => {
                         note: `Study details updated by ${user.fullName || user.email}${priorityChanges.length > 0 ? ` (${priorityChanges.join(', ')})` : ''}${changes.clinicalHistoryUpdated ? ' - Clinical history updated' : ''}`
                     },
                     actionLog: {
-                        actionType: changes.clinicalHistoryUpdated ? 'history_created' : 'study_updated',
+                        actionType: changes.clinicalHistoryUpdated
+                            ? ACTION_TYPES.HISTORY_CREATED
+                            : changes.priority
+                                ? ACTION_TYPES.PRIORITY_CHANGED
+                                : ACTION_TYPES.STATUS_CHANGED,
                         actionCategory: 'administrative',
                         performedBy: user._id,
                         performedByName: user.fullName || user.email,

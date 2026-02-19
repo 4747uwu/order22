@@ -125,6 +125,54 @@ const PRIORITY_SORT_ORDER = {
   'STAT':      4,
 };
 
+// ✅ ADD THIS BLOCK HERE ↓
+const CASE_PRIORITY_OPTIONS = [
+  {
+    value: 'NORMAL',
+    label: '🟢 Normal',
+    border: 'border-gray-300',
+    bg: 'bg-gray-50',
+    text: 'text-gray-700',
+    desc: 'Standard workflow — no special handling required.',
+  },
+  {
+    value: 'STAT',
+    label: '⏱️ STAT',
+    border: 'border-sky-400',
+    bg: 'bg-sky-50',
+    text: 'text-sky-700',
+    desc: 'Expedited turnaround — report needed soon.',
+  },
+  {
+    value: 'PRIORITY',
+    label: '⭐ Priority',
+    border: 'border-purple-400',
+    bg: 'bg-purple-50',
+    text: 'text-purple-700',
+    desc: 'Elevated priority — handle before normal cases.',
+  },
+  {
+    value: 'MLC',
+    label: '⚖️ MLC',
+    border: 'border-amber-400',
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    desc: 'Medico-legal case — requires careful documentation.',
+  },
+  {
+    value: 'EMERGENCY',
+    label: '🚨 Emergency',
+    border: 'border-red-500',
+    bg: 'bg-red-50',
+    text: 'text-red-700',
+    desc: 'Life-threatening — report immediately.',
+  },
+];
+
+
+
+
+
 
 const getPriorityWeight = (study) => {
   const p = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase();
@@ -201,7 +249,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         studyName:         study.studyDescription || study.examDescription      || '',
         referringPhysician:study.referralNumber   || study.referringPhysicianName || '',
         accessionNumber:   study.accessionNumber  || '',
-        clinicalHistory:   study.clinicalHistory  || '',
+        clinicalHistory:   study.clinicalHistory?.clinicalHistory || (typeof study.clinicalHistory === 'string' ? study.clinicalHistory : '') || '',
         priority:          resolvedPriority,
       });
     }
@@ -403,7 +451,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
                 onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
                 rows={4}
                 className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none uppercase"
-                required
+                
                 placeholder="ENTER CLINICAL HISTORY, SYMPTOMS, OR RELEVANT NOTES..."
               />
               <p className="text-xs text-gray-500 mt-1">
@@ -480,10 +528,10 @@ const StudyRow = ({
   onShowDocuments,
   onShowRevertModal,
   setPrintModal,
-
   userRole,
   userRoles = [],
-  getColumnWidth
+  getColumnWidth,
+  isColumnVisible = () => true,
 }) => {
   const navigate = useNavigate();
   // console.log(study)
@@ -516,10 +564,17 @@ const StudyRow = ({
   const isRejected = study.workflowStatus === 'report_rejected';
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
 
+  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+
+  // const isColumnVisible = useCallback((key) => {
+  //   if (!columnConfig) return true;
+  //   return columnConfig[key]?.visible !== false;
+  // }, [columnConfig]);
+
   // ✅ Check if study is an Emergency Case
   // const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
 
-  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+  // const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
     const [elapsedTime, setElapsedTime] = useState(null);
 
@@ -855,489 +910,276 @@ const handleOHIFReporting = async () => {
   };
 
   return (
-    <tr className={rowClasses}>
-      {/* 1. SELECTION CHECKBOX */}
-      <td className="px-2 py-3 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('selection')}px` }}>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={() => onSelectStudy(study._id)}
-          className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500"
-        />
-      </td>
+  <tr className={rowClasses}>
+    {/* 1. SELECTION - always visible */}
+    <td className="px-2 py-3 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('selection')}px` }}>
+      <input type="checkbox" checked={isSelected} onChange={() => onSelectStudy(study._id)} className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500" />
+    </td>
 
-      {/* 2. BHARAT PACS ID */}
+    {/* 2. BHARAT PACS ID */}
+    {isColumnVisible('bharatPacsId') && (
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200">
         <div className="flex items-center justify-center gap-1.5">
-          <span className="text-xs font-mono font-semibold text-slate-700 truncate">
-            {study.bharatPacsId}
-          </span>
-          <button onClick={() => copyToClipboard(study.bharatPacsId, 'BP ID')}>
-            <Copy className="w-3.5 h-3.5 text-slate-500" />
-          </button>
-          
-          {/* ✅ NEW: Active Viewer Indicator */}
+          <span className="text-xs font-mono font-semibold text-slate-700 truncate">{study.bharatPacsId}</span>
+          <button onClick={() => copyToClipboard(study.bharatPacsId, 'BP ID')}><Copy className="w-3.5 h-3.5 text-slate-500" /></button>
           {hasActiveViewers && (
-            <div 
-              className="relative group"
-              title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}
-            >
+            <div className="relative group" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
               <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
-              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                {activeViewers.length}
-              </span>
-              
-              {/* Tooltip on hover */}
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{activeViewers.length}</span>
               <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50">
-                {activeViewers.map(v => (
-                  <div key={v.userId}>{v.userName} ({v.mode})</div>
-                ))}
+                {activeViewers.map(v => <div key={v.userId}>{v.userName} ({v.mode})</div>)}
               </div>
             </div>
           )}
         </div>
       </td>
+    )}
 
-      {/* 3. ORGANIZATION */}
-      {/* 3. ORGANIZATION - Only for super_admin */}
-{(userRoles.includes('super_admin') || userRole === 'super_admin') && (
-  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
-    <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
-      {study.organizationName || '-'}
-    </div>
-  </td>
-)}
+    {/* 3. ORGANIZATION - super_admin only */}
+    {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
+        <div className="text-xs text-slate-600 truncate" title={study.organizationName}>{study.organizationName || '-'}</div>
+      </td>
+    )}
 
-      {/* 4. CENTER NAME */}
+    {/* 4. CENTER NAME */}
+    {isColumnVisible('centerName') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-        <div className="text-xs font-bold text-center text-slate-900 truncate"
- title={study.centerName}>
-          {study.centerName || '-'}
-        </div>
+        <div className="text-xs font-bold text-center text-slate-900 truncate" title={study.centerName}>{study.centerName || '-'}</div>
       </td>
-
-      {/* //location */}
- <td
-  className="px-2 py-2 border-r border-b border-slate-200"
-  style={{ width: `${getColumnWidth('centerName')}px` }}
->
-  <div className="flex items-center justify-center h-full text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">
-    {study?.location || '-'}
-  </div>
-</td>
-
-
-
-      {/* 5. TIMELINE */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('timeline')}px` }}>
-        <button
-          onClick={() => onShowTimeline?.(study)}
-          className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
-          title="View Timeline"
-        >
-          <Clock className="w-4 h-4 text-gray-700" />
-        </button>
+    )}
+    {isColumnVisible('centerName') && (
+      <td className="px-2 py-2 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
+        <div className="flex items-center justify-center h-full text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">{study?.location || '-'}</div>
       </td>
+    )}
 
-      {/* 6. PATIENT NAME / UHID */}
+    {/* 5. TIMELINE - always visible */}
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('timeline')}px` }}>
+      <button onClick={() => onShowTimeline?.(study)} className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110" title="View Timeline">
+        <Clock className="w-4 h-4 text-gray-700" />
+      </button>
+    </td>
+
+    {/* 6. PATIENT NAME / UHID */}
+    {isColumnVisible('patientName') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientName')}px` }}>
-        <button 
-          className="w-full text-left hover:underline decoration-gray-900"
-          onClick={() => onPatienIdClick?.(study.patientId, study)}
-        >
-          <div className="text-xs font-bold text-slate-800 truncate flex items-center gap-1" title={study.patientName}>
+        <button className="w-full text-left hover:underline decoration-gray-900" onClick={() => onPatienIdClick?.(study.patientId, study)}>
+          <div className={`text-xs font-bold ${isUrgent ? 'text-rose-600' : 'text-slate-800'} truncate flex items-center gap-1`} title={study.patientName}>
             {study.patientName || '-'}
             {isUrgent && <span className="text-rose-500">●</span>}
             {isRejected && <span className="text-rose-600" title={`Rejected: ${rejectionReason}`}>🚫</span>}
           </div>
-          <div className="text-[10px] text-slate-500 truncate">
-            UHID: {study.patientId || '-'}
-          </div>
+          <div className={`text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'} truncate`}>UHID: {study.patientId || '-'}</div>
         </button>
         {getPriorityTag(study)}
       </td>
+    )}
 
-      {/* 7. AGE/SEX */}
+    {/* 7. AGE/SEX */}
+    {isColumnVisible('ageGender') && (
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ageGender')}px` }}>
         <div className="text-xs font-medium text-slate-700">
           {study.ageGender !== 'N/A' ? study.ageGender : 
-           study.patientAge && study.patientSex ? 
-           `${study.patientAge}/${study.patientSex.charAt(0)}` : 
-           study.patientAge && study.patientGender ?
-           `${study.patientAge}/${study.patientGender.charAt(0)}` : '-'}
+           study.patientAge && study.patientSex ? `${study.patientAge}/${study.patientSex.charAt(0)}` : 
+           study.patientAge && study.patientGender ? `${study.patientAge}/${study.patientGender.charAt(0)}` : '-'}
         </div>
       </td>
+    )}
 
-      {/* 8. MODALITY */}
+    {/* 8. MODALITY */}
+    {isColumnVisible('modality') && (
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('modality')}px` }}>
-        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${
-          isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'
-        }`}>
+        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'}`}>
           {study.modality || '-'}
         </span>
       </td>
+    )}
 
-      {/* 9. VIEW */}
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
-        <button
-          onClick={handleViewOnlyClick}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-          title="View Images Only (No Locking)"
-        >
-          <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-        </button>
+    {/* 9. VIEW - always visible */}
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+      <button onClick={handleViewOnlyClick} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title="View Images Only (No Locking)">
+        <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+      </button>
+    </td>
+
+    {/* Reporting - always visible */}
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ohif&reporting')}px` }}>
+      <button onClick={handleOHIFReporting} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title="Reporting">
+        <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+      </button>
+    </td>
+
+    {/* 10. SERIES/IMAGES */}
+    {isColumnVisible('seriesCount') && (
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
+        <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug">{study.studyDescription || 'N/A'}</div>
+        <div className="text-xs font-semibold text-slate-800 mt-1">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
       </td>
+    )}
 
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ohif&reporting')}px` }}>
-        <button
-          onClick={handleOHIFReporting}
-          className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
-          title="View Images Only (No Locking)"
-        >
-         <div className="flex items-center justify-center h-full w-full">
-                  <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-                </div>
-        </button>
-      </td>
-
-      {/* 10. SERIES/IMAGES */}
-      <td
-  className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top"
-  style={{ width: `${getColumnWidth('studySeriesImages')}px` }}
->
-  <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug">
-    {study.studyDescription || 'N/A'}
-  </div>
-
-  <div className="text-xs font-semibold text-slate-800 mt-1">
-    S: {study.seriesCount || 0} / {study.instanceCount || 0}
-  </div>
-</td>
-
-
-      {/* 11. PT ID */}
+    {/* 11. PT ID */}
+    {isColumnVisible('patientId') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientId')}px` }}>
-        <button 
-          className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline"
-          onClick={() => onPatienIdClick?.(study.patientId, study)}
-        >
+        <button className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline" onClick={() => onPatienIdClick?.(study.patientId, study)}>
           {study.patientId || study.patientInfo?.patientID || 'N/A'}
         </button>
       </td>
+    )}
 
-      {/* 12. REFERRAL DOCTOR */}
+    {/* 12. REFERRAL DOCTOR */}
+    {isColumnVisible('referralDoctor') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
-        <div className="text-xs text-slate-700 truncate" title={study.referralNumber || study.referringPhysician}>
-          {study.referralNumber || study.referringPhysician || '-'}
+        <div className="text-xs text-slate-700 truncate" title={study.referralNumber || study.referringPhysician}>{study.referralNumber || study.referringPhysician || '-'}</div>
+      </td>
+    )}
+
+    {/* 13. CLINICAL HISTORY */}
+    {isColumnVisible('clinicalHistory') && (
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+        <div className="text-xs font-bold text-slate-700 line-clamp-2 uppercase" title={study.clinicalHistory}>{study.clinicalHistory || '-'}</div>
+        <div className="flex items-center gap-4 mt-3">
+          <button onClick={() => onEditPatient?.(study)} className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors">
+            <Edit className="w-4 h-4" />Edit
+          </button>
+          <button onClick={() => onShowDocuments?.(study._id)} className={`p-2 rounded-lg transition-all hover:scale-105 relative ${hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}>
+            <Paperclip className={`w-4 h-4 ${hasAttachments ? 'text-slate-900' : 'text-slate-400'}`} />
+            {hasAttachments && study.attachments.length > 0 && <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">{study.attachments.length}</span>}
+          </button>
+          <button onClick={() => onShowStudyNotes?.(study._id)} className={`relative p-2 rounded-lg transition-all group hover:scale-110 ${hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'}`} title={hasNotes ? `${study.notesCount || '1'} note(s)` : 'No notes'}>
+            <div className="flex items-center gap-1">
+              <MessageSquare className={`w-4 h-4 ${hasNotes ? 'text-gray-900' : 'text-slate-400'} group-hover:text-gray-900`} />
+              {study.notesCount > 0 && <span className="bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">{study.notesCount}</span>}
+            </div>
+          </button>
         </div>
       </td>
+    )}
 
-      {/* 13. CLINICAL HISTORY */}
-  <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
-        <div className="text-xs font-bold text-slate-700 line-clamp-2 uppercase" title={study.clinicalHistory}>
-          {study.clinicalHistory || '-'}
-        </div>
-
-  {/* Action Buttons */}
-  <div className="flex items-center gap-4 mt-3">
-    <button
-      onClick={() => onEditPatient?.(study)}
-      className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors"
-    >
-      <Edit className="w-4 h-4" />
-      Edit
-    </button>
-
-    <button
-      onClick={() => onShowDocuments?.(study._id)}
-      className={`p-2 rounded-lg transition-all hover:scale-105 relative ${
-        hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'
-      }`}
-      title={
-        hasAttachments
-          ? `${study.attachments.length} attachment(s)`
-          : 'Manage attachments'
-      }
-    >
-      <Paperclip
-        className={`w-4 h-4 ${
-          hasAttachments ? 'text-slate-900' : 'text-slate-400'
-        }`}
-      />
-
-      {hasAttachments && study.attachments.length > 0 && (
-        <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-          {study.attachments.length}
-        </span>
-      )}
-    </button>
-
-    <button
-                  onClick={() => onShowStudyNotes?.(study._id)}
-                  className={`relative p-2 rounded-lg transition-all group hover:scale-110 ${
-                    hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'
-                  }`}
-                  title={hasNotes ? `${study.notesCount || '1'} note(s)` : 'No notes'}
-                >
-                  <div className="flex items-center gap-1">
-                    <MessageSquare className={`w-4 h-4 ${
-                      hasNotes ? 'text-gray-900' : 'text-slate-400'
-                    } group-hover:text-gray-900`} />
-                    {study.notesCount > 0 && (
-                      <span className="bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">
-                        {study.notesCount}
-                      </span>
-                    )}
-                  </div>
-                </button>
-  </div>
-</td>
-
-
-      {/* 14. STUDY DATE/TIME */}
+    {/* 14. STUDY DATE/TIME */}
+    {isColumnVisible('studyTime') && (
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
         <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
         <div className="text-[10px] text-slate-500">{formatTime(study.studyTime) || '-'}</div>
       </td>
-
-      {/* 15. UPLOAD DATE/TIME */}
-   <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-    <div className="text-[11px] font-medium text-slate-800">
-        {formatDate(study.uploadDate || study.createdAt)}
-    </div>
-    <div className="text-[10px] text-slate-500">
-        {study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}
-    </div>
-</td>
-
-<td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
-  <div className="relative">
-    <input
-      ref={assignInputRef}
-      type="text"
-      value={assignInputValue}
-      onChange={(e) => setAssignInputValue(e.target.value)}
-      onFocus={handleAssignInputFocus}
-      onBlur={() => {
-        setTimeout(() => {
-          if (!showAssignmentModal) {
-            setInputFocused(false);
-            setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
-          }
-        }, 200);
-      }}
-      placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
-      disabled={isLocked}
-      className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${
-        isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : 
-        isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 
-        'bg-white border-slate-200 hover:border-slate-300'
-      }`}
-    />
-    {isAssigned && !inputFocused && !isLocked && (
-      <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />
     )}
-    {isLocked && (
-      <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />
-    )}
-  </div>
-  
-  {/* ✅ NEW: Timer below radiologist name */}
-  {isAssigned && assignedDoctor && (
-    <div className="mt-1 flex items-center justify-between gap-2">
-      {isAssignedStatus && !isReportCompleted && elapsedTime ? (
-        // Show running timer if still assigned and no report
-        <div className="flex items-center gap-1.5 px-2 py-0 bg-amber-50 border border-amber-200 rounded-md">
-          <Clock className="w-2 h-2 text-amber-600 animate-pulse" />
-          <span className="text-[10px] font-mono font-bold text-amber-700">
-            {elapsedTime}
-          </span>
-        </div>
-      ) : isReportCompleted && assignedAt && reportCompletedAt ? (
-        // Show completed time if report is done
-        <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-md">
-          <CheckCircle className="w-3 h-3 text-green-600" />
-          <span className="text-[10px] font-mono font-bold text-green-700">
-            ✓ {formatTimeTaken(assignedAt, reportCompletedAt)}
-          </span>
-        </div>
-      ) : null}
-      
-      {/* Show priority badge if urgent */}
-      {assignedDoctor.priority === 'URGENT' && (
-        <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded font-bold">
-          URGENT
-        </span>
-      )}
-    </div>
-  )}
-</td>
 
-      {/* 17. LOCK/UNLOCK TOGGLE */}
+    {/* 15. UPLOAD DATE/TIME */}
+    {isColumnVisible('uploadTime') && (
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.uploadDate || study.createdAt)}</div>
+        <div className="text-[10px] text-slate-500">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
+      </td>
+    )}
+
+    {/* 16. RADIOLOGIST */}
+    {isColumnVisible('radiologist') && (
+      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+        <div className="relative">
+          <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."} disabled={isLocked} className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`} />
+          {isAssigned && !inputFocused && !isLocked && <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />}
+          {isLocked && <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />}
+        </div>
+        {isAssigned && assignedDoctor && (
+          <div className="mt-1 flex items-center justify-between gap-2">
+            {isAssignedStatus && !isReportCompleted && elapsedTime ? (
+              <div className="flex items-center gap-1.5 px-2 py-0 bg-amber-50 border border-amber-200 rounded-md">
+                <Clock className="w-2 h-2 text-amber-600 animate-pulse" />
+                <span className="text-[10px] font-mono font-bold text-amber-700">{elapsedTime}</span>
+              </div>
+            ) : isReportCompleted && assignedAt && reportCompletedAt ? (
+              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-md">
+                <CheckCircle className="w-3 h-3 text-green-600" />
+                <span className="text-[10px] font-mono font-bold text-green-700">✓ {formatTimeTaken(assignedAt, reportCompletedAt)}</span>
+              </div>
+            ) : null}
+            {assignedDoctor.priority === 'URGENT' && <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded font-bold">URGENT</span>}
+          </div>
+        )}
+      </td>
+    )}
+
+    {/* 17. LOCK/UNLOCK */}
+    {isColumnVisible('caseStatus') && (
       <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('studyLock')}px` }}>
-        <button
-          onClick={handleLockToggle}
-          disabled={togglingLock || !canToggleLock}
-          className={`p-2 rounded-lg transition-all group hover:scale-110 ${
-            togglingLock ? 'opacity-50 cursor-not-allowed' : 
-            !canToggleLock ? 'opacity-30 cursor-not-allowed' :
-            isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'
-          }`}
-          title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}
-        >
-          {isLocked ? (
-            <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" />
-          ) : (
-            <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />
-          )}
+        <button onClick={handleLockToggle} disabled={togglingLock || !canToggleLock} className={`p-2 rounded-lg transition-all group hover:scale-110 ${togglingLock ? 'opacity-50 cursor-not-allowed' : !canToggleLock ? 'opacity-30 cursor-not-allowed' : isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'}`} title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}>
+          {isLocked ? <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" /> : <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />}
         </button>
       </td>
+    )}
 
-      {/* 18. STATUS - WITH DATE/TIME */}
+    {/* 18. STATUS */}
+    {isColumnVisible('caseStatus') && (
       <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('status')}px` }}>
         <div className="flex flex-col items-center gap-1">
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>
-            {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
-          </span>
+          <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>{study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}</span>
           <span className="text-xs text-slate-600">{study.workflowStatus ? formatWorkflowStatus(study.workflowStatus) : '-'}</span>
           {study.statusHistory && study.statusHistory.length > 0 && (() => {
-            const currentStatusEntry = study.statusHistory
-              .slice()
-              .reverse()
-              .find(entry => entry.status === study.workflowStatus);
-            
-            if (currentStatusEntry && currentStatusEntry.changedAt) {
-              return (
-                <div className="text-[9px] text-slate-500">
-                  {formatDate(currentStatusEntry.changedAt)} {formatTime(currentStatusEntry.changedAt)}
-                </div>
-              );
-            }
+            const currentStatusEntry = study.statusHistory.slice().reverse().find(entry => entry.status === study.workflowStatus);
+            if (currentStatusEntry?.changedAt) return <div className="text-[9px] text-slate-500">{formatDate(currentStatusEntry.changedAt)} {formatTime(currentStatusEntry.changedAt)}</div>;
             return null;
           })()}
         </div>
       </td>
+    )}
 
-      {/* 19. PRINT COUNT */}
+    {/* 19. PRINT COUNT */}
+    {isColumnVisible('caseStatus') && (
       <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
-  {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
-    <div className="flex flex-col items-center gap-1">
-      
-      <button
-          onClick={() => handleDirectPrint(study)}
-          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
-          title="Print Report"
-      >
-          <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-      </button>
-      
-      {/* Print Date & Time */}
-      <div className="text-[10px] text-slate-500 text-center">
-        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
-        <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
-      </div>
-      
-      {/* Printed By */}
-      {study.lastPrintedBy && (
-        <div className="text-[9px] text-slate-600 font-medium">
-          By: {study.lastPrintedBy}
-        </div>
-      )}
-      
-      {/* Print Type Badge */}
-      {study.lastPrintType && (
-        <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${
-          study.lastPrintType === 'reprint' 
-            ? 'bg-rose-100 text-rose-700' 
-            : 'bg-emerald-100 text-emerald-700'
-        }`}>
-          {study.lastPrintType.toUpperCase()}
-        </span>
-      )}
-      
-      {/* First print indicator if reprinted - fallback to printInfo if exists */}
-      {((study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt) && (
-        <div className="text-[9px] text-slate-400 flex items-center gap-0.5">
-          <Clock className="w-2.5 h-2.5" />
-          <span>First: {formatDate(study.printInfo.firstPrintedAt)}</span>
-        </div>
-      )}
-    </div>
-  ) : (
-    <button
-      onClick={() => handleDirectPrint(study)}
-      className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all"
-      title="No prints yet - Click to print report"
-    >
-      <Printer className="w-4 h-4" />
-      <span className="text-[10px]">No prints</span>
-    </button>
-  )}
-</td>
+        {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
+          <div className="flex flex-col items-center gap-1">
+            <button onClick={() => handleDirectPrint(study)} className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="Print Report">
+              <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+            </button>
+            <div className="text-[10px] text-slate-500 text-center">
+              <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+              <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+            </div>
+            {study.lastPrintedBy && <div className="text-[9px] text-slate-600 font-medium">By: {study.lastPrintedBy}</div>}
+            {study.lastPrintType && <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${study.lastPrintType === 'reprint' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{study.lastPrintType.toUpperCase()}</span>}
+            {(study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt && <div className="text-[9px] text-slate-400 flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" /><span>First: {formatDate(study.printInfo.firstPrintedAt)}</span></div>}
+          </div>
+        ) : (
+          <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all" title="No prints yet - Click to print report">
+            <Printer className="w-4 h-4" /><span className="text-[10px]">No prints</span>
+          </button>
+        )}
+      </td>
+    )}
 
+    {/* REJECTION REASON */}
+    {isColumnVisible('caseStatus') && (
       <td className="px-3 py-3.5 border-r border-slate-200" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
         {isRejected ? (
           <div className="flex items-start gap-2">
             <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-            <div 
-              className="text-xs text-rose-700 leading-relaxed font-medium" 
-              style={{
-                whiteSpace: 'normal',
-                overflowWrap: 'break-word',
-                wordBreak: 'break-word'
-              }}
-              title={rejectionReason}
-            >
-              {study.verificationNotes || rejectionReason}
-            </div>
+            <div className="text-xs text-rose-700 leading-relaxed font-medium" style={{ whiteSpace: 'normal', overflowWrap: 'break-word', wordBreak: 'break-word' }} title={rejectionReason}>{study.verificationNotes || rejectionReason}</div>
           </div>
-        ) : (
-          <div className="text-xs text-slate-400 text-center">-</div>
-        )}
+        ) : <div className="text-xs text-slate-400 text-center">-</div>}
       </td>
+    )}
 
-      {/* 20. VERIFIED BY */}
+    {/* 20. VERIFIED BY */}
+    {isColumnVisible('caseStatus') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
         <div className="text-xs text-slate-700 truncate">
-          {typeof study.verifier === 'string' 
-            ? study.verifier 
-            : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}
+          {typeof study.verifier === 'string' ? study.verifier : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}
         </div>
       </td>
+    )}
 
-      {/* 21. VERIFIED DATE/TIME */}
- <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-  <div className="text-[11px] font-medium text-slate-800">
-    {(() => {
-      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
-      if (!ts) return '-';
-      try {
-        const d = new Date(ts);
-        return d.toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
-      } catch {
-        return '-';
-      }
-    })()}
-  </div>
-  <div className="text-[10px] text-slate-500">
-    {(() => {
-      const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt;
-      if (!ts) return '-';
-      try {
-        const d = new Date(ts);
-        return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' });
-      } catch {
-        return '-';
-      }
-    })()}
-  </div>
-</td>
+    {/* 21. VERIFIED DATE/TIME */}
+    {isColumnVisible('caseStatus') && (
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+        <div className="text-[11px] font-medium text-slate-800">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+        <div className="text-[10px] text-slate-500">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+      </td>
+    )}
 
-            
-      {/* 22. ACTIONS - ALL ADMIN OPTIONS */}
-     <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: `${getColumnWidth('actions')}px` }}>
-  <div className="flex items-center justify-center gap-1.5 flex-wrap">
-    {/* ADMIN/ASSIGNOR GETS ALL OPTIONS */}
+    {/* 22. ACTIONS */}
+    {isColumnVisible('actions') && (
+      <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: `${getColumnWidth('actions')}px` }}>
+        {/* ADMIN/ASSIGNOR GETS ALL OPTIONS */}
     {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor') || userAccountRoles.includes('super_admin')) && (
       <>
         {/* Download Button */}
@@ -1494,31 +1336,15 @@ const handleOHIFReporting = async () => {
           <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
         </button>
       </>
-    )}    
-  </div>
-</td>
+    )}  
+      </td>
+    )}
 
-      {showDownloadOptions && (
-        <DownloadOptions
-          study={study}
-          isOpen={showDownloadOptions}
-          onClose={() => setShowDownloadOptions(false)}
-          position={downloadPosition}
-        />
-      )}
-
-      {showAssignmentModal && (
-        <AssignmentModal
-          study={study}
-          availableAssignees={availableAssignees}
-          onSubmit={handleAssignmentSubmit}
-          onClose={handleCloseAssignmentModal}
-          position={assignmentModalPosition}
-          searchTerm={assignInputValue}
-        />
-      )}
-    </tr>
-  );
+    {/* modals/portals */}
+    {showDownloadOptions && <DownloadOptions study={study} isOpen={showDownloadOptions} onClose={() => setShowDownloadOptions(false)} position={downloadPosition} />}
+    {showAssignmentModal && <AssignmentModal study={study} availableAssignees={availableAssignees} onSubmit={handleAssignmentSubmit} onClose={handleCloseAssignmentModal} position={assignmentModalPosition} searchTerm={assignInputValue} />}
+  </tr>
+);
 };
 
 const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, displayedRecords, loading }) => {
@@ -1636,9 +1462,15 @@ const WorklistTable = ({
   },
   onPageChange,
   onRecordsPerPageChange,
-  headerColor
+  headerColor,
+  columnConfig = null
 }) => {
-  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+   const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+
+  const isColumnVisible = useCallback((key) => {
+    if (!columnConfig) return true;
+    return columnConfig[key]?.visible !== false;
+  }, [columnConfig]);
 
   // ✅ ADD COLUMN RESIZING HOOK
   const { columnWidths, getColumnWidth, handleColumnResize, resetColumnWidths } = useColumnResizing(
@@ -1659,6 +1491,11 @@ const WorklistTable = ({
 
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
   const[printModal, setPrintModal] = useState({ show: false, report: false });
+
+  // const isColumnVisible = useCallback((key) => {
+  //   if (!columnConfig) return true;
+  //   return columnConfig[key]?.visible !== false;
+  // }, [columnConfig]);
 
 
   useEffect(() => {
@@ -1863,10 +1700,10 @@ const handleClosePrintModal = useCallback(() => {
             minWidth: 'max-content'
           }}
         >
-          {/* ✅ DYNAMIC COLORED HEADER WITH RESIZABLE COLUMNS - ALL COLUMNS */}
-          <thead className="sticky top-0 z-10">
+                    <thead className="sticky top-0 z-10">
             <tr className={`text-xs font-bold bg-gradient-to-r ${headerColor?.gradient || 'from-gray-800 via-gray-900 to-black'} ${headerColor?.textColor || 'text-white'} shadow-lg`}>
-              {/* 1. SELECTION */}
+              
+              {/* 1. SELECTION - always visible */}
               <ResizableTableHeader
                 columnId="selection"
                 label=""
@@ -1882,18 +1719,20 @@ const handleClosePrintModal = useCallback(() => {
                   className="w-4 h-4 rounded border-white/30"
                 />
               </ResizableTableHeader>
-              
+
               {/* 2. BHARAT PACS ID */}
-              <ResizableTableHeader
-                columnId="bharatPacsId"
-                label={<>BHARAT<br/>PACS ID</>}
-                width={getColumnWidth('bharatPacsId')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
-              />
-              
-              {/* 3. ORGANIZATION - Only for super_admin */}
+              {isColumnVisible('bharatPacsId') && (
+                <ResizableTableHeader
+                  columnId="bharatPacsId"
+                  label={<>BHARAT<br/>PACS ID</>}
+                  width={getColumnWidth('bharatPacsId')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth}
+                />
+              )}
+
+              {/* 3. ORGANIZATION - super_admin only */}
               {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
                 <ResizableTableHeader
                   columnId="organization"
@@ -1904,27 +1743,30 @@ const handleClosePrintModal = useCallback(() => {
                   maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth}
                 />
               )}
-              
+
               {/* 4. CENTER NAME */}
-              <ResizableTableHeader
-                columnId="centerName"
-                label={<>CENTER<br/>NAME</>}
-                width={getColumnWidth('centerName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
-              />
+              {isColumnVisible('centerName') && (
+                <ResizableTableHeader
+                  columnId="centerName"
+                  label={<>CENTER<br/>NAME</>}
+                  width={getColumnWidth('centerName')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+                />
+              )}
+              {isColumnVisible('centerName') && (
+                <ResizableTableHeader
+                  columnId="centerName"
+                  label={<>Location<br/>NAME</>}
+                  width={getColumnWidth('centerName')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
+                />
+              )}
 
-              <ResizableTableHeader
-                columnId="centerName"
-                label={<>Location<br/>NAME</>}
-                width={getColumnWidth('centerName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth}
-              />
-
-              {/* 5. TIMELINE */}
+              {/* 5. TIMELINE - always visible */}
               <ResizableTableHeader
                 columnId="timeline"
                 label=""
@@ -1937,39 +1779,45 @@ const handleClosePrintModal = useCallback(() => {
               </ResizableTableHeader>
 
               {/* 6. PATIENT NAME / UHID */}
-              <ResizableTableHeader
-                columnId="patientName"
-                label={<>PT NAME /<br/>UHID</>}
-                width={getColumnWidth('patientName')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth}
-              />
+              {isColumnVisible('patientName') && (
+                <ResizableTableHeader
+                  columnId="patientName"
+                  label={<>PT NAME /<br/>UHID</>}
+                  width={getColumnWidth('patientName')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth}
+                />
+              )}
 
               {/* 7. AGE/SEX */}
-              <ResizableTableHeader
-                columnId="ageGender"
-                label={<>AGE/<br/>SEX</>}
-                width={getColumnWidth('ageGender')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth}
-              />
+              {isColumnVisible('ageGender') && (
+                <ResizableTableHeader
+                  columnId="ageGender"
+                  label={<>AGE/<br/>SEX</>}
+                  width={getColumnWidth('ageGender')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth}
+                />
+              )}
 
               {/* 8. MODALITY */}
-              <ResizableTableHeader
-                columnId="modality"
-                label="MODALITY"
-                width={getColumnWidth('modality')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth}
-              />
+              {isColumnVisible('modality') && (
+                <ResizableTableHeader
+                  columnId="modality"
+                  label="MODALITY"
+                  width={getColumnWidth('modality')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth}
+                />
+              )}
 
-              {/* 9. VIEW */}
+              {/* 9. VIEW - always visible */}
               <ResizableTableHeader
                 columnId="viewOnly"
-                label=""
+                label="VIEW"
                 width={getColumnWidth('viewOnly')}
                 onResize={handleColumnResize}
                 minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
@@ -1978,158 +1826,185 @@ const handleClosePrintModal = useCallback(() => {
                 <Eye className="w-4 h-4 mx-auto" />
               </ResizableTableHeader>
 
+              {/* Reporting - always visible */}
               <ResizableTableHeader
                 columnId="Reporting"
-                label=""
+                label="Reporting"
                 width={getColumnWidth('viewOnly')}
                 onResize={handleColumnResize}
                 minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth}
                 maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}
               >
-                <div className="flex items-center justify-center h-full w-full">
-                  <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-                </div>
+                <Monitor className="w-4 h-4 mx-auto text-emerald-400" />
               </ResizableTableHeader>
 
-
               {/* 10. SERIES/IMAGES */}
-              <ResizableTableHeader
-                columnId="studySeriesImages"
-                label={<>SERIES/<br/>IMAGES</>}
-                width={getColumnWidth('studySeriesImages')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth}
-              />
+              {isColumnVisible('seriesCount') && (
+                <ResizableTableHeader
+                  columnId="studySeriesImages"
+                  label={<>SERIES/<br/>IMAGES</>}
+                  width={getColumnWidth('studySeriesImages')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth}
+                />
+              )}
 
               {/* 11. PT ID */}
-              <ResizableTableHeader
-                columnId="patientId"
-                label="PT ID"
-                width={getColumnWidth('patientId')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth}
-              />
+              {isColumnVisible('patientId') && (
+                <ResizableTableHeader
+                  columnId="patientId"
+                  label="PT ID"
+                  width={getColumnWidth('patientId')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth}
+                />
+              )}
 
               {/* 12. REFERRAL DOCTOR */}
-              <ResizableTableHeader
-                columnId="referralDoctor"
-                label={<>REFERRAL<br/>DOCTOR</>}
-                width={getColumnWidth('referralDoctor')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth}
-              />
+              {isColumnVisible('referralDoctor') && (
+                <ResizableTableHeader
+                  columnId="referralDoctor"
+                  label={<>REFERRAL<br/>DOCTOR</>}
+                  width={getColumnWidth('referralDoctor')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth}
+                />
+              )}
 
               {/* 13. CLINICAL HISTORY */}
-              <ResizableTableHeader
-                columnId="clinicalHistory"
-                label={<>CLINICAL<br/>HISTORY</>}
-                width={getColumnWidth('clinicalHistory')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth}
-              />
+              {isColumnVisible('clinicalHistory') && (
+                <ResizableTableHeader
+                  columnId="clinicalHistory"
+                  label={<>CLINICAL<br/>HISTORY</>}
+                  width={getColumnWidth('clinicalHistory')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth}
+                />
+              )}
 
               {/* 14. STUDY DATE/TIME */}
-              <ResizableTableHeader
-                columnId="studyDateTime"
-                label={<>STUDY<br/>DATE/TIME</>}
-                width={getColumnWidth('studyDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth}
-              />
+              {isColumnVisible('studyTime') && (
+                <ResizableTableHeader
+                  columnId="studyDateTime"
+                  label={<>STUDY<br/>DATE/TIME</>}
+                  width={getColumnWidth('studyDateTime')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth}
+                />
+              )}
 
               {/* 15. UPLOAD DATE/TIME */}
-              <ResizableTableHeader
-                columnId="uploadDateTime"
-                label={<>UPLOAD<br/>DATE/TIME</>}
-                width={getColumnWidth('uploadDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth}
-              />
+              {isColumnVisible('uploadTime') && (
+                <ResizableTableHeader
+                  columnId="uploadDateTime"
+                  label={<>UPLOAD<br/>DATE/TIME</>}
+                  width={getColumnWidth('uploadDateTime')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth}
+                />
+              )}
 
               {/* 16. RADIOLOGIST */}
-              <ResizableTableHeader
-                columnId="assignedRadiologist"
-                label="RADIOLOGIST"
-                width={getColumnWidth('assignedRadiologist')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth}
-              />
+              {isColumnVisible('radiologist') && (
+                <ResizableTableHeader
+                  columnId="assignedRadiologist"
+                  label="RADIOLOGIST"
+                  width={getColumnWidth('assignedRadiologist')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth}
+                />
+              )}
 
               {/* 17. LOCK/UNLOCK */}
-              <ResizableTableHeader
-                columnId="studyLock"
-                label={<>LOCK/<br/>UNLOCK</>}
-                width={getColumnWidth('studyLock')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth}
-              />
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="studyLock"
+                  label={<>LOCK/<br/>UNLOCK</>}
+                  width={getColumnWidth('studyLock')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth}
+                />
+              )}
 
               {/* 18. STATUS */}
-              <ResizableTableHeader
-                columnId="status"
-                label="STATUS"
-                width={getColumnWidth('status')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth}
-              />
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="status"
+                  label="STATUS"
+                  width={getColumnWidth('status')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth}
+                />
+              )}
 
               {/* 19. PRINT REPORT */}
-              <ResizableTableHeader
-                columnId="printCount"
-                label={<>PRINT<br/>REPORT</>}
-                width={getColumnWidth('printCount')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.maxWidth}
-              />
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="printCount"
+                  label={<>PRINT<br/>REPORT</>}
+                  width={getColumnWidth('printCount')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.PRINT_COUNT.maxWidth}
+                />
+              )}
 
-               <ResizableTableHeader
-              columnId="rejectionReason"
-              label="Rejection Reason"
-              width={getColumnWidth('rejectionReason')}
-              minWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.minWidth}
-              maxWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.maxWidth}
-              onResize={handleColumnResize}
-            />
+              {/* REJECTION REASON */}
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="rejectionReason"
+                  label="Reverted Reason"
+                  width={getColumnWidth('rejectionReason')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.REJECTION_REASON.maxWidth}
+                />
+              )}
 
               {/* 20. VERIFIED BY */}
-              <ResizableTableHeader
-                columnId="assignedVerifier"
-                label={<>VERIFIED<br/>BY</>}
-                width={getColumnWidth('assignedVerifier')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.maxWidth}
-              />
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="assignedVerifier"
+                  label={<>FINALISED<br/>BY</>}
+                  width={getColumnWidth('assignedVerifier')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_VERIFIER.maxWidth}
+                />
+              )}
 
               {/* 21. VERIFIED DATE/TIME */}
-              <ResizableTableHeader
-                columnId="verifiedDateTime"
-                label={<>VERIFIED<br/>DATE/TIME</>}
-                width={getColumnWidth('verifiedDateTime')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.maxWidth}
-              />
+              {isColumnVisible('caseStatus') && (
+                <ResizableTableHeader
+                  columnId="verifiedDateTime"
+                  label={<>FINALISED<br/>DATE/TIME</>}
+                  width={getColumnWidth('verifiedDateTime')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.VERIFIED_DATE_TIME.maxWidth}
+                />
+              )}
 
               {/* 22. ACTIONS */}
-              <ResizableTableHeader
-                columnId="actions"
-                label="ACTIONS"
-                width={getColumnWidth('actions')}
-                onResize={handleColumnResize}
-                minWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.minWidth}
-                maxWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.maxWidth}
-              />
+              {isColumnVisible('actions') && (
+                <ResizableTableHeader
+                  columnId="actions"
+                  label="ACTIONS"
+                  width={getColumnWidth('actions')}
+                  onResize={handleColumnResize}
+                  minWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.minWidth}
+                  maxWidth={UNIFIED_WORKLIST_COLUMNS.ACTIONS.maxWidth}
+                />
+              )}
             </tr>
           </thead>
 <tbody>
@@ -2158,6 +2033,7 @@ const handleClosePrintModal = useCallback(() => {
       userRole={userRole}
       userRoles={userAccountRoles}
       getColumnWidth={getColumnWidth}
+      isColumnVisible={isColumnVisible} 
     />
   ))}
 </tbody>

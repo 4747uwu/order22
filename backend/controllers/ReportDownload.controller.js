@@ -9,7 +9,7 @@ import mongoose from 'mongoose';
 import { updateWorkflowStatus } from '../utils/workflowStatusManager.js';
 
 // const DOCX_SERVICE_URL = 'http://165.232.189.64:8777/api/Document/generate';
-const DOCX_SERVICE_URL = 'http://143.110.184.1:8080/api/Document/generate';
+const DOCX_SERVICE_URL = 'http://206.189.133.52:8081/api/Document/generate';
 const httpsAgent = new https.Agent({
     rejectUnauthorized: false
 });

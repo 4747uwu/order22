@@ -420,6 +420,7 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
 
     // ⚡ PRIORITY FILTERING
        // ⚡ PRIORITY FILTERING - Single or Multiple
+    // AFTER:
     if (req.query.priorities) {
         let priorityList = [];
         if (Array.isArray(req.query.priorities)) {
@@ -429,13 +430,26 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
         }
         console.log('⚡ [Priority Multi-Filter]:', priorityList);
         if (priorityList.length === 1) {
-            queryFilters['assignment.priority'] = priorityList[0];
+            const p = priorityList[0];
+            queryFilters.$or = [
+                ...(queryFilters.$or || []),
+                { priority: p },
+                { 'assignment.priority': p }
+            ];
         } else if (priorityList.length > 1) {
-            queryFilters['assignment.priority'] = { $in: priorityList };
+            queryFilters.$or = [
+                ...(queryFilters.$or || []),
+                { priority: { $in: priorityList } },
+                { 'assignment.priority': { $in: priorityList } }
+            ];
         }
     } else if (req.query.priority && req.query.priority !== 'all') {
-        // Legacy single-select fallback
-        queryFilters['assignment.priority'] = req.query.priority;
+        const p = req.query.priority;
+        queryFilters.$or = [
+            ...(queryFilters.$or || []),
+            { priority: p },
+            { 'assignment.priority': p }
+        ];
     }
 
     // 🔢 STUDY INSTANCE UIDS
@@ -1341,7 +1355,6 @@ export const getAllStudiesForAdmin = async (req, res) => {
 };
 
 
-// backend/controllers/admin.controller.js (or create new file if needed)
 
 // ✅ GET ALL LABS IN ORGANIZATION
 export const getOrganizationLabs = async (req, res) => {

@@ -260,9 +260,9 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     description: 'Reason for report rejection',
     category: 'workflow',
     tables: ['assignor', 'radiologist', 'verifier', 'lab_staff'],
-    defaultWidth: 300,
-    minWidth: 200,
-    maxWidth: 500
+    defaultWidth: 250,
+    minWidth: 150,
+    maxWidth: 300
   },
 
   // 23. VERIFIED BY
