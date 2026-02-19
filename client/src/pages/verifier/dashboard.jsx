@@ -513,6 +513,7 @@ const VerifierDashboard = () => {
               onRecordsPerPageChange={handleRecordsPerPageChange}
               // ✅ MULTI-ROLE PROPS
               visibleColumns={visibleColumns}
+              columnConfig={columnConfig}
               userRole={currentUser?.primaryRole || currentUser?.role || 'verifier'}
               userRoles={userRoles}
             />

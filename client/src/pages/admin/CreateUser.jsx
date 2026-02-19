@@ -697,6 +697,18 @@ const isRadiologistSelected = () => {
                             <Sparkles className="w-5 h-5 text-blue-500" />
                             <h1 className="text-xl font-bold text-gray-900">{getPageTitle()}</h1>
                         </div>
+
+                        {/* ✅ CREATE LAB BUTTON */}
+                        {currentUser?.role === 'admin' && (
+                            <button
+                                type="button"
+                                onClick={() => navigate('/admin/create-lab')}
+                                className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors shadow-sm"
+                            >
+                                <Building2 className="w-4 h-4" />
+                                <span className="font-medium text-sm">Create Lab</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

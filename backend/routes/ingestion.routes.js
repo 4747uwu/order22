@@ -483,6 +483,7 @@ async function findOrCreatePatientFromTags(tags, organization) {
       patientNameRaw: nameInfo.formattedForDisplay,
       firstName: nameInfo.firstName,
       lastName: nameInfo.lastName,
+      ageString: tags.PatientAge || 'N/A',  
       computed: {
         fullName: nameInfo.formattedForDisplay,
         namePrefix: nameInfo.namePrefix,
@@ -757,6 +758,7 @@ async function processStableStudy(job) {
         tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
         tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
         tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
+        tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge; 
         tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription;
         tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;
         tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;
@@ -936,6 +938,7 @@ async function processStableStudy(job) {
       patientInfo: {
         patientID: patientRecord.patientID,
         patientName: patientRecord.patientNameRaw,
+        age: tags.PatientAge || patientRecord.age || 'N/A',  // ✅ CHANGED: Add age from DICOM tag
         gender: patientRecord.gender || '',
         dateOfBirth: tags.PatientBirthDate || ''
       },

@@ -3,7 +3,7 @@ import { Upload, FileText, Download, Trash2, Eye, File, Image, FileSpreadsheet, 
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-export const StudyDocumentsManager = ({ studyId, isOpen, onClose }) => {
+export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = null }) => {
     const [documents, setDocuments] = useState([]);
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -197,13 +197,32 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose }) => {
     return (
         <>
             {/* Main Modal */}
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
+            <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[10000]">
                 <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-                    {/* Header */}
+                    {/* Header - NOW WITH PATIENT INFO */}
                     <div className="px-6 py-4 border-b bg-gradient-to-r from-teal-600 to-cyan-600 text-white flex items-center justify-between">
                         <div>
                             <h2 className="text-lg font-bold">Study Documents</h2>
                             <p className="text-sm text-teal-100">Upload and manage study attachments</p>
+                            
+                            {/* ✅ PATIENT INFO SECTION */}
+                            {(studyMeta?.patientName || studyMeta?.patientId) && (
+                                <div className="mt-2 flex items-center gap-4 text-sm text-teal-50 border-t border-teal-400 pt-2">
+                                    <span className="font-semibold">
+                                        Patient: 
+                                        <span className="ml-1 text-white font-bold uppercase">
+                                            {studyMeta.patientName || 'Unknown'}
+                                        </span>
+                                    </span>
+                                    <span className="text-teal-200">•</span>
+                                    <span className="font-semibold">
+                                        ID: 
+                                        <span className="ml-1 text-white font-mono font-bold">
+                                            {studyMeta.patientId || 'N/A'}
+                                        </span>
+                                    </span>
+                                </div>
+                            )}
                         </div>
                         <button
                             onClick={onClose}
@@ -328,7 +347,7 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose }) => {
 
             {/* Preview Modal */}
             {previewDocument && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[10001]">
+                <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[10001]">
                     <div className="bg-white rounded-lg shadow-2xl w-full max-w-5xl max-h-[95vh] overflow-hidden flex flex-col">
                         <div className="px-6 py-4 border-b flex items-center justify-between bg-gray-50">
                             <div>

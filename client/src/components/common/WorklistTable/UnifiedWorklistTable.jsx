@@ -577,26 +577,54 @@ const UnifiedStudyRow = ({
             } transition-all duration-200 border-b border-slate-100`;
 
     const handleAssignInputFocus = (e) => {
-        if (isLocked) {
-            toast.error(`Locked by ${study.studyLock?.lockedByName}`, { icon: '🔒' });
-            e.target.blur();
-            return;
-        }
+    if (isLocked) {
+      toast.error(`Locked by ${study.studyLock?.lockedByName}`, { icon: '🔒' });
+      e.target.blur();
+      return;
+    }
 
-        setInputFocused(true);
-        setAssignInputValue('');
+    setInputFocused(true);
+    setAssignInputValue('');
+    
+    if (assignInputRef.current) {
+      const rect = assignInputRef.current.getBoundingClientRect();
+      const modalHeight = 380; // approximate modal height
+      const modalWidth = 450;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
 
-        if (assignInputRef.current) {
-            const rect = assignInputRef.current.getBoundingClientRect();
-            setAssignmentModalPosition({
-                top: rect.bottom + 8,
-                left: Math.max(20, Math.min(rect.left, window.innerWidth - 470)),
-                width: 450,
-                zIndex: 99999
-            });
-            setShowAssignmentModal(true);
-        }
-    };
+      // ✅ CHECK IF ENOUGH SPACE BELOW — if not, flip above
+      const spaceBelow = viewportHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      let top;
+      if (spaceBelow >= modalHeight) {
+        // enough space below — open downward
+        top = rect.bottom + 8;
+      } else if (spaceAbove >= modalHeight) {
+        // not enough below but enough above — open upward
+        top = rect.top - modalHeight - 120;
+      } else {
+        // neither — center vertically in viewport
+        top = Math.max(8, (viewportHeight - modalHeight) / 1.5);
+      }
+
+      // ✅ HORIZONTAL: prevent going off right edge
+      let left = rect.left;
+      if (left + modalWidth > viewportWidth - 20) {
+        left = viewportWidth - modalWidth - 20;
+      }
+      if (left < 20) left = 20;
+
+      setAssignmentModalPosition({
+        top,
+        left,
+        width: modalWidth,
+        zIndex: 99999
+      });
+      setShowAssignmentModal(true);
+    }
+  };
 
     const handleCloseAssignmentModal = () => {
         setShowAssignmentModal(false);
@@ -622,11 +650,37 @@ const UnifiedStudyRow = ({
         }
     };
 
-    const handleViewOnlyClick = (e) => {
-        e.stopPropagation();
-        // ✅ Open OHIF Viewer in new tab
-        window.open(`/doctor/viewer/${study._id}`, '_blank');
-    };
+      const handleViewOnlyClick = (e) => {
+  e.stopPropagation();
+
+  try {
+    const src = study || {};
+    const studyInstanceUID =
+      src.studyInstanceUID ||
+      src.studyInstanceUIDs ||
+      src.StudyInstanceUID ||
+      src.studyInstanceUid ||
+      src.orthancStudyID ||
+      src.studyId ||
+      src._id ||
+      '';
+
+    let studyUIDs = '';
+    if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
+      studyUIDs = studyInstanceUID.join(',');
+    } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
+      studyUIDs = studyInstanceUID.trim();
+    } else {
+      studyUIDs = String(src._id || '');
+    }
+
+    const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+    window.open(ohifUrl, '_blank');
+  } catch (error) {
+    console.error('Error opening OHIF viewer:', error);
+    window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
+  }
+};
 
     const handleOHIFReporting = async () => {
         setRestoringStudy(true);
@@ -889,7 +943,7 @@ const UnifiedStudyRow = ({
             {isColumnVisible('viewOnly') && (
                 <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
                     <button
-                        onClick={handleOHIFReporting}
+                        onClick={handleViewOnlyClick}
                         className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110"
                         title="View Images Only (No Locking)"
                     >
@@ -972,7 +1026,7 @@ const UnifiedStudyRow = ({
                         )}
 
                         <button
-                            onClick={() => onShowDocuments?.(study._id)}
+                            onClick={() => onShowDocuments?.(study)}
                             className={`p-2 rounded-lg transition-all group hover:scale-110 relative ${hasAttachments ? 'bg-gray-200' : 'hover:bg-slate-100'
                                 }`}
                             title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}
@@ -1187,13 +1241,9 @@ const UnifiedStudyRow = ({
             {/* 21. VERIFIED DATE/TIME */}
             {isColumnVisible('verifiedDateTime') && (
                 <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-                    <div className="text-[11px] font-medium text-slate-800">
-                        {formatDate(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-                    </div>
-                    <div className="text-[10px] text-slate-500">
-                        {formatTime(study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt)}
-                    </div>
-                </td>
+                <div className="text-[11px] font-medium text-slate-800">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+                <div className="text-[10px] text-slate-500">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+            </td>
             )}
 
             {/* 22. ACTIONS */}
@@ -1480,19 +1530,22 @@ const UnifiedWorklistTable = ({
         visibleColumns
     );
 
-    // ✅ COLUMN VISIBILITY CHECKER
+    
     const isColumnVisible = useCallback((columnId) => {
-        // Layer 1: Check backend visibleColumns
-        const isInBackend = visibleColumns.includes(columnId);
-
-        // Layer 2: Check frontend columnConfig (if provided)
-        if (columnConfig && columnConfig[columnId]) {
-            return isInBackend && columnConfig[columnId].visible;
+        // ✅ PRIORITY 1: columnConfig from ColumnConfigurator (frontend toggle)
+        if (columnConfig && columnConfig[columnId] !== undefined) {
+            return columnConfig[columnId].visible !== false;
         }
 
-        // Default: show if in backend
-        return isInBackend;
+        // ✅ PRIORITY 2: visibleColumns from backend user profile
+        if (visibleColumns && visibleColumns.length > 0) {
+            return visibleColumns.includes(columnId);
+        }
+
+        // ✅ PRIORITY 3: Default — show everything
+        return true;
     }, [visibleColumns, columnConfig]);
+
 
 
     //  const isColumnVisible = useCallback((columnId) => {
@@ -1553,8 +1606,15 @@ const UnifiedWorklistTable = ({
         setPatientEditModal({ show: false, study: null });
     }, [onUpdateStudyDetails]);
 
-    const handleShowDocuments = useCallback((studyId) => {
-        setDocumentsModal({ show: true, studyId });
+    const handleShowDocuments = useCallback((study) => {
+      setDocumentsModal({
+        show: true,
+        studyId: study?._id || null,
+        studyMeta: {
+          patientId:   study?.patientId   || study?.patientInfo?.patientID   || study?.patient?.PatientID   || '',
+          patientName: study?.patientName || study?.patientInfo?.patientName || study?.patient?.PatientName || ''
+        }
+      });
     }, []);
 
     const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
@@ -1678,7 +1738,7 @@ const UnifiedWorklistTable = ({
                             {isColumnVisible('location') && (
                                 <ResizableTableHeader
                                     columnId="centerName"
-                                    label="CENTER NAME"
+                                    label="LOCATION NAME"
                                     width={getColumnWidth('location')}
                                     onResize={handleColumnResize}
                                     minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth}
@@ -1979,10 +2039,12 @@ const UnifiedWorklistTable = ({
             {documentsModal.show && (
                 <StudyDocumentsManager
                     studyId={documentsModal.studyId}
+                    studyMeta={documentsModal.studyMeta}
                     isOpen={documentsModal.show}
-                    onClose={() => setDocumentsModal({ show: false, studyId: null })}
-                />
-            )}
+                    onClose={() => setDocumentsModal({ show: false, studyId: null, studyMeta: null })}
+                  />
+                
+                )}
             {printModal.show && (
                 <PrintModal
                     report={printModal.report}

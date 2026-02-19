@@ -107,8 +107,11 @@ export const updateStudyDetails = async (req, res) => {
         // ✅ Only touch workflow if clinical history string actually changed
         if (clinicalHistory !== undefined) {
             const DEFAULT_PLACEHOLDERS = ['no history provided', 'no history provided...', ''];
+            const existingHistory = study.clinicalHistory?.clinicalHistory || '';
+            const incomingHistory = clinicalHistory || '';
             const existingNormalized = existingHistory.trim().toLowerCase();
             const incomingNormalized = incomingHistory.trim().toLowerCase();
+
             // Treat both being "empty/placeholder" as no change
             const bothAreEmpty = DEFAULT_PLACEHOLDERS.includes(existingNormalized) && DEFAULT_PLACEHOLDERS.includes(incomingNormalized);
             const isHistoryChanging = !bothAreEmpty && existingNormalized !== incomingNormalized;

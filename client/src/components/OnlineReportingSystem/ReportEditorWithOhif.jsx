@@ -331,14 +331,13 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
       darkMode ? 'bg-gray-900' : 'bg-gray-100'
     } ${isFullscreen ? 'fixed inset-0 z-50' : ''}`}>
       
-      {/* ✅ SUPER COMPACT: Single consolidated toolbar */}
-      <div className={`flex-shrink-0 border-b ${
+      {/* ✅ TOOLBAR: Sticky at top with gap below */}
+      <div className={`sticky top-0 z-40 border-b ${
         darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'
       }`}>
         
-        {/* ✅ ULTRA COMPACT: All tools in ONE row */}
+        {/* Ultra compact toolbar */}
         <div className="px-2 py-1 flex flex-wrap items-center gap-1 text-[10px]">
-          
           {/* Font Controls */}
           <select
             value={fontFamily}
@@ -577,7 +576,12 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
         </div>
       </div>
 
-      {/* ✅ SCROLLABLE EDITOR ONLY */}
+      {/* ✅ SPACER: Always maintains gap, even with sticky toolbar */}
+      <div className="flex-shrink-0 h-4" style={{ 
+        background: darkMode ? '#2d2d30' : '#e1e1e1'
+      }}></div>
+
+      {/* ✅ SCROLLABLE CONTENT: Only this scrolls, toolbar + spacer stay fixed */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ 
         background: darkMode ? '#2d2d30' : '#e1e1e1',
       }}>
@@ -604,16 +608,7 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
                 ref={contentEditableRef}
                 contentEditable
                 className="report-editor ms-word-page"
-                style={{ 
-                  lineHeight: lineSpacing,
-                  paddingTop: `${margins.top}cm`,
-                  paddingBottom: `${margins.bottom}cm`,
-                  paddingLeft: `${margins.left}cm`,
-                  paddingRight: `${margins.right}cm`,
-                }}
                 onInput={handleContentChange}
-                onMouseUp={updateToolStates}
-                onKeyUp={updateToolStates}
                 suppressContentEditableWarning={true}
               />
             )}
@@ -640,7 +635,7 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
     /* MS Word Page Style - RESPONSIVE WIDTH */
     .ms-word-page {
       width: ${pageWidth};
-      max-width: 100%; /* ✅ Prevent overflow */
+      max-width: 100%;
       min-height: 29.7cm;
       margin: 0 auto 20px auto;
       background: white;
@@ -651,6 +646,8 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
       outline: none;
       box-sizing: border-box;
       position: relative;
+      /* ✅ APPLY MARGINS */
+      padding: ${margins.top}cm ${margins.right}cm ${margins.bottom}cm ${margins.left}cm;
     }
 
     .ms-word-page:focus {
@@ -685,6 +682,7 @@ const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }
       width: 100%;
       max-width: ${pageWidth};
       min-height: 29.7cm;
+      /* ✅ APPLY MARGINS */
       padding: ${margins.top}cm ${margins.right}cm ${margins.bottom}cm ${margins.left}cm;
       margin: 0 auto 20px auto;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);

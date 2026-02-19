@@ -371,19 +371,19 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Gender <span className="text-red-500">*</span>
+                  Gender
                 </label>
                 <select
                   value={formData.patientGender}
                   onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
                   className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
                 >
                   <option value="">SELECT GENDER</option>
                   <option value="M">MALE</option>
                   <option value="F">FEMALE</option>
                   <option value="O">OTHER</option>
                 </select>
+                                  
               </div>
             </div>
           </div>
@@ -410,15 +410,15 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Accession Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.accessionNumber}
-                  onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  placeholder="ENTER ACCESSION NUMBER"
-                />
+  Accession Number
+</label>
+<input
+  type="text"
+  value={formData.accessionNumber}
+  onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
+  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
+  placeholder="ENTER ACCESSION NUMBER"
+/>
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
@@ -637,6 +637,7 @@ const StudyRow = ({
   } transition-all duration-200 border-b border-slate-100`;
 
 
+  // ...existing code...
   const handleAssignInputFocus = (e) => {
     if (isLocked) {
       toast.error(`Locked by ${study.studyLock?.lockedByName}`, { icon: '🔒' });
@@ -649,15 +650,44 @@ const StudyRow = ({
     
     if (assignInputRef.current) {
       const rect = assignInputRef.current.getBoundingClientRect();
+      const modalHeight = 380; // approximate modal height
+      const modalWidth = 450;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+
+      // ✅ CHECK IF ENOUGH SPACE BELOW — if not, flip above
+      const spaceBelow = viewportHeight - rect.bottom;
+      const spaceAbove = rect.top;
+
+      let top;
+      if (spaceBelow >= modalHeight) {
+        // enough space below — open downward
+        top = rect.bottom + 8;
+      } else if (spaceAbove >= modalHeight) {
+        // not enough below but enough above — open upward
+        top = rect.top - modalHeight - 120;
+      } else {
+        // neither — center vertically in viewport
+        top = Math.max(8, (viewportHeight - modalHeight) / 1.5);
+      }
+
+      // ✅ HORIZONTAL: prevent going off right edge
+      let left = rect.left;
+      if (left + modalWidth > viewportWidth - 20) {
+        left = viewportWidth - modalWidth - 20;
+      }
+      if (left < 20) left = 20;
+
       setAssignmentModalPosition({
-        top: rect.bottom + 8,
-        left: Math.max(20, Math.min(rect.left, window.innerWidth - 470)),
-        width: 450,
+        top,
+        left,
+        width: modalWidth,
         zIndex: 99999
       });
       setShowAssignmentModal(true);
     }
   };
+// ...existing code...
 
   const handleCloseAssignmentModal = () => {
     setShowAssignmentModal(false);
@@ -725,42 +755,37 @@ const StudyRow = ({
   };
 
   // ✅ UPDATED: View Only with Restore Check
-  const handleViewOnlyClick = async (e) => {
-    e.stopPropagation();
-    
-    setRestoringStudy(true);
-    
-    try {
-      // ✅ Use navigateWithRestore to open in new tab
-      await navigateWithRestore(
-        // Custom navigate function that opens in new tab
-        (path) => window.open(path, '_blank'),
-        `/doctor/viewer/${study._id}`,
-        study,
-        {
-          daysThreshold: 1,
-          onRestoreStart: (study) => {
-            console.log(`🔄 [View Only] Restoring study: ${study.bharatPacsId}`);
-            toast.loading(`Restoring study from backup...`, { id: `restore-${study._id}` });
-          },
-          onRestoreComplete: (data) => {
-            console.log(`✅ [View Only] Restore completed:`, data);
-            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-${study._id}` });
-          },
-          onRestoreError: (error) => {
-            console.error(`❌ [View Only] Restore failed:`, error);
-            toast.error(`Restore failed: ${error}`, { id: `restore-${study._id}` });
-          }
-        }
-      );
-    } catch (error) {
-      console.error('Error in handleViewOnlyClick:', error);
-      // Still open the viewer even if restore fails
-      window.open(`/doctor/viewer/${study._id}`, '_blank');
-    } finally {
-      setRestoringStudy(false);
+  const handleViewOnlyClick = (e) => {
+  e.stopPropagation();
+
+  try {
+    const src = study || {};
+    const studyInstanceUID =
+      src.studyInstanceUID ||
+      src.studyInstanceUIDs ||
+      src.StudyInstanceUID ||
+      src.studyInstanceUid ||
+      src.orthancStudyID ||
+      src.studyId ||
+      src._id ||
+      '';
+
+    let studyUIDs = '';
+    if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
+      studyUIDs = studyInstanceUID.join(',');
+    } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
+      studyUIDs = studyInstanceUID.trim();
+    } else {
+      studyUIDs = String(src._id || '');
     }
-  };
+
+    const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+    window.open(ohifUrl, '_blank');
+  } catch (error) {
+    console.error('Error opening OHIF viewer:', error);
+    window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
+  }
+};
 
   // ✅ UPDATED: OHIF Reporting with Restore Check
 // ✅ UPDATED: OHIF Reporting with Restore Check + Role-based Lock Logic
@@ -1042,7 +1067,7 @@ const handleOHIFReporting = async () => {
           <button onClick={() => onEditPatient?.(study)} className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors">
             <Edit className="w-4 h-4" />Edit
           </button>
-          <button onClick={() => onShowDocuments?.(study._id)} className={`p-2 rounded-lg transition-all hover:scale-105 relative ${hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}>
+          <button onClick={() => onShowDocuments?.(study)} className={`p-2 rounded-lg transition-all hover:scale-105 relative ${hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}>
             <Paperclip className={`w-4 h-4 ${hasAttachments ? 'text-slate-900' : 'text-slate-400'}`} />
             {hasAttachments && study.attachments.length > 0 && <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">{study.attachments.length}</span>}
           </button>
@@ -1647,9 +1672,18 @@ const handleClosePrintModal = useCallback(() => {
     setPatientEditModal({ show: false, study: null });
   }, [onUpdateStudyDetails]);
 
-  const handleShowDocuments = useCallback((studyId) => {
-    setDocumentsModal({ show: true, studyId });
-  }, []);
+// ...existing code...
+const handleShowDocuments = useCallback((study) => {
+  setDocumentsModal({
+    show: true,
+    studyId: study?._id || null,
+    studyMeta: {
+      patientId:   study?.patientId   || study?.patientInfo?.patientID   || study?.patient?.PatientID   || '',
+      patientName: study?.patientName || study?.patientInfo?.patientName || study?.patient?.PatientName || ''
+    }
+  });
+}, []);
+// ...existing code...
 
   const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
     try {
@@ -2061,12 +2095,13 @@ const handleClosePrintModal = useCallback(() => {
       {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
       {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
       {documentsModal.show && (
-        <StudyDocumentsManager
-          studyId={documentsModal.studyId}
-          isOpen={documentsModal.show}
-          onClose={() => setDocumentsModal({ show: false, studyId: null })}
-        />
-      )}
+  <StudyDocumentsManager
+    studyId={documentsModal.studyId}
+    studyMeta={documentsModal.studyMeta}
+    isOpen={documentsModal.show}
+    onClose={() => setDocumentsModal({ show: false, studyId: null, studyMeta: null })}
+  />
+)}
       {/* ✅ ADD REVERT MODAL */}
 {revertModal.show && (
   <RevertModal

@@ -163,8 +163,8 @@ const OnlineReportingSystemWithOHIF = () => {
         const studyInstanceUID = passedStudyInstanceUID || currentStudy.studyInstanceUID || currentStudy.studyId || studyInfo.studyInstanceUID || studyInfo.studyId || null;
       
         if (studyInstanceUID) {
-          const OHIF_BASE = 'http://206.189.133.52:4000/viewer';
-          // const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
+          // const OHIF_BASE = 'http://206.189.133.52:4000/viewer';
+          const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
           console.log(OHIF_BASE)
 
           // const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';

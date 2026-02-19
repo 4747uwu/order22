@@ -489,6 +489,8 @@ const DoctorDashboard = () => {
               onRecordsPerPageChange={handleRecordsPerPageChange}
               // ✅ MULTI-ROLE PROPS
               visibleColumns={visibleColumns}
+              columnConfig={columnConfig}  // ✅ ADD THIS
+
               userRole={currentUser?.primaryRole || currentUser?.role || 'radiologist'}
               userRoles={userRoles}
               theme="doctor"

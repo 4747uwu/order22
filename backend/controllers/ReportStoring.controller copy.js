@@ -113,10 +113,6 @@ export const storeDraftReport = async (req, res) => {
                 ? referringPhysicianData.name
                 : 'N/A';
 
-            // ✅ FILENAME: Use doctor name (not admin)
-            const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
-            const fileName = `${doctorNameForFilename}_draft_${Date.now()}.docx`;
-
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
                 organizationIdentifier: currentUser.organizationIdentifier,
@@ -150,7 +146,7 @@ export const storeDraftReport = async (req, res) => {
                 },
                 reportType: 'draft',
                 reportStatus: 'draft',
-                exportInfo: { format: 'docx', fileName: fileName },  // ✅ Use doctor name
+                exportInfo: { format: 'docx', fileName: templateName || `draft_${studyId}_${Date.now()}.docx` },
                 patientInfo: patientInfo,
                 studyInfo: {
                     studyDate: study.studyDate,
@@ -194,7 +190,7 @@ export const storeDraftReport = async (req, res) => {
             study.currentCategory = 'DRAFT';
             if (!study.reportInfo) study.reportInfo = {};
             study.reportInfo.draftedAt = now;
-            study.reportInfo.reporterName = doctorName;
+            study.reportInfo.reporterName = doctorName;  // ✅ Use assigned doctor name
 
             if (!study.statusHistory) study.statusHistory = [];
             study.statusHistory.push({
@@ -209,7 +205,6 @@ export const storeDraftReport = async (req, res) => {
 
             console.log('✅ [Draft Store] Draft report stored successfully:', {
                 reportId: savedReport._id,
-                fileName: fileName,  // ✅ Show doctor's name in filename
                 doctorId: doctorId.toString(),
                 doctorName: doctorName,
                 createdBy: currentUser.fullName,
@@ -223,7 +218,7 @@ export const storeDraftReport = async (req, res) => {
                     reportId: savedReport._id,
                     documentId: savedReport.reportId,
                     doctorName: doctorName,
-                    filename: fileName,  // ✅ Return doctor's filename
+                    filename: savedReport.exportInfo.fileName,
                     reportType: savedReport.reportType,
                     reportStatus: savedReport.reportStatus
                 }
@@ -345,7 +340,7 @@ export const storeFinalizedReport = async (req, res) => {
 
             let existingReport = await Report.findOne({
                 dicomStudy: studyId,
-                doctorId: doctorId
+                doctorId: doctorId  // ✅ Use the determined doctorId
             }).sort({ createdAt: -1 }).session(session);
 
             const now = new Date();
@@ -374,10 +369,6 @@ export const storeFinalizedReport = async (req, res) => {
                 ? referringPhysicianData.name
                 : 'N/A';
 
-            // ✅ FILENAME: Use doctor name (not admin)
-            const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
-            const fileName = `${doctorNameForFilename}_final_${Date.now()}.${format}`;
-
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
                 organizationIdentifier: currentUser.organizationIdentifier,
@@ -391,7 +382,7 @@ export const storeFinalizedReport = async (req, res) => {
                 // ✅ FIXED: If admin, createdBy should be the doctor, not the admin
                 createdBy: currentUser.role === 'admin' || currentUser.role === 'super_admin' 
                     ? doctorId  // Use doctor's ID
-                    : existingReport?.createdBy || currentUser._id,
+                    : existingReport?.createdBy || currentUser._id,  // Use doctor's ID or keep original
                 doctorId: doctorId,            // ✅ Use assigned doctor ID
                 reportContent: {
                     htmlContent: reportContent,
@@ -411,7 +402,7 @@ export const storeFinalizedReport = async (req, res) => {
                 },
                 reportType: 'finalized',
                 reportStatus: 'finalized',
-                exportInfo: { format: format, fileName: fileName },  // ✅ Use doctor name
+                exportInfo: { format: format, fileName: templateName || `finalized_${studyId}_${Date.now()}.${format}` },
                 patientInfo: patientInfo,
                 studyInfo: {
                     studyDate: study.studyDate,
@@ -460,14 +451,14 @@ export const storeFinalizedReport = async (req, res) => {
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.sentForVerificationAt = now;
                 study.reportInfo.finalizedAt = now;
-                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.reporterName = doctorName;  // ✅ Use assigned doctor name
             } else {
                 study.workflowStatus = 'report_completed';
                 study.currentCategory = 'COMPLETED';
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.completedAt = now;
                 study.reportInfo.finalizedAt = now;
-                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.reporterName = doctorName;  // ✅ Use assigned doctor name
                 study.reportInfo.completedWithoutVerification = true;
             }
 
@@ -484,10 +475,9 @@ export const storeFinalizedReport = async (req, res) => {
 
             console.log('✅ [Finalize Store] Finalized report stored successfully:', {
                 reportId: savedReport._id,
-                fileName: fileName,  // ✅ Show doctor's name in filename
                 doctorId: doctorId.toString(),
                 doctorName: doctorName,
-                createdBy: savedReport.createdBy.toString(),
+                createdBy: savedReport.createdBy.toString(),  // ✅ Should now be doctor's ID
                 isAdminCreating: currentUser.role === 'admin',
                 requiresVerification: requiresVerification
             });
@@ -499,7 +489,7 @@ export const storeFinalizedReport = async (req, res) => {
                     reportId: savedReport._id,
                     documentId: savedReport.reportId,
                     doctorName: doctorName,
-                    filename: fileName,  // ✅ Return doctor's filename
+                    filename: savedReport.exportInfo.fileName,
                     reportType: savedReport.reportType,
                     reportStatus: savedReport.reportStatus,
                     studyWorkflowStatus: study.workflowStatus,
