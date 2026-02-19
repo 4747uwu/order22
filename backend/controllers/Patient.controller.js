@@ -294,9 +294,42 @@ export const lockStudyForReporting = async (req, res) => {
             });
         }
 
-        // ✅ CHECK IF USER CAN BYPASS LOCKS
-        const canBypassLock = ['radiologist', 'typist', 'admin', 'super_admin'].includes(user.role) ||
-                             user.accountRoles?.some(role => ['radiologist', 'typist', 'admin', 'super_admin'].includes(role));
+        // ✅ CHECK IF USER CAN BYPASS LOCKS (admins skip assignment check too)
+        const canBypassLock = ['admin', 'super_admin'].includes(user.role) ||
+                             user.accountRoles?.some(role => ['admin', 'super_admin'].includes(role));
+
+        const isRadiologist = user.role === 'radiologist' || 
+                              user.accountRoles?.includes('radiologist');
+
+        const isVerifier = user.role === 'verifier' || 
+                           user.accountRoles?.includes('verifier');
+
+        const isTypist = user.role === 'typist' || 
+                         user.accountRoles?.includes('typist');
+
+        // ✅ CHECK ASSIGNMENT - radiologists and verifiers must be assigned
+        if (!canBypassLock && (isRadiologist || isVerifier || isTypist)) {
+            const assignedRadiologistId = study.assignedTo?.toString() || 
+                                          study.radiologist?._id?.toString() || 
+                                          study.radiologist?.toString();
+
+            const assignedVerifierId = study.verifier?._id?.toString() || 
+                                       study.verifier?.toString();
+
+            const isAssignedAsRadiologist = assignedRadiologistId === user._id.toString();
+            const isAssignedAsVerifier = assignedVerifierId === user._id.toString();
+
+            if (!isAssignedAsRadiologist && !isAssignedAsVerifier) {
+                console.log(`❌ Study ${studyId} not assigned to user ${user.email}`);
+                return res.status(403).json({
+                    success: false,
+                    message: 'You cannot open this study. It is not assigned to you.',
+                    notAssigned: true
+                });
+            }
+
+            console.log(`✅ Assignment verified for user ${user.email}`);
+        }
 
         // ✅ CHECK IF ALREADY LOCKED
         if (study.studyLock?.isLocked) {

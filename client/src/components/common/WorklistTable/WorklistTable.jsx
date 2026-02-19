@@ -47,6 +47,50 @@ const getStatusColor = (status) => {
   }
 };
 
+
+// Add this helper function near the top of the file with other utility functions
+
+const useElapsedTime = (openedAt) => {
+    const [elapsed, setElapsed] = useState('');
+
+    useEffect(() => {
+        if (!openedAt) return;
+
+        const calc = () => {
+            const diff = Math.floor((Date.now() - new Date(openedAt).getTime()) / 1000);
+            const h = Math.floor(diff / 3600);
+            const m = Math.floor((diff % 3600) / 60);
+            const s = diff % 60;
+            if (h > 0) setElapsed(`${h}h ${m}m`);
+            else if (m > 0) setElapsed(`${m}m ${s}s`);
+            else setElapsed(`${s}s`);
+        };
+
+        calc();
+        const interval = setInterval(calc, 1000);
+        return () => clearInterval(interval);
+    }, [openedAt]);
+
+    return elapsed;
+};
+
+// Add this small component in both WorklistTable.jsx and UnifiedWorklistTable.jsx
+
+const ViewerTimerRow = ({ viewer }) => {
+    const elapsed = useElapsedTime(viewer.openedAt);
+    return (
+        <div key={viewer.userId} className="flex flex-col text-[10px] leading-tight mb-1">
+            <span className="font-semibold">{viewer.userName}</span>
+            <span className="text-gray-300">Mode: <span className="text-blue-300">{viewer.mode}</span></span>
+            {viewer.openedAt && (
+                <span className="text-yellow-300 font-mono">
+                    ⏱ {elapsed} ago
+                </span>
+            )}
+        </div>
+    );
+};
+
 const formatWorkflowStatus = (status) => {
   switch (status) {
     case 'new_study_received': return 'New';
@@ -966,17 +1010,9 @@ const handleOHIFReporting = async () => {
                                       {/* ✅ HOVER TOOLTIP WITH DETAILS */}
                                       <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
                                           <div className="font-bold mb-1">👁️ Currently Viewing:</div>
-                                          {activeViewers.map((viewer, idx) => (
-                                              <div key={viewer.userId} className="flex flex-col text-[10px] leading-tight">
-                                                  <span className="font-semibold">{viewer.userName}</span>
-                                                  <span className="text-gray-300">Mode: <span className="text-blue-300">{viewer.mode}</span></span>
-                                                  {viewer.openedAt && (
-                                                      <span className="text-gray-350 text-[9px]">
-                                                          Since: {new Date(viewer.openedAt).toLocaleTimeString()}
-                                                      </span>
-                                                  )}
-                                              </div>
-                                          ))}
+                                          {activeViewers.map((viewer) => (
+                                        <ViewerTimerRow key={viewer.userId} viewer={viewer} />
+                                    ))}
                                       </div>
                                   </div>
                               )}
@@ -1577,7 +1613,8 @@ const WorklistTable = ({
               [studyId]: [...viewers, {
                 userId: message.data.userId,
                 userName: message.data.userName,
-                mode: message.data.mode
+                mode: message.data.mode,
+                openedAt: new Date().toISOString()
               }]
             };
           }
