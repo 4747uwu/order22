@@ -10,14 +10,18 @@ const useWebSocket = (url = null) => {
   const maxReconnectAttempts = 5;
   const reconnectDelay = 3000; // 3 seconds
 
-  // ✅ HARDCODED: WebSocket URL
-  const HARDCODED_WS_URL = 'ws://206.189.133.52/:3000/ws';
+  // ✅ FIXED: Hardcoded WebSocket URL - use WSS for HTTPS
+  // const HARDCODED_WS_URL = 
+  //   window.location.protocol === 'https:' 
+  //     ? 'wss://206.189.133.52:3000/ws'  // ✅ HTTPS → WSS
+  //     : 'ws://206.189.133.52:3000/ws';  // HTTP → WS
+  
+      const HARDCODED_WS_URL = '/ws'
 
   // Get WebSocket URL with token
   const getWsUrl = useCallback(() => {
     if (url) return url;
     
-    // ✅ Get token from sessionManager
     const token = sessionManager.getToken();
     
     if (!token) {
@@ -25,9 +29,9 @@ const useWebSocket = (url = null) => {
       return null;
     }
     
-    // ✅ Use hardcoded URL with token
+    // ✅ Use protocol-appropriate URL with token
     const wsUrl = `${HARDCODED_WS_URL}?token=${token}`;
-    console.log('🔌 WebSocket URL (Hardcoded):', wsUrl);
+    console.log('🔌 WebSocket URL:', wsUrl);
     
     return wsUrl;
   }, [url]);
