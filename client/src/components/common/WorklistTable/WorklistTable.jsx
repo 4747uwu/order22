@@ -943,21 +943,45 @@ const handleOHIFReporting = async () => {
 
     {/* 2. BHARAT PACS ID */}
     {isColumnVisible('bharatPacsId') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200">
-        <div className="flex items-center justify-center gap-1.5">
-          <span className="text-xs font-mono font-semibold text-slate-700 truncate">{study.bharatPacsId}</span>
-          <button onClick={() => copyToClipboard(study.bharatPacsId, 'BP ID')}><Copy className="w-3.5 h-3.5 text-slate-500" /></button>
-          {hasActiveViewers && (
-            <div className="relative group" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
-              <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
-              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">{activeViewers.length}</span>
-              <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50">
-                {activeViewers.map(v => <div key={v.userId}>{v.userName} ({v.mode})</div>)}
-              </div>
-            </div>
-          )}
-        </div>
-      </td>
+      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+                          <div className="flex items-center justify-center gap-1.5">
+                              <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
+                                  {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
+                              </span>
+                              <button
+                                  onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
+                                  className="p-1 hover:bg-gray-200 rounded-md transition-colors"
+                              >
+                                  <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+                              </button>
+                              
+                              {/* ✅ ACTIVE VIEWERS INDICATOR AND TOOLTIP */}
+                              {hasActiveViewers && (
+                                  <div className="relative group" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
+                                      <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
+                                      <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                                          {activeViewers.length}
+                                      </span>
+                                      
+                                      {/* ✅ HOVER TOOLTIP WITH DETAILS */}
+                                      <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
+                                          <div className="font-bold mb-1">👁️ Currently Viewing:</div>
+                                          {activeViewers.map((viewer, idx) => (
+                                              <div key={viewer.userId} className="flex flex-col text-[10px] leading-tight">
+                                                  <span className="font-semibold">{viewer.userName}</span>
+                                                  <span className="text-gray-300">Mode: <span className="text-blue-300">{viewer.mode}</span></span>
+                                                  {viewer.openedAt && (
+                                                      <span className="text-gray-350 text-[9px]">
+                                                          Since: {new Date(viewer.openedAt).toLocaleTimeString()}
+                                                      </span>
+                                                  )}
+                                              </div>
+                                          ))}
+                                      </div>
+                                  </div>
+                              )}
+                          </div>
+                      </td>
     )}
 
     {/* 3. ORGANIZATION - super_admin only */}

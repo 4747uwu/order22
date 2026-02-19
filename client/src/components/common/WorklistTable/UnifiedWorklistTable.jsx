@@ -17,6 +17,7 @@ import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColu
 import PrintModal from '../../PrintModal';
 import sessionManager from '../../../services/sessionManager';
 import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
+import useWebSocket from '../../../hooks/useWebSocket';
 
 // ✅ UTILITY FUNCTIONS
 const getStatusColor = (status) => {
@@ -506,6 +507,7 @@ const UnifiedStudyRow = ({
     study,
     index,
     selectedStudies,
+    activeViewers = [],
     availableAssignees,
     onSelectStudy,
     onPatienIdClick,
@@ -854,12 +856,37 @@ const UnifiedStudyRow = ({
                         >
                             <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
                         </button>
+                        
+                        {/* ✅ ACTIVE VIEWERS INDICATOR AND TOOLTIP */}
+                        {hasActiveViewers && (
+                            <div className="relative group" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
+                                <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
+                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                                    {activeViewers.length}
+                                </span>
+                                
+                                {/* ✅ HOVER TOOLTIP WITH DETAILS */}
+                                <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
+                                    <div className="font-bold mb-1">👁️ Currently Viewing:</div>
+                                    {activeViewers.map((viewer, idx) => (
+                                        <div key={viewer.userId} className="flex flex-col text-[10px] leading-tight">
+                                            <span className="font-semibold">{viewer.userName}</span>
+                                            <span className="text-gray-300">Mode: <span className="text-blue-300">{viewer.mode}</span></span>
+                                            {viewer.openedAt && (
+                                                <span className="text-gray-350 text-[9px]">
+                                                    Since: {new Date(viewer.openedAt).toLocaleTimeString()}
+                                                </span>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </td>
             )}
-
             {/* 3. ORGANIZATION */}
-            {/* 3. ORGANIZATION - Only for super_admin */}
+            
             {(userRoles.includes('super_admin') || userRole === 'super_admin') && isColumnVisible('organization') && (
                 <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
                     <div className="text-xs text-slate-600 truncate" title={study.organizationName}>
@@ -1530,6 +1557,74 @@ const UnifiedWorklistTable = ({
         visibleColumns
     );
 
+     const [activeViewers, setActiveViewers] = useState({});
+    const { sendMessage, lastMessage, readyState } = useWebSocket();
+
+    // ✅ SUBSCRIBE TO VIEWER UPDATES
+    useEffect(() => {
+        if (readyState === WebSocket.OPEN) {
+            // Subscribe to viewer updates
+            sendMessage({
+                type: 'subscribe_to_viewer_updates'
+            });
+
+            // Request current active viewers
+            sendMessage({
+                type: 'request_active_viewers'
+            });
+        }
+    }, [readyState, sendMessage]);
+
+    useEffect(() => {
+        if (!lastMessage) return;
+
+        try {
+            const message = JSON.parse(lastMessage.data);
+
+            switch (message.type) {
+                case 'study_viewer_opened':
+                    setActiveViewers(prev => {
+                        const studyId = message.data.studyId;
+                        const viewers = prev[studyId] || [];
+                        if (!viewers.find(v => v.userId === message.data.userId)) {
+                            return {
+                                ...prev,
+                                [studyId]: [...viewers, {
+                                    userId: message.data.userId,
+                                    userName: message.data.userName,
+                                    mode: message.data.mode,
+                                    openedAt: new Date().toISOString()
+                                }]
+                            };
+                        }
+                        return prev;
+                    });
+                    break;
+
+                case 'study_viewer_closed':
+                    setActiveViewers(prev => {
+                        const studyId = message.data.studyId;
+                        const viewers = (prev[studyId] || []).filter(v => v.userId !== message.data.userId);
+                        if (viewers.length === 0) {
+                            const { [studyId]: removed, ...rest } = prev;
+                            return rest;
+                        }
+                        return { ...prev, [studyId]: viewers };
+                    });
+                    break;
+
+                case 'active_viewers_list':
+                    setActiveViewers(message.data);
+                    break;
+
+                default:
+                    break;
+            }
+        } catch (error) {
+            console.error('Error processing WebSocket message:', error);
+        }
+    }, [lastMessage]);
+
     
     const isColumnVisible = useCallback((columnId) => {
         // ✅ PRIORITY 1: columnConfig from ColumnConfigurator (frontend toggle)
@@ -1999,6 +2094,7 @@ const UnifiedWorklistTable = ({
                                 key={study._id}
                                 study={study}
                                 index={index}
+                                activeViewers={activeViewers[study._id] || []} 
                                 selectedStudies={selectedStudies}
                                 availableAssignees={availableAssignees}
                                 onSelectStudy={onSelectStudy}

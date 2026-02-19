@@ -10,15 +10,7 @@ const useWebSocket = (url = null) => {
   const maxReconnectAttempts = 5;
   const reconnectDelay = 3000; // 3 seconds
 
-  // ✅ FIXED: Hardcoded WebSocket URL - use WSS for HTTPS
-  // const HARDCODED_WS_URL = 
-  //   window.location.protocol === 'https:' 
-  //     ? 'wss://206.189.133.52:3000/ws'  // ✅ HTTPS → WSS
-  //     : 'ws://206.189.133.52:3000/ws';  // HTTP → WS
-  
-      const HARDCODED_WS_URL = '/ws'
-
-  // Get WebSocket URL with token
+  // ✅ FIXED: Properly construct WebSocket URL
   const getWsUrl = useCallback(() => {
     if (url) return url;
     
@@ -29,9 +21,15 @@ const useWebSocket = (url = null) => {
       return null;
     }
     
-    // ✅ Use protocol-appropriate URL with token
-    const wsUrl = `${HARDCODED_WS_URL}?token=${token}`;
+    // ✅ Use window.location to get current host and protocol
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    
+    // ✅ Construct full URL
+    const wsUrl = `${protocol}//${host}/ws?token=${token}`;
     console.log('🔌 WebSocket URL:', wsUrl);
+    console.log('🔌 Current Location:', window.location.href);
+    console.log('🔌 Protocol:', protocol, 'Host:', host);
     
     return wsUrl;
   }, [url]);
