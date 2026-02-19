@@ -63,32 +63,33 @@ const AssignerDashboard = () => {
     reverted: 0  // ✅ ADD THIS
   });
 
-  // Column configuration
+  // ...existing code...
   const getDefaultColumnConfig = () => ({
-    checkbox: { visible: true, order: 1, label: 'Select' },
-    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
-    centerName: { visible: true, order: 3, label: 'Center' },
-    location: { visible: true, order: 4, label: 'Location' },
-    timeline: { visible: true, order: 5, label: 'Timeline' },
-    patientName: { visible: true, order: 6, label: 'Patient Name' },
-    ageGender: { visible: true, order: 7, label: 'Age/Sex' },
-    modality: { visible: true, order: 8, label: 'Modality' },
-    viewOnly: { visible: true, order: 9, label: 'View' },
-    reporting: { visible: true, order: 10, label: 'Reporting' },
-    studySeriesImages: { visible: true, order: 11, label: 'Series' },
-    patientId: { visible: true, order: 12, label: 'Patient ID' },
-    referralDoctor: { visible: false, order: 13, label: 'Referral Dr.' },
-    clinicalHistory: { visible: false, order: 14, label: 'History' },
-    studyDateTime: { visible: true, order: 15, label: 'Study Time' },
-    uploadDateTime: { visible: true, order: 16, label: 'Upload Time' },
-    assignedRadiologist: { visible: true, order: 17, label: 'Radiologist' },
-    studyLock: { visible: true, order: 18, label: 'Lock' },
-    status: { visible: true, order: 19, label: 'Status' },
-    printCount: { visible: true, order: 20, label: 'Print' },
-    rejectionReason: { visible: false, order: 21, label: 'Rejection' },
-    assignedVerifier: { visible: true, order: 22, label: 'Verifier' },
-    verifiedDateTime: { visible: false, order: 23, label: 'Verified' },
-    actions: { visible: true, order: 24, label: 'Actions' }
+    // ✅ FIXED: 'checkbox' → 'selection' to match constants
+    selection:           { visible: true,  order: 1,  label: 'Select' },
+    bharatPacsId:        { visible: true,  order: 2,  label: 'BP ID' },
+    centerName:          { visible: true,  order: 3,  label: 'Center' },
+    location:            { visible: true,  order: 4,  label: 'Location' },
+    timeline:            { visible: true,  order: 5,  label: 'Timeline' },
+    patientName:         { visible: true,  order: 6,  label: 'Patient Name' },
+    ageGender:           { visible: true,  order: 7,  label: 'Age/Sex' },
+    modality:            { visible: true,  order: 8,  label: 'Modality' },
+    viewOnly:            { visible: true,  order: 9,  label: 'View' },
+    reporting:           { visible: true,  order: 10, label: 'Reporting' },
+    studySeriesImages:   { visible: true,  order: 11, label: 'Series/Images' },
+    patientId:           { visible: true,  order: 12, label: 'Patient ID' },
+    referralDoctor:      { visible: false, order: 13, label: 'Referral Dr.' },
+    clinicalHistory:     { visible: false, order: 14, label: 'History' },
+    studyDateTime:       { visible: true,  order: 15, label: 'Study Time' },
+    uploadDateTime:      { visible: true,  order: 16, label: 'Upload Time' },
+    assignedRadiologist: { visible: true,  order: 17, label: 'Radiologist' },
+    studyLock:           { visible: true,  order: 18, label: 'Lock' },
+    status:              { visible: true,  order: 19, label: 'Status' },
+    printCount:          { visible: true,  order: 20, label: 'Print' },
+    rejectionReason:     { visible: false, order: 21, label: 'Rejection' },
+    assignedVerifier:    { visible: true,  order: 22, label: 'Verifier' },
+    verifiedDateTime:    { visible: false, order: 23, label: 'Verified' },
+    actions:             { visible: true,  order: 24, label: 'Actions' }
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
@@ -96,6 +97,12 @@ const AssignerDashboard = () => {
       const saved = localStorage.getItem('assignerWorklistColumnConfig');
       if (saved) {
         const parsedConfig = JSON.parse(saved);
+        // ✅ FORCE RESET if stale 'checkbox' key exists
+        if ('checkbox' in parsedConfig) {
+          console.warn('🔄 Migrating stale column config — resetting');
+          localStorage.removeItem('assignerWorklistColumnConfig');
+          return getDefaultColumnConfig();
+        }
         return { ...getDefaultColumnConfig(), ...parsedConfig };
       }
     } catch (error) {
@@ -103,6 +110,7 @@ const AssignerDashboard = () => {
     }
     return getDefaultColumnConfig();
   });
+
 
   useEffect(() => {
     try {

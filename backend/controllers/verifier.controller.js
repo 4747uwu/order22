@@ -27,7 +27,7 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
                 'verification_in_progress',
                 'report_verified',
                 'report_rejected',
-                'report_completed',
+                // 'report_completed',
                 'revert_to_radiologist' // ✅ NEW: Show reverted studies
             ] 
         }
@@ -402,7 +402,7 @@ export const verifyReport = async (req, res) => {
                 const verifiableStatuses = [
                     'verification_pending',
                     'report_finalized', 
-                    // 'report_completed',
+                    'report_completed',
                     
                     'verification_in_progress'
                 ];

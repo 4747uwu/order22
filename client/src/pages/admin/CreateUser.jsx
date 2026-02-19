@@ -747,15 +747,24 @@ const isRadiologistSelected = () => {
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Email Address *
                                     </label>
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        value={formData.email}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Enter email address"
-                                        required
-                                    />
+                                    {/* ✅ CHANGED: Username input with @bharatpacs.com suffix display */}
+                                    <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
+                                        <input
+                                            type="text"
+                                            name="email"
+                                            value={formData.email}
+                                            onChange={handleEmailChange}
+                                            className="flex-1 px-3 py-2 outline-none border-none focus:ring-0"
+                                            placeholder="username"
+                                            required
+                                        />
+                                        <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
+                                            @bharatpacs.com
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Login email will be: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
+                                    </p>
                                 </div>
 
                                 <div>
@@ -788,16 +797,25 @@ const isRadiologistSelected = () => {
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Username
+                                        Username / Email *
                                     </label>
-                                    <input
-                                        type="text"
-                                        name="username"
-                                        value={formData.username}
-                                        onChange={handleInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                        placeholder="Auto-generated from email"
-                                    />
+                                    <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
+                                        <input
+                                            type="text"
+                                            name="email"
+                                            value={formData.email}
+                                            onChange={handleEmailChange}
+                                            className="flex-1 px-3 py-2 outline-none border-none focus:ring-0"
+                                            placeholder="username"
+                                            required
+                                        />
+                                        <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
+                                            @bharatpacs.com
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">
+                                        Login email will be: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
+                                    </p>
                                 </div>
                             </div>
                         </div>

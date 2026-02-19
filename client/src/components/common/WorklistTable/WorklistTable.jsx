@@ -981,47 +981,47 @@ const handleOHIFReporting = async () => {
   return (
   <tr className={rowClasses}>
     {/* 1. SELECTION - always visible */}
-    <td className="px-2 py-3 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('selection')}px` }}>
-      <input type="checkbox" checked={isSelected} onChange={() => onSelectStudy(study._id)} className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500" />
+    <td className="px-2 py-3 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('selection')}px` }}>
+        <input type="checkbox" checked={isSelected} onChange={() => onSelectStudy(study._id)} className="w-4 h-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500 mt-1" />
     </td>
 
     {/* 2. BHARAT PACS ID */}
     {isColumnVisible('bharatPacsId') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
-                          <div className="flex items-center justify-center gap-1.5">
-                              <span className="text-xs font-mono font-semibold text-slate-700 truncate" title={study.bharatPacsId}>
-                                  {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
-                              </span>
-                              <button
-                                  onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
-                                  className="p-1 hover:bg-gray-200 rounded-md transition-colors"
-                              >
-                                  <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
-                              </button>
-                              
-                              {/* ✅ ACTIVE VIEWERS INDICATOR AND TOOLTIP */}
-                              {hasActiveViewers && (
-                                  <div className="relative group" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
-                                      <Eye className="w-4 h-4 text-blue-600 animate-pulse" />
-                                      <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                                          {activeViewers.length}
-                                      </span>
-                                      
-                                      {/* ✅ HOVER TOOLTIP WITH DETAILS */}
-                                      <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
-                                          <div className="font-bold mb-1">👁️ Currently Viewing:</div>
-                                          {activeViewers.map((viewer) => (
-                                        <ViewerTimerRow key={viewer.userId} viewer={viewer} />
-                                    ))}
-                                      </div>
-                                  </div>
-                              )}
-                          </div>
-                      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+            <div className="flex items-start justify-center gap-1.5">
+                <span className="text-xs font-mono font-semibold text-slate-700 whitespace-normal break-all leading-snug text-left" title={study.bharatPacsId}>
+                    {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
+                </span>
+                <button
+                    onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')}
+                    className="p-1 hover:bg-gray-200 rounded-md transition-colors flex-shrink-0"
+                >
+                    <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
+                </button>
+                
+                {/* ✅ ACTIVE VIEWERS INDICATOR AND TOOLTIP */}
+                {hasActiveViewers && (
+                    <div className="relative group flex-shrink-0" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
+                        <Eye className="w-4 h-4 text-blue-600 animate-pulse mt-0.5" />
+                        <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                            {activeViewers.length}
+                        </span>
+                        
+                        {/* ✅ HOVER TOOLTIP WITH DETAILS */}
+                        <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
+                            <div className="font-bold mb-1">👁️ Currently Viewing:</div>
+                            {activeViewers.map((viewer) => (
+                            <ViewerTimerRow key={viewer.userId} viewer={viewer} />
+                        ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </td>
     )}
 
-    {/* 3. ORGANIZATION - super_admin only */}
-    {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
+    {/* 3. ORGANIZATION */}
+     {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
       <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
         <div className="text-xs text-slate-600 truncate" title={study.organizationName}>{study.organizationName || '-'}</div>
       </td>
@@ -1029,406 +1029,369 @@ const handleOHIFReporting = async () => {
 
     {/* 4. CENTER NAME */}
     {isColumnVisible('centerName') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-        <div className="text-xs font-bold text-center text-slate-900 truncate" title={study.centerName}>{study.centerName || '-'}</div>
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('centerName')}px` }}>
+            <div className="text-xs font-bold text-center text-slate-900 whitespace-normal break-words leading-tight" title={study.centerName}>{study.centerName || '-'}</div>
+        </td>
     )}
+    
+    {/* 4b. CENTER LOCATION (From original code) */}
     {isColumnVisible('centerName') && (
-      <td className="px-2 py-2 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-        <div className="flex items-center justify-center h-full text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">{study?.location || '-'}</div>
-      </td>
+        <td className="px-2 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('centerName')}px` }}>
+            <div className="flex items-start justify-center text-xs text-slate-600 text-center whitespace-normal break-words leading-snug">{study?.location || '-'}</div>
+        </td>
     )}
 
     {/* 5. TIMELINE - always visible */}
-    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('timeline')}px` }}>
-      <button onClick={() => onShowTimeline?.(study)} className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110" title="View Timeline">
-        <Clock className="w-4 h-4 text-gray-700" />
-      </button>
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('timeline')}px` }}>
+        <button onClick={() => onShowTimeline?.(study)} className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110 mx-auto" title="View Timeline">
+            <Clock className="w-4 h-4 text-gray-700" />
+        </button>
     </td>
 
     {/* 6. PATIENT NAME / UHID */}
     {isColumnVisible('patientName') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientName')}px` }}>
-        <button className="w-full text-left hover:underline decoration-gray-900" onClick={() => onPatienIdClick?.(study.patientId, study)}>
-          <div className={`text-xs font-bold ${isUrgent ? 'text-rose-600' : 'text-slate-800'} truncate flex items-center gap-1`} title={study.patientName}>
-            {study.patientName || '-'}
-            {isUrgent && <span className="text-rose-500">●</span>}
-            {isRejected && <span className="text-rose-600" title={`Rejected: ${rejectionReason}`}>🚫</span>}
-          </div>
-          <div className={`text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'} truncate`}>UHID: {study.patientId || '-'}</div>
-        </button>
-        {getPriorityTag(study)}
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('patientName')}px` }}>
+            <button className="w-full text-left hover:underline decoration-gray-900 mb-1" onClick={() => onPatienIdClick?.(study.patientId, study)}>
+                <div className={`text-xs font-bold ${isUrgent ? 'text-rose-600' : 'text-slate-800'} whitespace-normal break-words leading-tight flex items-start gap-1`} title={study.patientName}>
+                    {study.patientName || '-'}
+                    {isUrgent && <span className="text-rose-500 mt-0.5 flex-shrink-0">●</span>}
+                    {isRejected && <span className="text-rose-600 mt-0.5 flex-shrink-0" title={`Rejected: ${rejectionReason}`}>🚫</span>}
+                </div>
+                <div className={`text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'} whitespace-normal break-all leading-tight mt-1`}>UHID: {study.patientId || '-'}</div>
+            </button>
+            {getPriorityTag(study)}
+        </td>
     )}
 
     {/* 7. AGE/SEX */}
     {isColumnVisible('ageGender') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ageGender')}px` }}>
-        <div className="text-xs font-medium text-slate-700">
-          {study.ageGender !== 'N/A' ? study.ageGender : 
-           study.patientAge && study.patientSex ? `${study.patientAge}/${study.patientSex.charAt(0)}` : 
-           study.patientAge && study.patientGender ? `${study.patientAge}/${study.patientGender.charAt(0)}` : '-'}
-        </div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('ageGender')}px` }}>
+            <div className="text-xs font-medium text-slate-700 whitespace-normal break-words leading-tight">
+                {study.ageGender !== 'N/A' ? study.ageGender : 
+                 study.patientAge && study.patientSex ? `${study.patientAge}/${study.patientSex.charAt(0)}` : 
+                 study.patientAge && study.patientGender ? `${study.patientAge}/${study.patientGender.charAt(0)}` : '-'}
+            </div>
+        </td>
     )}
 
     {/* 8. MODALITY */}
     {isColumnVisible('modality') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('modality')}px` }}>
-        <span className={`px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm ${isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'}`}>
-          {study.modality || '-'}
-        </span>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('modality')}px` }}>
+            <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm whitespace-normal break-words leading-tight ${isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'}`}>
+                {study.modality || '-'}
+            </span>
+        </td>
     )}
 
     {/* 9. VIEW - always visible */}
-    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
-      <button onClick={handleViewOnlyClick} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title="View Images Only (No Locking)">
-        <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
-      </button>
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+        <button onClick={handleViewOnlyClick} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto" title="View Images Only (No Locking)">
+            <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+        </button>
     </td>
 
     {/* Reporting - always visible */}
-    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('ohif&reporting')}px` }}>
-      <button onClick={handleOHIFReporting} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title="Reporting">
-        <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-      </button>
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('ohif&reporting')}px` }}>
+        <button onClick={handleOHIFReporting} className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto" title="Reporting">
+            <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+        </button>
     </td>
 
     {/* 10. SERIES/IMAGES */}
     {isColumnVisible('seriesCount') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-        <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug">{study.studyDescription || 'N/A'}</div>
-        <div className="text-xs font-semibold text-slate-800 mt-1">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
+            <div className="text-[11px] text-slate-600 break-words whitespace-normal leading-snug mb-1">{study.studyDescription || 'N/A'}</div>
+            <div className="text-xs font-semibold text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+        </td>
     )}
 
     {/* 11. PT ID */}
     {isColumnVisible('patientId') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('patientId')}px` }}>
-        <button className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline" onClick={() => onPatienIdClick?.(study.patientId, study)}>
-          {study.patientId || study.patientInfo?.patientID || 'N/A'}
-        </button>
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('patientId')}px` }}>
+            <button className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline whitespace-normal break-all leading-tight text-left w-full" onClick={() => onPatienIdClick?.(study.patientId, study)}>
+                {study.patientId || study.patientInfo?.patientID || 'N/A'}
+            </button>
+        </td>
     )}
 
     {/* 12. REFERRAL DOCTOR */}
     {isColumnVisible('referralDoctor') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
-        <div className="text-xs text-slate-700 truncate" title={study.referralNumber || study.referringPhysician}>{study.referralNumber || study.referringPhysician || '-'}</div>
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
+            <div className="text-xs text-slate-700 whitespace-normal break-words leading-tight" title={study.referralNumber || study.referringPhysician}>{study.referralNumber || study.referringPhysician || '-'}</div>
+        </td>
     )}
 
     {/* 13. CLINICAL HISTORY */}
     {isColumnVisible('clinicalHistory') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
-        <div className="text-xs font-bold text-slate-700 line-clamp-2 uppercase" title={study.clinicalHistory}>{study.clinicalHistory || '-'}</div>
-        <div className="flex items-center gap-4 mt-3">
-          <button onClick={() => onEditPatient?.(study)} className="flex items-center gap-1 text-xs font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors">
-            <Edit className="w-4 h-4" />Edit
-          </button>
-          <button onClick={() => onShowDocuments?.(study)} className={`p-2 rounded-lg transition-all hover:scale-105 relative ${hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}>
-            <Paperclip className={`w-4 h-4 ${hasAttachments ? 'text-slate-900' : 'text-slate-400'}`} />
-            {hasAttachments && study.attachments.length > 0 && <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[10px] font-semibold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">{study.attachments.length}</span>}
-          </button>
-          <button onClick={() => onShowStudyNotes?.(study._id)} className={`relative p-2 rounded-lg transition-all group hover:scale-110 ${hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'}`} title={hasNotes ? `${study.notesCount || '1'} note(s)` : 'No notes'}>
-            <div className="flex items-center gap-1">
-              <MessageSquare className={`w-4 h-4 ${hasNotes ? 'text-gray-900' : 'text-slate-400'} group-hover:text-gray-900`} />
-              {study.notesCount > 0 && <span className="bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 shadow-sm">{study.notesCount}</span>}
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+            <div className="text-xs font-bold text-slate-700 whitespace-normal break-words leading-relaxed uppercase" title={study.clinicalHistory}>{study.clinicalHistory || '-'}</div>
+            <div className="flex items-center flex-wrap gap-2 mt-3">
+                <button onClick={() => onEditPatient?.(study)} className="flex items-center gap-1 text-[10px] font-medium text-slate-700 hover:text-slate-900 hover:underline transition-colors">
+                    <Edit className="w-3.5 h-3.5" />Edit
+                </button>
+                <button onClick={() => onShowDocuments?.(study)} className={`p-1.5 rounded-lg transition-all hover:scale-105 relative ${hasAttachments ? 'bg-slate-200' : 'hover:bg-slate-100'}`} title={hasAttachments ? `${study.attachments.length} attachment(s)` : 'Manage attachments'}>
+                    <Paperclip className={`w-3.5 h-3.5 ${hasAttachments ? 'text-slate-900' : 'text-slate-400'}`} />
+                    {hasAttachments && study.attachments.length > 0 && <span className="absolute -top-1 -right-1 bg-slate-900 text-white text-[9px] font-semibold rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1 shadow-sm leading-none">{study.attachments.length}</span>}
+                </button>
+                <button onClick={() => onShowStudyNotes?.(study._id)} className={`relative p-1.5 rounded-lg transition-all group hover:scale-110 ${hasNotes ? 'bg-gray-200' : 'hover:bg-slate-100'}`} title={hasNotes ? `${study.notesCount || '1'} note(s)` : 'No notes'}>
+                    <div className="flex items-center gap-1">
+                        <MessageSquare className={`w-3.5 h-3.5 ${hasNotes ? 'text-gray-900' : 'text-slate-400'} group-hover:text-gray-900`} />
+                        {study.notesCount > 0 && <span className="absolute -top-1 -right-1 bg-gray-900 text-white text-[9px] font-bold rounded-full min-w-[14px] h-3.5 flex items-center justify-center px-1 shadow-sm leading-none">{study.notesCount}</span>}
+                    </div>
+                </button>
             </div>
-          </button>
-        </div>
-      </td>
+        </td>
     )}
 
     {/* 14. STUDY DATE/TIME */}
     {isColumnVisible('studyTime') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.studyDate)}</div>
-        <div className="text-[10px] text-slate-500">{formatTime(study.studyTime) || '-'}</div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
+            <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.studyDate)}</div>
+            <div className="text-[10px] text-slate-500 whitespace-nowrap mt-0.5">{formatTime(study.studyTime) || '-'}</div>
+        </td>
     )}
 
     {/* 15. UPLOAD DATE/TIME */}
     {isColumnVisible('uploadTime') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">{formatDate(study.uploadDate || study.createdAt)}</div>
-        <div className="text-[10px] text-slate-500">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+            <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.uploadDate || study.createdAt)}</div>
+            <div className="text-[10px] text-slate-500 whitespace-nowrap mt-0.5">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
+        </td>
     )}
 
     {/* 16. RADIOLOGIST */}
     {isColumnVisible('radiologist') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
-        <div className="relative">
-          <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."} disabled={isLocked} className={`w-full px-3 py-2 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`} />
-          {isAssigned && !inputFocused && !isLocked && <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-3 top-3 shadow-sm" />}
-          {isLocked && <Lock className="w-4 h-4 text-rose-600 absolute right-3 top-2.5" />}
-        </div>
-        {isAssigned && assignedDoctor && (
-          <div className="mt-1 flex items-center justify-between gap-2">
-            {isAssignedStatus && !isReportCompleted && elapsedTime ? (
-              <div className="flex items-center gap-1.5 px-2 py-0 bg-amber-50 border border-amber-200 rounded-md">
-                <Clock className="w-2 h-2 text-amber-600 animate-pulse" />
-                <span className="text-[10px] font-mono font-bold text-amber-700">{elapsedTime}</span>
-              </div>
-            ) : isReportCompleted && assignedAt && reportCompletedAt ? (
-              <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 border border-green-200 rounded-md">
-                <CheckCircle className="w-3 h-3 text-green-600" />
-                <span className="text-[10px] font-mono font-bold text-green-700">✓ {formatTimeTaken(assignedAt, reportCompletedAt)}</span>
-              </div>
-            ) : null}
-            {assignedDoctor.priority === 'URGENT' && <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded font-bold">URGENT</span>}
-          </div>
-        )}
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+            <div className="relative">
+                <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."} disabled={isLocked} className={`w-full px-2 py-1.5 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' : 'bg-white border-slate-200 hover:border-slate-300'}`} />
+                {isAssigned && !inputFocused && !isLocked && <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-2.5 top-2.5 shadow-sm" />}
+                {isLocked && <Lock className="w-3.5 h-3.5 text-rose-600 absolute right-2.5 top-2" />}
+            </div>
+            {isAssigned && assignedDoctor && (
+                <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+                    {isAssignedStatus && !isReportCompleted && elapsedTime ? (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md whitespace-nowrap">
+                            <Clock className="w-2.5 h-2.5 text-amber-600 animate-pulse" />
+                            <span className="text-[10px] font-mono font-bold text-amber-700">{elapsedTime}</span>
+                        </div>
+                    ) : isReportCompleted && assignedAt && reportCompletedAt ? (
+                        <div className="flex items-center gap-1.5 px-2 py-0.5 bg-green-50 border border-green-200 rounded-md whitespace-nowrap">
+                            <CheckCircle className="w-2.5 h-2.5 text-green-600" />
+                            <span className="text-[10px] font-mono font-bold text-green-700">✓ {formatTimeTaken(assignedAt, reportCompletedAt)}</span>
+                        </div>
+                    ) : null}
+                    {assignedDoctor.priority === 'URGENT' && <span className="text-[9px] px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded font-bold whitespace-nowrap">URGENT</span>}
+                </div>
+            )}
+        </td>
     )}
 
     {/* 17. LOCK/UNLOCK */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('studyLock')}px` }}>
-        <button onClick={handleLockToggle} disabled={togglingLock || !canToggleLock} className={`p-2 rounded-lg transition-all group hover:scale-110 ${togglingLock ? 'opacity-50 cursor-not-allowed' : !canToggleLock ? 'opacity-30 cursor-not-allowed' : isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'}`} title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}>
-          {isLocked ? <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" /> : <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />}
-        </button>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('studyLock')}px` }}>
+            <button onClick={handleLockToggle} disabled={togglingLock || !canToggleLock} className={`p-2 rounded-lg transition-all mx-auto group hover:scale-110 ${togglingLock ? 'opacity-50 cursor-not-allowed' : !canToggleLock ? 'opacity-30 cursor-not-allowed' : isLocked ? 'hover:bg-rose-50' : 'hover:bg-slate-100'}`} title={isLocked ? `Locked by ${study.studyLock?.lockedByName}` : 'Lock Study'}>
+                {isLocked ? <Lock className="w-4 h-4 text-rose-600 group-hover:text-rose-700" /> : <Unlock className="w-4 h-4 text-slate-500 group-hover:text-rose-600" />}
+            </button>
+        </td>
     )}
 
     {/* 18. STATUS */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 text-center border-r border-slate-200" style={{ width: `${getColumnWidth('status')}px` }}>
-        <div className="flex flex-col items-center gap-1">
-          <span className={`px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm ${getStatusColor(study.workflowStatus)}`}>{study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}</span>
-          <span className="text-xs text-slate-600">{study.workflowStatus ? formatWorkflowStatus(study.workflowStatus) : '-'}</span>
-          {study.statusHistory && study.statusHistory.length > 0 && (() => {
-            const currentStatusEntry = study.statusHistory.slice().reverse().find(entry => entry.status === study.workflowStatus);
-            if (currentStatusEntry?.changedAt) return <div className="text-[9px] text-slate-500">{formatDate(currentStatusEntry.changedAt)} {formatTime(currentStatusEntry.changedAt)}</div>;
-            return null;
-          })()}
-        </div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('status')}px` }}>
+            <div className="flex flex-col items-center gap-1.5">
+                <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm whitespace-normal break-words leading-tight ${getStatusColor(study.workflowStatus)}`}>{study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}</span>
+                <span className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight">{study.workflowStatus ? formatWorkflowStatus(study.workflowStatus) : '-'}</span>
+                {study.statusHistory && study.statusHistory.length > 0 && (() => {
+                    const currentStatusEntry = study.statusHistory.slice().reverse().find(entry => entry.status === study.workflowStatus);
+                    if (currentStatusEntry?.changedAt) return <div className="text-[9px] text-slate-500 mt-0.5">{formatDate(currentStatusEntry.changedAt)} <br/> {formatTime(currentStatusEntry.changedAt)}</div>;
+                    return null;
+                })()}
+            </div>
+        </td>
     )}
 
     {/* 19. PRINT COUNT */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('printCount')}px` }}>
-        {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
-          <div className="flex flex-col items-center gap-1">
-            <button onClick={() => handleDirectPrint(study)} className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="Print Report">
-              <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-            </button>
-            <div className="text-[10px] text-slate-500 text-center">
-              <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
-              <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
-            </div>
-            {study.lastPrintedBy && <div className="text-[9px] text-slate-600 font-medium">By: {study.lastPrintedBy}</div>}
-            {study.lastPrintType && <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${study.lastPrintType === 'reprint' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{study.lastPrintType.toUpperCase()}</span>}
-            {(study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt && <div className="text-[9px] text-slate-400 flex items-center gap-0.5"><Clock className="w-2.5 h-2.5" /><span>First: {formatDate(study.printInfo.firstPrintedAt)}</span></div>}
-          </div>
-        ) : (
-          <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all" title="No prints yet - Click to print report">
-            <Printer className="w-4 h-4" /><span className="text-[10px]">No prints</span>
-          </button>
-        )}
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('printCount')}px` }}>
+            {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
+                <div className="flex flex-col items-center gap-1">
+                    <button onClick={() => handleDirectPrint(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="Print Report">
+                        <Printer className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                    </button>
+                    <div className="text-[10px] text-slate-500 text-center whitespace-nowrap">
+                        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+                        <div>{formatTime(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+                    </div>
+                    {study.lastPrintedBy && <div className="text-[9px] text-slate-600 font-medium whitespace-normal break-words leading-tight">By: {study.lastPrintedBy}</div>}
+                    {study.lastPrintType && <span className={`inline-block text-[8px] px-1.5 py-0.5 rounded font-bold whitespace-nowrap mt-0.5 ${study.lastPrintType === 'reprint' ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'}`}>{study.lastPrintType.toUpperCase()}</span>}
+                    {(study.printCount > 1 || study.printInfo?.totalPrints > 1) && study.printInfo?.firstPrintedAt && <div className="text-[9px] text-slate-400 flex items-center gap-0.5 mt-0.5 whitespace-nowrap"><Clock className="w-2.5 h-2.5" /><span>First: {formatDate(study.printInfo.firstPrintedAt)}</span></div>}
+                </div>
+            ) : (
+                <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-1 px-2 py-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-all mx-auto" title="No prints yet - Click to print report">
+                    <Printer className="w-4 h-4" /><span className="text-[10px] whitespace-nowrap">No prints</span>
+                </button>
+            )}
+        </td>
     )}
 
     {/* REJECTION REASON */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 border-r border-slate-200" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
-        {isRejected ? (
-          <div className="flex items-start gap-2">
-            <XCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-rose-700 leading-relaxed font-medium" style={{ whiteSpace: 'normal', overflowWrap: 'break-word', wordBreak: 'break-word' }} title={rejectionReason}>{study.verificationNotes || rejectionReason}</div>
-          </div>
-        ) : <div className="text-xs text-slate-400 text-center">-</div>}
-      </td>
+        <td className="px-3 py-3.5 border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
+            {isRejected ? (
+                <div className="flex items-start gap-1.5">
+                    <XCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
+                    <div className="text-xs text-rose-700 leading-relaxed font-medium whitespace-normal break-words" title={rejectionReason}>{study.verificationNotes || rejectionReason}</div>
+                </div>
+            ) : <div className="text-xs text-slate-400 text-center">-</div>}
+        </td>
     )}
 
     {/* 20. VERIFIED BY */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
-        <div className="text-xs text-slate-700 truncate">
-          {typeof study.verifier === 'string' ? study.verifier : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}
-        </div>
-      </td>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
+            <div className="text-xs text-slate-700 whitespace-normal break-words leading-tight">
+                {typeof study.verifier === 'string' ? study.verifier : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}
+            </div>
+        </td>
     )}
 
     {/* 21. VERIFIED DATE/TIME */}
     {isColumnVisible('caseStatus') && (
-      <td className="px-3 py-3.5 text-center border-r border-b border-slate-200" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-        <div className="text-[11px] font-medium text-slate-800">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
-        <div className="text-[10px] text-slate-500">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
-      </td>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+            <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+            <div className="text-[10px] text-slate-500 whitespace-nowrap mt-0.5">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+        </td>
     )}
 
     {/* 22. ACTIONS */}
     {isColumnVisible('actions') && (
-      <td className="px-3 py-3.5 text-center border-slate-200" style={{ width: `${getColumnWidth('actions')}px` }}>
-        {/* ADMIN/ASSIGNOR GETS ALL OPTIONS */}
-    {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor') || userAccountRoles.includes('super_admin')) && (
-      <>
-        {/* Download Button */}
-        <button
-          ref={downloadButtonRef}
-          onClick={handleDownloadClick}
-          className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
-          title="Download Options"
-        >
-          <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-        </button>
+        <td className="px-3 py-3.5 text-center border-slate-200 align-top" style={{ width: `${getColumnWidth('actions')}px` }}>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+                {/* ADMIN/ASSIGNOR ACTIONS */}
+                {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor')) && (
+                <>
+                    <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="Download Options">
+                        <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                    </button>
 
-        {/* OHIF + Reporting Button */}
-        <button
-          onClick={handleOHIFReporting}
-          className="p-2 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110"
-          title="OHIF + Reporting"
-        >
-          <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-        </button>
+                    <button onClick={handleOHIFReporting} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110" title="OHIF + Reporting">
+                        <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+                    </button>
 
-        {/* View Report Button */}
-        <button
-          onClick={() => onViewReport?.(study)}
-          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
-          title="View Report"
-        >
-          <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-        </button>
+                    <button onClick={() => onViewReport?.(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="View Report">
+                        <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                    </button>
 
-        {/* DICOM Viewer Button */}
-        <button
-          onClick={() => {
-            const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
-            window.open(ohifUrl, '_blank');
-          }}
-          className="p-2 hover:bg-indigo-50 rounded-lg transition-all group hover:scale-110"
-          title="DICOM Viewer"
-        >
-          <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
-        </button>
+                    <button onClick={() => { const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`; window.open(ohifUrl, '_blank'); }} className="p-1.5 hover:bg-indigo-50 rounded-lg transition-all group hover:scale-110" title="DICOM Viewer">
+                        <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
+                    </button>
 
-        {/* Share Button */}
-        <button
-          onClick={() => {
-            const shareUrl = `${window.location.origin}/study/${study._id}`;
-            navigator.clipboard.writeText(shareUrl);
-            toast.success('Study link copied to clipboard!');
-          }}
-          className="p-2 hover:bg-sky-50 rounded-lg transition-all group hover:scale-110"
-          title="Share Study"
-        >
-          <Share2 className="w-4 h-4 text-sky-600 group-hover:text-sky-700" />
-        </button>
-      </>
-    )}
+                    <button onClick={() => { const shareUrl = `${window.location.origin}/study/${study._id}`; navigator.clipboard.writeText(shareUrl); toast.success('Study link copied to clipboard!'); }} className="p-1.5 hover:bg-sky-50 rounded-lg transition-all group hover:scale-110" title="Share Study">
+                        <Share2 className="w-4 h-4 text-sky-600 group-hover:text-sky-700" />
+                    </button>
 
-    {(userRoles.includes('admin') || userRoles.includes('super_admin')) && 
-    ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus) && (
-      <button
-        onClick={() => onShowRevertModal(study)}
-        className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 transition-colors"
-        title="Revert to Radiologist"
-      >
-        <RotateCcw className="w-3 h-3" />
-        <span>Revert</span>
-      </button>
-    )}
+                    {/* ✅ VERIFIER BUTTONS FOR ADMIN ROLE */}
+                    {userAccountRoles.includes('admin') && (
+                        <>
+                            <button
+                              className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap"
+                              title="Open OHIF + Reporting for Verification"
+                              onClick={() => {
+                                // ✅ Open reporting in verifier mode
+                                window.open(`/online-reporting/${study._id}?openOHIF=true&verifierMode=true&action=verify`, '_blank');
+                              }}
+                            >
+                              Verify
+                            </button>
+                            {study.workflowStatus === 'report_verified' && (
+                                <div className="p-1 text-green-600" title="Verified">
+                                    <CheckCircle className="w-3.5 h-3.5 fill-current" />
+                                </div>
+                            )}
+                            {study.workflowStatus === 'report_rejected' && (
+                                <div className="p-1 text-red-600" title="Rejected">
+                                    <XCircle className="w-3.5 h-3.5 fill-current" />
+                                </div>
+                            )}
+                        </>
+                    )}
+                </>
+                )}
 
-    {/* RADIOLOGIST ACTIONS */}
-    {userAccountRoles.includes('radiologist') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-      <>
-        <button
-          onClick={handleOHIFReporting}
-          className="p-2 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110"
-          title="OHIF + Reporting"
-        >
-          <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-        </button>
+                {/* REVERT BUTTON */}
+                {(userAccountRoles.includes('admin')) && 
+                ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus) && (
+                <button onClick={() => onShowRevertModal(study)} className="flex items-center gap-1 px-1.5 py-1 text-[10px] font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded hover:bg-rose-100 transition-colors whitespace-nowrap w-full justify-center mt-1" title="Revert to Radiologist">
+                    <RotateCcw className="w-3 h-3" />
+                    <span>Revert</span>
+                </button>
+                )}
 
-        <button
-          onClick={() => onViewReport?.(study)}
-          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
-          title="View Report"
-        >
-          <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-        </button>
-      </>
-    )}
+                {/* RADIOLOGIST ACTIONS */}
+                {userAccountRoles.includes('radiologist') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
+                <>
+                    <button onClick={handleOHIFReporting} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110" title="OHIF + Reporting">
+                        <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
+                    </button>
 
-    {/* VERIFIER ACTIONS */}
-    {userAccountRoles.includes('verifier') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-      <>
-        <button 
-          className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" 
-          title="View Report"
-          onClick={() => onViewReport?.(study)}
-        >
-          <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-        </button>
+                    <button onClick={() => onViewReport?.(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="View Report">
+                        <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                    </button>
+                </>
+                )}
 
-        <button 
-          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" 
-          title="DICOM Viewer"
-          onClick={() => {
-            const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
-            window.open(ohifUrl, '_blank');
-          }}
-        >
-          <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-        </button>
+                {/* VERIFIER ACTIONS (Only if not Admin/Assignor since Admin already got these buttons injected above) */}
+                {userAccountRoles.includes('verifier') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
+                <>
+                    <button className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="View Report" onClick={() => onViewReport?.(study)}>
+                        <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                    </button>
 
-        <button 
-          className="px-2.5 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm" 
-          title="Open OHIF + Reporting for Verification"
-          onClick={handleOHIFReporting}
-        >
-          Verify
-        </button>
-      </>
-    )}
+                    <button className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="DICOM Viewer" onClick={() => { const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`; window.open(ohifUrl, '_blank'); }}>
+                        <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                    </button>
 
-    {/* ✅ LAB STAFF ACTIONS - Download Report & Download Study */}
-    {userAccountRoles.includes('lab_staff') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-      <>
-        {/* Download Study Button */}
-        <button
-          ref={downloadButtonRef}
-          onClick={handleDownloadClick}
-          className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
-          title="Download Study"
-        >
-          <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-        </button>
+                    <button className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap" title="Open OHIF + Reporting for Verification" onClick={handleOHIFReporting}>
+                        Verify
+                    </button>
 
-        {/* View/Download Report Button */}
-        <button
-          onClick={() => onViewReport?.(study)}
-          className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
-          title="View/Download Report"
-        >
-          <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-        </button>
+                    {study.workflowStatus === 'report_verified' && (
+                        <div className="p-1 text-green-600" title="Verified">
+                            <CheckCircle className="w-3.5 h-3.5 fill-current" />
+                        </div>
+                    )}
+                    {study.workflowStatus === 'report_rejected' && (
+                        <div className="p-1 text-red-600" title="Rejected">
+                            <XCircle className="w-3.5 h-3.5 fill-current" />
+                        </div>
+                    )}
+                </>
+                )}
 
-        {/* DICOM Viewer Button (View Only) */}
-        <button
-          onClick={() => {
-            const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
-            window.open(ohifUrl, '_blank');
-          }}
-          className="p-2 hover:bg-indigo-50 rounded-lg transition-all group hover:scale-110"
-          title="View DICOM Images"
-        >
-          <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
-        </button>
-      </>
-    )}  
-      </td>
+                {/* LAB STAFF ACTIONS */}
+                {userAccountRoles.includes('lab_staff') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
+                <>
+                    <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="Download Study">
+                        <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                    </button>
+
+                    <button onClick={() => onViewReport?.(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="View/Download Report">
+                        <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                    </button>
+
+                    <button onClick={() => { const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`; window.open(ohifUrl, '_blank'); }} className="p-1.5 hover:bg-indigo-50 rounded-lg transition-all group hover:scale-110" title="View DICOM Images">
+                        <Eye className="w-4 h-4 text-indigo-600 group-hover:text-indigo-700" />
+                    </button>
+                </>
+                )} 
+            </div>
+        </td>
     )}
 
     {/* modals/portals */}
     {showDownloadOptions && <DownloadOptions study={study} isOpen={showDownloadOptions} onClose={() => setShowDownloadOptions(false)} position={downloadPosition} />}
     {showAssignmentModal && <AssignmentModal study={study} availableAssignees={availableAssignees} onSubmit={handleAssignmentSubmit} onClose={handleCloseAssignmentModal} position={assignmentModalPosition} searchTerm={assignInputValue} />}
-  </tr>
+</tr>
 );
 };
 

@@ -914,23 +914,35 @@ async function processStableStudy(job) {
     const studyData = {
       organization: organizationRecord._id,
       organizationIdentifier: organizationRecord.identifier,
+      
       studyInstanceUID: studyInstanceUID,
       orthancStudyID: orthancStudyId,
+      
       accessionNumber: accessionNumber,
       patient: patientRecord._id,
       patientId: patientRecord.patientID,
       sourceLab: labRecord._id,
       labLocation: labLocation,
-      seriesCount: allSeries.length,
-      instanceCount: totalInstances,
-      seriesImages: `${allSeries.length}/${totalInstances}`,
+      
+      studyDate: studyDate,
+      studyTime: tags.StudyTime || '',
+      modalitiesInStudy: Array.from(modalitiesSet),
+      examDescription: studyDescription,  // ✅ CHANGED from studyDescription to examDescription
+      institutionName: institutionName,
+      workflowStatus: totalInstances > 0 ? 'new_study_received' : 'new_metadata_only',
+      
+      seriesCount: allSeries.length,  // ✅ ADDED
+      instanceCount: totalInstances,  // ✅ ADDED
+      seriesImages: `${allSeries.length}/${totalInstances}`,  // ✅ ADDED
+      
       patientInfo: {
         patientID: patientRecord.patientID,
         patientName: patientRecord.patientNameRaw,
-        age: tags.PatientAge || patientRecord.age || 'N/A',
+        age: tags.PatientAge || patientRecord.age || 'N/A',  // ✅ CHANGED: Add age from DICOM tag
         gender: patientRecord.gender || '',
         dateOfBirth: tags.PatientBirthDate || ''
       },
+      
       referringPhysicianName: referringPhysicianName,
       physicians: {
         referring: {
@@ -1010,56 +1022,18 @@ async function processStableStudy(job) {
         }
       }
     };
-
+    
+    // ✅ CHANGED: Remove the conditional logic and always create or update
     let dicomStudyDoc = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
-
+    
     if (dicomStudyDoc) {
-      console.log(`[StableStudy] 📝 Updating existing study - PRESERVING org/lab/location`);
-
-      // ✅ CRITICAL: Save preserved fields BEFORE overwriting
-      const preserveOnUpdate = {
-        organization:           dicomStudyDoc.organization,
-        organizationIdentifier: dicomStudyDoc.organizationIdentifier,
-        sourceLab:              dicomStudyDoc.sourceLab,
-        labLocation:            dicomStudyDoc.labLocation,
-        bharatPacsId:           dicomStudyDoc.bharatPacsId,
-        // ✅ Also preserve patient if already linked correctly
-        patient:                dicomStudyDoc.patient,
-        patientId:              dicomStudyDoc.patientId,
-      };
-
-      // ✅ Apply DICOM-derived updates (series count, modality, description etc.)
-      const allowedUpdates = {
-        seriesCount:          studyData.seriesCount,
-        instanceCount:        studyData.instanceCount,
-        seriesImages:         studyData.seriesImages,
-        modalitiesInStudy:    studyData.modalitiesInStudy,
-        examDescription:      studyData.examDescription,
-        studyDate:            studyData.studyDate,
-        studyTime:            studyData.studyTime,
-        accessionNumber:      studyData.accessionNumber,
-        referringPhysicianName: studyData.referringPhysicianName,
-        physicians:           studyData.physicians,
-        storageInfo:          studyData.storageInfo,
-        patientInfo:          studyData.patientInfo,
-        workflowStatus:       dicomStudyDoc.workflowStatus, // ✅ NEVER overwrite workflow status
-      };
-
-      Object.assign(dicomStudyDoc, allowedUpdates, preserveOnUpdate); // ✅ preserved fields win
-
+      console.log(`[StableStudy] 📝 Updating existing study with UID: ${studyInstanceUID}`);
+      Object.assign(dicomStudyDoc, studyData);
       dicomStudyDoc.statusHistory.push({
-        status: dicomStudyDoc.workflowStatus,
+        status: studyData.workflowStatus,
         changedAt: new Date(),
-        note: `[StableStudy] Orthanc re-notification: ${allSeries.length} series, ${totalInstances} instances. Org/Lab/Location preserved.`
+        note: `Study updated: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
       });
-
-      console.log(`[StableStudy] 🔒 Preserved:`, {
-        org:      preserveOnUpdate.organizationIdentifier,
-        lab:      preserveOnUpdate.sourceLab,
-        location: preserveOnUpdate.labLocation,
-        bpId:     preserveOnUpdate.bharatPacsId,
-      });
-
     } else {
       console.log(`[StableStudy] 🆕 Creating new study with UID: ${studyInstanceUID}`);
       dicomStudyDoc = new DicomStudy({
@@ -1071,7 +1045,7 @@ async function processStableStudy(job) {
         }]
       });
     }
-
+    
     await dicomStudyDoc.save();
     console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
     
