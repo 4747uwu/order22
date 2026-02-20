@@ -185,12 +185,9 @@ function processDicomPersonName(dicomNameField) {
   };
 }
 
-// 🔧 ENHANCED: Fix DICOM date parsing with better fallbacks
+// 🔧 ENHANCED: Fix DICOM date parsing
 function formatDicomDateToISO(dicomDate) {
-  if (!dicomDate || typeof dicomDate !== 'string') {
-    console.warn(`⚠️ Invalid DICOM date provided:`, dicomDate, typeof dicomDate);
-    return new Date(); // Return current date as fallback
-  }
+  if (!dicomDate || typeof dicomDate !== 'string') return null;
   
   // Handle different DICOM date formats
   let cleanDate = dicomDate.trim();
@@ -208,45 +205,24 @@ function formatDicomDateToISO(dicomDate) {
       const dayNum = parseInt(day);
       
       if (yearNum >= 1900 && yearNum <= 2100 && monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
-        const dateObj = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
-        console.log(`✅ Parsed DICOM date ${dicomDate} to ISO: ${dateObj.toISOString()}`);
-        return dateObj;
-      } else {
-        console.warn(`⚠️ Invalid date components - Y:${yearNum} M:${monthNum} D:${dayNum}`);
-        return new Date();
+        return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
       }
     } catch (error) {
-      console.warn('⚠️ Error parsing DICOM date:', dicomDate, error.message);
-      return new Date();
+      console.warn('Error parsing DICOM date:', dicomDate, error);
     }
   }
   
-  // Handle other ISO-like formats (YYYY-MM-DD)
-  if (/^\d{4}-\d{2}-\d{2}/.test(cleanDate)) {
-    try {
-      const parsed = new Date(cleanDate);
-      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
-        console.log(`✅ Parsed ISO format date ${cleanDate} to: ${parsed.toISOString()}`);
-        return parsed;
-      }
-    } catch (error) {
-      console.warn('⚠️ Error parsing ISO date:', cleanDate, error.message);
-    }
-  }
-  
-  // Try generic Date parsing as last resort
+  // Handle other formats or return current date as fallback
   try {
     const parsed = new Date(cleanDate);
-    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
-      console.log(`✅ Parsed generic date ${cleanDate} to: ${parsed.toISOString()}`);
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
       return parsed;
     }
   } catch (error) {
-    console.warn('⚠️ Error in generic date parsing:', cleanDate, error.message);
+    console.warn('Error parsing date:', dicomDate, error);
   }
   
-  // Final fallback - return current date
-  console.warn(`⚠️ Could not parse date "${cleanDate}" - using current date as fallback`);
+  // Return current date as fallback
   return new Date();
 }
 
@@ -767,7 +743,7 @@ async function processStableStudy(job) {
         
         const rawTags = metadataResponse.data;
         
-        // Extract all necessary tags in one pass
+        // 🔧 OPTIMIZED: Extract all necessary tags in one pass
         tags = {};
         for (const [tagKey, tagData] of Object.entries(rawTags)) {
           if (tagData && typeof tagData === 'object' && tagData.Value !== undefined) {
@@ -777,26 +753,29 @@ async function processStableStudy(job) {
           }
         }
         
-        // Map common DICOM fields with better logging
+        // Map common DICOM fields
         tags.PatientName = rawTags["0010,0010"]?.Value || tags.PatientName;
         tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
         tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
         tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
-        tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge;
+        tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge; 
+        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription;
+        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;
+        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;
+        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;
+        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;
+        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName;
         
-        // Extract private tags for organization and lab identification
-        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null;
-        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null;
-        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null;
-        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null;
+        // 🔧 CRITICAL: Extract private tags for organization and lab identification  
+        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null; // Lab identifier
+        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null; // Lab identifier
+        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null; // Organization identifier
+        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null; // Organization identifier
         
-        console.log(`[StableStudy] ✅ Extracted DICOM tags:`, {
-          PatientName: tags.PatientName || 'NOT_FOUND',
-          PatientID: tags.PatientID || 'NOT_FOUND',
-          StudyDate: tags.StudyDate || 'NOT_FOUND',
-          StudyTime: tags.StudyTime || 'NOT_FOUND',
-          StudyDescription: tags.StudyDescription || 'NOT_FOUND',
-          AccessionNumber: tags.AccessionNumber || 'NOT_FOUND',
+        console.log(`[StableStudy] ✅ Got tags from single instance:`, {
+          PatientName: tags.PatientName,
+          PatientID: tags.PatientID,
+          StudyDescription: tags.StudyDescription,
           LabTags: {
             "0013,0010": tags["0013,0010"],
             "0015,0010": tags["0015,0010"]
@@ -810,7 +789,7 @@ async function processStableStudy(job) {
       } catch (metadataError) {
         console.warn(`[StableStudy] ⚠️ Could not get instance metadata:`, metadataError.message);
         
-        // Fallback: Try simplified-tags
+        // 🔧 FALLBACK: Try simplified-tags if /tags fails
         try {
           const simplifiedUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/simplified-tags`;
           const simplifiedResponse = await axios.get(simplifiedUrl, {
@@ -820,7 +799,6 @@ async function processStableStudy(job) {
           
           tags = { ...simplifiedResponse.data };
           console.log(`[StableStudy] ✅ Got simplified metadata as fallback`);
-          console.log(`[StableStudy] 📋 Simplified tags keys:`, Object.keys(tags));
         } catch (simplifiedError) {
           console.warn(`[StableStudy] ⚠️ Simplified tags also failed:`, simplifiedError.message);
         }
@@ -915,24 +893,19 @@ async function processStableStudy(job) {
     
     job.progress = 75;
     
-    // Extract all study information from tags with better fallbacks
-    const studyDate = tags.StudyDate 
-      ? formatDicomDateToISO(tags.StudyDate)
-      : new Date(); // 🔧 Direct fallback to current date
-    
+    // Extract all study information from tags
+    const studyDate = formatDicomDateToISO(tags.StudyDate);
     const studyDescription = tags.StudyDescription || 'No Description';
     const accessionNumber = tags.AccessionNumber || `ACC_${Date.now()}`;
     const referringPhysicianName = tags.ReferringPhysicianName || '';
     const institutionName = tags.InstitutionName || '';
     
     console.log(`[StableStudy] 📊 Study Details:`, {
-      studyDate: studyDate ? studyDate.toISOString() : 'INVALID',
-      studyTime: tags.StudyTime || 'NOT_FOUND',
+      date: studyDate,
       description: studyDescription,
       accessionNumber: accessionNumber,
       physician: referringPhysicianName,
-      institution: institutionName,
-      dicomStudyDateRaw: tags.StudyDate || 'NOT_FOUND'
+      institution: institutionName
     });
     
     job.progress = 80;
