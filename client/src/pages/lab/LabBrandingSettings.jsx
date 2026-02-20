@@ -425,8 +425,12 @@ const LabBrandingSettings = () => {
       setSaving(true);
 
       if (pendingChanges.header) {
+        toast.loading('Converting header to black & white...', { id: 'bw-header' });
+        const bwBlob = await convertToBlackAndWhite(pendingChanges.header.blob);
+        toast.dismiss('bw-header');
+
         const formData = new FormData();
-        formData.append('image', pendingChanges.header.blob, `header_${Date.now()}.png`);
+        formData.append('image', bwBlob, `header_${Date.now()}.png`);
         formData.append('type', 'header');
         formData.append('width', pendingChanges.header.width.toString());
         formData.append('height', pendingChanges.header.height.toString());
@@ -444,8 +448,12 @@ const LabBrandingSettings = () => {
       }
 
       if (pendingChanges.footer) {
+        toast.loading('Converting footer to black & white...', { id: 'bw-footer' });
+        const bwBlob = await convertToBlackAndWhite(pendingChanges.footer.blob);
+        toast.dismiss('bw-footer');
+
         const formData = new FormData();
-        formData.append('image', pendingChanges.footer.blob, `footer_${Date.now()}.png`);
+        formData.append('image', bwBlob, `footer_${Date.now()}.png`);
         formData.append('type', 'footer');
         formData.append('width', pendingChanges.footer.width.toString());
         formData.append('height', pendingChanges.footer.height.toString());
@@ -467,7 +475,7 @@ const LabBrandingSettings = () => {
       });
       setPendingChanges({ header: null, footer: null });
 
-      toast.success('Branding images saved successfully!');
+      toast.success('Branding images saved as black & white successfully!');
 
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -535,6 +543,42 @@ const LabBrandingSettings = () => {
       console.error('Error toggling visibility:', error);
       toast.error('Failed to update visibility');
     }
+  };
+
+  // ✅ Convert image blob to black & white
+  const convertToBlackAndWhite = (blob) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(blob);
+      
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+        
+        for (let i = 0; i < data.length; i += 4) {
+          // Luminance formula for accurate grayscale
+          const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
+          data[i] = gray;
+          data[i + 1] = gray;
+          data[i + 2] = gray;
+          // Alpha unchanged
+        }
+        
+        ctx.putImageData(imageData, 0, 0);
+        URL.revokeObjectURL(url);
+        
+        canvas.toBlob((bwBlob) => resolve(bwBlob), 'image/png', 0.95);
+      };
+      
+      img.src = url;
+    });
   };
 
   if (!labId) {

@@ -73,6 +73,47 @@ export const copyStudyToOrganization = async (req, res) => {
             });
         }
 
+        // ✅ NEW: Check if source study is unlocked and assigned - remove assignment if so
+        const isLocked = sourceStudy.studyLock?.isLocked === true;
+        const isAssigned = sourceStudy.assignment && sourceStudy.assignment.length > 0;
+        let assignmentRemovedFromSource = false;
+
+        if (!isLocked && isAssigned) {
+            console.log(`🔓 Source study is unlocked and assigned. Removing assignment from source org: ${sourceStudy.organizationIdentifier}`);
+            
+            await DicomStudy.findByIdAndUpdate(sourceStudy._id, {
+                $set: {
+                    assignment: [],
+                    lastAssignedDoctor: [],
+                    currentCategory: 'CREATED',
+                    workflowStatus: 'new_study_received',
+                    'categoryTracking.assigned': null
+                },
+                $push: {
+                    statusHistory: {
+                        status: 'unassigned',
+                        changedAt: new Date(),
+                        changedBy: user._id,
+                        note: `Assignment removed - study copied to ${user.organizationIdentifier} by ${user.fullName}`
+                    },
+                    actionLog: {
+                        actionType: 'ASSIGNMENT_REMOVED',
+                        actionCategory: 'administrative',
+                        performedBy: user._id,
+                        performedByName: user.fullName,
+                        performedByRole: user.role,
+                        performedAt: new Date(),
+                        notes: `Assignment removed from source study during copy to ${user.organizationIdentifier}`
+                    }
+                }
+            });
+
+            assignmentRemovedFromSource = true;
+            console.log(`✅ Assignment removed from source study: ${bharatPacsId}`);
+        } else if (isLocked) {
+            console.log(`🔒 Source study is locked - assignment preserved in source org`);
+        }
+
         // Create or find patient in target organization
         const targetPatient = await Patient.findOneAndUpdate(
             {
@@ -108,7 +149,7 @@ export const copyStudyToOrganization = async (req, res) => {
                 comment: discussion.comment,
                 userName: discussion.userName,
                 userRole: discussion.userRole,
-                userId: null, // Don't copy user reference (user may not exist in target org)
+                userId: null,
                 dateTime: discussion.dateTime,
                 copiedFrom: {
                     originalUserId: discussion.userId?._id || discussion.userId,
@@ -221,7 +262,9 @@ export const copyStudyToOrganization = async (req, res) => {
                 includedAttachments: copyAttachments,
                 notesCount: copiedDiscussions.length,
                 uploadedReportsCount: copyReports ? (sourceStudy.uploadedReports?.length || 0) : 0,
-                doctorReportsCount: copyReports ? (sourceStudy.doctorReports?.length || 0) : 0
+                doctorReportsCount: copyReports ? (sourceStudy.doctorReports?.length || 0) : 0,
+                // ✅ NEW: Track if assignment was removed
+                sourceAssignmentRemoved: assignmentRemovedFromSource
             },
             
             isCopiedStudy: true,
@@ -260,10 +303,11 @@ export const copyStudyToOrganization = async (req, res) => {
                         copiedNotes: copyNotes,
                         copiedReports: copyReports,
                         copiedAttachments: copyAttachments,
-                        notesCount: copiedDiscussions.length
+                        notesCount: copiedDiscussions.length,
+                        sourceAssignmentRemoved: assignmentRemovedFromSource // ✅ NEW
                     }
                 },
-                notes: `Study copied from ${sourceStudy.organizationIdentifier} to ${targetOrg.identifier}`
+                notes: `Study copied from ${sourceStudy.organizationIdentifier} to ${targetOrg.identifier}${assignmentRemovedFromSource ? ' (source assignment removed)' : ''}`
             }],
             
             // Flags
@@ -271,11 +315,9 @@ export const copyStudyToOrganization = async (req, res) => {
             attachments: []
         };
 
-        // Create the copied study
         const copiedStudy = new DicomStudy(copiedStudyData);
         await copiedStudy.save();
 
-        // ✅ NEW: Copy Report documents from Report collection
         let copiedReportsCount = 0;
         if (copyReports) {
             copiedReportsCount = await copyStudyReports(
@@ -287,7 +329,6 @@ export const copyStudyToOrganization = async (req, res) => {
             );
         }
 
-        // Update source study
         await DicomStudy.findByIdAndUpdate(sourceStudy._id, {
             $push: {
                 copiedTo: {
@@ -310,7 +351,6 @@ export const copyStudyToOrganization = async (req, res) => {
             }
         });
 
-        // Copy attachments if requested
         let copiedAttachmentsCount = 0;
         if (copyAttachments && sourceStudy.attachments?.length > 0) {
             copiedAttachmentsCount = await copyStudyAttachments(
@@ -325,6 +365,7 @@ export const copyStudyToOrganization = async (req, res) => {
         console.log(`   - Notes copied: ${copiedDiscussions.length}`);
         console.log(`   - Reports copied: ${copiedReportsCount}`);
         console.log(`   - Attachments copied: ${copiedAttachmentsCount}`);
+        console.log(`   - Source assignment removed: ${assignmentRemovedFromSource}`);
 
         res.status(201).json({
             success: true,
@@ -346,7 +387,10 @@ export const copyStudyToOrganization = async (req, res) => {
                     uploadedReports: copyReports ? (sourceStudy.uploadedReports?.length || 0) : 0,
                     doctorReports: copyReports ? (sourceStudy.doctorReports?.length || 0) : 0,
                     attachments: copiedAttachmentsCount
-                }
+                },
+                // ✅ NEW: Inform client if assignment was removed
+                sourceAssignmentRemoved: assignmentRemovedFromSource,
+                sourceStudyLocked: isLocked
             }
         });
 

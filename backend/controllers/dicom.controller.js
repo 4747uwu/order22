@@ -200,7 +200,7 @@ export const saveExtractedDicomData = async (req, res) => {
                     institutionName: institutionName,  // ✅ Lab name as institution
                     
                     workflowStatus: 'new_study_received',
-                    priority: 'normal',
+                    priority: 'NORMAL',
                     
                     // Series and instance counts at root level
                     seriesCount: seriesCount,
