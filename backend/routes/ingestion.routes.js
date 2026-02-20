@@ -777,12 +777,21 @@ async function processStableStudy(job) {
           }
         }
         
-        // Map common DICOM fields with better logging
+        // ✅ FIX: Map ALL common DICOM fields including StudyDate and StudyDescription
         tags.PatientName = rawTags["0010,0010"]?.Value || tags.PatientName;
         tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
         tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
         tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
         tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge;
+        
+        // 🔧 THESE WERE MISSING IN YOUR CURRENT ingestion.routes.js:
+        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;        // ✅ ADD THIS
+        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;        // ✅ ADD THIS
+        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription; // ✅ ADD THIS
+        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;   // ✅ ADD THIS
+        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;   // ✅ ADD THIS
+        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName; // ✅ ADD THIS
+        tags.Modality = rawTags["0008,0060"]?.Value || tags.Modality;          // ✅ ADD THIS
         
         // Extract private tags for organization and lab identification
         tags["0013,0010"] = rawTags["0013,0010"]?.Value || null;
@@ -793,10 +802,12 @@ async function processStableStudy(job) {
         console.log(`[StableStudy] ✅ Extracted DICOM tags:`, {
           PatientName: tags.PatientName || 'NOT_FOUND',
           PatientID: tags.PatientID || 'NOT_FOUND',
-          StudyDate: tags.StudyDate || 'NOT_FOUND',
+          StudyDate: tags.StudyDate || 'NOT_FOUND',      // Will now show actual date
           StudyTime: tags.StudyTime || 'NOT_FOUND',
           StudyDescription: tags.StudyDescription || 'NOT_FOUND',
           AccessionNumber: tags.AccessionNumber || 'NOT_FOUND',
+          InstitutionName: tags.InstitutionName || 'NOT_FOUND',
+          Modality: tags.Modality || 'NOT_FOUND',
           LabTags: {
             "0013,0010": tags["0013,0010"],
             "0015,0010": tags["0015,0010"]
