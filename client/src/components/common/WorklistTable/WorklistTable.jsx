@@ -679,7 +679,7 @@ const StudyRow = ({
         </td>
     )}
 
-    {/* 3. ORGANIZATION */}
+   
      {(userRoles.includes('super_admin') || userRole === 'super_admin') && (
       <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('organization')}px` }}>
         <div className="text-[10px] sm:text-xs text-slate-600 truncate" title={study.organizationName}>{study.organizationName || '-'}</div>
@@ -708,17 +708,45 @@ const StudyRow = ({
 
     {/* 6. PATIENT NAME / UHID */}
     {isColumnVisible('patientName') && (
-        <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('patientName')}px` }}>
-            <button className="w-full text-left hover:underline decoration-gray-900 mb-0.5" onClick={() => onPatienIdClick?.(study.patientId, study)}>
-                <div className={`text-[10px] sm:text-xs font-bold ${isUrgent ? 'text-rose-600' : 'text-slate-800'} whitespace-normal break-words leading-tight flex items-start gap-1`} title={study.patientName}>
-                    {study.patientName || '-'}
-                    {isUrgent && <span className="text-rose-500 mt-0.5 flex-shrink-0">●</span>}
-                    {isRejected && <span className="text-rose-600 mt-0.5 flex-shrink-0" title={`Rejected: ${rejectionReason}`}>🚫</span>}
-                </div>
-                <div className={`text-[9px] sm:text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'} whitespace-normal break-all leading-tight mt-0.5`}>UHID: {study.patientId || '-'}</div>
-            </button>
-            {getPriorityTag(study)}
-        </td>
+        <td 
+  className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle"
+  style={{ width: `${getColumnWidth('patientName')}px` }}
+>
+  <button
+    className="w-full text-left hover:underline decoration-gray-900 mb-0.5"
+    onClick={() => onPatienIdClick?.(study.patientId, study)}
+  >
+    <div
+      className={`text-[10px] sm:text-xs font-bold ${
+        isUrgent ? 'text-rose-600' : 'text-slate-800'
+      } whitespace-normal break-all leading-tight flex items-start gap-1`}
+      title={study.patientName}
+    >
+      {study.patientName || '-'}
+      {isUrgent && (
+        <span className="text-rose-500 mt-0.5 flex-shrink-0">●</span>
+      )}
+      {isRejected && (
+        <span
+          className="text-rose-600 mt-0.5 flex-shrink-0"
+          title={`Rejected: ${rejectionReason}`}
+        >
+          🚫
+        </span>
+      )}
+    </div>
+
+    <div
+      className={`text-[9px] sm:text-[10px] ${
+        isUrgent ? 'text-rose-400' : 'text-slate-500'
+      } whitespace-normal break-all leading-tight mt-0.5`}
+    >
+      UHID: {study.patientId || '-'}
+    </div>
+  </button>
+
+  {getPriorityTag(study)}
+</td>
     )}
 
     {/* 7. AGE/SEX */}
