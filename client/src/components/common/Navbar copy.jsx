@@ -16,6 +16,8 @@ import {
   Copy
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
+import DoctorProfileModal from '../doctor/DoctorProfileModal'; // ✅ ADD THIS IMPORT
+import ManualStudyCreator from '../admin/ManualStudyCreator'; // ✅ ADD THIS IMPORT
 
 const Navbar = ({ 
   title, 
@@ -40,6 +42,8 @@ const Navbar = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD THIS STATE
+  const [showManualStudyModal, setShowManualStudyModal] = useState(false); // ✅ ADD THIS STATE
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -90,6 +94,31 @@ const Navbar = ({
     onRefresh?.();
   };
 
+  const handleOpenProfileModal = () => {
+    setShowProfileModal(true);
+    setShowProfileDropdown(false); // Close dropdown when opening modal
+  };
+
+  const handleProfileSuccess = (updatedProfile) => {
+    console.log('Profile updated:', updatedProfile);
+    // Optionally refresh data if needed
+    onRefresh?.();
+  };
+
+  const handleOpenManualStudy = () => {
+    setShowManualStudyModal(true);
+  };
+
+  const handleCloseManualStudy = () => {
+    setShowManualStudyModal(false);
+  };
+
+  const handleManualStudySuccess = (data) => {
+    console.log('Manual study created:', data);
+    setShowManualStudyModal(false);
+    onRefresh?.();
+  };
+
   const filteredOrganizations = availableOrganizations.filter(org =>
     org.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     org.identifier.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -111,7 +140,10 @@ const Navbar = ({
       'admin': 'bg-gray-800 text-white',
       'owner': 'bg-gray-700 text-white',
       'lab_staff': 'bg-gray-600 text-white',
-      'doctor_account': 'bg-gray-500 text-white'
+      'doctor_account': 'bg-gray-500 text-white',
+      'radiologist': 'bg-teal-600 text-white',
+      'verifier': 'bg-purple-600 text-white',
+      'typist': 'bg-blue-600 text-white'
     };
     return colors[role] || 'bg-gray-400 text-white';
   };
@@ -124,6 +156,12 @@ const Navbar = ({
     ? 'Global'
     : availableOrganizations.find(org => org.identifier === currentOrganizationContext)?.displayName || currentOrganizationContext;
 
+  // ✅ CHECK IF USER CAN ACCESS PROFILE MODAL (doctors and radiologists)
+  const canAccessProfileModal = ['doctor_account', 'radiologist'].includes(currentUser?.role);
+
+  // ✅ CHECK IF USER CAN CREATE MANUAL STUDIES
+  const canCreateManualStudy = ['admin','lab_staff'].includes(currentUser?.role);
+
   return (
     <>
       {/* ✅ COMPACT NAVBAR - Height reduced from 16 to 12 */}
@@ -131,7 +169,7 @@ const Navbar = ({
         <div className="max-w-8xl mx-auto px-3">
           <div className="flex justify-between items-center h-12">
             
-            {/* ✅ LEFT SECTION - More compact */}
+            {/* ✅ LEFT SECTION - Logo + Title */}
             <div className="flex items-center space-x-3">
               <button
                 onClick={() => setShowMobileMenu(!showMobileMenu)}
@@ -140,12 +178,20 @@ const Navbar = ({
                 {showMobileMenu ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
               </button>
               
-              <div className="hidden md:block">
-                <div className="flex items-center space-x-2">
-                  <h1 className="text-lg font-bold text-black tracking-tight">{title}</h1>
-                  {subtitle && (
-                    <span className="text-xs text-gray-500 font-medium">• {subtitle}</span>
-                  )}
+              {/* ✅ ADD: Bharat PACS Logo */}
+              <div className="flex items-center space-x-2.5">
+                <img 
+                  src="/bharat.png" 
+                  alt="Bharat PACS" 
+                  className="h-8 w-8 object-contain"
+                />
+                <div className="hidden md:block">
+                  <div className="flex items-center space-x-2">
+                    <h1 className="text-lg font-bold text-black tracking-tight">{title}</h1>
+                    {subtitle && (
+                      <span className="text-xs text-gray-500 font-medium">• {subtitle}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -153,17 +199,42 @@ const Navbar = ({
             {/* ✅ RIGHT SECTION - More compact */}
             <div className="flex items-center space-x-2">
               
-              {/* ✅ ADD: COPY STUDY BUTTON (Before additional actions) */}
-              {/* {['super_admin', 'admin'].includes(currentUser?.role) && (
+              {/* ✅ ADD: PROFILE SETTINGS BUTTON - Show for doctors/radiologists */}
+              {canAccessProfileModal && (
+                <button
+                  onClick={handleOpenProfileModal}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
+                  title="Profile Settings"
+                >
+                  <User className="h-3.5 w-3.5" />
+                  <span>Profile</span>
+                </button>
+              )}
+
+              {/* ✅ ADD: COPY STUDY BUTTON - Show for admin, assignor, super_admin */}
+              {(['admin', 'assignor'].includes(currentUser?.role) || 
+                currentUser?.accountRoles?.some(role => ['admin', 'assignor', 'super_admin'].includes(role))) && (
                 <button
                   onClick={handleOpenCopyModal}
                   className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
-                  title="Copy study between organizations"
+                  title="Copy Study to Organization"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   <span>Copy Study</span>
                 </button>
-              )} */}
+              )}
+
+              {/* ✅ ADD: CREATE STUDY BUTTON - Show for admin, super_admin, lab_staff */}
+              {canCreateManualStudy && (
+                <button
+                  onClick={handleOpenManualStudy}
+                  className="hidden md:flex items-center space-x-1.5 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-gradient-to-r from-teal-600 to-green-600 text-white hover:from-teal-700 hover:to-green-700"
+                  title="Create Manual Study"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Study</span>
+                </button>
+              )}
 
               {/* ✅ COMPACT ADDITIONAL ACTIONS */}
               {additionalActions.map((action, index) => (
@@ -348,10 +419,17 @@ const Navbar = ({
 
                     {/* Menu Items */}
                     <div className="py-1">
-                      <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2">
-                        <User className="h-3.5 w-3.5" />
-                        <span>Profile Settings</span>
-                      </button>
+                      {/* ✅ UPDATED: Profile Settings - Only show for doctors/radiologists */}
+                      {canAccessProfileModal && (
+                        <button 
+                          onClick={handleOpenProfileModal}
+                          className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2"
+                        >
+                          <User className="h-3.5 w-3.5" />
+                          <span>Profile Settings</span>
+                        </button>
+                      )}
+                      
                       <button className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50 transition-colors flex items-center space-x-2">
                         <Settings className="h-3.5 w-3.5" />
                         <span>Account Settings</span>
@@ -385,20 +463,6 @@ const Navbar = ({
                 )}
               </div>
               
-              {/* ✅ ADD: Copy Study Button in Mobile Menu */}
-              {['super_admin', 'admin'].includes(currentUser?.role) && (
-                <button
-                  onClick={() => {
-                    handleOpenCopyModal();
-                    setShowMobileMenu(false);
-                  }}
-                  className="w-full flex items-center space-x-2 px-2.5 py-1.5 rounded text-xs font-medium transition-colors bg-teal-600 text-white hover:bg-teal-700"
-                >
-                  <Copy className="h-3.5 w-3.5" />
-                  <span>Copy Study</span>
-                </button>
-              )}
-
               {additionalActions.map((action, index) => (
                 <button
                   key={index}
@@ -438,6 +502,22 @@ const Navbar = ({
         bharatPacsId="" // Empty means user needs to input
         currentOrgName={currentOrgName}
         onSuccess={handleCopySuccess}
+      />
+
+      {/* ✅ ADD: Doctor Profile Modal */}
+      {canAccessProfileModal && (
+        <DoctorProfileModal
+          isOpen={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          onSuccess={handleProfileSuccess}
+        />
+      )}
+
+      {/* ✅ Manual Study Creator Modal */}
+      <ManualStudyCreator
+        isOpen={showManualStudyModal}
+        onClose={handleCloseManualStudy}
+        onSuccess={handleManualStudySuccess}
       />
     </>
   );

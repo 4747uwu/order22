@@ -525,33 +525,13 @@ useEffect(() => {
 
   const additionalActions = [
     {
-      label: 'System Overview',
-      icon: Database,
-      onClick: () => navigate('/admin/system-overview'),
-      variant: 'secondary',
-      tooltip: 'View comprehensive system overview'
-    },
-    {
       label: 'Templates',
       icon: FileText,
       onClick: () => navigate('/admin/templates'),
       variant: 'primary',
       tooltip: 'Manage organization templates'
     },
-    {
-      label: 'Admin Panel',
-      icon: Shield,
-      onClick: () => console.log('Open admin panel'),
-      variant: 'primary',
-      tooltip: 'Open admin panel'
-    },
-    {
-      label: 'Create Study',
-      icon: Plus,
-      onClick: handleCreateStudy,
-      variant: 'success',
-      tooltip: 'Create a new study'
-    },
+   
     {
       label: 'Branding',
       icon: Palette,

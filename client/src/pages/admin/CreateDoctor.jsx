@@ -42,9 +42,8 @@ const CreateDoctor = () => {
     // Form data
     const [formData, setFormData] = useState({
         fullName: '',
-        email: '',
+        username: '',        // ✅ username only - no email field
         password: '',
-        username: '',
         specialization: '',
         licenseNumber: '',
         department: '',
@@ -52,14 +51,14 @@ const CreateDoctor = () => {
         yearsOfExperience: '',
         contactPhoneOffice: '',
         requireReportVerification: true,
-        visibleColumns: [] // ✅ NEW: Column selection
+        visibleColumns: []
     });
 
     // Signature image state
     const [signatureImage, setSignatureImage] = useState(null);
     const [signaturePreview, setSignaturePreview] = useState(null);
 
-    // ✅ NEW: Initialize default columns for radiologist role
+    // ✅ Initialize default columns for radiologist role
     React.useEffect(() => {
         const defaultCols = getDefaultColumnsForRole(['radiologist']);
         setFormData(prev => ({ ...prev, visibleColumns: defaultCols }));
@@ -143,6 +142,23 @@ const CreateDoctor = () => {
         reader.readAsDataURL(file);
     };
 
+    // const handleInputChange = (e) => {
+    //     const { name, value, type, checked } = e.target;
+    //     setFormData(prev => ({
+    //         ...prev,
+    //         [name]: type === 'checkbox' ? checked : value
+    //     }));
+    // };
+
+    // ✅ ADD THIS: username handler - lowercase, no spaces/special chars
+    const handleUsernameChange = (e) => {
+        const value = e.target.value
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]/g, '')
+            .replace(/\s+/g, '');
+        setFormData(prev => ({ ...prev, username: value }));
+    };
+
     const removeSignature = () => {
         setSignatureImage(null);
         setSignaturePreview(null);
@@ -163,7 +179,7 @@ const CreateDoctor = () => {
     // Form validation
     const validateStep = (step) => {
         if (step === 1) {
-            return formData.fullName && formData.email && formData.password && formData.specialization;
+            return formData.fullName.trim() && formData.username.trim() && formData.password.trim();
         }
         return true;
     };
@@ -171,7 +187,7 @@ const CreateDoctor = () => {
     // Form submission
     const handleCreateDoctor = async () => {
         if (!validateStep(1)) {
-            toast.error('Please fill in all required fields');
+            toast.error('Please fill in Full Name, Username and Password');
             return;
         }
 
@@ -185,24 +201,23 @@ const CreateDoctor = () => {
 
             const payload = {
                 fullName: formData.fullName.trim(),
-                email: formData.email.trim(),
+                email: formData.username.trim(),    // ✅ send username, backend appends @bharatpacs.com
                 password: formData.password,
-                username: formData.username?.trim() || formData.email.split('@')[0],
-                specialization: formData.specialization.trim(),
-                licenseNumber: formData.licenseNumber?.trim(),
-                department: formData.department?.trim(),
+                specialization: formData.specialization?.trim() || 'General Radiology', // ✅ default if empty
+                licenseNumber: formData.licenseNumber?.trim() || undefined,
+                department: formData.department?.trim() || undefined,
                 qualifications: formData.qualifications.filter(q => q.trim()),
                 yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : undefined,
-                contactPhoneOffice: formData.contactPhoneOffice?.trim(),
-                signatureImageData: signatureBase64,
+                contactPhoneOffice: formData.contactPhoneOffice?.trim() || undefined,
+                signatureImageData: signatureBase64 || undefined,
                 requireReportVerification: formData.requireReportVerification,
-                visibleColumns: formData.visibleColumns // ✅ NEW: Include columns
+                visibleColumns: formData.visibleColumns
             };
 
             const response = await api.post('/admin/admin-crud/doctors', payload);
 
             if (response.data.success) {
-                toast.success('Doctor created successfully!');
+                toast.success(`Doctor created! Login: ${formData.username}@bharatpacs.com`);
                 navigate('/admin/dashboard');
             }
         } catch (error) {
@@ -314,39 +329,30 @@ const CreateDoctor = () => {
                                             </div>
                                         </div>
 
-                                        <div>
+                                        {/* ✅ USERNAME ONLY - no email field, backend appends @bharatpacs.com */}
+                                        <div className="md:col-span-2">
                                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                                Email Address <span className="text-red-500">*</span>
+                                                Username <span className="text-red-500">*</span>
                                             </label>
-                                            <div className="relative">
-                                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                                <input
-                                                    type="email"
-                                                    name="email"
-                                                    value={formData.email}
-                                                    onChange={handleInputChange}
-                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="john.smith@hospital.com"
-                                                    required
-                                                />
+                                            <div className="flex rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
+                                                <div className="relative flex-1 flex items-center">
+                                                    <User className="absolute left-3 w-5 h-5 text-slate-400" />
+                                                    <input
+                                                        type="text"
+                                                        value={formData.username}
+                                                        onChange={handleUsernameChange}
+                                                        className="w-full pl-10 pr-4 py-2.5 outline-none border-none focus:ring-0"
+                                                        placeholder="dr.johnsmith"
+                                                        required
+                                                    />
+                                                </div>
+                                                <span className="flex items-center px-3 bg-blue-50 text-blue-600 text-sm border-l border-slate-300 whitespace-nowrap font-medium">
+                                                    @bharatpacs.com
+                                                </span>
                                             </div>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                                Username
-                                            </label>
-                                            <div className="relative">
-                                                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                                <input
-                                                    type="text"
-                                                    name="username"
-                                                    value={formData.username}
-                                                    onChange={handleInputChange}
-                                                    className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="Auto-generated from email"
-                                                />
-                                            </div>
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                Login: <strong>{formData.username || 'username'}@bharatpacs.com</strong>
+                                            </p>
                                         </div>
 
                                         <div className="md:col-span-2">
@@ -374,9 +380,11 @@ const CreateDoctor = () => {
                                             </div>
                                         </div>
 
+                                        {/* ✅ Specialization - moved here, now optional with placeholder default */}
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                                Specialization <span className="text-red-500">*</span>
+                                                Specialization
+                                                <span className="text-slate-400 text-xs ml-1">(optional — defaults to General Radiology)</span>
                                             </label>
                                             <div className="relative">
                                                 <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -386,8 +394,7 @@ const CreateDoctor = () => {
                                                     value={formData.specialization}
                                                     onChange={handleInputChange}
                                                     className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                                    placeholder="e.g., Radiology, Cardiology"
-                                                    required
+                                                    placeholder="e.g., Radiology, Cardiology (optional)"
                                                 />
                                             </div>
                                         </div>

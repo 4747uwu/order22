@@ -33,7 +33,6 @@ const CreateLab = () => {
     // Form data
     const [formData, setFormData] = useState({
         name: '',
-        identifier: '', // Will be auto-generated
         contactPerson: '',
         contactEmail: '',
         contactPhone: '',
@@ -50,8 +49,7 @@ const CreateLab = () => {
         },
         staffUserDetails: {
             fullName: '',
-            email: '',
-            username: '',
+            username: '',   // ✅ username only
             password: '',
             role: 'lab_staff',
             visibleColumns: []
@@ -70,33 +68,20 @@ const CreateLab = () => {
         }));
     }, []);
 
-    // ✅ Auto-generate 5-letter identifier from lab name
-    useEffect(() => {
-        if (formData.name) {
-            const generateIdentifier = (name) => {
-                // Remove special characters and spaces, take first 5 letters
-                const cleaned = name.replace(/[^a-zA-Z]/g, '').toUpperCase();
-                const base = cleaned.substring(0, 5).padEnd(5, 'X');
-                
-                // Add random letters if less than 5
-                if (base.length < 5) {
-                    const randomLetters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-                    let result = base;
-                    while (result.length < 5) {
-                        result += randomLetters.charAt(Math.floor(Math.random() * randomLetters.length));
-                    }
-                    return result;
-                }
-                
-                return base;
-            };
-
-            setFormData(prev => ({
-                ...prev,
-                identifier: generateIdentifier(formData.name)
-            }));
-        }
-    }, [formData.name]);
+    // ✅ username handler - lowercase, no spaces/special chars
+    const handleUsernameChange = (e) => {
+        const value = e.target.value
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]/g, '')
+            .replace(/\s+/g, '');
+        setFormData(prev => ({
+            ...prev,
+            staffUserDetails: {
+                ...prev.staffUserDetails,
+                username: value
+            }
+        }));
+    };
 
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -136,54 +121,6 @@ const CreateLab = () => {
         }
     };
 
-    // Auto-generate username from email
-    const handleStaffEmailChange = (e) => {
-        const email = e.target.value;
-        const username = email.split('@')[0].toLowerCase();
-        
-        setFormData(prev => ({
-            ...prev,
-            staffUserDetails: {
-                ...prev.staffUserDetails,
-                email,
-                username
-            }
-        }));
-    };
-
-    // ✅ Column selection handlers
-    const handleColumnToggle = (columnId) => {
-        setFormData(prev => ({
-            ...prev,
-            staffUserDetails: {
-                ...prev.staffUserDetails,
-                visibleColumns: prev.staffUserDetails.visibleColumns.includes(columnId)
-                    ? prev.staffUserDetails.visibleColumns.filter(id => id !== columnId)
-                    : [...prev.staffUserDetails.visibleColumns, columnId]
-            }
-        }));
-    };
-
-    const handleSelectAllColumns = (columns) => {
-        setFormData(prev => ({
-            ...prev,
-            staffUserDetails: {
-                ...prev.staffUserDetails,
-                visibleColumns: columns
-            }
-        }));
-    };
-
-    const handleClearAllColumns = () => {
-        setFormData(prev => ({
-            ...prev,
-            staffUserDetails: {
-                ...prev.staffUserDetails,
-                visibleColumns: []
-            }
-        }));
-    };
-
     const handleCreateLab = async (e) => {
         e.preventDefault();
         
@@ -193,7 +130,7 @@ const CreateLab = () => {
         }
 
         if (createStaffAccount) {
-            if (!formData.staffUserDetails.fullName || !formData.staffUserDetails.email || !formData.staffUserDetails.password) {
+            if (!formData.staffUserDetails.fullName || !formData.staffUserDetails.username || !formData.staffUserDetails.password) {
                 toast.error('Please fill in all staff account fields');
                 return;
             }
@@ -203,8 +140,19 @@ const CreateLab = () => {
 
         try {
             const submitData = {
-                ...formData,
-                staffUserDetails: createStaffAccount ? formData.staffUserDetails : undefined
+                name: formData.name,
+                contactPerson: formData.contactPerson,
+                contactEmail: formData.contactEmail,
+                contactPhone: formData.contactPhone,
+                address: formData.address,
+                settings: formData.settings,
+                staffUserDetails: createStaffAccount ? {
+                    fullName: formData.staffUserDetails.fullName,
+                    username: formData.staffUserDetails.username,  // ✅ backend appends @bharatpacs.com
+                    password: formData.staffUserDetails.password,
+                    role: formData.staffUserDetails.role,
+                    visibleColumns: formData.staffUserDetails.visibleColumns
+                } : undefined
             };
 
             const response = await api.post('/admin/admin-crud/labs', submitData);
@@ -214,11 +162,11 @@ const CreateLab = () => {
                 
                 if (staffUser) {
                     toast.success(
-                        `Lab "${lab.name}" created! Staff account: ${staffUser.email}`,
-                        { duration: 5000 }
+                        `Lab "${lab.name}" (ID: ${lab.identifier}) created! Login: ${staffUser.email}`,
+                        { duration: 6000 }
                     );
                 } else {
-                    toast.success(`Lab "${lab.name}" created successfully!`);
+                    toast.success(`Lab "${lab.name}" (ID: ${lab.identifier}) created successfully!`);
                 }
                 
                 navigate('/admin/dashboard');
@@ -285,21 +233,6 @@ const CreateLab = () => {
                                             placeholder="City Diagnostic Center"
                                             required
                                         />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                                            Lab ID <span className="text-teal-600">(Auto-generated)</span>
-                                        </label>
-                                        <div className="relative">
-                                            <input
-                                                type="text"
-                                                value={formData.identifier}
-                                                className="w-full px-3 py-2 text-sm border border-teal-200 bg-teal-50 rounded-lg font-mono font-bold text-teal-700"
-                                                readOnly
-                                            />
-                                            <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-teal-500" />
-                                        </div>
                                     </div>
 
                                     <div>
@@ -434,32 +367,27 @@ const CreateLab = () => {
 
                                         <div>
                                             <label className="block text-xs font-medium text-slate-700 mb-1">
-                                                Email <span className="text-red-500">*</span>
+                                                Username <span className="text-red-500">*</span>
                                             </label>
-                                            <input
-                                                type="email"
-                                                name="staffUserDetails.email"
-                                                value={formData.staffUserDetails.email}
-                                                onChange={handleStaffEmailChange}
-                                                className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
-                                                placeholder="john@lab.com"
-                                                required={createStaffAccount}
-                                            />
+                                            <div className="flex rounded-lg border border-slate-300 focus-within:ring-2 focus-within:ring-purple-500 overflow-hidden bg-white">
+                                                <input
+                                                    type="text"
+                                                    value={formData.staffUserDetails.username}
+                                                    onChange={handleUsernameChange}
+                                                    className="flex-1 px-3 py-2 text-sm outline-none border-none focus:ring-0"
+                                                    placeholder="username"
+                                                    required={createStaffAccount}
+                                                />
+                                                <span className="flex items-center px-2 bg-purple-100 text-purple-600 text-xs border-l border-slate-300 whitespace-nowrap font-medium">
+                                                    @bharatpacs.com
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-400 mt-1">
+                                                Login: <strong>{formData.staffUserDetails.username || 'username'}@bharatpacs.com</strong>
+                                            </p>
                                         </div>
 
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-700 mb-1">
-                                                Username <span className="text-purple-600">(Auto-generated)</span>
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={formData.staffUserDetails.username}
-                                                className="w-full px-3 py-2 text-sm border border-purple-200 bg-purple-100 rounded-lg text-purple-700 font-medium"
-                                                readOnly
-                                            />
-                                        </div>
-
-                                        <div>
+                                        <div className="md:col-span-2">
                                             <label className="block text-xs font-medium text-slate-700 mb-1">
                                                 Password <span className="text-red-500">*</span>
                                             </label>
@@ -469,7 +397,7 @@ const CreateLab = () => {
                                                     name="staffUserDetails.password"
                                                     value={formData.staffUserDetails.password}
                                                     onChange={handleInputChange}
-                                                    className="w-full px-3 py-2 pr-10 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 bg-white"
+                                                    className="w-full px-3 py-2 pr-10 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-purple-500 bg-white"
                                                     placeholder="Secure password"
                                                     required={createStaffAccount}
                                                 />

@@ -207,30 +207,32 @@ export const storeDraftReport = async (req, res) => {
             await study.save({ session });
             await session.commitTransaction();
 
-            console.log('✅ [Draft Store] Draft report stored successfully:', {
-                reportId: savedReport._id,
-                fileName: fileName,  // ✅ Show doctor's name in filename
-                doctorId: doctorId.toString(),
-                doctorName: doctorName,
-                createdBy: currentUser.fullName,
-                isAdminCreating: currentUser.role === 'admin'
-            });
-
+            // ✅ FIX: Use savedReport (singular) not savedReports (plural)
             res.status(200).json({
                 success: true,
-                message: 'Draft report saved successfully',
+                message: requiresVerification 
+                    ? 'Report sent for verification successfully' 
+                    : 'Report finalized successfully',
                 data: {
                     reportId: savedReport._id,
                     documentId: savedReport.reportId,
                     doctorName: doctorName,
-                    filename: fileName,  // ✅ Return doctor's filename
+                    filename: savedReport.exportInfo.fileName,
                     reportType: savedReport.reportType,
-                    reportStatus: savedReport.reportStatus
+                    reportStatus: savedReport.reportStatus,
+                    studyWorkflowStatus: study.workflowStatus,
+                    requiresVerification: requiresVerification,
+                    nextStep: requiresVerification 
+                        ? 'Report sent to verifier for approval' 
+                        : 'Report completed and ready for download'
                 }
             });
 
         } catch (error) {
-            await session.abortTransaction();
+            // ✅ FIX: Only abort if transaction hasn't been committed yet
+            if (session.inTransaction()) {
+                await session.abortTransaction();
+            }
             throw error;
         } finally {
             session.endSession();
@@ -482,26 +484,32 @@ export const storeFinalizedReport = async (req, res) => {
             await study.save({ session });
             await session.commitTransaction();
 
+            // ✅ FIX: Use savedReport (singular) not savedReports (plural)
             res.status(200).json({
                 success: true,
-                message: `${savedReports.length} report(s) ${requiresVerification ? 'sent for verification' : 'finalized'} successfully`,
+                message: requiresVerification 
+                    ? 'Report sent for verification successfully' 
+                    : 'Report finalized successfully',
                 data: {
-                    reports: savedReports.map(r => ({
-                        reportId: r._id,
-                        documentId: r.reportId,
-                        filename: r.exportInfo.fileName,
-                        reportType: r.reportType,
-                        reportStatus: r.reportStatus
-                    })),
-                    totalReports: savedReports.length,
+                    reportId: savedReport._id,
+                    documentId: savedReport.reportId,
+                    doctorName: doctorName,
+                    filename: savedReport.exportInfo.fileName,
+                    reportType: savedReport.reportType,
+                    reportStatus: savedReport.reportStatus,
                     studyWorkflowStatus: study.workflowStatus,
                     requiresVerification: requiresVerification,
-                    nextStep: requiresVerification ? 'Reports sent to verifier for approval' : 'Reports completed and ready for download'
+                    nextStep: requiresVerification 
+                        ? 'Report sent to verifier for approval' 
+                        : 'Report completed and ready for download'
                 }
             });
 
         } catch (error) {
-            await session.abortTransaction();
+            // ✅ FIX: Only abort if transaction hasn't been committed yet
+            if (session.inTransaction()) {
+                await session.abortTransaction();
+            }
             throw error;
         } finally {
             session.endSession();
@@ -887,8 +895,6 @@ export const getStudyReports = async (req, res) => {
         });
     }
 };
-
-// ...existing code... (add this BEFORE the export default block)
 
 // ✅ NEW: Get all reports WITH full htmlContent for editor loading
 export const getAllReportsWithContent = async (req, res) => {

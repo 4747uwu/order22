@@ -8,6 +8,7 @@ import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle, FileText, User
 import toast from 'react-hot-toast';
 import { useNavigate as useNav } from 'react-router-dom';
 import SettingsModal from '../../components/common/SettingsModal';
+import UserManagement from '../admin/UserManagement';
 
 const HEADER_COLOR_PRESETS = [
   { name: 'Dark Gray', gradient: 'from-gray-800 via-gray-900 to-black', textColor: 'text-white' },
@@ -278,63 +279,9 @@ const GroupIdDashboard = () => {
         theme="admin"
       />
 
-      <div className="flex-1 min-h-0 p-4">
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col items-center justify-center gap-6">
-          
-          <div className="text-center">
-            <Shield className="w-16 h-16 mx-auto mb-4 text-teal-600 opacity-60" />
-            <h2 className="text-xl font-bold text-slate-700 mb-2">Group ID Dashboard</h2>
-            <p className="text-sm text-slate-500">Manage users, doctors and organization settings</p>
-          </div>
-
-          {/* ✅ Quick action buttons - the main purpose of this role */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md px-4">
-            <button
-              onClick={() => navigate('/admin/user-management')}
-              className="flex items-center gap-3 p-4 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
-            >
-              <Shield className="w-6 h-6" />
-              <div className="text-left">
-                <p className="font-semibold text-sm">User Management</p>
-                <p className="text-xs text-white/80">Manage accounts & permissions</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/admin/create-doctor')}
-              className="flex items-center gap-3 p-4 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
-            >
-              <UserPlus className="w-6 h-6" />
-              <div className="text-left">
-                <p className="font-semibold text-sm">Create Doctor</p>
-                <p className="text-xs text-white/80">Add a new doctor account</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/admin/create-user')}
-              className="flex items-center gap-3 p-4 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
-            >
-              <Users className="w-6 h-6" />
-              <div className="text-left">
-                <p className="font-semibold text-sm">Create User</p>
-                <p className="text-xs text-white/80">Add a new user account</p>
-              </div>
-            </button>
-
-            <button
-              onClick={() => navigate('/admin/system-overview')}
-              className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
-            >
-              <Database className="w-6 h-6" />
-              <div className="text-left">
-                <p className="font-semibold text-sm">System Overview</p>
-                <p className="text-xs text-white/80">View system analytics</p>
-              </div>
-            </button>
-          </div>
-
-        </div>
+      {/* ✅ Show UserManagement inline - fills the entire remaining space */}
+      <div className="flex-1 min-h-0 overflow-auto">
+        <UserManagement isEmbedded={true} />
       </div>
     </div>
   );

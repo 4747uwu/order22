@@ -647,14 +647,32 @@ const OnlineReportingSystemWithOHIF = () => {
             </div>
 
             {/* Right — Actions + ✅ REPORT SWITCHER */}
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5">
               {(isReportOpen && !isVerifierMode) && (
                 <>
-                  <button onClick={handleSaveDraft} disabled={saving || !reportContent.trim()} className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50">
-                    {saving ? 'Saving...' : 'Save Draft'}
+                  <button 
+                    onClick={handleSaveDraft} 
+                    disabled={saving || !reportContent.trim()} 
+                    className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {saving ? (
+                      <span className="flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
+                        <span className="hidden sm:inline">Saving...</span>
+                      </span>
+                    ) : 'Save'}
                   </button>
-                  <button onClick={handleFinalizeReport} disabled={finalizing || !reportContent.trim()} className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50">
-                    {finalizing ? 'Finalizing...' : `Finalize${reports.length > 1 ? ` (${reports.length})` : ''} as ${exportFormat.toUpperCase()}`}
+                  <button 
+                    onClick={handleFinalizeReport} 
+                    disabled={finalizing || !reportContent.trim()} 
+                    className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    {finalizing ? (
+                      <span className="flex items-center gap-1">
+                        <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                        <span className="hidden sm:inline">Finalizing...</span>
+                      </span>
+                    ) : `Final${reports.length > 1 ? ` (${reports.length})` : ''}`}
                   </button>
                 </>
               )}
@@ -664,7 +682,7 @@ const OnlineReportingSystemWithOHIF = () => {
                 <div className="relative" ref={reportDropdownRef}>
                   <button
                     onClick={() => setShowReportDropdown(prev => !prev)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded border transition-colors ${
+                    className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
                       reports.length > 1
                         ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
                         : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
@@ -672,9 +690,9 @@ const OnlineReportingSystemWithOHIF = () => {
                     title="Alt+R: Toggle | Alt+1-9: Switch | Alt+N: Add"
                   >
                     <Layers className="w-3 h-3" />
-                    <span>Report {activeReportIndex + 1}/{reports.length}</span>
-                    {/* ✅ Plus icon always visible here */}
-                    <span className="ml-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700"
+                    <span className="hidden sm:inline">{activeReportIndex + 1}/{reports.length}</span>
+                    <span
+                      className="ml-0.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 flex-shrink-0"
                       onClick={(e) => { e.stopPropagation(); handleAddReport(); }}
                       title="Add report (Alt+N)"
                     >
@@ -754,8 +772,11 @@ const OnlineReportingSystemWithOHIF = () => {
                 </div>
               )}
 
-              <button onClick={handleBackToWorklist} className="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50">
-                {isVerifierMode ? 'Back to Verifier' : 'Back to Dashboard'}
+              <button 
+                onClick={handleBackToWorklist} 
+                className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 whitespace-nowrap"
+              >
+                {isVerifierMode ? 'Back' : 'Back'}
               </button>
             </div>
           </div>

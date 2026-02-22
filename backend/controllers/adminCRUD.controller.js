@@ -12,13 +12,10 @@ export const createDoctor = async (req, res) => {
 
     try {
         const {
-            // User account details
             fullName,
-            email,
+            email,           // ✅ frontend sends username here
             password,
             username,
-            
-            // Doctor profile details
             specialization,
             licenseNumber,
             department,
@@ -26,16 +23,11 @@ export const createDoctor = async (req, res) => {
             yearsOfExperience,
             contactPhoneOffice,
             requireReportVerification,
-            
-            // ✅ SIGNATURE DATA
             signature,
             signatureMetadata,
-            
-            // ✅ NEW: Column configuration
             visibleColumns = []
         } = req.body;
 
-        // Validate admin permissions
         if (req.user.role !== 'admin') {
             return res.status(403).json({
                 success: false,
@@ -43,15 +35,15 @@ export const createDoctor = async (req, res) => {
             });
         }
 
-        // Validate required fields
-        if (!fullName || !email || !password || !specialization) {
+        // ✅ Only fullName, email(username), password are required — specialization optional
+        if (!fullName || !email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Full name, email, password, and specialization are required'
+                message: 'Full name, username and password are required'
             });
         }
 
-        // Auto-append @bharatpacs.com if no domain given
+        // ✅ Auto-append @bharatpacs.com if no domain given
         const finalEmail = email.includes('@')
             ? email.toLowerCase().trim()
             : `${email.toLowerCase().trim()}@bharatpacs.com`;
@@ -65,18 +57,12 @@ export const createDoctor = async (req, res) => {
         if (existingUser) {
             return res.status(409).json({
                 success: false,
-                message: 'Email already exists in this organization'
+                message: 'Username already exists in this organization'
             });
         }
 
-        // Generate username if not provided; enforce min 6 chars
+        // ✅ Generate username from email part
         const finalUsername = username || finalEmail.split('@')[0].toLowerCase();
-        if (finalUsername.length < 6) {
-            return res.status(400).json({
-                success: false,
-                message: 'Username must be at least 6 characters long'
-            });
-        }
 
         // Check if username exists in organization
         const existingUsername = await User.findOne({
@@ -91,29 +77,27 @@ export const createDoctor = async (req, res) => {
             });
         }
 
-        // Create user account
         const newUser = new User({
             organization: req.user.organization,
             organizationIdentifier: req.user.organizationIdentifier,
             username: finalUsername,
-            email: finalEmail,
-            password: password, // Will be hashed by pre-save hook
-            
+            email: finalEmail,          // ✅ username@bharatpacs.com
+            password: password,
             fullName: fullName.trim(),
-            role: 'radiologist', // ✅ Changed from 'doctor_account'
+            role: 'radiologist',
             createdBy: req.user._id,
             isActive: true,
-            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [] // ✅ NEW
+            visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : []
         });
 
         await newUser.save({ session });
 
-        // ✅ PREPARE SIGNATURE DATA
+        // ✅ specialization defaults to 'General Radiology' if not provided
         const doctorData = {
             organization: req.user.organization,
             organizationIdentifier: req.user.organizationIdentifier,
             userAccount: newUser._id,
-            specialization: specialization.trim(),
+            specialization: specialization?.trim() || 'General Radiology',  // ✅ default
             licenseNumber: licenseNumber?.trim() || '',
             department: department?.trim() || '',
             qualifications: qualifications || [],
@@ -121,17 +105,16 @@ export const createDoctor = async (req, res) => {
             contactPhoneOffice: contactPhoneOffice?.trim() || '',
             assigned: false,
             isActiveProfile: true,
-
-            requireReportVerification: requireReportVerification !== undefined ? requireReportVerification : true,
-            verificationEnabledAt: requireReportVerification !== undefined ? new Date() : undefined,
-            verificationEnabledBy: requireReportVerification !== undefined ? req.user._id : undefined
+            requireReportVerification: requireReportVerification !== undefined
+                ? requireReportVerification
+                : true,
+            verificationEnabledAt: new Date(),
+            verificationEnabledBy: req.user._id
         };
 
         // ✅ ADD SIGNATURE IF PROVIDED
         if (signature) {
             doctorData.signature = signature;
-            
-            // Set signature metadata with defaults
             doctorData.signatureMetadata = {
                 uploadedAt: new Date(),
                 originalSize: signatureMetadata?.originalSize || 0,
@@ -145,35 +128,41 @@ export const createDoctor = async (req, res) => {
             };
         }
 
-        // Create doctor profile
         const newDoctor = new Doctor(doctorData);
         await newDoctor.save({ session });
 
         await session.commitTransaction();
 
-        // Return created doctor with populated user account (exclude password)
+        console.log('✅ [CreateDoctor] Doctor created:', {
+            doctorId: newDoctor._id,
+            userId: newUser._id,
+            email: finalEmail,
+            specialization: doctorData.specialization
+        });
+
         const createdDoctor = await Doctor.findById(newDoctor._id)
             .populate('userAccount', 'fullName email username isActive')
             .populate('organization', 'name displayName identifier')
-            .select('-signature'); // Exclude signature from response for security
+            .select('-signature');
 
         res.status(201).json({
             success: true,
             message: 'Doctor created successfully',
             data: {
                 ...createdDoctor.toObject(),
-                hasSignature: !!signature
+                hasSignature: !!signature,
+                loginEmail: finalEmail   // ✅ show what login email was set
             }
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        console.error('Create doctor error:', error);
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('❌ Create doctor error:', error);
 
         if (error.code === 11000) {
             return res.status(409).json({
                 success: false,
-                message: 'Email or username already exists'
+                message: 'Username already exists'
             });
         }
 
@@ -190,6 +179,8 @@ export const createDoctor = async (req, res) => {
 // ✅ CREATE LAB WITH USER ACCOUNT and verification settings
 // Backend update for adminCRUD.controller.js - createLab function
 
+// ...existing code...
+
 export const createLab = async (req, res) => {
     const session = await mongoose.startSession();
     session.startTransaction();
@@ -197,7 +188,6 @@ export const createLab = async (req, res) => {
     try {
         const {
             name,
-            identifier, // Now auto-generated from frontend
             contactPerson,
             contactEmail,
             contactPhone,
@@ -205,120 +195,76 @@ export const createLab = async (req, res) => {
             settings,
             staffUserDetails: {
                 fullName,
-                email: staffEmail,
-                username,
+                username,        // ✅ username only - no email from frontend
                 password,
                 role = 'lab_staff',
                 visibleColumns = []
             } = {}
         } = req.body;
 
-        // Validate admin permissions
         if (req.user.role !== 'admin') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only admins can create labs'
-            });
+            return res.status(403).json({ success: false, message: 'Only admins can create labs' });
         }
 
-        // Validate required fields
         if (!name || !contactPerson) {
-            return res.status(400).json({
-                success: false,
-                message: 'Lab name and contact person are required'
-            });
+            return res.status(400).json({ success: false, message: 'Lab name and contact person are required' });
         }
 
-        // ✅ Auto-generate identifier if not provided
-        let finalIdentifier = identifier;
-        if (!finalIdentifier) {
-            const cleaned = name.replace(/[^a-zA-Z]/g, '').toUpperCase();
-            finalIdentifier = cleaned.substring(0, 5).padEnd(5, 'X');
+        // ✅ BACKEND: Auto-generate identifier from lab name
+        const generateIdentifier = (labName) => {
+            const cleaned = labName.replace(/[^a-zA-Z]/g, '').toUpperCase();
+            return cleaned.substring(0, 5).padEnd(5, 'X');
+        };
+
+        let finalIdentifier = generateIdentifier(name);
+
+        // ✅ Check uniqueness - if exists append number
+        let suffix = 1;
+        let baseIdentifier = finalIdentifier;
+        while (await Lab.findOne({ organizationIdentifier: req.user.organizationIdentifier, identifier: finalIdentifier })) {
+            finalIdentifier = `${baseIdentifier.substring(0, 4)}${suffix}`;
+            suffix++;
         }
 
-        // ✅ VALIDATE: Staff user details if provided + auto-append @bharatpacs.com
+        // ✅ BACKEND: Build email from username
         let finalStaffEmail = null;
-        if (staffEmail || fullName || username || password) {
-            if (!staffEmail || !fullName || !password) {
+        if (username || fullName || password) {
+            if (!username || !fullName || !password) {
                 return res.status(400).json({
                     success: false,
-                    message: 'Staff email, full name, and password are required for lab staff account'
+                    message: 'Staff username, full name, and password are required for lab staff account'
                 });
             }
-            // Auto-append @bharatpacs.com if no domain given
-            finalStaffEmail = staffEmail.includes('@')
-                ? staffEmail.toLowerCase().trim()
-                : `${staffEmail.toLowerCase().trim()}@bharatpacs.com`;
+            // ✅ Auto-append @bharatpacs.com
+            finalStaffEmail = username.includes('@')
+                ? username.toLowerCase().trim()
+                : `${username.toLowerCase().trim()}@bharatpacs.com`;
         }
 
         const userOrgId = req.user.organization;
         const userOrgIdentifier = req.user.organizationIdentifier;
 
         if (!userOrgId || !userOrgIdentifier) {
-            return res.status(400).json({
-                success: false,
-                message: 'Admin must belong to an organization'
-            });
+            return res.status(400).json({ success: false, message: 'Admin must belong to an organization' });
         }
 
-        // Check if lab identifier already exists in the organization
-        const existingLab = await Lab.findOne({
-            organizationIdentifier: userOrgIdentifier,
-            identifier: finalIdentifier.toUpperCase().trim()
-        });
-
-        if (existingLab) {
-            return res.status(409).json({
-                success: false,
-                message: 'Lab identifier already exists in this organization'
-            });
-        }
-
-        // ✅ CHECK: If staff email already exists
-        let staffUser = null;
+        // ✅ Check if email already exists
         if (finalStaffEmail) {
-            const existingStaffUser = await User.findOne({
+            const existingEmail = await User.findOne({
                 email: finalStaffEmail,
                 organizationIdentifier: userOrgIdentifier
             });
-
-            if (existingStaffUser) {
+            if (existingEmail) {
                 await session.abortTransaction();
-                return res.status(409).json({
-                    success: false,
-                    message: 'Staff email already exists in this organization'
-                });
-            }
-
-            const finalUsername = username || finalStaffEmail.split('@')[0].toLowerCase();
-            if (finalUsername.length < 6) {
-                await session.abortTransaction();
-                return res.status(400).json({
-                    success: false,
-                    message: 'Username must be at least 6 characters long'
-                });
-            }
-
-            const existingUsername = await User.findOne({
-                username: finalUsername,
-                organizationIdentifier: userOrgIdentifier
-            });
-
-            if (existingUsername) {
-                await session.abortTransaction();
-                return res.status(409).json({
-                    success: false,
-                    message: 'Username already exists in this organization'
-                });
+                return res.status(409).json({ success: false, message: 'Username already exists in this organization' });
             }
         }
 
-        // ✅ CREATE LAB
         const newLab = new Lab({
             organization: userOrgId,
             organizationIdentifier: userOrgIdentifier,
             name: name.trim(),
-            identifier: finalIdentifier.toUpperCase().trim(),
+            identifier: finalIdentifier,           // ✅ backend generated
             contactPerson: contactPerson?.trim() || '',
             contactEmail: contactEmail?.toLowerCase().trim() || '',
             contactPhone: contactPhone?.trim() || '',
@@ -328,100 +274,67 @@ export const createLab = async (req, res) => {
                 autoAssignStudies: settings?.autoAssignStudies || false,
                 defaultPriority: settings?.defaultPriority || 'NORMAL',
                 maxConcurrentStudies: settings?.maxConcurrentStudies || 100,
-                requireReportVerification: settings?.requireReportVerification !== undefined 
-                    ? settings.requireReportVerification 
+                requireReportVerification: settings?.requireReportVerification !== undefined
+                    ? settings.requireReportVerification
                     : true,
-                verificationEnabledAt: settings?.requireReportVerification !== undefined 
-                    ? new Date() 
-                    : undefined,
-                verificationEnabledBy: settings?.requireReportVerification !== undefined 
-                    ? req.user._id 
-                    : undefined
+                verificationEnabledAt: new Date(),
+                verificationEnabledBy: req.user._id
             }
         });
 
         await newLab.save({ session });
 
-        console.log('✅ [CreateLab] Lab created successfully:', {
-            labId: newLab._id,
-            identifier: newLab.identifier,
-            requireVerification: newLab.settings.requireReportVerification
-        });
-
-        // ✅ CREATE: Staff user account if details provided
+        let staffUser = null;
         if (finalStaffEmail) {
-            const finalStaffUsername = username || finalStaffEmail.split('@')[0].toLowerCase();
+            const finalUsername = username.toLowerCase().trim();
 
             staffUser = new User({
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
                 lab: newLab._id,
-                username: finalStaffUsername,
-                email: finalStaffEmail,
+                username: finalUsername,
+                email: finalStaffEmail,             // ✅ username@bharatpacs.com
                 password: password,
                 fullName: fullName.trim(),
                 role: role,
-                createdBy: req.user._id,
+                tempPassword: password,
+                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : [],
                 isActive: true,
-                visibleColumns: Array.isArray(visibleColumns) ? visibleColumns : []
+                createdBy: req.user._id
             });
 
             await staffUser.save({ session });
-
-            // ✅ ADD USER TO LAB'S STAFF LIST
-            newLab.staffUsers.push({
-                userId: staffUser._id,
-                role: role,
-                addedAt: new Date(),
-                isActive: true
-            });
-            
-            await newLab.save({ session });
-
-            console.log('✅ [CreateLab] Staff user created and linked to lab:', {
-                userId: staffUser._id,
-                labId: newLab._id,
-                email: staffEmail
-            });
         }
 
         await session.commitTransaction();
 
-        // Return created lab with staff user
-        const createdLab = await Lab.findById(newLab._id)
-            .populate('organization', 'name displayName');
+        console.log('✅ [CreateLab] Lab created:', {
+            labId: newLab._id,
+            identifier: finalIdentifier,
+            staffEmail: finalStaffEmail
+        });
 
-        const responseData = {
-            lab: createdLab,
-            staffUser: staffUser ? {
-                _id: staffUser._id,
-                fullName: staffUser.fullName,
-                email: staffUser.email,
-                username: staffUser.username,
-                role: staffUser.role,
-                isActive: staffUser.isActive
-            } : null
-        };
-
-        res.status(201).json({
+        return res.status(201).json({
             success: true,
-            message: staffUser 
-                ? 'Lab and staff account created successfully!' 
-                : 'Lab created successfully!',
-            data: responseData
+            message: `Lab "${newLab.name}" created successfully`,
+            data: {
+                lab: newLab,
+                staffUser: staffUser ? {
+                    _id: staffUser._id,
+                    email: staffUser.email,
+                    username: staffUser.username,
+                    fullName: staffUser.fullName,
+                    role: staffUser.role
+                } : null
+            }
         });
 
     } catch (error) {
-        await session.abortTransaction();
-        console.error('Create lab error:', error);
-
+        if (session.inTransaction()) await session.abortTransaction();
+        console.error('❌ [CreateLab] Error:', error);
         if (error.code === 11000) {
-            return res.status(409).json({
-                success: false,
-                message: 'Lab with this identifier already exists'
-            });
+            return res.status(409).json({ success: false, message: 'Username or lab identifier already exists' });
         }
-
         res.status(500).json({
             success: false,
             message: 'Failed to create lab',
@@ -431,6 +344,8 @@ export const createLab = async (req, res) => {
         session.endSession();
     }
 };
+
+
 
 // ✅ GET ALL DOCTORS (for admin)
 export const getAllDoctors = async (req, res) => {

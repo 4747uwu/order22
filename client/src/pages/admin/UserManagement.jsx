@@ -27,7 +27,7 @@ import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 
-const UserManagement = () => {
+const UserManagement = ({ isEmbedded = false }) => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
 
@@ -409,7 +409,7 @@ const UserManagement = () => {
         }
     };
 
-    if (loading) {
+    if (loading && !isEmbedded) {
         return (
             <div className="flex items-center justify-center h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-teal-500"></div>
@@ -418,10 +418,12 @@ const UserManagement = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gray-50">
-            <Navbar title="User Management" />
+        // ✅ Remove min-h-screen + bg when embedded
+        <div className={isEmbedded ? '' : 'min-h-screen bg-gray-50'}>
+            {/* ✅ Only show Navbar when NOT embedded */}
+            {!isEmbedded && <Navbar title="User Management" />}
             
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className={isEmbedded ? 'px-4 py-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
                 {/* Header Section */}
                 <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
                     <div className="flex justify-between items-center mb-6">
@@ -429,18 +431,14 @@ const UserManagement = () => {
                             <h1 className="text-2xl font-bold text-gray-900">User Management</h1>
                             <p className="text-gray-600 mt-1">Manage users in your organization</p>
                         </div>
-                        <div className="flex gap-3">
-                            {/* ✅ NEW: Compression Toggle Button */}
-
-                             <button
-                           onClick={() => navigate('/admin/manage-labs')}
-                          className="px-4 py-2 bg-teal-600 text-white rounded-lg            hover:bg-teal-700 flex items-center gap-2"
-                       >
-                           <Building2 className="w-4 h-4" />
-                           Manage Labs
-                       </button>
-
-
+                        <div className="flex gap-3 flex-wrap">
+                            <button
+                                onClick={() => navigate('/admin/manage-labs')}
+                                className="px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 flex items-center gap-2"
+                            >
+                                <Building2 className="w-4 h-4" />
+                                Manage Labs
+                            </button>
                             <button
                                 onClick={handleOpenCompressionModal}
                                 className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2"
@@ -450,16 +448,16 @@ const UserManagement = () => {
                             </button>
                             <button
                                 onClick={exportUsers}
-                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 flex items-center gap-2"
                             >
-                                <Download className="w-4 h-4 inline mr-2" />
+                                <Download className="w-4 h-4" />
                                 Export
                             </button>
                             <button
                                 onClick={() => navigate('/admin/create-user')}
-                                className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600"
+                                className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 flex items-center gap-2"
                             >
-                                <UserPlus className="w-4 h-4 inline mr-2" />
+                                <UserPlus className="w-4 h-4" />
                                 Create User
                             </button>
                         </div>

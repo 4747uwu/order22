@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2 } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2,Printer } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -431,7 +431,9 @@ const UnifiedStudyRow = ({
     userRoles = [],
     isColumnVisible,
     columnConfig = null,
-    getColumnWidth // ✅ NEW PROP
+    getColumnWidth, // ✅ NEW PROP
+        setPrintModal,  // ✅ ADD THIS PROP
+
 }) => {
     const navigate = useNavigate();
     // console.log(study)
@@ -538,6 +540,41 @@ const UnifiedStudyRow = ({
       setShowAssignmentModal(true);
     }
   };
+
+  const handleDirectPrint = useCallback(async (study) => {
+      try {
+        const loadingToast = toast.loading('Loading report...', { icon: '🖨️' });
+  
+        // Step 1: Get reports for study (same endpoint ReportModal uses)
+        const response = await api.get(`/reports/studies/${study._id}/reports`);
+  
+        if (!response.data.success || !response.data.data?.reports?.length) {
+          toast.dismiss(loadingToast);
+          toast.error('No report found for this study');
+          return;
+        }
+  
+        // Step 2: Pick latest finalized report
+        const reports = response.data.data.reports;
+        const latestReport =
+          reports.find(r => r.reportStatus === 'finalized') || reports[0];
+  
+        if (!latestReport) {
+          toast.dismiss(loadingToast);
+          toast.error('No finalized report available');
+          return;
+        }
+  
+        toast.dismiss(loadingToast);
+  
+        // Step 3: Open PrintModal with reportId (same as DOCX flow)
+        setPrintModal({ show: true, report: latestReport });
+  
+      } catch (error) {
+        console.error('❌ [Print] Error:', error);
+        toast.error('Failed to load report for printing');
+      }
+    }, []);
 
     const handleCloseAssignmentModal = () => {
         setShowAssignmentModal(false);
@@ -830,20 +867,45 @@ const UnifiedStudyRow = ({
 
     {/* 7. PATIENT NAME / UHID */}
     {isColumnVisible('patientName') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('patientName')}px` }}>
-            <button
-                className="w-full text-left hover:underline decoration-gray-900 mb-1"
-                onClick={() => onPatienIdClick?.(study.patientId, study)}
-            >
-                <div className={`text-xs font-semibold ${isUrgent ? 'text-rose-600' : 'text-slate-800'} whitespace-normal break-words leading-tight flex items-start gap-1`} title={study.patientName}> 
-                    {study.patientName || '-'} {isUrgent && <span className="text-rose-500 mt-0.5 flex-shrink-0">●</span>} 
-                </div>
-                <div className="text-[10px] text-slate-500 whitespace-normal break-all leading-tight mt-1">
-                    UHID: {study.patientId || '-'}
-                </div>
-            </button>
-            {getPriorityTag(study, userRoles, userRole)}
-        </td>
+                <td 
+  className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle"
+  style={{ width: `${getColumnWidth('patientName')}px` }}
+>
+  <button
+    className="w-full text-left hover:underline decoration-gray-900 mb-0.5"
+    onClick={() => onPatienIdClick?.(study.patientId, study)}
+  >
+    <div
+      className={`text-[10px] sm:text-xs font-bold ${
+        isUrgent ? 'text-rose-600' : 'text-slate-800'
+      } whitespace-normal break-all leading-tight flex items-start gap-1`}
+      title={study.patientName}
+    >
+      {study.patientName || '-'}
+      {isUrgent && (
+        <span className="text-rose-500 mt-0.5 flex-shrink-0">●</span>
+      )}
+      {isRejected && (
+        <span
+          className="text-rose-600 mt-0.5 flex-shrink-0"
+          title={`Rejected: ${rejectionReason}`}
+        >
+          🚫
+        </span>
+      )}
+    </div>
+
+    <div
+      className={`text-[9px] sm:text-[10px] ${
+        isUrgent ? 'text-rose-400' : 'text-slate-500'
+      } whitespace-normal break-all leading-tight mt-0.5`}
+    >
+      UHID: {study.patientId || '-'}
+    </div>
+  </button>
+
+  {getPriorityTag(study)}
+</td>
     )}
 
     {/* 8. AGE/SEX */}
@@ -1094,17 +1156,21 @@ const UnifiedStudyRow = ({
 
     {/* 21. PRINT REPORT */}
     {isColumnVisible('printCount') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('printCount')}px` }}>
-            <div className="text-xs text-slate-600 flex justify-center">
-                {study.printCount > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-slate-200 rounded-md text-[10px] font-medium whitespace-nowrap">
-                        <span className="w-1.5 h-1.5 bg-gray-900 rounded-full"></span>
-                        {study.printCount}
-                    </span>
-                ) : (
-                    <span className="text-slate-400 whitespace-nowrap">No prints</span>
-                )}
-            </div>
+         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('printCount')}px` }}>
+            {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
+                <div className="flex flex-col items-center gap-0.5">
+                    <button onClick={() => handleDirectPrint(study)} className="p-1 hover:bg-purple-50 rounded" title="Print Report">
+                        <Printer className="w-3.5 h-3.5 text-purple-600" />
+                    </button>
+                    <div className="text-[8px] sm:text-[9px] text-slate-500 text-center whitespace-nowrap">
+                        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+                    </div>
+                </div>
+            ) : (
+                <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-0.5 p-1 text-slate-400 hover:text-slate-600 rounded mx-auto">
+                    <Printer className="w-3.5 h-3.5" /><span className="text-[8px] whitespace-nowrap">Print</span>
+                </button>
+            )}
         </td>
     )}
 
@@ -1981,6 +2047,7 @@ const DB_TO_CONFIG_KEY_MAP = {
                                 userRoles={userAccountRoles}
                                 isColumnVisible={isColumnVisible}
                                 getColumnWidth={getColumnWidth} // ✅ Pass column width getter
+                                setPrintModal={setPrintModal} 
                             />
                         ))}
                     </tbody>

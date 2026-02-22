@@ -865,17 +865,8 @@ const isRadiologistSelected = () => {
                             <h1 className="text-xl font-bold text-gray-900">{getPageTitle()}</h1>
                         </div>
 
-                        {/* ✅ CREATE LAB BUTTON */}
-                        {currentUser?.role === 'admin' && (
-                            <button
-                                type="button"
-                                onClick={() => navigate('/admin/create-lab')}
-                                className="flex items-center space-x-2 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors shadow-sm"
-                            >
-                                <Building2 className="w-4 h-4" />
-                                <span className="font-medium text-sm">Create Lab</span>
-                            </button>
-                        )}
+                        {/* ✅ REMOVED: Create Lab button from here - moved into form */}
+                        <div className="w-24" /> {/* spacer for alignment */}
                     </div>
                 </div>
             </div>
@@ -883,7 +874,7 @@ const isRadiologistSelected = () => {
             {/* Main Content */}
             <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
                 <form onSubmit={handleSubmit} className="space-y-8">
-                    
+
                     {/* Basic Information */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
@@ -910,9 +901,10 @@ const isRadiologistSelected = () => {
                                     />
                                 </div>
 
-                                {/* <div>
+                                {/* ✅ USERNAME ONLY - backend appends @bharatpacs.com */}
+                                <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Email Address *
+                                        Username *
                                     </label>
                                     <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
                                         <input
@@ -929,9 +921,9 @@ const isRadiologistSelected = () => {
                                         </span>
                                     </div>
                                     <p className="text-xs text-gray-400 mt-1">
-                                        Login email will be: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
+                                        Login: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
                                     </p>
-                                </div> */}
+                                </div>
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -952,42 +944,15 @@ const isRadiologistSelected = () => {
                                             onClick={() => setShowPassword(!showPassword)}
                                             className="absolute inset-y-0 right-0 pr-3 flex items-center"
                                         >
-                                            {showPassword ? (
-                                                <EyeOff className="w-4 h-4 text-gray-400" />
-                                            ) : (
-                                                <Eye className="w-4 h-4 text-gray-400" />
-                                            )}
+                                            {showPassword ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
                                         </button>
                                     </div>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Username / Email *
-                                    </label>
-                                    <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
-                                        <input
-                                            type="text"
-                                            name="email"
-                                            value={formData.email}
-                                            onChange={handleEmailChange}
-                                            className="flex-1 px-3 py-2 outline-none border-none focus:ring-0"
-                                            placeholder="username"
-                                            required
-                                        />
-                                        <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
-                                            @bharatpacs.com
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        Login email will be: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
-                                    </p>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* ✅ FEATURE 2: Multi-Account Role Setup */}
+                    {/* Role Configuration */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                         <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
                             <div className="flex items-center justify-between">
@@ -995,6 +960,24 @@ const isRadiologistSelected = () => {
                                     <Shield className="w-5 h-5 text-purple-600" />
                                     <span>Role Configuration</span>
                                 </h3>
+                                
+                                {/* ✅ CREATE LAB BUTTON - right side of Role Configuration header */}
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/admin/create-lab')}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
+                                    title="Create a new Lab / Center"
+                                >
+                                    <Building2 className="w-4 h-4" />
+                                    <span>+ Create Lab</span>
+                                </button>
+                            </div>
+
+                            <div className="flex items-center justify-between mt-2">
+                                <p className="text-sm text-gray-600">
+                                    Select the role for this user
+                                </p>
+                                {/* ✅ existing multi-role toggle */}
                                 <label className="flex items-center space-x-2 cursor-pointer">
                                     <input
                                         type="checkbox"

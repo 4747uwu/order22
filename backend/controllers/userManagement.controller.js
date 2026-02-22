@@ -136,7 +136,7 @@ export const createUserWithRole = async (req, res) => {
         }
 
         // Validate required fields
-        if (!fullName || !email || !password || !role) {
+        if (!fullName || !password || !role) {
             return res.status(400).json({
                 success: false,
                 message: 'Full name, email, password, and role are required'
@@ -144,14 +144,14 @@ export const createUserWithRole = async (req, res) => {
         }
 
         // ✅ NEW: If creating radiologist, validate doctor-specific fields
-        if (role === 'radiologist') {
-            if (!specialization) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'Specialization is required for radiologist role'
-                });
-            }
-        }
+        // if (role === 'radiologist') {
+        //     if (!specialization) {
+        //         return res.status(400).json({
+        //             success: false,
+        //             message: 'Specialization is required for radiologist role'
+        //         });
+        //     }
+        // }
 
         // Auto-append @bharatpacs.com if no domain given
         const finalEmail = email.includes('@')
@@ -285,12 +285,12 @@ export const createUserWithRole = async (req, res) => {
 
         // ✅ NEW: If role is radiologist, create Doctor profile
         let doctorProfile = null;
-        if (role === 'radiologist') {
+         if (role === 'radiologist') {
             const doctorData = {
                 organization: userOrgId,
                 organizationIdentifier: userOrgIdentifier,
                 userAccount: newUser._id,
-                specialization: specialization.trim(),
+                specialization: specialization?.trim() || 'General Radiology',  // ✅ default
                 licenseNumber: licenseNumber?.trim() || '',
                 department: department?.trim() || '',
                 qualifications: Array.isArray(qualifications) ? qualifications : [],
@@ -298,11 +298,11 @@ export const createUserWithRole = async (req, res) => {
                 contactPhoneOffice: contactPhoneOffice?.trim() || '',
                 assigned: false,
                 isActiveProfile: true,
-                
-                // ✅ NEW: Add verification settings
-                requireReportVerification: requireReportVerification !== undefined ? requireReportVerification : true,
-                verificationEnabledAt: requireReportVerification !== undefined ? new Date() : undefined,
-                verificationEnabledBy: requireReportVerification !== undefined ? req.user._id : undefined
+                requireReportVerification: requireReportVerification !== undefined
+                    ? requireReportVerification
+                    : true,
+                verificationEnabledAt: new Date(),
+                verificationEnabledBy: req.user._id
             };
 
             // ✅ ADD SIGNATURE IF PROVIDED

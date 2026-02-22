@@ -217,8 +217,12 @@ export const getValues = async (req, res) => {
 
         // ✅ SIMPLIFIED: Only 2 status categories for counting
         const statusCategories = {
-            verified: ['report_verified'],
-            rejected: ['report_rejected']
+            // ✅ verifyReport sets 'report_completed' on approval (not 'report_verified')
+            verified: ['report_completed'],
+            // ✅ verifyReport sets 'report_rejected' on rejection
+            rejected: ['report_rejected', 'revert_to_radiologist'],
+            // ✅ pending = studies waiting to be verified
+            pending: ['verification_pending', 'report_finalized', 'verification_in_progress']
         };
 
         const pipeline = [
@@ -303,11 +307,12 @@ export const getVerifiedStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const verifiedStatuses = ['report_verified'];
+        // ✅ FIX: verifyReport sets workflowStatus = 'report_completed' when approved
+        // NOT 'report_verified' — that was the bug
+        const verifiedStatuses = ['report_completed'];
         const queryFilters = buildVerifierBaseQuery(req, verifiedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
@@ -319,7 +324,7 @@ export const getVerifiedStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -329,7 +334,7 @@ export const getVerifiedStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -354,11 +359,12 @@ export const getRejectedStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const rejectedStatuses = ['report_rejected'];
+        // ✅ FIX: verifyReport sets workflowStatus = 'report_rejected' when rejected
+        // AND revertInfo.isReverted = true — so also include revert_to_radiologist
+        const rejectedStatuses = ['report_rejected', 'revert_to_radiologist'];
         const queryFilters = buildVerifierBaseQuery(req, rejectedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
@@ -370,7 +376,7 @@ export const getRejectedStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -380,7 +386,7 @@ export const getRejectedStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -854,7 +860,7 @@ export const getPendingStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -864,7 +870,7 @@ export const getPendingStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -905,7 +911,7 @@ export const getInProgressStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -915,7 +921,7 @@ export const getInProgressStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -956,7 +962,7 @@ export const getAllStudiesForVerifier = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -966,7 +972,7 @@ export const getAllStudiesForVerifier = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
