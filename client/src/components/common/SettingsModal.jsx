@@ -12,7 +12,7 @@ const SettingsModal = ({ isOpen, onClose, onNavigate, theme = 'default' }) => {
     const isGreenTheme = theme === 'admin';
     const isGroupId = role === 'group_id';
     
-    console.log('Current User Role:', currentUser?.role);
+    // console.log('Current User Role:', currentUser?.role);
     // Check user permissions for creating entities
     const canCreateDoctor = ['admin', 'group_id'].includes(role);
     const canCreateLab = ['admin'].includes(role);

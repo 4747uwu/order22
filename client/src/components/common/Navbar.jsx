@@ -16,8 +16,9 @@ import {
   Copy
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
-import DoctorProfileModal from '../doctor/DoctorProfileModal'; // ✅ ADD THIS IMPORT
-import ManualStudyCreator from '../admin/ManualStudyCreator'; // ✅ ADD THIS IMPORT
+import DoctorProfileModal from '../doctor/DoctorProfileModal';
+import ManualStudyCreator from '../admin/ManualStudyCreator';
+import SettingsModal from './SettingsModal'; // ✅ ADD
 
 const Navbar = ({ 
   title, 
@@ -42,8 +43,9 @@ const Navbar = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD THIS STATE
-  const [showManualStudyModal, setShowManualStudyModal] = useState(false); // ✅ ADD THIS STATE
+  const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD
+  const [showManualStudyModal, setShowManualStudyModal] = useState(false); // ✅ ADD
+  const [showSettingsModal, setShowSettingsModal] = useState(false); // ✅ ADD
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -162,6 +164,10 @@ const Navbar = ({
   // ✅ CHECK IF USER CAN CREATE MANUAL STUDIES
   const canCreateManualStudy = ['admin','lab_staff'].includes(currentUser?.role);
 
+  // ✅ ADD: Settings access check (same logic as Search.jsx)
+  const role = (currentUser?.role || '').toString().toLowerCase();
+  const hasSettingsAccess = ['admin', 'super_admin', 'group_id'].includes(role);
+
   return (
     <>
       {/* ✅ COMPACT NAVBAR - Height reduced from 16 to 12 */}
@@ -196,9 +202,9 @@ const Navbar = ({
               </div>
             </div>
 
-            {/* ✅ RIGHT SECTION - Compact uniform buttons */}
+            {/* ✅ RIGHT SECTION */}
             <div className="flex items-center space-x-1">
-              
+
               {/* Profile Settings - doctors/radiologists */}
               {canAccessProfileModal && (
                 <button
@@ -233,6 +239,18 @@ const Navbar = ({
                 >
                   <Plus className="h-3 w-3" />
                   <span>Create Study</span>
+                </button>
+              )}
+
+              {/* ✅ SETTINGS BUTTON - moved from Search.jsx */}
+              {hasSettingsAccess && (
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="hidden md:flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium text-white bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black transition-all border border-gray-700 shadow-sm"
+                  title="Open Settings"
+                >
+                  <Settings className="h-3 w-3" />
+                  <span>Settings</span>
                 </button>
               )}
 
@@ -404,6 +422,16 @@ const Navbar = ({
         onClose={handleCloseManualStudy}
         onSuccess={handleManualStudySuccess}
       />
+
+      {/* ✅ Settings Modal */}
+      {hasSettingsAccess && (
+        <SettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          onNavigate={(path) => { window.location.href = path; }}
+          theme="default"
+        />
+      )}
     </>
   );
 };

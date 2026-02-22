@@ -340,7 +340,7 @@ const StudyRow = ({
   study, activeViewers = [], index, selectedStudies, availableAssignees, onSelectStudy, onPatienIdClick, onAssignDoctor, onShowDetailedView, onViewReport, onShowStudyNotes, onViewStudy, onEditPatient, onAssignmentSubmit, onShowTimeline, onToggleLock, onShowDocuments, onShowRevertModal, setPrintModal, userRole, userRoles = [], getColumnWidth, isColumnVisible = () => true,
 }) => {
   const navigate = useNavigate();
-  // console.log('Rendering StudyRow for study:', study);
+  console.log('Rendering StudyRow for study:', study);
   
   const assignInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
@@ -446,6 +446,8 @@ const StudyRow = ({
       setShowAssignmentModal(true);
     }
   };
+
+  
 
   const handleCloseAssignmentModal = () => {
     setShowAssignmentModal(false);
@@ -630,6 +632,51 @@ const StudyRow = ({
       setRestoringStudy(false);
     }
   };
+
+   const handleDirectDownloadPDF = useCallback(async (study) => {
+    try {
+      const loadingToast = toast.loading('Generating PDF...', { icon: '⚙️' });
+
+      const response = await api.get(`/reports/studies/${study._id}/reports`);
+
+      if (!response.data.success || !response.data.data?.reports?.length) {
+        toast.dismiss(loadingToast);
+        toast.error('No report found for this study');
+        return;
+      }
+
+      const reports = response.data.data.reports;
+      const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+
+      if (!latestReport) {
+        toast.dismiss(loadingToast);
+        toast.error('No finalized report available');
+        return;
+      }
+
+      const pdfResponse = await api.get(
+        `/reports/reports/${latestReport._id}/download/pdf`,
+        { responseType: 'blob', timeout: 60000 }
+      );
+
+      toast.dismiss(loadingToast);
+
+      const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success('PDF downloaded!', { icon: '📥' });
+    } catch (error) {
+      console.error('❌ [Download PDF] Error:', error);
+      toast.error('Failed to download PDF');
+    }
+  }, []);
 
   const handleLockToggle = async (e) => {
     e.stopPropagation();
@@ -877,25 +924,51 @@ const StudyRow = ({
         </td>
     )}
 
-    {/* 19. PRINT COUNT */}
-    {isColumnVisible('caseStatus') && (
+    {isColumnVisible('printCount') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('printCount')}px` }}>
-            {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
-                <div className="flex flex-col items-center gap-0.5">
-                    <button onClick={() => handleDirectPrint(study)} className="p-1 hover:bg-purple-50 rounded" title="Print Report">
-                        <Printer className="w-3.5 h-3.5 text-purple-600" />
-                    </button>
-                    <div className="text-[8px] sm:text-[9px] text-slate-500 text-center whitespace-nowrap">
-                        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+            
+            {/* ✅ ONLY show when report is completed */}
+            {['report_completed', 'final_report_downloaded'].includes(study.workflowStatus) ? (
+                <div className="flex flex-col items-center gap-1">
+                    
+                    <div className="flex items-center gap-1 justify-center">
+                        {/* Print */}
+                        <button 
+                            onClick={() => handleDirectPrint(study)} 
+                            className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110" 
+                            title="Print Report"
+                        >
+                            <Printer className="w-3.5 h-3.5 text-purple-600" />
+                        </button>
+
+                        {/* ✅ Direct PDF Download */}
+                        <button 
+                            onClick={() => handleDirectDownloadPDF(study)} 
+                            className="p-1 hover:bg-red-50 rounded transition-all hover:scale-110" 
+                            title="Download PDF"
+                        >
+                            <Download className="w-3.5 h-3.5 text-red-500" />
+                        </button>
                     </div>
+
+                    {(study.lastPrintedAt || study.printInfo?.lastPrintedAt) && (
+                        <div className="text-[8px] text-slate-500 whitespace-nowrap">
+                            {formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}
+                        </div>
+                    )}
+
+                    {(study.printCount > 0 || study.printInfo?.totalPrints > 0) && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-100 rounded text-[8px] font-medium text-slate-600">
+                            {study.printCount || study.printInfo?.totalPrints} print(s)
+                        </span>
+                    )}
                 </div>
             ) : (
-                <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-0.5 p-1 text-slate-400 hover:text-slate-600 rounded mx-auto">
-                    <Printer className="w-3.5 h-3.5" /><span className="text-[8px] whitespace-nowrap">Print</span>
-                </button>
+                <span className="text-slate-300 text-xs">-</span>
             )}
         </td>
     )}
+
 
     {/* REJECTION REASON */}
     {isColumnVisible('caseStatus') && (

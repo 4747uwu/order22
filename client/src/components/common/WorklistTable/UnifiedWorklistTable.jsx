@@ -436,7 +436,7 @@ const UnifiedStudyRow = ({
 
 }) => {
     const navigate = useNavigate();
-    // console.log(study)
+    console.log(study)
 
         const hasActiveViewers = activeViewers.length > 0;
 
@@ -576,6 +576,57 @@ const UnifiedStudyRow = ({
       }
     }, []);
 
+
+        const handleDirectDownloadPDF = useCallback(async (study) => {
+        try {
+            const loadingToast = toast.loading('Generating PDF...', { icon: '⚙️' });
+
+            // Step 1: Get reports for this study
+            const response = await api.get(`/reports/studies/${study._id}/reports`);
+
+            if (!response.data.success || !response.data.data?.reports?.length) {
+                toast.dismiss(loadingToast);
+                toast.error('No report found for this study');
+                return;
+            }
+
+            // Step 2: Pick latest finalized report
+            const reports = response.data.data.reports;
+            const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
+
+            if (!latestReport) {
+                toast.dismiss(loadingToast);
+                toast.error('No finalized report available');
+                return;
+            }
+
+            // Step 3: Download PDF directly
+            const pdfResponse = await api.get(
+                `/reports/reports/${latestReport._id}/download/pdf`,
+                { responseType: 'blob', timeout: 60000 }
+            );
+
+            toast.dismiss(loadingToast);
+
+            // Step 4: Trigger browser download
+            const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+
+            toast.success('PDF downloaded successfully!', { icon: '📥' });
+
+        } catch (error) {
+            console.error('❌ [Download PDF] Error:', error);
+            toast.error('Failed to download PDF');
+        }
+    }, []);
+
     const handleCloseAssignmentModal = () => {
         setShowAssignmentModal(false);
         setInputFocused(false);
@@ -602,6 +653,8 @@ const UnifiedStudyRow = ({
 
       const handleViewOnlyClick = (e) => {
   e.stopPropagation();
+
+//   console.log(study)
 
   try {
     const src = study || {};
@@ -1154,22 +1207,50 @@ const UnifiedStudyRow = ({
         </td>
     )}
 
-    {/* 21. PRINT REPORT */}
-    {isColumnVisible('printCount') && (
-         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('printCount')}px` }}>
-            {study.printCount > 0 || (study.printInfo && study.printInfo.totalPrints > 0) ? (
-                <div className="flex flex-col items-center gap-0.5">
-                    <button onClick={() => handleDirectPrint(study)} className="p-1 hover:bg-purple-50 rounded" title="Print Report">
-                        <Printer className="w-3.5 h-3.5 text-purple-600" />
-                    </button>
-                    <div className="text-[8px] sm:text-[9px] text-slate-500 text-center whitespace-nowrap">
-                        <div className="font-medium">{formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}</div>
+     {isColumnVisible('printCount') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('printCount')}px` }}>
+            
+            {/* ✅ ONLY show when workflowStatus is report_completed or final_report_downloaded */}
+            {['report_completed', 'final_report_downloaded'].includes(study.workflowStatus) ? (
+                <div className="flex flex-col items-center gap-1">
+                    
+                    {/* Print Button */}
+                    <div className="flex items-center gap-1 justify-center">
+                        <button 
+                            onClick={() => handleDirectPrint(study)} 
+                            className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110" 
+                            title="Print Report"
+                        >
+                            <Printer className="w-3.5 h-3.5 text-purple-600" />
+                        </button>
+
+                        {/* ✅ PDF Download Button — directly downloads PDF */}
+                        <button 
+                            onClick={() => handleDirectDownloadPDF(study)} 
+                            className="p-1 hover:bg-red-50 rounded transition-all hover:scale-110" 
+                            title="Download PDF"
+                        >
+                            <Download className="w-3.5 h-3.5 text-red-500" />
+                        </button>
                     </div>
+
+                    {/* Last print date if exists */}
+                    {(study.lastPrintedAt || study.printInfo?.lastPrintedAt) && (
+                        <div className="text-[8px] text-slate-500 whitespace-nowrap">
+                            {formatDate(study.lastPrintedAt || study.printInfo?.lastPrintedAt)}
+                        </div>
+                    )}
+
+                    {/* Print count badge */}
+                    {(study.printCount > 0 || study.printInfo?.totalPrints > 0) && (
+                        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-slate-100 rounded text-[8px] font-medium text-slate-600">
+                            {study.printCount || study.printInfo?.totalPrints} print(s)
+                        </span>
+                    )}
                 </div>
             ) : (
-                <button onClick={() => handleDirectPrint(study)} className="flex flex-col items-center gap-0.5 p-1 text-slate-400 hover:text-slate-600 rounded mx-auto">
-                    <Printer className="w-3.5 h-3.5" /><span className="text-[8px] whitespace-nowrap">Print</span>
-                </button>
+                // ✅ Not completed — show dash
+                <span className="text-slate-300 text-xs">-</span>
             )}
         </td>
     )}
@@ -1251,6 +1332,34 @@ const UnifiedStudyRow = ({
                     </>
                 )}
 
+                 {/* ✅ ADD: LAB STAFF ACTIONS */}
+                {userRoles.includes('lab_staff') && 
+                 !userRoles.includes('admin') && 
+                 !userRoles.includes('assignor') && 
+                 !userRoles.includes('radiologist') && 
+                 !userRoles.includes('verifier') && (
+                    <>
+                        {/* Download Study */}
+                        <button 
+                            ref={downloadButtonRef} 
+                            onClick={handleDownloadClick} 
+                            className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" 
+                            title="Download Study"
+                        >
+                            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                        </button>
+
+                        {/* View Report */}
+                        <button 
+                            onClick={() => onViewReport?.(study)} 
+                            className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" 
+                            title="View/Download Report"
+                        >
+                            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                        </button>
+                    </>
+                )}
+
                 {/* VERIFIER ACTIONS */}
                 {userRoles.includes('verifier') && !userRoles.includes('assignor') && (
                     <>
@@ -1262,7 +1371,7 @@ const UnifiedStudyRow = ({
                             <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
                         </button>
 
-                        {['report_finalized', 'report_drafted'].includes(study.workflowStatus) && study.workflowStatus !== 'report_verified' && study.workflowStatus !== 'report_rejected' ? (
+                        {['report_finalized', 'report_drafted', 'verification_pending'].includes(study.workflowStatus) && study.workflowStatus !== 'report_verified' && study.workflowStatus !== 'report_rejected' ? (
                             <button 
                                 className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap" 
                                 title="Open OHIF + Reporting for Verification" 
@@ -1490,6 +1599,8 @@ const UnifiedWorklistTable = ({
     
  
 // ...existing code...
+// ...existing code...
+
 const DB_TO_CONFIG_KEY_MAP = {
   'checkbox'           : 'checkbox',
   'bharatPacsId'       : 'bharatPacsId',
@@ -1501,21 +1612,26 @@ const DB_TO_CONFIG_KEY_MAP = {
   'ageGender'          : 'ageGender',
   'modality'           : 'modality',
   'viewOnly'           : 'viewOnly',
-  'reporting'           : 'reporting',
-  'studySeriesImages'  : 'seriesCount',
+  'reporting'          : 'reporting',
+  'studySeriesImages'  : 'studySeriesImages',   // ✅ FIX: was 'seriesCount'
   'accessionNumber'    : 'accessionNumber',
   'referralDoctor'     : 'referralDoctor',
   'clinicalHistory'    : 'clinicalHistory',
-  'studyDateTime'      : 'studyTime',
-  'uploadDateTime'     : 'uploadTime',
-  'assignedRadiologist': 'radiologist',
+  'studyDateTime'      : 'studyDateTime',        // ✅ FIX: was 'studyTime'
+  'uploadDateTime'     : 'uploadDateTime',       // ✅ FIX: was 'uploadTime'
+  'assignedRadiologist': 'assignedRadiologist',  // ✅ FIX: was 'radiologist'
   'studyLock'          : 'studyLock',
-  'status'             : 'caseStatus',
+  'status'             : 'status',               // ✅ FIX: was 'caseStatus'
   'assignedVerifier'   : 'assignedVerifier',
   'verifiedDateTime'   : 'verifiedDateTime',
   'actions'            : 'actions',
   'rejectionReason'    : 'rejectionReason',
+  'printCount'         : 'printCount',           // ✅ ADD: was missing entirely
+  'selection'          : 'selection',            // ✅ ADD: was missing entirely
+  'organization'       : 'organization',         // ✅ ADD: was missing entirely
 };
+
+// ...existing code...
 
 
 // old working code block

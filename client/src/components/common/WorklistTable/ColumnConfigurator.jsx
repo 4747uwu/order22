@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 
+// ...existing code...
+
 const DB_TO_CONFIG_KEY_MAP = {
-  // DB key (visibleColumns)  : columnConfig key (getDefaultColumnConfig)
   'checkbox'           : 'checkbox',
   'bharatPacsId'       : 'bharatPacsId',
   'centerName'         : 'centerName',
@@ -13,21 +14,26 @@ const DB_TO_CONFIG_KEY_MAP = {
   'ageGender'          : 'ageGender',
   'modality'           : 'modality',
   'viewOnly'           : 'viewOnly',
-  'reporting'           : 'reporting',
-  'studySeriesImages'  : 'seriesCount',       // ← DB sends 'studySeriesImages', config key is 'seriesCount'
+  'reporting'          : 'reporting',
+  'studySeriesImages'  : 'studySeriesImages',   // ✅ FIX: was 'seriesCount'
   'accessionNumber'    : 'accessionNumber',
   'referralDoctor'     : 'referralDoctor',
   'clinicalHistory'    : 'clinicalHistory',
-  'studyDateTime'      : 'studyTime',         // ← DB sends 'studyDateTime', config key is 'studyTime'
-  'uploadDateTime'     : 'uploadTime',        // ← DB sends 'uploadDateTime', config key is 'uploadTime'
-  'assignedRadiologist': 'radiologist',       // ← DB sends 'assignedRadiologist', config key is 'radiologist'
+  'studyDateTime'      : 'studyDateTime',        // ✅ FIX: was 'studyTime'
+  'uploadDateTime'     : 'uploadDateTime',       // ✅ FIX: was 'uploadTime'
+  'assignedRadiologist': 'assignedRadiologist',  // ✅ FIX: was 'radiologist'
   'studyLock'          : 'studyLock',
-  'status'             : 'caseStatus',        // ← DB sends 'status', config key is 'caseStatus'
+  'status'             : 'status',               // ✅ FIX: was 'caseStatus'
   'assignedVerifier'   : 'assignedVerifier',
   'verifiedDateTime'   : 'verifiedDateTime',
   'actions'            : 'actions',
   'rejectionReason'    : 'rejectionReason',
+  'printCount'         : 'printCount',           // ✅ ADD: was missing entirely
+  'selection'          : 'selection',            // ✅ ADD: was missing entirely
+  'organization'       : 'organization',         // ✅ ADD: was missing entirely
 };
+
+// ...existing code...
 
 const ColumnConfigurator = ({ columnConfig, onColumnChange, onResetToDefault, theme = 'default', visibleColumns = [] }) => {
   const [isOpen, setIsOpen] = useState(false);

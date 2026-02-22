@@ -1,37 +1,46 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  X, 
-  FileText, 
-  Download, 
-  Eye, 
-  Calendar, 
-  User, 
-  Clock, 
-  AlertCircle,
-  CheckCircle,
-  RefreshCw,
-  ExternalLink,
-  Monitor,
-  Edit,
-  File,
-  Printer,
-  MoreVertical
-} from 'lucide-react';
+import { X, FileText, Download, Eye, Calendar, Clock, AlertCircle, CheckCircle, RefreshCw, ExternalLink, Monitor, Edit, File, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../../services/api';
+import { useAuth } from '../../../hooks/useAuth'; // ✅ AD
 
 const ReportModal = ({ 
   isOpen, 
   onClose, 
   studyId, 
   studyData = null,
-  onShowPrintModal
+  onShowPrintModal,
+  userRoles = [],
+  userRole = ''
 }) => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth(); // ✅ ADD — get directly from auth context
+
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  // ✅ FIX: Read roles from auth context directly — don't trust props alone
+  const resolvedRoles = [
+    ...(userRoles || []),
+    ...(currentUser?.accountRoles || []),
+    ...(currentUser?.roles || []),
+    userRole,
+    currentUser?.role,
+    currentUser?.primaryRole
+  ].filter(Boolean).map(r => r.toString().toLowerCase());
+
+  // ✅ SINGLE SOURCE OF TRUTH
+  const isLabStaff = resolvedRoles.includes('lab_staff');
+  const isAdmin    = resolvedRoles.includes('admin') || resolvedRoles.includes('super_admin');
+  
+  // ✅ Lab staff ONLY sees PDF download — nothing else
+  const canEdit      = !isLabStaff;
+  const canView      = !isLabStaff;
+  const canPrint     = !isLabStaff;  // ✅ No print for lab_staff either
+  const canDOCX      = !isLabStaff;
+  const canCreateNew = !isLabStaff;
 
   useEffect(() => {
     if (isOpen && studyId) {
@@ -58,7 +67,6 @@ const ReportModal = ({
     }
   }, [studyId]);
 
-  // ... (Keep existing download logic exactly the same) ...
   const handleDownloadReport = useCallback(async (report, format = 'pdf') => {
     console.log(`📥 Downloading report as ${format.toUpperCase()}:`, report.filename);
     try {
@@ -89,7 +97,6 @@ const ReportModal = ({
     }
   }, []);
 
-  // ... (Keep existing view, edit, print, navigation logic same) ...
   const handleViewReport = useCallback((report) => {
     toast.success(`Opening ${report.filename}...`, { icon: '👁️' });
   }, []);
@@ -242,7 +249,7 @@ const ReportModal = ({
             </div>
           )}
 
-          {/* ✅ REPORT LIST: Compact Rows */}
+          {/* ✅ REPORT LIST */}
           {!loading && !error && reports.length > 0 && (
             <div className="space-y-1">
               {reports.map((report) => (
@@ -274,52 +281,43 @@ const ReportModal = ({
                     </div>
                   </div>
 
-                  {/* Right: Actions (Icons only for minimalism) */}
+                  {/* Right: Actions */}
                   <div className="flex items-center gap-1 pl-2">
-                    <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleEditReport(report)}
-                        className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all"
-                        title="Edit"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </button>
-                      
-                      <button
-                        onClick={() => handleViewReport(report)}
-                        className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all"
-                        title="View"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
 
-                      <button
-                        onClick={() => handlePrintReport(report)}
-                        className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all"
-                        title="Print"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {/* ✅ Edit, View, Print — COMPLETELY hidden for lab_staff */}
+                    {canEdit && (
+                      <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => handleEditReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="Edit">
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handleViewReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="View">
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => handlePrintReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="Print">
+                          <Printer className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
 
-                    <div className="w-px h-4 bg-gray-200 mx-1"></div>
+                    {/* ✅ DOCX — hidden for lab_staff */}
+                    {canDOCX && (
+                      <>
+                        <div className="w-px h-4 bg-gray-200 mx-1"></div>
+                        <button onClick={() => handleDownloadReport(report, 'docx')} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors opacity-60 group-hover:opacity-100" title="Download DOCX">
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleDownloadReport(report, 'docx')}
-                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                        title="Download DOCX"
-                      >
-                        <FileText className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDownloadReport(report, 'pdf')}
-                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Download PDF"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    {/* ✅ PDF — ONLY option for lab_staff */}
+                    <button
+                      onClick={() => handleDownloadReport(report, 'pdf')}
+                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-60 group-hover:opacity-100"
+                      title="Download PDF"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+
                   </div>
                 </div>
               ))}
@@ -327,29 +325,29 @@ const ReportModal = ({
           )}
         </div>
 
-        {/* ✅ FOOTER: Minimalist Action Bar */}
+        {/* ✅ FOOTER */}
         <div className="px-5 py-3 border-t border-gray-100 bg-gray-50/50 flex items-center justify-between shrink-0">
           <span className="text-xs text-gray-500 font-medium">
             {reports.length > 0 ? `${reports.length} Document${reports.length !== 1 ? 's' : ''}` : ''}
           </span>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleOnlineReporting}
-              className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              New Report
+          {/* ✅ Lab staff: ONLY close button — no New Report, no Report+OHIF */}
+          {isLabStaff ? (
+            <button onClick={onClose} className="flex items-center gap-2 px-3 py-1.5 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition-all shadow-sm">
+              Close
             </button>
-            
-            <button
-              onClick={handleOnlineReportingWithOHIF}
-              className="flex items-center gap-2 px-3 py-1.5 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition-all shadow-sm group"
-            >
-              <Monitor className="w-3.5 h-3.5 group-hover:text-green-400 transition-colors" />
-              Report + OHIF
-            </button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button onClick={handleOnlineReporting} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm">
+                <ExternalLink className="w-3.5 h-3.5" />
+                New Report
+              </button>
+              <button onClick={handleOnlineReportingWithOHIF} className="flex items-center gap-2 px-3 py-1.5 bg-black text-white text-xs font-semibold rounded-lg hover:bg-gray-800 transition-all shadow-sm group">
+                <Monitor className="w-3.5 h-3.5 group-hover:text-green-400 transition-colors" />
+                Report + OHIF
+              </button>
+            </div>
+          )}
         </div>
         
       </div>

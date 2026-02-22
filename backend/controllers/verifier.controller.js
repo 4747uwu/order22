@@ -20,9 +20,9 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
     // ✅ DETERMINE VERIFIABLE STATUSES based on verification requirements
     let verifiableStatuses = [
         'verification_pending',
-        'report_finalized',
         'verification_in_progress',
-        'report_verified',
+        // 'report_completed',
+        'final_report_downloaded',
         'report_rejected',
         'revert_to_radiologist'
     ];
@@ -217,12 +217,10 @@ export const getValues = async (req, res) => {
 
         // ✅ SIMPLIFIED: Only 2 status categories for counting
         const statusCategories = {
-            // ✅ verifyReport sets 'report_completed' on approval (not 'report_verified')
-            verified: ['report_completed'],
-            // ✅ verifyReport sets 'report_rejected' on rejection
+            // ✅ VERIFIED: report_completed + final_report_downloaded
+            verified: ['report_completed', 'final_report_downloaded'],
+            // ✅ REVERTED: report_rejected + revert_to_radiologist
             rejected: ['report_rejected', 'revert_to_radiologist'],
-            // ✅ pending = studies waiting to be verified
-            pending: ['verification_pending', 'report_finalized', 'verification_in_progress']
         };
 
         const pipeline = [
@@ -309,7 +307,7 @@ export const getVerifiedStudies = async (req, res) => {
 
         // ✅ FIX: verifyReport sets workflowStatus = 'report_completed' when approved
         // NOT 'report_verified' — that was the bug
-        const verifiedStatuses = ['report_completed'];
+        const verifiedStatuses = ['report_completed', 'final_report_downloaded'];
         const queryFilters = buildVerifierBaseQuery(req, verifiedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
@@ -361,7 +359,7 @@ export const getRejectedStudies = async (req, res) => {
 
         // ✅ FIX: verifyReport sets workflowStatus = 'report_rejected' when rejected
         // AND revertInfo.isReverted = true — so also include revert_to_radiologist
-        const rejectedStatuses = ['report_rejected', 'revert_to_radiologist'];
+        const rejectedStatuses = ['report_rejected', 'revert_to_radiologist'];  // ✅
         const queryFilters = buildVerifierBaseQuery(req, rejectedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
@@ -946,8 +944,16 @@ export const getAllStudiesForVerifier = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        // Get all verification-related statuses
-        const queryFilters = buildVerifierBaseQuery(req);
+        const allStatuses = [
+            'verification_pending',
+            'verification_in_progress',
+            'report_completed',
+            'final_report_downloaded',
+            'report_rejected',
+            'revert_to_radiologist'
+        ];  // ✅
+
+        const queryFilters = buildVerifierBaseQuery(req, allStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 

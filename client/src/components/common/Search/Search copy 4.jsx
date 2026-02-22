@@ -420,38 +420,38 @@ const Search = ({
     const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(role);
 
     return (
-        <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>
-            {/* MAIN SEARCH ROW */}
-            <div className="flex flex-wrap items-center gap-2">
+        <div className={`bg-white border-b border-${themeColors.border} px-2 py-1.5`}>
+            {/* MAIN SEARCH ROW - NO overflow-x-auto here, use overflow-visible so dropdowns show */}
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap sm:flex-nowrap">
                 
                 {/* SEARCH INPUT */}
-                <div className="relative w-full sm:w-36 md:w-40 lg:w-44 xl:w-48 flex-shrink-0 order-1">
-                    <SearchIcon className={`absolute left-2.5 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary}`} size={14} />
+                <div className="relative flex-shrink-0 w-36 sm:w-40">
+                    <SearchIcon className={`absolute left-2 top-1/2 -translate-y-1/2 text-${themeColors.textSecondary}`} size={12} />
                     <input
                         type="text"
                         value={searchTerm}
                         onChange={(e) => handleSearchChange(e.target.value)}
                         placeholder="Search patients, IDs..."
-                        className={`w-full pl-8 pr-6 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} transition-colors`}
+                        className={`w-full pl-6 pr-5 py-1 text-xs border border-${themeColors.border} rounded ${themeColors.focus} transition-colors`}
                     />
                     {searchTerm && (
-                        <button 
-                            onClick={() => handleSearchChange('')}
-                            className={`absolute right-2 top-1/2 transform -translate-y-1/2 text-${themeColors.textSecondary} hover:text-${themeColors.text} p-0.5`}
-                        >
-                            <X size={12} />
+                        <button onClick={() => handleSearchChange('')} className={`absolute right-1.5 top-1/2 -translate-y-1/2 text-${themeColors.textSecondary} hover:text-${themeColors.text}`}>
+                            <X size={10} />
                         </button>
                     )}
                 </div>
 
-                {/* QUICK FILTERS */}
-                <div className="flex flex-wrap items-center gap-1 order-2">
+                {/* DIVIDER */}
+                <div className={`h-4 w-px bg-${themeColors.border} flex-shrink-0 hidden sm:block`} />
+
+                {/* QUICK FILTERS - overflow visible so dropdowns can escape */}
+                <div className="flex items-center gap-1 flex-shrink-0 overflow-visible">
                     <MultiSelect
                         options={modalityMultiSelectOptions}
                         selected={filters.modalities}
                         onChange={(selected) => handleFilterChange('modalities', selected)}
                         placeholder="Modality"
-                        className="w-20 sm:w-24"
+                        className="w-20"
                     />
 
                     <MultiSelect
@@ -459,7 +459,7 @@ const Search = ({
                         selected={filters.priorities}
                         onChange={(selected) => handleFilterChange('priorities', selected)}
                         placeholder="Priority"
-                        className="w-20 sm:w-24"
+                        className="w-20"
                     />
 
                     {canAccessAdvancedFilters && (
@@ -468,7 +468,7 @@ const Search = ({
                             selected={filters.radiologists}
                             onChange={(selected) => handleFilterChange('radiologists', selected)}
                             placeholder="Radiologist"
-                            className="w-24 sm:w-28 lg:w-32"
+                            className="w-24"
                         />
                     )}
 
@@ -478,7 +478,7 @@ const Search = ({
                             selected={filters.labs}
                             onChange={(selected) => handleFilterChange('labs', selected)}
                             placeholder="Center"
-                            className="w-24 sm:w-28 lg:w-32"
+                            className="w-20"
                         />
                     )}
 
@@ -486,7 +486,7 @@ const Search = ({
                         <select
                             value={filters.assigneeRole}
                             onChange={(e) => handleFilterChange('assigneeRole', e.target.value)}
-                            className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} min-w-16 sm:min-w-20`}
+                            className={`px-1.5 py-1 text-xs border border-${themeColors.border} rounded bg-white text-${themeColors.text} ${themeColors.focus} w-20`}
                         >
                             <option value="all">All Roles</option>
                             <option value="radiologist">Radiologist</option>
@@ -495,142 +495,98 @@ const Search = ({
                     )}
                 </div>
 
+                {/* DIVIDER */}
+                <div className={`h-4 w-px bg-${themeColors.border} flex-shrink-0 hidden sm:block`} />
+
                 {/* TIME FILTERS */}
-                <div className="hidden md:flex items-center gap-1 order-3">
+                <div className="flex items-center gap-1 flex-shrink-0">
                     {['Today', 'Yesterday', '7 Days'].map((period) => {
-                        const isActive = 
-                            (period === 'Today' && filters.dateFilter === 'today') ||
+                        const isActive =
+                            (period === 'Today'     && filters.dateFilter === 'today') ||
                             (period === 'Yesterday' && filters.dateFilter === 'yesterday') ||
-                            (period === '7 Days' && filters.dateFilter === 'last7days')
-                        
-                        const value = 
-                            period === 'Today' ? 'today' :
-                            period === 'Yesterday' ? 'yesterday' :
-                            period === '7 Days' ? 'last7days' :
-                            'last30days';
+                            (period === '7 Days'    && filters.dateFilter === 'last7days');
+
+                        const value =
+                            period === 'Today'     ? 'today' :
+                            period === 'Yesterday' ? 'yesterday' : 'last7days';
 
                         return (
                             <button
                                 key={period}
                                 onClick={() => handleFilterChange('dateFilter', value)}
-                                className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                                className={`px-1.5 py-1 text-xs font-medium rounded whitespace-nowrap transition-colors ${
                                     isActive
-                                        ? isGreenTheme 
-                                            ? 'bg-teal-600 text-white hover:bg-teal-700' 
-                                            : 'bg-black text-white hover:bg-gray-800'
-                                        : isGreenTheme
-                                            ? 'text-teal-600 hover:bg-teal-50 border border-teal-300'
-                                            : 'text-gray-600 hover:bg-gray-100 border border-gray-300'
+                                        ? isGreenTheme ? 'bg-teal-600 text-white' : 'bg-black text-white'
+                                        : isGreenTheme ? 'text-teal-600 border border-teal-300 hover:bg-teal-50' : 'text-gray-600 border border-gray-300 hover:bg-gray-100'
                                 }`}
                             >
                                 {period}
                             </button>
                         );
                     })}
-                    
-                    <div className="relative">
-                        <select
-                            value={filters.dateFilter || 'today'}
-                            onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-                            className={`px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700 focus:ring-teal-500 focus:border-teal-500' : 'text-gray-700 focus:ring-black focus:border-black'} focus:outline-none focus:ring-1 min-w-20`}
-                        >
-                            <option value="">All Time</option>
-                            {dateOptions.map(option => (
-                                <option key={option.value} value={option.value}>
-                                    {option.label}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-                </div>
 
-                {/* Mobile date filter dropdown */}
-                <div className="flex md:hidden items-center order-3">
                     <select
                         value={filters.dateFilter || 'today'}
                         onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-                        className={`px-2 py-1.5 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-black'}`}
+                        className={`px-1.5 py-1 text-xs border ${isGreenTheme ? 'border-teal-300 text-teal-700' : 'border-gray-300 text-gray-700'} rounded bg-white focus:outline-none focus:ring-1 w-24`}
                     >
                         <option value="">All Time</option>
-                        <option value="today">Today</option>
-                        <option value="yesterday">Yesterday</option>
-                        <option value="last7days">Last 7 Days</option>
-                        <option value="custom">Custom</option>
+                        {dateOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
                 </div>
 
-                
+                {/* DIVIDER */}
+                <div className={`h-4 w-px bg-${themeColors.border} flex-shrink-0 hidden sm:block`} />
 
-                {/* ASSIGNOR ANALYTICS */}
+                {/* ASSIGNOR ANALYTICS - only xl+ */}
                 {isAssignor && analytics && (
-                    <div className={`hidden lg:flex items-center gap-2 pl-2 border-l border-${themeColors.border} order-5`}>
-                        <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Unassigned:</span>
-                            <span className="font-bold text-red-600 ml-1">{analytics.overview?.totalUnassigned || 0}</span>
-                        </div>
-                        <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Assigned:</span>
-                            <span className="font-bold text-green-600 ml-1">{analytics.overview?.totalAssigned || 0}</span>
-                        </div>
-                        <div className="text-xs">
-                            <span className={`text-${themeColors.textSecondary}`}>Overdue:</span>
-                            <span className="font-bold text-orange-600 ml-1">{analytics.overview?.overdueStudies || 0}</span>
-                        </div>
+                    <div className="hidden xl:flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs whitespace-nowrap"><span className={`text-${themeColors.textSecondary}`}>Unassigned:</span><span className="font-bold text-red-600 ml-1">{analytics.overview?.totalUnassigned || 0}</span></span>
+                        <span className="text-xs whitespace-nowrap"><span className={`text-${themeColors.textSecondary}`}>Assigned:</span><span className="font-bold text-green-600 ml-1">{analytics.overview?.totalAssigned || 0}</span></span>
+                        <span className="text-xs whitespace-nowrap"><span className={`text-${themeColors.textSecondary}`}>Overdue:</span><span className="font-bold text-orange-600 ml-1">{analytics.overview?.overdueStudies || 0}</span></span>
+                        <div className={`h-4 w-px bg-${themeColors.border}`} />
                     </div>
                 )}
 
                 {/* AUTO-REFRESH CONTROLS */}
-                <div className={`flex items-center gap-1 pl-2 border-l border-${themeColors.border} order-6`}>
+                <div className="flex items-center gap-1 flex-shrink-0">
                     <select
                         value={refreshInterval}
                         onChange={(e) => handleRefreshIntervalChange(parseInt(e.target.value))}
-                        className={`hidden sm:block px-2 py-1 text-xs border ${isGreenTheme ? 'border-teal-300' : 'border-gray-300'} rounded bg-white ${isGreenTheme ? 'text-teal-700' : 'text-gray-700'} focus:outline-none focus:ring-1 ${isGreenTheme ? 'focus:ring-teal-500' : 'focus:ring-gray-500'}`}
-                        title="Auto-refresh interval"
+                        className={`px-1.5 py-1 text-xs border ${isGreenTheme ? 'border-teal-300 text-teal-700' : 'border-gray-300 text-gray-700'} rounded bg-white focus:outline-none w-16`}
                     >
-                        {refreshIntervalOptions.map(option => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
+                        {refreshIntervalOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                     </select>
 
                     <button
                         onClick={handleToggleAutoRefresh}
-                        className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                        className={`flex items-center gap-1 px-1.5 py-1 text-xs font-medium rounded border transition-colors whitespace-nowrap ${
                             autoRefreshEnabled
-                                ? isGreenTheme
-                                    ? 'bg-teal-600 text-white border-teal-600 hover:bg-teal-700'
-                                    : 'bg-green-600 text-white border-green-600 hover:bg-green-700'
-                                : isGreenTheme
-                                    ? 'bg-white text-teal-700 border-teal-300 hover:bg-teal-50'
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                                ? isGreenTheme ? 'bg-teal-600 text-white border-teal-600' : 'bg-green-600 text-white border-green-600'
+                                : isGreenTheme ? 'bg-white text-teal-700 border-teal-300' : 'bg-white text-gray-700 border-gray-300'
                         }`}
-                        title={autoRefreshEnabled ? 'Auto-refresh enabled' : 'Auto-refresh disabled'}
                     >
-                        {autoRefreshEnabled ? <Play size={12} /> : <Pause size={12} />}
+                        {autoRefreshEnabled ? <Play size={11} /> : <Pause size={11} />}
                         {autoRefreshEnabled && (
-                            <span className="hidden sm:inline font-mono text-[10px]">
-                                {formatCountdown(timeUntilRefresh)}
-                            </span>
+                            <span className="font-mono text-[10px]">{formatCountdown(timeUntilRefresh)}</span>
                         )}
                     </button>
                 </div>
 
+                {/* DIVIDER */}
+                <div className={`h-4 w-px bg-${themeColors.border} flex-shrink-0 hidden sm:block`} />
+
                 {/* ACTION BUTTONS */}
-                <div className="flex items-center gap-1 order-7">
+                <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                         onClick={() => setShowAdvanced(!showAdvanced)}
-                        className={`px-2 py-1.5 text-xs font-medium rounded border transition-colors flex items-center gap-1 ${
-                            showAdvanced 
-                                ? isGreenTheme 
-                                    ? `bg-teal-600 text-white border-teal-600` 
-                                    : 'bg-black text-white border-black'
-                                : isGreenTheme
-                                    ? `bg-white text-${themeColors.text} border-${themeColors.border} hover:bg-${themeColors.primaryLight}`
-                                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                        className={`flex items-center gap-1 px-1.5 py-1 text-xs font-medium rounded border transition-colors whitespace-nowrap ${
+                            showAdvanced
+                                ? isGreenTheme ? 'bg-teal-600 text-white border-teal-600' : 'bg-black text-white border-black'
+                                : isGreenTheme ? 'bg-white text-teal-700 border-teal-300 hover:bg-teal-50' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                         }`}
                     >
-                        <Filter size={12} />
+                        <Filter size={11} />
                         <span className="hidden sm:inline">Filters</span>
                         <ChevronDown size={10} className={`transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
                     </button>
@@ -638,57 +594,46 @@ const Search = ({
                     {hasActiveFilters && (
                         <button
                             onClick={clearAllFilters}
-                            className="px-2 py-1.5 bg-red-50 text-red-600 text-xs font-medium rounded border border-red-200 hover:bg-red-100 transition-colors"
+                            className="px-1.5 py-1 bg-red-50 text-red-600 text-xs font-medium rounded border border-red-200 hover:bg-red-100 transition-colors whitespace-nowrap"
                         >
                             Clear
                         </button>
                     )}
 
-                    {/* ✅ UPDATED: Larger Manual Refresh Button */}
                     <button
                         onClick={handleRefreshClick}
                         disabled={loading}
-                        className={`p-2 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded-lg transition-all disabled:opacity-50 border border-transparent hover:border-${themeColors.border} ${
-                            loading ? 'cursor-wait' : 'cursor-pointer'
-                        }`}
+                        className={`p-1.5 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded transition-all disabled:opacity-50`}
                         title="Manual refresh"
                     >
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
                     </button>
-                </div>                
+                </div>
             </div>
 
             {/* ADVANCED FILTERS PANEL */}
             {(showAdvanced || filters.dateFilter === 'custom') && (
-                <div className={`mt-2.5 pt-2.5 border-t border-${themeColors.borderLight}`}>
-                    <div className="flex flex-wrap items-end gap-3">
+                <div className={`mt-2 pt-2 border-t border-${themeColors.borderLight}`}>
+                    <div className="flex flex-wrap items-end gap-2">
 
-                        <div className="flex flex-col min-w-[140px]">
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                Date Range
-                            </label>
+                        <div className="flex flex-col min-w-[130px]">
+                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>Date Range</label>
                             <select
                                 value={filters.dateFilter || 'today'}
                                 onChange={(e) => handleFilterChange('dateFilter', e.target.value)}
-                                className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`px-2 py-1 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="">All Time</option>
-                                {dateOptions.map(option => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
+                                {dateOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
                         </div>
 
                         <div className="flex flex-col min-w-[110px]">
-                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                Date Type
-                            </label>
+                            <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>Date Type</label>
                             <select
                                 value={filters.dateType || 'createdAt'}
                                 onChange={(e) => handleFilterChange('dateType', e.target.value)}
-                                className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
+                                className={`px-2 py-1 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
                             >
                                 <option value="createdAt">Upload Date</option>
                                 <option value="StudyDate">Study Date</option>
@@ -696,45 +641,27 @@ const Search = ({
                         </div>
 
                         {filters.dateFilter === 'custom' && (
-                            <div className="flex flex-col min-w-[130px]">
-                                <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                    From Date
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filters.customDateFrom || ''}
-                                    onChange={(e) => handleFilterChange('customDateFrom', e.target.value)}
-                                    className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                                />
-                            </div>
+                            <>
+                                <div className="flex flex-col min-w-[130px]">
+                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>From Date</label>
+                                    <input type="date" value={filters.customDateFrom || ''} onChange={(e) => handleFilterChange('customDateFrom', e.target.value)} className={`px-2 py-1 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`} />
+                                </div>
+                                <div className="flex flex-col min-w-[130px]">
+                                    <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>To Date</label>
+                                    <input type="date" value={filters.customDateTo || ''} onChange={(e) => handleFilterChange('customDateTo', e.target.value)} className={`px-2 py-1 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`} />
+                                </div>
+                            </>
                         )}
-
-                        {filters.dateFilter === 'custom' && (
-                            <div className="flex flex-col min-w-[130px]">
-                                <label className={`block text-xs font-medium text-${themeColors.textSecondary} mb-1`}>
-                                    To Date
-                                </label>
-                                <input
-                                    type="date"
-                                    value={filters.customDateTo || ''}
-                                    onChange={(e) => handleFilterChange('customDateTo', e.target.value)}
-                                    className={`px-2 py-1.5 text-xs border border-${themeColors.border} rounded ${themeColors.focus} bg-white`}
-                                />
-                            </div>
-                        )}
-
                     </div>
                 </div>
             )}
 
-            {/* ✅ NEW: Settings Modal */}
             <SettingsModal
                 isOpen={showSettingsModal}
                 onClose={() => setShowSettingsModal(false)}
                 onNavigate={navigate}
                 theme={theme}
             />
-  
         </div>
     );
 };

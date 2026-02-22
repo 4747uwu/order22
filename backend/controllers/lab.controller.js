@@ -422,7 +422,7 @@ const executeLabStudyQuery = async (queryFilters, page = 1, limit = 50) => {
 
 
 const LAB_STATUS_CATEGORIES = {
-    // PENDING: Studies from receipt through assignment
+    // PENDING: Everything from receipt to rejection
     pending: [
         'new_study_received',
         'metadata_extracted',
@@ -432,40 +432,21 @@ const LAB_STATUS_CATEGORIES = {
         'pending_assignment',
         'awaiting_radiologist',
         'assigned_to_doctor',
-        'assignment_accepted'
+        'assignment_accepted',
+        'doctor_opened_report',     // ✅ ADD
+        'report_in_progress',       // ✅ ADD
+        'report_drafted',           // ✅ ADD
+        'draft_saved',              // ✅ ADD
+        'verification_pending',     // ✅ ADD
+        'verification_in_progress', // ✅ ADD
+        'revert_to_radiologist',    // ✅ ADD
+        'report_rejected',          // ✅ ADD
     ],
-    
-    // IN PROGRESS: Draft and verification stages
-    inprogress: [
-        'report_drafted',
-        'draft_saved',
-        'verification_pending',
-        'verification_in_progress',
-        
-        // Additional workflow statuses in progress
-        'doctor_opened_report',
-        'report_in_progress',
-        'pending_completion',
-        'report_uploaded',
-        'report_downloaded_radiologist',
-        'report_downloaded',
-        'report_verified',
-        'report_rejected',
-        'urgent_priority',
-        'emergency_case',
-        'reprint_requested',
-        'correction_needed',
-        'no_active_study'
-    ],
-    
-    // COMPLETED: Final completion states only (excluding finalized/approved/revert)
+
+    // COMPLETED: Final states only
     completed: [
-        'report_finalized',
-        'final_approved',
-        'revert_to_radiologist',
-        'report_completed',
-        'final_report_downloaded',
-        'archived'
+        'report_completed',         // ✅ ADD
+        'final_report_downloaded',  // ✅ ADD
     ]
 };
 
@@ -481,17 +462,15 @@ export const getLabValues = async (req, res) => {
         
         console.log('🔍 [Lab] Fetching category values with filters:', queryFilters);
 
-        const [totalStudies, pendingStudies, inprogressStudies, completedStudies] = await Promise.all([
-            DicomStudy.countDocuments(queryFilters),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.pending } }),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.inprogress } }),
-            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.completed } })
+        const [totalStudies, pendingStudies, completedStudies] = await Promise.all([
+            DicomStudy.countDocuments(queryFilters),                                                                                        // ✅ ALL
+            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.pending } }),     // ✅ PENDING
+            DicomStudy.countDocuments({ ...queryFilters, workflowStatus: { $in: LAB_STATUS_CATEGORIES.completed } })    // ✅ COMPLETED
         ]);
 
         console.log('✅ [Lab] Category values:', {
             total: totalStudies,
             pending: pendingStudies,
-            inprogress: inprogressStudies,
             completed: completedStudies
         });
 
@@ -499,8 +478,7 @@ export const getLabValues = async (req, res) => {
             success: true,
             total: totalStudies,
             pending: pendingStudies,
-            inprogress: inprogressStudies,
-            completed: completedStudies,
+            completed: completedStudies,    // ✅ removed inprogress
             labInfo: {
                 labId: user.lab._id,
                 labName: user.lab.name,
@@ -557,46 +535,7 @@ export const getLabPendingStudies = async (req, res) => {
     }
 };
 
-// ✅ GET LAB IN-PROGRESS STUDIES
-export const getLabInProgressStudies = async (req, res) => {
-    try {
-        const user = req.user;
-        if (!user || !user.lab) {
-            return res.status(401).json({ success: false, message: 'User not authenticated or not assigned to lab' });
-        }
-
-        const page = parseInt(req.query.page) || 1;
-        const limit = parseInt(req.query.limit) || 50;
-        
-        const queryFilters = buildLabQuery(req, user, LAB_STATUS_CATEGORIES.inprogress);
-
-        const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
-
-        return res.status(200).json({
-            success: true,
-            count: studies.length,
-            totalRecords: totalStudies,
-            pagination,
-            data: studies,
-            metadata: {
-                category: 'inprogress',
-                statusesIncluded: LAB_STATUS_CATEGORIES.inprogress,
-                labId: user.lab._id,
-                labName: user.lab.name
-            }
-        });
-
-    } catch (error) {
-        console.error('❌ LAB IN-PROGRESS: Error fetching in-progress studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching in-progress studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
-    }
-};
-
-// ✅ GET LAB COMPLETED STUDIES
+// ✅ GET LAB COMPLETED STUDIES — report_completed + final_report_downloaded
 export const getLabCompletedStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -635,7 +574,7 @@ export const getLabCompletedStudies = async (req, res) => {
     }
 };
 
-// ✅ GET ALL LAB STUDIES
+// ✅ GET ALL LAB STUDIES — like admin getAllStudiesForAdmin (no status filter)
 export const getAllLabStudies = async (req, res) => {
     try {
         const user = req.user;
@@ -646,7 +585,7 @@ export const getAllLabStudies = async (req, res) => {
         const page = parseInt(req.query.page) || 1;
         const limit = parseInt(req.query.limit) || 50;
         
-        const queryFilters = buildLabQuery(req, user, null); // All statuses
+        const queryFilters = buildLabQuery(req, user, null); // ✅ null = ALL statuses
 
         const { studies, totalStudies, pagination } = await executeLabStudyQuery(queryFilters, page, limit);
 
@@ -658,7 +597,7 @@ export const getAllLabStudies = async (req, res) => {
             data: studies,
             metadata: {
                 category: 'all',
-                statusesIncluded: 'all',
+                statusesIncluded: 'all',    // ✅ all statuses
                 labId: user.lab._id,
                 labName: user.lab.name
             }

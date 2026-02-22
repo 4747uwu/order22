@@ -559,7 +559,23 @@ const Search = ({
                     </select>
                 </div>
 
-                
+                {/* ✅ NEW: SETTINGS BUTTON */}
+                {hasSettingsAccess && (
+                    <div className={`flex items-center pl-2 border-l border-${themeColors.border} order-4`}>
+                        <button
+                            onClick={() => setShowSettingsModal(true)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 ${
+                                isGreenTheme 
+                                    ? 'bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700' 
+                                    : 'bg-gradient-to-r from-gray-700 to-gray-900 hover:from-gray-800 hover:to-black'
+                            } text-white text-xs font-medium rounded transition-all shadow-sm hover:shadow-md transform hover:scale-105`}
+                            title="Open Settings"
+                        >
+                            <Settings size={14} />
+                            <span className="hidden sm:inline">Settings</span>
+                        </button>
+                    </div>
+                )}
 
                 {/* ASSIGNOR ANALYTICS */}
                 {isAssignor && analytics && (

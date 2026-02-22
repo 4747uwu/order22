@@ -10,15 +10,19 @@ import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { useNavigate } from 'react-router-dom';
 import { resolveUserVisibleColumns } from '../../utils/columnResolver';
+import useVisibleColumns from '../../hooks/useVisibleColumns';
+
+
 
 const LabDashboard = () => {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
   
   // ✅ RESOLVE VISIBLE COLUMNS ONCE
-  const visibleColumns = useMemo(() => {
-    return resolveUserVisibleColumns(currentUser);
-  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+    const { visibleColumns, columnsLoading } = useVisibleColumns(currentUser);
+
+  
 
   console.log('🎯 Lab Dashboard Visible Columns:', {
     total: visibleColumns.length,
@@ -39,6 +43,8 @@ const LabDashboard = () => {
     hasNextPage: false,
     hasPrevPage: false
   });
+
+  
   
   // State management
   const [studies, setStudies] = useState([]);
@@ -48,12 +54,11 @@ const LabDashboard = () => {
   const [currentView, setCurrentView] = useState('all');
   const [selectedStudies, setSelectedStudies] = useState([]);
 
-  // ✅ CATEGORY VALUES (lab-specific categories)
+  // ✅ CATEGORY VALUES - removed inprogress
   const [categoryValues, setCategoryValues] = useState({
     all: 0,
     pending: 0,
-    inprogress: 0,
-    completed: 0
+    completed: 0   // ✅ removed inprogress
   });
 
   // Column configuration
@@ -71,7 +76,7 @@ const LabDashboard = () => {
     studySeriesImages: { visible: true, order: 11, label: 'Series' },
     patientId: { visible: true, order: 12, label: 'Patient ID' },
     referralDoctor: { visible: false, order: 13, label: 'Referral Dr.' },
-    clinicalHistory: { visible: false, order: 14, label: 'History' },
+    clinicalHistory: { visible: true, order: 14, label: 'History' },
     studyDateTime: { visible: true, order: 15, label: 'Study Time' },
     uploadDateTime: { visible: true, order: 16, label: 'Upload Time' },
     assignedRadiologist: { visible: true, order: 17, label: 'Radiologist' },
@@ -105,13 +110,12 @@ const LabDashboard = () => {
     }
   }, [columnConfig]);
 
-  // ✅ ENDPOINT MAPPING (lab-specific endpoints)
+  // ✅ ENDPOINT MAPPING - removed inprogress
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
-      case 'pending': return '/lab/studies/pending';
-      case 'inprogress': return '/lab/studies/inprogress';
+      case 'pending':   return '/lab/studies/pending';
       case 'completed': return '/lab/studies/completed';
-      default: return '/lab/studies';
+      default:          return '/lab/studies';   // ✅ all = no status filter
     }
   }, [currentView]);
 
@@ -187,17 +191,14 @@ const LabDashboard = () => {
         setCategoryValues({
           all: response.data.total || 0,
           pending: response.data.pending || 0,
-          inprogress: response.data.inprogress || 0,
-          completed: response.data.completed || 0
+          completed: response.data.completed || 0   // ✅ removed inprogress
         });
 
         console.log('📊 [Lab] CATEGORY VALUES UPDATED:', response.data);
       }
     } catch (error) {
       console.error('Error fetching lab category values:', error);
-      setCategoryValues({
-        all: 0, pending: 0, inprogress: 0, completed: 0
-      });
+      setCategoryValues({ all: 0, pending: 0, completed: 0 });
     }
   }, [searchFilters]);
 
@@ -348,11 +349,10 @@ const LabDashboard = () => {
     }
   ];
 
-  // ✅ CATEGORY TABS (lab-specific - 4 categories)
+  // ✅ CATEGORY TABS - removed inprogress
   const categoryTabs = [
-    { key: 'all', label: 'All', count: categoryValues.all },
-    { key: 'pending', label: 'Pending', count: categoryValues.pending },
-    { key: 'inprogress', label: 'In Progress', count: categoryValues.inprogress },
+    { key: 'all',       label: 'All',       count: categoryValues.all },
+    { key: 'pending',   label: 'Pending',   count: categoryValues.pending },
     { key: 'completed', label: 'Completed', count: categoryValues.completed }
   ];
 
