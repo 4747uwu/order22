@@ -39,64 +39,39 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
     }
   };
 
-  // ✅ UNIFIED stream downloader using api instance
-  const streamDownload = async (url, filename, toastId, progressKey) => {
-    try {
-      const response = await api.get(url, {
-        responseType: 'blob',  // ✅ FIX: Use 'blob' not 'stream' in browser
-        onDownloadProgress: (progressEvent) => {
-          const total = progressEvent.total;
-          const current = progressEvent.loaded;
-          
-          if (total) {
-            const pct = Math.round((current / total) * 100);
-            setDownloadProgress(prev => ({ ...prev, [progressKey]: pct }));
-            toast.loading(`Downloading... ${pct}%`, { id: toastId });
-          } else {
-            const mb = (current / 1024 / 1024).toFixed(1);
-            toast.loading(`Downloading... ${mb} MB`, { id: toastId });
-          }
-        }
-      });
-
-      // ✅ FIX: response.data is already a Blob — don't try to listen for 'data' events
-      const blob = response.data;
-
-      // ✅ Trigger download
-      const downloadUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl);
-
-      setDownloadProgress(prev => ({ ...prev, [progressKey]: 100 }));
-      toast.success('Download complete!', { id: toastId });
-
-    } catch (error) {
-      console.error('❌ Download error:', error);
-      toast.error(`Download failed: ${error.message}`, { id: toastId });
-      throw error;
-    } finally {
-      setDownloadProgress(prev => { const n = { ...prev }; delete n[progressKey]; return n; });
+  const directDownload = (url, filename) => {
+    const token = sessionStorage.getItem('auth_token') || localStorage.getItem('auth_token');
+    
+    if (!token) {
+      console.error('❌ No token found in session');
+      toast.error('Session expired — please log in again');
+      return;
     }
+
+    const fullUrl = `/api${url}?token=${token}`;
+    
+    const link = document.createElement('a');
+    link.href = fullUrl;
+    link.download = filename;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleAnonymizedDownload = async () => {
     setDownloadingFrom('anonymized');
-    const toastId = toast.loading('Creating anonymized study...');
+    const toastId = toast.loading('Creating anonymized study... (this may take 1-2 mins)');
     try {
-      await streamDownload(
+      directDownload(
         `/download/anonymized/${study._id}`,
-        `${study.bharatPacsId || study._id}_anonymized.zip`,
-        toastId,
-        'anonymized'
+        `${study.bharatPacsId || study._id}_anonymized.zip`
       );
-      onClose();
+      toast.success('Download started! Check your browser downloads.', { id: toastId, duration: 4000 });
+      setTimeout(() => onClose(), 1000);
     } catch (e) {
       console.error('Anonymized download failed:', e);
+      toast.error('Download failed', { id: toastId });
     } finally {
       setDownloadingFrom(null);
     }
@@ -106,17 +81,17 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
     event?.stopPropagation?.();
     const key = `series-${series.ID}`;
     setDownloadingFrom(key);
-    const toastId = toast.loading(`Starting series download...`);
     const desc = series.MainDicomTags.SeriesDescription.replace(/[^a-zA-Z0-9]/g, '_');
+    const toastId = toast.loading(`Starting series download...`);
     try {
-      await streamDownload(
+      directDownload(
         `/download/series/${study._id}/${series.ID}`,
-        `${study.bharatPacsId || study._id}_${desc}.zip`,
-        toastId,
-        key
+        `${study.bharatPacsId || study._id}_${desc}.zip`
       );
+      toast.success('Series download started!', { id: toastId, duration: 3000 });
     } catch (e) {
       console.error('Series download failed:', e);
+      toast.error('Series download failed', { id: toastId });
     } finally {
       setDownloadingFrom(null);
     }

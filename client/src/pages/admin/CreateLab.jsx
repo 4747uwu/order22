@@ -83,6 +83,46 @@ const CreateLab = () => {
         }));
     };
 
+
+    // ✅ ADD THESE THREE MISSING HANDLERS
+    const handleColumnToggle = (columnId) => {
+        setFormData(prev => {
+            const current = prev.staffUserDetails.visibleColumns;
+            const updated = current.includes(columnId)
+                ? current.filter(c => c !== columnId)
+                : [...current, columnId];
+            return {
+                ...prev,
+                staffUserDetails: {
+                    ...prev.staffUserDetails,
+                    visibleColumns: updated
+                }
+            };
+        });
+    };
+
+    const handleSelectAllColumns = (columns) => {
+        setFormData(prev => ({
+            ...prev,
+            staffUserDetails: {
+                ...prev.staffUserDetails,
+                visibleColumns: columns.map(c => c.id || c)
+            }
+        }));
+    };
+
+    const handleClearAllColumns = () => {
+        setFormData(prev => ({
+            ...prev,
+            staffUserDetails: {
+                ...prev.staffUserDetails,
+                visibleColumns: []
+            }
+        }));
+    };
+
+   
+
     const handleInputChange = (e) => {
         const { name, value, type, checked } = e.target;
         
@@ -179,7 +219,16 @@ const CreateLab = () => {
         }
     };
 
-    if (currentUser?.role !== 'admin') {
+    // ✅ FIX: Check both role and accountRoles — allow group_id too
+    const isAllowed =
+        currentUser?.role === 'admin' ||
+        currentUser?.role === 'super_admin' ||
+        currentUser?.role === 'group_id' ||
+        currentUser?.accountRoles?.includes('admin') ||
+        currentUser?.accountRoles?.includes('super_admin') ||
+        currentUser?.accountRoles?.includes('group_id');
+
+    if (!isAllowed) {
         return (
             <div className="min-h-screen bg-slate-50 flex items-center justify-center">
                 <div className="text-center">

@@ -1,5 +1,6 @@
 import DicomStudy from '../models/dicomStudyModel.js';
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
 
 const ORTHANC_BASE_URL = 'http://206.189.133.52:8042';
 const ORTHANC_USERNAME = process.env.ORTHANC_USERNAME || 'alice';
@@ -64,7 +65,9 @@ export const getCloudflareZipUrl = async (req, res) => {
 export const downloadAnonymizedStudy = async (req, res) => {
     try {
         const { studyId } = req.params;
-        const user = req.user;
+        const user = req.user; // already set by protect middleware
+
+        console.log(`📥 Anonymized download - Study: ${studyId}`);
 
         const study = await DicomStudy.findOne({
             _id: studyId,
@@ -72,10 +75,16 @@ export const downloadAnonymizedStudy = async (req, res) => {
         }).select('orthancStudyID bharatPacsId');
 
         if (!study?.orthancStudyID) {
-            return res.status(404).json({ success: false, message: 'Study not found' });
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Study not found or Orthanc ID missing',
+                debug: { studyId, hasOrthancId: !!study?.orthancStudyID }
+            });
         }
 
-        // Step 1: Create anonymization job
+        console.log(`🔄 Anonymizing study: ${study.orthancStudyID}`);
+
+        // Step 1: Anonymize
         const anonymizeResponse = await axios.post(
             `${ORTHANC_BASE_URL}/studies/${study.orthancStudyID}/anonymize`,
             {
@@ -85,10 +94,14 @@ export const downloadAnonymizedStudy = async (req, res) => {
                 Force: true,
                 Synchronous: false
             },
-            { headers: { 'Authorization': orthancAuth, 'Content-Type': 'application/json' }, timeout: 60000 }
+            { 
+                headers: { 'Authorization': orthancAuth, 'Content-Type': 'application/json' }, 
+                timeout: 60000 
+            }
         );
 
         const jobId = anonymizeResponse.data.ID;
+        console.log(`🔄 Anonymization job started: ${jobId}`);
 
         // Step 2: Poll job
         let anonymizedStudyId = null;
@@ -96,47 +109,55 @@ export const downloadAnonymizedStudy = async (req, res) => {
             const job = await axios.get(`${ORTHANC_BASE_URL}/jobs/${jobId}`, {
                 headers: { 'Authorization': orthancAuth }
             });
-            if (job.data.State === 'Success') { anonymizedStudyId = job.data.Content?.ID; break; }
+            if (job.data.State === 'Success') { 
+                anonymizedStudyId = job.data.Content?.ID; 
+                console.log(`✅ Anonymization complete: ${anonymizedStudyId}`);
+                break; 
+            }
             if (job.data.State === 'Failure') throw new Error(`Anonymization failed: ${job.data.ErrorDetails}`);
             await new Promise(r => setTimeout(r, 1000));
         }
 
-        if (!anonymizedStudyId) throw new Error('Anonymization timeout');
+        if (!anonymizedStudyId) throw new Error('Anonymization timeout after 2 minutes');
 
-        // Step 3: ✅ STREAM DIRECTLY — no buffering
+        // Step 3: Stream — with explicit CORS headers
         const archiveResponse = await axios.get(
             `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}/archive`,
             {
                 headers: { 'Authorization': orthancAuth },
-                responseType: 'stream',   // ✅ key: stream not arraybuffer
-                timeout: 0                // ✅ no timeout for large files
+                responseType: 'stream',
+                timeout: 0
             }
         );
 
         const filename = `${study.bharatPacsId || study._id}_anonymized.zip`;
 
-        // ✅ Set headers BEFORE piping
+        // ✅ CORS headers FIRST — before any data
+        res.setHeader('Access-Control-Allow-Origin', req.headers.origin || 'http://localhost:5173');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length, Content-Type');
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.setHeader('Transfer-Encoding', 'chunked');      // ✅ tell browser it's chunked
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        // ✅ Content-Length if available — lets browser show progress
+        res.setHeader('Cache-Control', 'no-cache');
+
         if (archiveResponse.headers['content-length']) {
             res.setHeader('Content-Length', archiveResponse.headers['content-length']);
         }
 
-        // ✅ Pipe chunks directly — Orthanc → backend → frontend
+        // ✅ Pipe stream
         archiveResponse.data.pipe(res);
 
-        // ✅ Cleanup AFTER stream ends
         archiveResponse.data.on('end', async () => {
-            console.log(`✅ Stream complete for ${study.bharatPacsId}`);
+            console.log(`✅ Stream complete: ${filename}`);
             try {
                 await axios.delete(
                     `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}`,
                     { headers: { 'Authorization': orthancAuth } }
                 );
-            } catch (e) { console.warn('Cleanup failed:', e.message); }
+                console.log(`🗑️ Cleaned up: ${anonymizedStudyId}`);
+            } catch (e) { 
+                console.warn('Cleanup failed:', e.message); 
+            }
         });
 
         archiveResponse.data.on('error', (err) => {
@@ -144,13 +165,11 @@ export const downloadAnonymizedStudy = async (req, res) => {
             if (!res.headersSent) res.status(500).end();
         });
 
-        req.on('close', () => {
-            console.warn('⚠️ Client disconnected — destroying stream');
-            archiveResponse.data.destroy(); // ✅ stop streaming if client leaves
-        });
+        // ✅ DON'T destroy on req close — let it finish
+        // (browser closing the tab shouldn't kill the stream mid-download)
 
     } catch (error) {
-        console.error('❌ Error:', error.message);
+        console.error('❌ Anonymized download error:', error.message);
         if (!res.headersSent) {
             res.status(500).json({ success: false, message: error.message });
         }

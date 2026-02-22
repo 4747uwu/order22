@@ -182,7 +182,8 @@ export const saveExtractedDicomData = async (req, res) => {
                         gender: patientSex
                     },
                     
-                    orthancStudyId: orthancStudyId,
+                    orthancStudyID: orthancStudyId,   // ✅ FIX: was orthancStudyId (lowercase d)
+                    
                     studyInstanceUID: studyInstanceUID,
                     accessionNumber: accessionNumber,
                     
@@ -250,7 +251,7 @@ export const saveExtractedDicomData = async (req, res) => {
                     
                     storageInfo: {
                         orthancAvailable: true,
-                        orthancStudyId: orthancStudyId,
+                        orthancStudyID: orthancStudyId,   // ✅ FIX: uppercase D
                         cloudArchiveAvailable: false,
                         type: 'orthanc',
                         studyInstanceUID: studyInstanceUID,

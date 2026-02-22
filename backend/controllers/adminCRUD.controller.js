@@ -202,8 +202,12 @@ export const createLab = async (req, res) => {
             } = {}
         } = req.body;
 
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ success: false, message: 'Only admins can create labs' });
+         const allowedRoles = ['admin', 'super_admin', 'group_id'];
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only admins can create labs'
+            });
         }
 
         if (!name || !contactPerson) {

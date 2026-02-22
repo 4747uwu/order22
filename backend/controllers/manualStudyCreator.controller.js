@@ -367,7 +367,8 @@ export const createManualStudy = async (req, res) => {
                     gender: patientSex || 'O'
                 },
                 
-                orthancStudyId: orthancStudyId,
+                orthancStudyID: orthancStudyId,   // ✅ FIX: was orthancStudyId (lowercase d)
+                
                 studyInstanceUID: studyInstanceUID,
                 accessionNumber: finalAccessionNumber,
                 
@@ -414,7 +415,7 @@ export const createManualStudy = async (req, res) => {
                 
                 storageInfo: {
                     orthancAvailable: true,
-                    orthancStudyId: orthancStudyId,
+                    orthancStudyID: orthancStudyId,   // ✅ FIX: uppercase D
                     cloudArchiveAvailable: false
                 },
                 

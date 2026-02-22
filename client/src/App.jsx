@@ -151,7 +151,7 @@ const AppRoutes = () => {
       <Route 
         path="/admin/create-lab" 
         element={
-          <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
+          <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
             <CreateLab />
           </ProtectedRoute>
         } 

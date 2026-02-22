@@ -1262,16 +1262,23 @@ const UnifiedStudyRow = ({
                             <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
                         </button>
 
-                        <button className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap" title="Open OHIF + Reporting for Verification" onClick={handleOHIFReporting}>
-                            Verify
-                        </button>
+                        {['report_finalized', 'report_drafted'].includes(study.workflowStatus) && study.workflowStatus !== 'report_verified' && study.workflowStatus !== 'report_rejected' ? (
+                            <button 
+                                className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap" 
+                                title="Open OHIF + Reporting for Verification" 
+                                onClick={handleOHIFReporting}
+                            >
+                                Verify
+                            </button>
+                        ) : null}
 
-                        {study.workflowStatus === 'report_verified' && (
+                        {study.workflowStatus === 'report_completed' && (
                             <div className="p-1 text-green-600" title="Verified">
                                 <CheckCircle className="w-3.5 h-3.5 fill-current" />
                             </div>
                         )}
 
+                        {/* ✅ REJECTED STATUS - Show X if rejected */}
                         {study.workflowStatus === 'report_rejected' && (
                             <div className="p-1 text-red-600" title="Rejected">
                                 <XCircle className="w-3.5 h-3.5 fill-current" />

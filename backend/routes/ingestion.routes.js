@@ -953,7 +953,7 @@ async function processStableStudy(job) {
       organization: organizationRecord._id,
       organizationIdentifier: organizationRecord.identifier,
       studyInstanceUID: studyInstanceUID,
-      orthancStudyID: orthancStudyId,
+      orthancStudyID: orthancStudyId,   // ✅ FIX: was orthancStudyId (lowercase d)
       accessionNumber: accessionNumber,
       patient: patientRecord._id,
       patientId: patientRecord.patientID,
@@ -1043,10 +1043,11 @@ async function processStableStudy(job) {
         seriesCount:            studyData.seriesCount,
         instanceCount:          studyData.instanceCount,
         seriesImages:           studyData.seriesImages,
-        modalitiesInStudy:      studyData.modalitiesInStudy,   // ✅ NOW EXISTS in studyData
-        examDescription:        studyData.examDescription,      // ✅ NOW EXISTS in studyData
-        studyDate:              studyData.studyDate,            // ✅ NOW EXISTS in studyData
-        studyTime:              studyData.studyTime,            // ✅ NOW EXISTS in studyData
+        orthancStudyID:         studyData.orthancStudyID,   // ✅ ADD THIS - was missing entirely!
+        modalitiesInStudy:      studyData.modalitiesInStudy,
+        examDescription:        studyData.examDescription,
+        studyDate:              studyData.studyDate,
+        studyTime:              studyData.studyTime,
         accessionNumber:        studyData.accessionNumber,
         referringPhysicianName: studyData.referringPhysicianName,
         physicians:             studyData.physicians,
