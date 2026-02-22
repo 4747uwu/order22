@@ -76,6 +76,22 @@ const sanitizeRoleConfig = (roleConfig, role) => {
                 };
             }
             break;
+        case 'verifier':
+            // ✅ Verifier: sanitize both radiologist AND lab bindings
+            if (!sanitized.assignedRadiologists) {
+                sanitized.assignedRadiologists = [];
+            }
+            // Validate labAccessMode
+            if (!['all', 'selected', 'none'].includes(sanitized.labAccessMode)) {
+                sanitized.labAccessMode = 'all';
+            }
+            // Clear assignedLabs if mode is not 'selected'
+            if (sanitized.labAccessMode !== 'selected') {
+                sanitized.assignedLabs = [];
+            } else if (!sanitized.assignedLabs) {
+                sanitized.assignedLabs = [];
+            }
+            break;
     }
 
     return sanitized;

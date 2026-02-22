@@ -572,7 +572,7 @@ const UnifiedStudyRow = ({
     getColumnWidth // ✅ NEW PROP
 }) => {
     const navigate = useNavigate();
-    console.log(study)
+    // console.log(study)
 
         const hasActiveViewers = activeViewers.length > 0;
 
@@ -939,9 +939,7 @@ const UnifiedStudyRow = ({
     {/* 4. CENTER NAME */}
     {isColumnVisible('centerName') && (
         <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('centerName')}px` }}>
-            <div className="text-xs text-slate-600 whitespace-normal break-words leading-tight" title={study.centerName}>
-                {study.centerName || '-'}
-            </div>
+           <div className="text-[10px] sm:text-xs font-bold text-center text-slate-900 whitespace-normal break-words leading-tight" title={study.centerName}>{study.centerName || '-'}</div>
         </td>
     )}
 
@@ -1046,11 +1044,8 @@ const UnifiedStudyRow = ({
 
     {/* 13. PATIENT ID */}
     {isColumnVisible('patientId') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('patientId')}px` }}>
-            <button
-                className="text-teal-600 hover:text-teal-700 font-semibold text-xs hover:underline text-left whitespace-normal break-all leading-tight w-full"
-                onClick={() => onPatienIdClick?.(study.patientId, study)}
-            >
+        <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('patientId')}px` }}>
+            <button className="text-teal-600 hover:text-teal-700 text-center font-semibold text-[10px] sm:text-xs hover:underline whitespace-normal break-all leading-tight  w-full" onClick={() => onPatienIdClick?.(study.patientId, study)}>
                 {study.patientId || study.patientInfo?.patientID || 'N/A'}
             </button>
         </td>
@@ -1068,9 +1063,7 @@ const UnifiedStudyRow = ({
     {/* 15. CLINICAL HISTORY */}
     {isColumnVisible('clinicalHistory') && (
         <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
-            <div className="text-xs text-slate-700 leading-relaxed whitespace-normal break-words">
-                {study.clinicalHistory || '-'}
-            </div>
+            <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 whitespace-normal break-words leading-relaxed uppercase truncate max-h-12" title={study.clinicalHistory}>{study.clinicalHistory || '-'}</div>
 
             <div className="flex items-center flex-wrap gap-2 mt-3">
                 {(userRoles.includes('admin') || userRoles.includes('assignor') || userRole === 'admin' || userRole === 'assignor' || userRoles.includes('lab_staff')) && (
@@ -1293,7 +1286,7 @@ const UnifiedStudyRow = ({
 
     {/* 25. ACTIONS */}
     {isColumnVisible('actions') && (
-        <td className="px-3 py-3.5 text-center border-slate-200 align-top" style={{ width: `${getColumnWidth('actions')}px` }}>
+        <td className="px-3 py-3.5 text-center border-slate-300 border-b-1 align-top" style={{ width: `${getColumnWidth('actions')}px` }}>
             <div className="flex flex-wrap items-center justify-center gap-1.5">
 
                 {/* ASSIGNOR ACTIONS */}
@@ -1560,20 +1553,102 @@ const UnifiedWorklistTable = ({
     }, [lastMessage]);
 
     
-    const isColumnVisible = useCallback((columnId) => {
-        // ✅ PRIORITY 1: columnConfig from ColumnConfigurator (frontend toggle)
+ 
+// ...existing code...
+const DB_TO_CONFIG_KEY_MAP = {
+  'checkbox'           : 'checkbox',
+  'bharatPacsId'       : 'bharatPacsId',
+  'centerName'         : 'centerName',
+  'location'           : 'location',
+  'timeline'           : 'timeline',
+  'patientName'        : 'patientName',
+  'patientId'          : 'patientId',
+  'ageGender'          : 'ageGender',
+  'modality'           : 'modality',
+  'viewOnly'           : 'viewOnly',
+  'reporting'           : 'reporting',
+  'studySeriesImages'  : 'seriesCount',
+  'accessionNumber'    : 'accessionNumber',
+  'referralDoctor'     : 'referralDoctor',
+  'clinicalHistory'    : 'clinicalHistory',
+  'studyDateTime'      : 'studyTime',
+  'uploadDateTime'     : 'uploadTime',
+  'assignedRadiologist': 'radiologist',
+  'studyLock'          : 'studyLock',
+  'status'             : 'caseStatus',
+  'assignedVerifier'   : 'assignedVerifier',
+  'verifiedDateTime'   : 'verifiedDateTime',
+  'actions'            : 'actions',
+  'rejectionReason'    : 'rejectionReason',
+};
+
+
+// old working code block
+//     const isColumnVisible = useCallback((columnId) => {
+//        // ✅ DB visibleColumns is the ONLY gate
+//         if (visibleColumns && visibleColumns.length > 0) {
+//            const isAllowed = visibleColumns.includes(columnId);
+
+//            if(!isAllowed) {
+//                return false; // Not allowed by DB — hide regardless of local toggle
+//            }
+          
+//            // Allowed by DB — check user's ColumnConfigurator toggle
+//             if (columnConfig && columnConfig[columnId] !== undefined) {
+//                 return columnConfig[columnId].visible !== false;
+//             }
+// // -           return true;
+//            return true; // In DB list, no local toggle = show
+//         }
+//        // No DB restrictions (admin/super_admin) — use columnConfig only
+//         // if (columnConfig && columnConfig[columnId] !== undefined) {
+//         //     return columnConfig[columnId].visible !== false;
+//         // }
+//         // return true;
+//     }, [visibleColumns, columnConfig]);
+
+
+ const isColumnVisible = useCallback((columnId) => {
+        if (visibleColumns && visibleColumns.length > 0) {
+           // ✅ Convert DB keys to config keys for comparison
+           const allowedConfigKeys = new Set(
+               visibleColumns.map(dbKey => DB_TO_CONFIG_KEY_MAP[dbKey] || dbKey)
+           );
+           
+           if (!allowedConfigKeys.has(columnId)) return false; // HARD BLOCK
+
+            if (columnConfig && columnConfig[columnId] !== undefined) {
+                return columnConfig[columnId].visible !== false;
+            }
+            return true;
+        }
         if (columnConfig && columnConfig[columnId] !== undefined) {
             return columnConfig[columnId].visible !== false;
         }
-
-        // ✅ PRIORITY 2: visibleColumns from backend user profile
-        if (visibleColumns && visibleColumns.length > 0) {
-            return visibleColumns.includes(columnId);
-        }
-
-        // ✅ PRIORITY 3: Default — show everything
         return true;
     }, [visibleColumns, columnConfig]);
+
+       useEffect(() => {
+       if (visibleColumns && visibleColumns.length > 0) {
+           const staleKeys = [
+               'doctorWorklistColumnConfig',
+               'verifierWorklistColumnConfig',
+               'labWorklistColumnConfig',
+               'assignerWorklistColumnConfig',
+               'adminWorklistColumnConfig',
+           ];
+           staleKeys.forEach(key => localStorage.removeItem(key));
+           console.log('🧹 Cleared stale localStorage column caches — DB columns take over');
+       }
+   }, [visibleColumns]);
+
+   // ✅ DEBUG: Log exactly what is being used
+   useEffect(() => {
+       console.log(`🔒 COLUMN GATE: DB allows ${visibleColumns.length} columns:`, visibleColumns);
+   }, [visibleColumns]);
+// ...existing code...
+
+
 
 
 

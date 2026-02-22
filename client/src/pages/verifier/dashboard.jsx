@@ -14,19 +14,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
+import useVisibleColumns from '../../hooks/useVisibleColumns';
 
 // ✅ UTILITY: Resolve visible columns from user object
-const resolveUserVisibleColumns = (user) => {
-  if (!user) return [];
-  
-  // ✅ Primary source: visibleColumns array (from database)
-  if (user.visibleColumns && Array.isArray(user.visibleColumns)) {
-    return user.visibleColumns;
-  }
-  
-  return [];
-};
-
 const VerifierDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   
@@ -49,6 +39,9 @@ const VerifierDashboard = () => {
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
+
+  const { visibleColumns, columnsLoading } = useVisibleColumns(currentUser);
+
   // ✅ SIMPLIFIED: Only 3 status categories
   const [apiValues, setApiValues] = useState({
     total: 0,
@@ -66,9 +59,9 @@ const VerifierDashboard = () => {
   }), [apiValues]);
 
   // ✅ COMPUTE visible columns from user
-  const visibleColumns = useMemo(() => {
-    return resolveUserVisibleColumns(currentUser);
-  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+  // const visibleColumns = useMemo(() => {
+  //   return resolveUserVisibleColumns(currentUser);
+  // }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
 
   // ✅ GET USER ROLES for UnifiedWorklistTable
   const userRoles = useMemo(() => {
@@ -501,7 +494,7 @@ const VerifierDashboard = () => {
           <div className="flex-1 min-h-0">
             <UnifiedWorklistTable
               studies={studies}
-              loading={loading}
+              loading={loading || columnsLoading} // ✅ wait for columns before rendering
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}

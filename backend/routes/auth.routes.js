@@ -7,7 +7,8 @@ import {
     refreshToken,
     switchOrganization,
     getAvailableOrganizations,
-    labConnectorLogin
+    labConnectorLogin,
+    getMyColumns
 } from '../controllers/auth.controller.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -17,6 +18,8 @@ router.post('/login', loginUser);
 router.get('/me', protect, getMe); // Get current logged-in user
 router.post('/logout', protect, logoutUser); // Logout current user
 router.post('/refresh-token', protect, refreshToken); // ✅ NEW
+router.get('/my-columns', protect, getMyColumns);
+
 
 // Super admin specific routes
 router.post('/switch-organization', protect, authorize('super_admin'), switchOrganization);

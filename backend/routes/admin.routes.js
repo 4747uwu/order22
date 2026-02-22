@@ -1,5 +1,6 @@
 import express from 'express';
 import multer from 'multer';    
+import User from '../models/userModel.js';
 import { 
     getValues, 
     getCategoryValues, // ✅ NEW
@@ -18,6 +19,12 @@ import {
     getRevertHistory, 
     resolveRevert 
 } from '../controllers/revertToRadiologist.controller.js';
+
+import { 
+    getAllLabsForManagement, 
+    getLabDetails, 
+    updateLabDetails 
+} from '../controllers/manageLabs.controller.js';
 
 
 import { createManualStudy } from '../controllers/manualStudyCreator.controller.js';
@@ -139,10 +146,56 @@ router.post('/studies/:studyId/resolve-revert', protect, resolveRevert);
 
 // Update the multer configuration in admin.routes.js (around line 143-156)
 
+
+
+// ✅ MANAGE LABS ROUTES
+router.get('/labss', protect, getAllLabsForManagement);
+router.get('/labs/:labId', protect, getLabDetails);
+router.put('/labs/:labId', protect, updateLabDetails);
+
+
+
+router.put('/manage-users/:userId', protect,  async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { fullName, visibleColumns, password } = req.body;
+
+        const updateData = {};
+        if (fullName) updateData.fullName = fullName;
+        if (visibleColumns) updateData.visibleColumns = visibleColumns;
+
+        const user = await User.findOneAndUpdate(
+            { 
+                _id: userId, 
+                organizationIdentifier: req.user.organizationIdentifier 
+            },
+            { $set: updateData },
+            { new: true }
+        ).select('-password');
+
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        // ✅ Update password separately if provided
+        if (password && password.trim() !== '') {
+            const userDoc = await User.findById(userId);
+            userDoc.password = password;
+            await userDoc.save();
+        }
+
+        res.json({ success: true, message: 'User updated successfully', data: user });
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ success: false, message: 'Failed to update user' });
+    }
+});
+
+
 const manualUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 200 * 1024 * 1024 // 200MB per file
+    fileSize: 500 * 1024 * 1024 // 200MB per file
   },
   fileFilter: (req, file, cb) => {
     console.log('🔍 [Multer] Checking file:', {
@@ -182,7 +235,7 @@ const manualUpload = multer({
 // Route remains the same
 router.post('/create-manual-study', protect, manualUpload.fields([
   { name: 'images', maxCount: 50 },
-  { name: 'zipFile', maxCount: 1 }
+  { name: 'zipFile', maxCount: 5 }
 ]), createManualStudy);
 
 

@@ -150,8 +150,8 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
         <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Patient Name <span className="text-red-500">*</span>
+              <label className="block font-bold text-xs font-medium text-gray-700 mb-1">
+                Patient Name <span className="text-red-600">*</span>
               </label>
               <input
                 type="text"
@@ -433,10 +433,8 @@ const UnifiedStudyRow = ({
 
       {/* ✅ CENTER NAME / SUB CENTER - WITH DYNAMIC WIDTH */}
       {isColumnVisible('centerName') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
-          <div className="text-xs text-slate-600 truncate" title={study.centerName}>
-            {study.centerName || '-'}
-          </div>
+        <td className="px-3 py-3.5  border-r border-b border-slate-200" style={{ width: `${getColumnWidth('centerName')}px` }}>
+          <div className="text-[10px] sm:text-xs font-bold text-center text-slate-900 whitespace-normal break-words leading-tight" title={study.centerName}>{study.centerName || '-'}</div>
         </td>
       )}
 
@@ -1607,6 +1605,16 @@ const UnifiedWorklistTable = ({
           onRecordsPerPageChange={onRecordsPerPageChange}
           displayedRecords={studies.length}
           loading={loading}
+        />
+      )}
+
+      {multiAssignModal.show && (
+        <MultiAssignModal
+          isOpen={multiAssignModal.show}
+          onClose={() => setMultiAssignModal({ show: false })}
+          selectedStudies={studies.filter(s => selectedStudies.includes(s._id))}
+          availableAssignees={availableAssignees}
+          onSuccess={handleMultiAssignSuccess}
         />
       )}
 

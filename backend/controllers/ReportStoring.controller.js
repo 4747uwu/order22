@@ -482,29 +482,21 @@ export const storeFinalizedReport = async (req, res) => {
             await study.save({ session });
             await session.commitTransaction();
 
-            console.log('✅ [Finalize Store] Finalized report stored successfully:', {
-                reportId: savedReport._id,
-                fileName: fileName,  // ✅ Show doctor's name in filename
-                doctorId: doctorId.toString(),
-                doctorName: doctorName,
-                createdBy: savedReport.createdBy.toString(),
-                isAdminCreating: currentUser.role === 'admin',
-                requiresVerification: requiresVerification
-            });
-
             res.status(200).json({
                 success: true,
-                message: 'Report finalized and stored successfully',
+                message: `${savedReports.length} report(s) ${requiresVerification ? 'sent for verification' : 'finalized'} successfully`,
                 data: {
-                    reportId: savedReport._id,
-                    documentId: savedReport.reportId,
-                    doctorName: doctorName,
-                    filename: fileName,  // ✅ Return doctor's filename
-                    reportType: savedReport.reportType,
-                    reportStatus: savedReport.reportStatus,
+                    reports: savedReports.map(r => ({
+                        reportId: r._id,
+                        documentId: r.reportId,
+                        filename: r.exportInfo.fileName,
+                        reportType: r.reportType,
+                        reportStatus: r.reportStatus
+                    })),
+                    totalReports: savedReports.length,
                     studyWorkflowStatus: study.workflowStatus,
                     requiresVerification: requiresVerification,
-                    nextStep: requiresVerification ? 'Report sent to verifier for approval' : 'Report completed and ready for download'
+                    nextStep: requiresVerification ? 'Reports sent to verifier for approval' : 'Reports completed and ready for download'
                 }
             });
 
@@ -525,13 +517,24 @@ export const storeFinalizedReport = async (req, res) => {
     }
 };
 
-// ✅ GET STUDY REPORTS - For ReportModal
-export const getStudyReports = async (req, res) => {
+// ✅ NEW: Store multiple reports for same study
+export const storeMultipleReports = async (req, res) => {
     try {
         const { studyId } = req.params;
+        const { 
+            reports = [],  // Array of report objects
+            overwrite = false
+        } = req.body;
+
         const currentUser = req.user;
-        
-        console.log('📄 [Get Reports] Fetching reports for study:', studyId);
+
+        console.log('📚 [Multi-Report] Starting multi-report storage:', {
+            studyId,
+            reportCount: reports.length,
+            userId: currentUser._id,
+            userRole: currentUser.role,
+            overwrite
+        });
 
         if (!studyId || !mongoose.Types.ObjectId.isValid(studyId)) {
             return res.status(400).json({
@@ -540,7 +543,269 @@ export const getStudyReports = async (req, res) => {
             });
         }
 
-        // Find all reports for this study
+        if (!Array.isArray(reports) || reports.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'At least one report is required'
+            });
+        }
+
+        // Validate each report has content
+        const invalidReports = reports.findIndex(r => !r.htmlContent?.trim());
+        if (invalidReports !== -1) {
+            return res.status(400).json({
+                success: false,
+                message: `Report ${invalidReports + 1} has empty content`
+            });
+        }
+
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            const study = await DicomStudy.findById(studyId)
+                .populate('patient', 'fullName patientId dateOfBirth gender')
+                .populate('sourceLab', 'name identifier settings.requireReportVerification')
+                .session(session);
+
+            if (!study) {
+                await session.abortTransaction();
+                return res.status(404).json({
+                    success: false,
+                    message: 'Study not found'
+                });
+            }
+
+            if (!study.organizationIdentifier) {
+                study.organizationIdentifier = currentUser.organizationIdentifier;
+            }
+
+            const hasAccess = study.organizationIdentifier === currentUser.organizationIdentifier;
+            if (!hasAccess) {
+                await session.abortTransaction();
+                return res.status(403).json({
+                    success: false,
+                    message: 'Access denied to this study'
+                });
+            }
+
+            const organization = await Organization.findOne({
+                identifier: currentUser.organizationIdentifier
+            }).session(session);
+
+            // ✅ Get doctor info
+            const { doctorId, doctorName } = await determineDoctorForReport(currentUser, study, session);
+
+            // ✅ If overwrite, delete existing reports
+            if (overwrite) {
+                await Report.deleteMany(
+                    { dicomStudy: studyId, doctorId: doctorId },
+                    { session }
+                );
+                console.log('🗑️ [Multi-Report] Deleted existing reports for overwrite');
+            }
+
+            const savedReports = [];
+            const now = new Date();
+
+            // Store each report
+            for (let i = 0; i < reports.length; i++) {
+                const reportData = reports[i];
+                const reportNumber = i + 1;
+
+                console.log(`📄 [Multi-Report] Processing report ${reportNumber}/${reports.length}`);
+
+                const patientInfo = {
+                    fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                    patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                    age: reportData.placeholders?.['--agegender--']?.split(' / ')[0] || 
+                         study.patientInfo?.age || 'N/A',
+                    gender: study.patient?.gender || reportData.placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
+                    dateOfBirth: study.patient?.dateOfBirth,
+                    clinicalHistory: study.clinicalHistory?.clinicalHistory || 'N/A'
+                };
+
+                const referringPhysicianData = reportData.placeholders?.['--referredby--'] || 
+                                              study.referringPhysician || 'N/A';
+                const referringPhysicianName = typeof referringPhysicianData === 'string' 
+                    ? referringPhysicianData
+                    : referringPhysicianData?.name || 'N/A';
+
+                // ✅ Filename includes report number if multiple
+                const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
+                const fileName = reports.length > 1
+                    ? `${doctorNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                    : `${doctorNameForFilename}_final_${Date.now()}.docx`;
+
+                const newReport = new Report({
+                    reportId: `RPT_${studyId}_${reportNumber}_${Date.now()}`,
+                    organizationIdentifier: currentUser.organizationIdentifier,
+                    organization: organization?._id,
+                    patient: study.patient?._id,
+                    patientId: study.patientId,
+                    dicomStudy: studyId,
+                    studyInstanceUID: study.studyInstanceUID || study.orthancStudyID || studyId.toString(),
+                    orthancStudyID: study.orthancStudyID,
+                    accessionNumber: study.accessionNumber,
+                    createdBy: currentUser.role === 'admin' || currentUser.role === 'super_admin' 
+                        ? doctorId 
+                        : currentUser._id,
+                    doctorId: doctorId,
+                    reportContent: {
+                        htmlContent: reportData.htmlContent,
+                        templateInfo: reportData.templateInfo || {},
+                        placeholders: reportData.placeholders || {},
+                        capturedImages: reportData.capturedImages?.map((img, idx) => ({
+                            ...img,
+                            capturedBy: currentUser._id,
+                            displayOrder: idx
+                        })) || [],
+                        statistics: {
+                            wordCount: reportData.htmlContent.split(/\s+/).length,
+                            characterCount: reportData.htmlContent.length,
+                            pageCount: 1,
+                            imageCount: reportData.capturedImages?.length || 0
+                        }
+                    },
+                    reportType: reportData.reportType || 'finalized',
+                    reportStatus: reportData.reportStatus || 'finalized',
+                    exportInfo: { 
+                        format: reportData.format || 'docx', 
+                        fileName: fileName
+                    },
+                    patientInfo: patientInfo,
+                    studyInfo: {
+                        studyDate: study.studyDate,
+                        modality: study.modality || study.modalitiesInStudy?.join(', '),
+                        examDescription: study.examDescription,
+                        institutionName: study.institutionName,
+                        referringPhysician: {
+                            name: referringPhysicianName,
+                            institution: '',
+                            contactInfo: ''
+                        },
+                        seriesCount: study.seriesCount,
+                        instanceCount: study.instanceCount,
+                        priority: study.priority,
+                        caseType: study.caseType
+                    },
+                    workflowInfo: {
+                        draftedAt: reportData.draftedAt || now,
+                        finalizedAt: reportData.finalizedAt || now,
+                        statusHistory: [{
+                            status: reportData.reportStatus || 'finalized',
+                            changedAt: now,
+                            changedBy: currentUser._id,
+                            notes: `Report ${reportNumber} created`,
+                            userRole: currentUser.role
+                        }]
+                    },
+                    systemInfo: { dataSource: 'online_reporting_system' }
+                });
+
+                await newReport.save({ session });
+                savedReports.push(newReport);
+
+                console.log(`✅ [Multi-Report] Report ${reportNumber} saved:`, {
+                    reportId: newReport._id,
+                    fileName: fileName
+                });
+            }
+
+            // ✅ Update study with all reports
+            await updateStudyReportStatus(study, savedReports[savedReports.length - 1], session);
+
+            // ✅ FIXED: Follow same verification workflow as storeFinalizedReport
+            const doctorInfo = await mongoose.model('Doctor').findOne({ userAccount: doctorId }).select('requireReportVerification').session(session);
+            const requiresVerification = study.sourceLab?.settings?.requireReportVerification || doctorInfo?.requireReportVerification;
+
+            if (requiresVerification) {
+                study.workflowStatus = 'verification_pending';
+                study.currentCategory = 'VERIFICATION_PENDING';
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.sentForVerificationAt = now;
+                study.reportInfo.finalizedAt = now;
+                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.multipleReports = savedReports.length > 1;
+                study.reportInfo.reportCount = savedReports.length;
+            } else {
+                study.workflowStatus = 'report_completed';
+                study.currentCategory = 'COMPLETED';
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.completedAt = now;
+                study.reportInfo.finalizedAt = now;
+                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.multipleReports = savedReports.length > 1;
+                study.reportInfo.reportCount = savedReports.length;
+                study.reportInfo.completedWithoutVerification = true;
+            }
+
+            if (!study.statusHistory) study.statusHistory = [];
+            study.statusHistory.push({
+                status: study.workflowStatus,
+                changedAt: now,
+                changedBy: currentUser._id,
+                note: `${savedReports.length} report(s) finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : ' - completed'}`
+            });
+
+            await study.save({ session });
+            await session.commitTransaction();
+
+            res.status(200).json({
+                success: true,
+                message: `${savedReports.length} report(s) ${requiresVerification ? 'sent for verification' : 'finalized'} successfully`,
+                data: {
+                    reports: savedReports.map(r => ({
+                        reportId: r._id,
+                        documentId: r.reportId,
+                        filename: r.exportInfo.fileName,
+                        reportType: r.reportType,
+                        reportStatus: r.reportStatus
+                    })),
+                    totalReports: savedReports.length,
+                    studyWorkflowStatus: study.workflowStatus,
+                    requiresVerification: requiresVerification,
+                    nextStep: requiresVerification ? 'Reports sent to verifier for approval' : 'Reports completed and ready for download'
+                }
+            });
+
+        } catch (error) {
+            await session.abortTransaction();
+            throw error;
+        } finally {
+            session.endSession();
+        }
+
+    } catch (error) {
+        console.error('❌ [Multi-Report] Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while storing multiple reports',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
+
+// ✅ GET STUDY REPORTS - For ReportModal
+export const getStudyReports = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const currentUser = req.user;
+        
+        // ✅ Check if this is the all-reports endpoint (needs full content) or just listing
+        const needsFullContent = req.path.includes('all-reports');
+        
+        console.log('📄 [Get Reports] Fetching reports for study:', studyId, { needsFullContent });
+
+        if (!studyId || !mongoose.Types.ObjectId.isValid(studyId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Valid study ID is required'
+            });
+        }
+
         const reports = await Report.find({
             dicomStudy: studyId,
             organizationIdentifier: currentUser.organizationIdentifier
@@ -548,12 +813,45 @@ export const getStudyReports = async (req, res) => {
         .populate('doctorId', 'fullName email role')
         .populate('verifierId', 'fullName email role')
         .populate('createdBy', 'fullName email role')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: 1 }) // ✅ ASC so Report 1 is oldest, Report 2 is newest
         .lean();
 
         console.log('📄 [Get Reports] Found reports:', reports.length);
 
-        // Format reports for frontend
+        if (needsFullContent) {
+            // ✅ Return FULL report data including htmlContent for editor loading
+            const fullReports = reports.map(report => ({
+                _id: report._id,
+                reportId: report.reportId,
+                reportType: report.reportType,
+                reportStatus: report.reportStatus,
+                reportContent: {
+                    htmlContent: report.reportContent?.htmlContent || '',       // ✅ Full content
+                    capturedImages: report.reportContent?.capturedImages || [],
+                    templateInfo: report.reportContent?.templateInfo || null,
+                    placeholders: report.reportContent?.placeholders || {},
+                    statistics: report.reportContent?.statistics || {}
+                },
+                exportInfo: report.exportInfo,
+                patientInfo: report.patientInfo,
+                studyInfo: report.studyInfo,
+                workflowInfo: report.workflowInfo,
+                doctorId: report.doctorId,
+                createdAt: report.createdAt,
+                updatedAt: report.updatedAt
+            }));
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    reports: fullReports,
+                    count: fullReports.length,
+                    studyId: studyId
+                }
+            });
+        }
+
+        // ✅ Original formatted response for the reports listing modal (no htmlContent needed)
         const formattedReports = reports.map(report => ({
             _id: report._id,
             filename: report.exportInfo?.fileName || `report_${report._id}.${report.exportInfo?.format || 'docx'}`,
@@ -589,6 +887,74 @@ export const getStudyReports = async (req, res) => {
         });
     }
 };
+
+// ...existing code... (add this BEFORE the export default block)
+
+// ✅ NEW: Get all reports WITH full htmlContent for editor loading
+export const getAllReportsWithContent = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const currentUser = req.user;
+
+        console.log('📄 [All Reports] Fetching ALL reports with full content for study:', studyId);
+
+        if (!studyId || !mongoose.Types.ObjectId.isValid(studyId)) {
+            return res.status(400).json({ success: false, message: 'Valid study ID is required' });
+        }
+
+        const reports = await Report.find({
+            dicomStudy: studyId,
+            organizationIdentifier: currentUser.organizationIdentifier
+        })
+        .populate('doctorId', 'fullName email role')
+        .populate('createdBy', 'fullName email role')
+        .sort({ createdAt: 1 }) // ✅ ASC: Report 1 = first created, Report 2 = second
+        .lean();
+
+        console.log('📄 [All Reports] Found:', reports.length, 'reports');
+        reports.forEach((r, i) => {
+            console.log(`  Report ${i + 1}: status=${r.reportStatus}, contentLength=${r.reportContent?.htmlContent?.length || 0}`);
+        });
+
+        // ✅ Return COMPLETE report data — no stripping
+        const fullReports = reports.map(report => ({
+            _id: report._id,
+            reportId: report.reportId,
+            reportType: report.reportType,
+            reportStatus: report.reportStatus,
+            reportContent: {
+                htmlContent: report.reportContent?.htmlContent || '',
+                capturedImages: report.reportContent?.capturedImages || [],
+                templateInfo: report.reportContent?.templateInfo || null,
+                placeholders: report.reportContent?.placeholders || {},
+                statistics: report.reportContent?.statistics || {}
+            },
+            exportInfo: report.exportInfo || {},
+            doctorId: report.doctorId,
+            createdAt: report.createdAt,
+            updatedAt: report.updatedAt
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: {
+                reports: fullReports,
+                count: fullReports.length,
+                studyId
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [All Reports] Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while fetching all reports',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+
 
 // ✅ DOWNLOAD REPORT
 export const downloadReport = async (req, res) => {
@@ -845,6 +1211,8 @@ export const getReportForEditing = async (req, res) => {
 export default {
     storeDraftReport,
     storeFinalizedReport,
+    storeMultipleReports,
+    getAllReportsWithContent,
     getStudyReports,
     downloadReport,
     getReportForEditing // ✅ NEW

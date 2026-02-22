@@ -84,7 +84,9 @@ const [signaturePreview, setSignaturePreview] = useState(null);
     // Role-specific configuration
     const [roleConfig, setRoleConfig] = useState({
         linkedRadiologist: '',
-        assignedRadiologists: [],
+        assignedRadiologists: [],   // ✅ for verifier - doctor binding
+        assignedLabs: [],            // ✅ for verifier/assignor - lab binding
+        labAccessMode: 'all',        // ✅ for verifier/assignor - 'all' | 'selected' | 'none'
         assignableUsers: [],
         allowedPatients: [],
         dashboardAccess: {
@@ -280,6 +282,19 @@ const [signaturePreview, setSignaturePreview] = useState(null);
         setFormData(prev => ({
             ...prev,
             [name]: value
+        }));
+    };
+
+    // ✅ NEW: Handle email change (removes spaces and special chars)
+    const handleEmailChange = (e) => {
+        const value = e.target.value
+            .toLowerCase()
+            .replace(/[^a-z0-9._-]/g, '')  // Remove invalid characters
+            .replace(/\s+/g, '');           // Remove spaces
+        
+        setFormData(prev => ({
+            ...prev,
+            email: value
         }));
     };
 
@@ -502,58 +517,202 @@ const isRadiologistSelected = () => {
 
             case 'verifier':
                 return (
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Verifier Configuration</h4>
+                    <div className="space-y-6">
+                        <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4 text-indigo-600" />
+                            Verifier Configuration
+                        </h4>
+
+                        {/* ── ASSIGNED RADIOLOGISTS ── */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Bind to Radiologists
+                                <span className="ml-2 text-xs text-gray-400 font-normal">
+                                    (leave empty = sees ALL radiologists' studies)
+                                </span>
+                            </label>
+
+                            {users.filter(u => u.role === 'radiologist').length === 0 ? (
+                                <div className="p-4 border border-dashed border-gray-200 rounded-lg text-center text-sm text-gray-400">
+                                    No radiologists found in this organization
+                                </div>
+                            ) : (
+                                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                                    {users.filter(u => u.role === 'radiologist').map(u => {
+                                        const isChecked = (roleConfig.assignedRadiologists || []).includes(u._id);
+                                        return (
+                                            <label
+                                                key={u._id}
+                                                className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                                                    isChecked ? 'bg-indigo-50' : 'hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={(e) => {
+                                                        const current = roleConfig.assignedRadiologists || [];
+                                                        handleRoleConfigChange(
+                                                            'assignedRadiologists',
+                                                            e.target.checked
+                                                                ? [...current, u._id]
+                                                                : current.filter(id => id !== u._id)
+                                                        );
+                                                    }}
+                                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                />
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-medium text-gray-800 truncate">{u.fullName}</p>
+                                                    <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                                                </div>
+                                                {isChecked && <CheckCircle className="w-4 h-4 text-indigo-500 flex-shrink-0" />}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {(roleConfig.assignedRadiologists || []).length > 0 && (
+                                <p className="text-xs text-indigo-600 mt-1.5 flex items-center gap-1">
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                    Bound to {roleConfig.assignedRadiologists.length} radiologist(s) — only their studies will appear
+                                </p>
+                            )}
+                        </div>
+
+                        {/* ── LAB ACCESS MODE ── */}
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Assigned Radiologists
+                                Lab Access Mode
+                                <span className="ml-2 text-xs text-gray-400 font-normal">
+                                    (controls which lab studies are visible)
+                                </span>
                             </label>
-                            <div className="max-h-32 overflow-y-auto border border-gray-300 rounded-lg p-2">
-                                {users
-                                    .filter(user => user.role === 'radiologist')
-                                    .map(user => (
-                                        <label key={user._id} className="flex items-center space-x-2 p-1">
-                                            <input
-                                                type="checkbox"
-                                                checked={roleConfig.assignedRadiologists.includes(user._id)}
-                                                onChange={(e) => {
-                                                    const newList = e.target.checked
-                                                        ? [...roleConfig.assignedRadiologists, user._id]
-                                                        : roleConfig.assignedRadiologists.filter(id => id !== user._id);
-                                                    handleRoleConfigChange('assignedRadiologists', newList);
-                                                }}
-                                                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                            />
-                                            <span className="text-sm">{user.fullName}</span>
-                                        </label>
-                                    ))}
+                            <div className="grid grid-cols-3 gap-2">
+                                {[
+                                    { value: 'all',      label: 'All Labs',      desc: 'See all org labs',    color: 'green' },
+                                    { value: 'selected', label: 'Selected Labs', desc: 'Only specific labs',  color: 'blue'  },
+                                    { value: 'none',     label: 'No Lab Access', desc: 'Block all lab access', color: 'red'  }
+                                ].map(opt => {
+                                    const isActive = (roleConfig.labAccessMode || 'all') === opt.value;
+                                    return (
+                                        <button
+                                            key={opt.value}
+                                            type="button"
+                                            onClick={() => {
+                                                handleRoleConfigChange('labAccessMode', opt.value);
+                                                // Clear assigned labs when not in 'selected' mode
+                                                if (opt.value !== 'selected') {
+                                                    handleRoleConfigChange('assignedLabs', []);
+                                                }
+                                            }}
+                                            className={`p-3 rounded-lg border-2 text-left transition-all ${
+                                                isActive
+                                                    ? opt.value === 'green' ? 'border-green-500 bg-green-50'
+                                                    : opt.value === 'red'   ? 'border-red-500 bg-red-50'
+                                                    : 'border-blue-500 bg-blue-50'
+                                                    : 'border-gray-200 hover:border-gray-300 bg-white'
+                                            }`}
+                                        >
+                                            <p className={`text-xs font-bold ${
+                                                isActive
+                                                    ? opt.value === 'none' ? 'text-red-700'
+                                                    : opt.value === 'selected' ? 'text-blue-700'
+                                                    : 'text-green-700'
+                                                    : 'text-gray-700'
+                                            }`}>
+                                                {opt.label}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</p>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
-                    </div>
-                );
 
-            case 'dashboard_viewer':
-                return (
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Dashboard Access Configuration</h4>
-                        <div className="grid grid-cols-2 gap-3">
-                            {Object.entries({
-                                viewWorkload: 'View Workload',
-                                viewTAT: 'View TAT Reports',
-                                viewRevenue: 'View Revenue',
-                                viewReports: 'View Reports'
-                            }).map(([key, label]) => (
-                                <label key={key} className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={roleConfig.dashboardAccess[key]}
-                                        onChange={(e) => handleDashboardAccessChange(key, e.target.checked)}
-                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    />
-                                    <span className="text-sm">{label}</span>
+                        {/* ── SELECT SPECIFIC LABS (only when mode = 'selected') ── */}
+                        {(roleConfig.labAccessMode || 'all') === 'selected' && (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Select Labs
+                                    <span className="ml-2 text-xs text-gray-400 font-normal">
+                                        (verifier will only see studies from these labs)
+                                    </span>
                                 </label>
-                            ))}
-                        </div>
+
+                                {(availableRoles.labs || []).length === 0 ? (
+                                    <div className="p-4 border border-dashed border-gray-200 rounded-lg text-center text-sm text-gray-400">
+                                        No labs found — create labs first
+                                    </div>
+                                ) : (
+                                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
+                                        {(availableRoles.labs || []).map(lab => {
+                                            const isChecked = (roleConfig.assignedLabs || []).includes(lab._id);
+                                            return (
+                                                <label
+                                                    key={lab._id}
+                                                    className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
+                                                        isChecked ? 'bg-blue-50' : 'hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            const current = roleConfig.assignedLabs || [];
+                                                            handleRoleConfigChange(
+                                                                'assignedLabs',
+                                                                e.target.checked
+                                                                    ? [...current, lab._id]
+                                                                    : current.filter(id => id !== lab._id)
+                                                            );
+                                                        }}
+                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm font-medium text-gray-800 truncate">
+                                                            {lab.name}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400 truncate">
+                                                            {lab.identifier} {lab.address?.city ? `• ${lab.address.city}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    {isChecked && <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+
+                                {(roleConfig.assignedLabs || []).length > 0 && (
+                                    <p className="text-xs text-blue-600 mt-1.5 flex items-center gap-1">
+                                        <CheckCircle className="w-3.5 h-3.5" />
+                                        {roleConfig.assignedLabs.length} lab(s) selected
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ── SUMMARY BADGE ── */}
+                        {((roleConfig.assignedRadiologists || []).length > 0 || (roleConfig.labAccessMode || 'all') !== 'all') && (
+                            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                                <p className="text-xs font-semibold text-indigo-800 mb-1">📋 Binding Summary</p>
+                                <ul className="text-xs text-indigo-700 space-y-0.5">
+                                    {(roleConfig.assignedRadiologists || []).length > 0 && (
+                                        <li>• Doctors: {roleConfig.assignedRadiologists.length} radiologist(s) bound</li>
+                                    )}
+                                    {(roleConfig.labAccessMode || 'all') === 'selected' && (
+                                        <li>• Labs: {(roleConfig.assignedLabs || []).length} lab(s) selected</li>
+                                    )}
+                                    {(roleConfig.labAccessMode || 'all') === 'none' && (
+                                        <li>• Labs: ❌ No lab access</li>
+                                    )}
+                                    {(roleConfig.labAccessMode || 'all') === 'all' && (
+                                        <li>• Labs: ✅ All labs accessible</li>
+                                    )}
+                                </ul>
+                            </div>
+                        )}
                     </div>
                 );
 
@@ -604,9 +763,18 @@ const isRadiologistSelected = () => {
 
         const submissionData = {
             ...formData,
-            roleConfig: roleConfig,
+            roleConfig: {
+                ...roleConfig,
+                // ✅ Verifier: ensure lab config is included cleanly
+                ...(formData.role === 'verifier' || (useMultiRole && formData.accountRoles.includes('verifier'))) && {
+                    assignedRadiologists: roleConfig.assignedRadiologists || [],
+                    labAccessMode: roleConfig.labAccessMode || 'all',
+                    assignedLabs: roleConfig.labAccessMode === 'selected' 
+                        ? (roleConfig.assignedLabs || []) 
+                        : []
+                }
+            },
             requireReportVerification: formData.requireReportVerification,
-            // ✅ NEW: Include radiologist-specific data
             ...(isRadiologistSelected() && {
                 specialization: formData.specialization,
                 licenseNumber: formData.licenseNumber,
@@ -616,7 +784,6 @@ const isRadiologistSelected = () => {
                 contactPhoneOffice: formData.contactPhoneOffice,
                 signatureImageData: signatureBase64
             }),
-            // ✅ Include multi-role data if enabled
             ...(useMultiRole && {
                 role: formData.primaryRole,
                 accountRoles: formData.accountRoles,
@@ -743,11 +910,10 @@ const isRadiologistSelected = () => {
                                     />
                                 </div>
 
-                                <div>
+                                {/* <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">
                                         Email Address *
                                     </label>
-                                    {/* ✅ CHANGED: Username input with @bharatpacs.com suffix display */}
                                     <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
                                         <input
                                             type="text"
@@ -765,7 +931,7 @@ const isRadiologistSelected = () => {
                                     <p className="text-xs text-gray-400 mt-1">
                                         Login email will be: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
                                     </p>
-                                </div>
+                                </div> */}
 
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-2">

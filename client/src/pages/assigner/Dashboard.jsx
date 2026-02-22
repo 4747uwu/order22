@@ -9,14 +9,17 @@ import { RefreshCw, UserCheck, Users2, BarChart3 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
 import { resolveUserVisibleColumns } from '../../utils/columnResolver';
+import useVisibleColumns from '../../hooks/useVisibleColumns';
 
 const AssignerDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   
   // ✅ RESOLVE VISIBLE COLUMNS ONCE
-  const visibleColumns = useMemo(() => {
-    return resolveUserVisibleColumns(currentUser);
-  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+  // const visibleColumns = useMemo(() => {
+  //   return resolveUserVisibleColumns(currentUser);
+  // }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+
+  const { visibleColumns, columnsLoading } = useVisibleColumns(currentUser);
 
   console.log('🎯 Dashboard Visible Columns:', {
     total: visibleColumns.length,
@@ -64,33 +67,32 @@ const AssignerDashboard = () => {
   });
 
   // ...existing code...
+  // ...existing code...
   const getDefaultColumnConfig = () => ({
-    // ✅ FIXED: 'checkbox' → 'selection' to match constants
-    selection:           { visible: true,  order: 1,  label: 'Select' },
-    bharatPacsId:        { visible: true,  order: 2,  label: 'BP ID' },
-    centerName:          { visible: true,  order: 3,  label: 'Center' },
-    location:            { visible: true,  order: 4,  label: 'Location' },
-    timeline:            { visible: true,  order: 5,  label: 'Timeline' },
-    patientName:         { visible: true,  order: 6,  label: 'Patient Name' },
-    ageGender:           { visible: true,  order: 7,  label: 'Age/Sex' },
-    modality:            { visible: true,  order: 8,  label: 'Modality' },
-    viewOnly:            { visible: true,  order: 9,  label: 'View' },
-    reporting:           { visible: true,  order: 10, label: 'Reporting' },
-    studySeriesImages:   { visible: true,  order: 11, label: 'Series/Images' },
-    patientId:           { visible: true,  order: 12, label: 'Patient ID' },
-    referralDoctor:      { visible: false, order: 13, label: 'Referral Dr.' },
-    clinicalHistory:     { visible: false, order: 14, label: 'History' },
-    studyDateTime:       { visible: true,  order: 15, label: 'Study Time' },
-    uploadDateTime:      { visible: true,  order: 16, label: 'Upload Time' },
-    assignedRadiologist: { visible: true,  order: 17, label: 'Radiologist' },
-    studyLock:           { visible: true,  order: 18, label: 'Lock' },
-    status:              { visible: true,  order: 19, label: 'Status' },
-    printCount:          { visible: true,  order: 20, label: 'Print' },
-    rejectionReason:     { visible: false, order: 21, label: 'Rejection' },
-    assignedVerifier:    { visible: true,  order: 22, label: 'Verifier' },
-    verifiedDateTime:    { visible: false, order: 23, label: 'Verified' },
-    actions:             { visible: true,  order: 24, label: 'Actions' }
+    checkbox:          { visible: false, order: 1,  label: 'Select' },
+    bharatPacsId:      { visible: true,  order: 2,  label: 'BP ID' },
+    centerName:        { visible: true,  order: 3,  label: 'Center' },
+    timeline:          { visible: true,  order: 4,  label: 'Timeline' },      // ✅ ADD
+    patientName:       { visible: true,  order: 5,  label: 'Patient Name' },
+    patientId:         { visible: true,  order: 6,  label: 'Patient ID' },
+    ageGender:         { visible: true,  order: 7,  label: 'Age/Sex' },
+    modality:          { visible: true,  order: 8,  label: 'Modality' },
+    viewOnly:          { visible: true,  order: 9,  label: 'View' },          // ✅ ADD
+    seriesCount:       { visible: true,  order: 10, label: 'Series/Images' }, // ← was missing 'studySeriesImages' mapping
+    accessionNumber:   { visible: false, order: 11, label: 'Acc. No.' },
+    referralDoctor:    { visible: true,  order: 12, label: 'Referral Dr.' },
+    clinicalHistory:   { visible: true,  order: 13, label: 'History' },
+    studyTime:         { visible: true,  order: 14, label: 'Study Time' },    // maps ← studyDateTime
+    uploadTime:        { visible: true,  order: 15, label: 'Upload Time' },   // maps ← uploadDateTime
+    radiologist:       { visible: false, order: 16, label: 'Radiologist' },   // maps ← assignedRadiologist
+    studyLock:         { visible: true,  order: 17, label: 'Lock/Unlock' },   // ✅ ADD
+    caseStatus:        { visible: true,  order: 18, label: 'Status' },        // maps ← status
+    assignedVerifier:  { visible: true,  order: 19, label: 'Finalised By' },  // ✅ ADD
+    verifiedDateTime:  { visible: true,  order: 20, label: 'Finalised Date' },// ✅ ADD
+    actions:           { visible: true,  order: 21, label: 'Actions' },
+    rejectionReason:   { visible: true,  order: 22, label: 'Rejection' },     // ✅ ADD
   });
+// ...existing code...
 
   const [columnConfig, setColumnConfig] = useState(() => {
     try {
@@ -133,6 +135,8 @@ const AssignerDashboard = () => {
       case 'final': return '/admin/studies/category/final';
       case 'urgent': return '/admin/studies/category/urgent';
       case 'reprint_need': return '/admin/studies/category/reprint-need';
+            case 'reverted': return '/admin/studies/category/reverted';  // ✅ NEW
+
       default: return '/admin/studies';
     }
   }, [currentView]);
@@ -448,6 +452,8 @@ const handleFilterChange = useCallback((filters) => {
     { key: 'draft', label: 'Draft', count: categoryValues.draft },
     { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
     { key: 'final', label: 'Final', count: categoryValues.final },
+        { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },  // ✅ NEW
+
     { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
     { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
   ];
@@ -533,7 +539,7 @@ const handleFilterChange = useCallback((filters) => {
           <div className="flex-1 min-h-0">
             <UnifiedWorklistTable
               studies={studies}
-              loading={loading}
+              loading={loading || columnsLoading} // ✅ wait for columns before rendering
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}

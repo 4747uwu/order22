@@ -5,6 +5,7 @@ import {
     assignStudy,
     bulkAssignStudies,
     getAssignedStudies,
+    bulkMultiStudyAssign,
     reassignStudy,
     getAssignmentAnalytics,
     updateStudyAssignments
@@ -37,6 +38,8 @@ router.post('/bulk-assign', protect, bulkAssignStudies);
 router.put('/reassign-study/:studyId', protect, reassignStudy);
 router.get('/analytics', protect, getAssignmentAnalytics);
 router.post('/update-study-assignments/:studyId', protect, updateStudyAssignments);
+
+router.post('/bulk-multi-assign', protect, bulkMultiStudyAssign);
 
 // ✅ UNASSIGN STUDY ENDPOINT
 router.post('/unassign-study/:studyId', protect, async (req, res) => {

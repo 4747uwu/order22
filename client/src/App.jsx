@@ -25,6 +25,7 @@ import BrandingSettings from './pages/admin/BrandingSettings';
 import AdminTemplates from './pages/admin/Templates';
 import LabBrandingSettings from './pages/lab/LabBrandingSettings';
 import Login2Page from './pages/Login2';
+import ManageLabs from './pages/admin/ManageLabs';
 
 
 // Protected Route Component - Updated for multi-role support with better fallback
@@ -119,6 +120,12 @@ const AppRoutes = () => {
           </ProtectedRoute>
         } 
       />
+
+      <Route path="/admin/manage-labs" element={
+    <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
+        <ManageLabs />
+    </ProtectedRoute>
+} />
       
       {/* ✅ SYSTEM OVERVIEW (Admin / Super Admin) */}
       <Route

@@ -1,729 +1,341 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Users, 
-  UserPlus, 
-  Shield, 
-  Activity, 
-  TrendingUp,
-  RefreshCw,
-  Search as SearchIcon,    // <-- alias the lucide icon
-  Filter, 
-  Eye,
-  Edit,
-  Trash2,
-  CheckCircle,
-  AlertCircle,
-  Crown,
-  Settings,
-  BarChart3,
-  Calendar,
-  Clock,
-  Building,
-  UserCheck,
-  UserX,
-  Edit3,
-  Save,
-  X,
-  RotateCcw,
-  Download,
-  Mail,
-  Key,
-  EyeOff
-} from 'lucide-react';
-import api from '../../services/api';
 import Navbar from '../../components/common/Navbar';
 import Search from '../../components/common/Search/Search';
+import api from '../../services/api';
+import { RefreshCw, Plus, Shield, Database, Palette, CheckCircle, FileText, Users, UserPlus, Download } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { useNavigate as useNav } from 'react-router-dom';
+import SettingsModal from '../../components/common/SettingsModal';
+
+const HEADER_COLOR_PRESETS = [
+  { name: 'Dark Gray', gradient: 'from-gray-800 via-gray-900 to-black', textColor: 'text-white' },
+  { name: 'Blue', gradient: 'from-blue-700 via-blue-800 to-blue-900', textColor: 'text-white' },
+  { name: 'Green', gradient: 'from-green-700 via-green-800 to-green-900', textColor: 'text-white' },
+  { name: 'Purple', gradient: 'from-purple-700 via-purple-800 to-purple-900', textColor: 'text-white' },
+  { name: 'Red', gradient: 'from-red-700 via-red-800 to-red-900', textColor: 'text-white' },
+  { name: 'Indigo', gradient: 'from-indigo-700 via-indigo-800 to-indigo-900', textColor: 'text-white' },
+  { name: 'Teal', gradient: 'from-teal-700 via-teal-800 to-teal-900', textColor: 'text-white' },
+  { name: 'Orange', gradient: 'from-orange-700 via-orange-800 to-orange-900', textColor: 'text-white' },
+  { name: 'Pink', gradient: 'from-pink-700 via-pink-800 to-pink-900', textColor: 'text-white' },
+  { name: 'Cyan', gradient: 'from-cyan-700 via-cyan-800 to-cyan-900', textColor: 'text-white' }
+];
+
+const HeaderColorPicker = ({ isOpen, onClose, currentColor, onSelectColor }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-md border-2 border-gray-300">
+        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Palette className="w-5 h-5" />
+            <h2 className="text-lg font-bold">Choose Header Color</h2>
+          </div>
+          <button onClick={onClose} className="text-white hover:text-gray-300">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-3">
+            {HEADER_COLOR_PRESETS.map((preset, index) => (
+              <button
+                key={index}
+                onClick={() => { onSelectColor(preset); onClose(); }}
+                className={`relative px-4 py-3 rounded-lg transition-all border-2 ${
+                  currentColor.name === preset.name
+                    ? 'border-gray-900 scale-105 shadow-lg'
+                    : 'border-gray-300 hover:border-gray-500'
+                }`}
+              >
+                <div className={`h-8 rounded bg-gradient-to-r ${preset.gradient} flex items-center justify-center ${preset.textColor} text-sm font-bold`}>
+                  {preset.name}
+                </div>
+                {currentColor.name === preset.name && (
+                  <div className="absolute top-1 right-1 bg-white rounded-full p-0.5">
+                    <CheckCircle className="w-4 h-4 text-green-600 fill-current" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const GroupIdDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   const navigate = useNavigate();
 
-  // State management
-  const [users, setUsers] = useState([]);
-  const [filteredUsers, setFilteredUsers] = useState([]);
-  const [stats, setStats] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [searchFilters, setSearchFilters] = useState({});
-  const [editingUser, setEditingUser] = useState(null);
-  const [showPasswords, setShowPasswords] = useState({});
-  const [deleteModal, setDeleteModal] = useState({ show: false, user: null });
-
-  // Form state for editing
-  const [editForm, setEditForm] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-    role: ''
+  // ✅ PAGINATION STATE - Single source of truth
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalRecords: 0,
+    recordsPerPage: 50,
+    hasNextPage: false,
+    hasPrevPage: false
   });
 
-  // Role configuration
-  const roleConfig = {
-    assignor: { name: 'Assignor', color: 'bg-blue-100 text-blue-800', icon: Users },
-    radiologist: { name: 'Radiologist', color: 'bg-green-100 text-green-800', icon: Shield },
-    verifier: { name: 'Verifier', color: 'bg-purple-100 text-purple-800', icon: CheckCircle },
-    physician: { name: 'Physician', color: 'bg-indigo-100 text-indigo-800', icon: Crown },
-    receptionist: { name: 'Receptionist', color: 'bg-pink-100 text-pink-800', icon: UserPlus },
-    billing: { name: 'Billing', color: 'bg-yellow-100 text-yellow-800', icon: BarChart3 },
-    typist: { name: 'Typist', color: 'bg-orange-100 text-orange-800', icon: Edit },
-    dashboard_viewer: { name: 'Dashboard Viewer', color: 'bg-gray-100 text-gray-800', icon: Eye }
-  };
+  // State management
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchFilters, setSearchFilters] = useState({});
+  const [currentView, setCurrentView] = useState('all');
+  const [headerColor, setHeaderColor] = useState(() => {
+    const saved = localStorage.getItem('groupIdWorklistTableHeaderColor');
+    return saved ? JSON.parse(saved) : HEADER_COLOR_PRESETS[0];
+  });
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
-  // Statistics calculation
-  const statistics = useMemo(() => {
-    const activeUsers = users.filter(u => u.isActive).length;
-    const radiologists = users.filter(u => u.role === 'radiologist').length;
-    const recentLogins = users.filter(u => {
-      if (!u.lastLoginAt) return false;
-      const lastLogin = new Date(u.lastLoginAt);
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      return lastLogin > weekAgo;
-    }).length;
+  // ✅ CATEGORY-BASED API VALUES
+  const [categoryValues, setCategoryValues] = useState({
+    all: 0,
+    created: 0,
+    history_created: 0,
+    unassigned: 0,
+    assigned: 0,
+    pending: 0,
+    draft: 0,
+    verification_pending: 0,
+    final: 0,
+    urgent: 0,
+    reprint_need: 0,
+    reverted: 0
+  });
 
-    return {
-      totalUsers: users.length,
-      activeUsers,
-      radiologists,
-      recentLogins
+  // ✅ FETCH CATEGORY VALUES
+  const fetchCategoryValues = useCallback(async (filters = {}) => {
+    try {
+      const params = Object.keys(filters).length > 0 ? filters : searchFilters;
+      console.log('🔍 [GroupId] Fetching category values with params:', params);
+      const response = await api.get('/admin/category-values', { params });
+      if (response.data.success) {
+        setCategoryValues({
+          all: response.data.all || 0,
+          created: response.data.created || 0,
+          history_created: response.data.history_created || 0,
+          unassigned: response.data.unassigned || 0,
+          assigned: response.data.assigned || 0,
+          pending: response.data.pending || 0,
+          draft: response.data.draft || 0,
+          verification_pending: response.data.verification_pending || 0,
+          final: response.data.final || 0,
+          urgent: response.data.urgent || 0,
+          reprint_need: response.data.reprint_need || 0,
+          reverted: response.data.reverted || 0
+        });
+        console.log('📊 [GroupId] CATEGORY VALUES UPDATED:', response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching category values:', error);
+      setCategoryValues({
+        all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
+        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0,
+        reprint_need: 0, reverted: 0
+      });
+    }
+  }, [searchFilters]);
+
+  // ✅ INITIAL DATA FETCH
+  useEffect(() => {
+    const savedFilters = localStorage.getItem('groupIdDashboardFilters');
+    let defaultFilters = {
+      dateFilter: 'today',
+      dateType: 'createdAt',
+      modality: 'all',
+      labId: 'all',
+      priority: 'all'
     };
-  }, [users]);
-
-  // Fetch data functions
-  const fetchUsers = useCallback(async (filters = {}) => {
-    try {
-      setLoading(true);
-      const endpoint = '/group/user-management/users';
-      const response = await api.get(endpoint, { params: filters });
-      
-      if (response.data.success) {
-        setUsers(response.data.data.users || response.data.data);
+    if (savedFilters) {
+      try {
+        defaultFilters = JSON.parse(savedFilters);
+        console.log('📁 [GroupId] Loaded saved filters:', defaultFilters);
+      } catch (error) {
+        console.warn('Error loading saved filters:', error);
       }
-    } catch (error) {
-      console.error('Error fetching users:', error);
-      toast.error('Failed to fetch users');
-    } finally {
-      setLoading(false);
     }
+    setSearchFilters(defaultFilters);
+    fetchCategoryValues(defaultFilters);
   }, []);
 
-  const fetchStats = useCallback(async () => {
-    try {
-      const response = await api.get('/group/stats');
-      if (response.data.success) {
-        setStats(response.data.data);
+  // ✅ Save filters whenever they change
+  useEffect(() => {
+    if (Object.keys(searchFilters).length > 0) {
+      try {
+        const filtersToSave = { ...searchFilters };
+        delete filtersToSave.search;
+        localStorage.setItem('groupIdDashboardFilters', JSON.stringify(filtersToSave));
+        console.log('💾 [GroupId] Saved filters to localStorage:', filtersToSave);
+      } catch (error) {
+        console.warn('Error saving filters:', error);
       }
-    } catch (error) {
-      console.error('Error fetching stats:', error);
     }
-  }, []);
+  }, [searchFilters]);
 
-  // Filter users based on search filters
-  useEffect(() => {
-    let filtered = users;
-    
-    if (searchFilters.search) {
-      const searchTerm = searchFilters.search.toLowerCase();
-      filtered = filtered.filter(user => 
-        user.fullName.toLowerCase().includes(searchTerm) ||
-        user.email.toLowerCase().includes(searchTerm) ||
-        user.role.toLowerCase().includes(searchTerm)
-      );
-    }
-    
-    if (searchFilters.role && searchFilters.role !== 'all') {
-      filtered = filtered.filter(user => user.role === searchFilters.role);
-    }
-    
-    setFilteredUsers(filtered);
-  }, [users, searchFilters]);
-
-  // Initial data fetch
-  useEffect(() => {
-    fetchUsers();
-    fetchStats();
-  }, [fetchUsers, fetchStats]);
-
-  // Handlers
   const handleSearch = useCallback((searchParams) => {
-    setSearchFilters(searchParams);
-  }, []);
+    console.log('🔍 [GroupId] NEW SEARCH:', searchParams);
+    const cleanedParams = { ...searchParams };
+    if (!cleanedParams.search || cleanedParams.search.trim() === '') {
+      delete cleanedParams.search;
+    }
+    setSearchFilters(cleanedParams);
+    fetchCategoryValues(cleanedParams);
+  }, [fetchCategoryValues]);
 
   const handleFilterChange = useCallback((filters) => {
-    setSearchFilters(filters);
-  }, []);
+    console.log('🔍 [GroupId] FILTER CHANGE:', filters);
+    const cleanedFilters = { ...filters };
+    if (!cleanedFilters.search || cleanedFilters.search.trim() === '') {
+      delete cleanedFilters.search;
+    }
+    setSearchFilters(cleanedFilters);
+    fetchCategoryValues(cleanedFilters);
+  }, [fetchCategoryValues]);
+
+  const handleViewChange = useCallback((view) => {
+    console.log(`🔄 [GroupId] VIEW CHANGE: ${currentView} -> ${view}`);
+    setCurrentView(view);
+  }, [currentView]);
 
   const handleRefresh = useCallback(() => {
-    fetchUsers(searchFilters);
-    fetchStats();
-  }, [fetchUsers, fetchStats, searchFilters]);
+    console.log('🔄 [GroupId] Manual refresh');
+    fetchCategoryValues(searchFilters);
+  }, [fetchCategoryValues, searchFilters]);
 
-  const handleCreateUser = useCallback(() => {
-    navigate('/admin/create-user');
-  }, [navigate]);
-
-  // User management handlers
-  const handleTogglePassword = (userId) => {
-    setShowPasswords(prev => ({
-      ...prev,
-      [userId]: !prev[userId]
-    }));
-  };
-
-  const handleEditUser = (user) => {
-    setEditingUser(user._id);
-    setEditForm({
-      fullName: user.fullName,
-      email: user.email,
-      password: '',
-      role: user.role
+  const handleSelectColor = useCallback((color) => {
+    setHeaderColor(color);
+    localStorage.setItem('groupIdWorklistTableHeaderColor', JSON.stringify(color));
+    toast.success(`Header color changed to ${color.name}`, {
+      duration: 2000,
+      position: 'top-center'
     });
-  };
+  }, []);
 
-  const handleCancelEdit = () => {
-    setEditingUser(null);
-    setEditForm({ fullName: '', email: '', password: '', role: '' });
-  };
-
-  const handleSaveUser = async (userId) => {
-    try {
-      const updates = {};
-      const currentUser = users.find(u => u._id === userId);
-      
-      if (editForm.fullName !== currentUser?.fullName) {
-        updates.fullName = editForm.fullName;
-      }
-      if (editForm.email !== currentUser?.email) {
-        updates.email = editForm.email;
-      }
-      if (editForm.password) {
-        updates.password = editForm.password;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await api.put(`/group/user-management/${userId}/credentials`, updates);
-        toast.success('User credentials updated successfully');
-      }
-
-      // Handle role change separately
-      if (editForm.role !== currentUser?.role) {
-        await api.put(`/group/user-management/${userId}/role`, { newRole: editForm.role });
-        toast.success('User role updated successfully');
-      }
-
-      fetchUsers(searchFilters);
-      handleCancelEdit();
-    } catch (error) {
-      console.error('Error updating user:', error);
-      toast.error(error.response?.data?.message || 'Failed to update user');
-    }
-  };
-
-  const handleToggleUserStatus = async (userId, currentStatus) => {
-    try {
-      await api.put(`/group/user-management/${userId}/status`, { isActive: !currentStatus });
-      toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully`);
-      fetchUsers(searchFilters);
-    } catch (error) {
-      console.error('Error toggling user status:', error);
-      toast.error('Failed to update user status');
-    }
-  };
-
-  const handleResetPassword = async (userId) => {
-    try {
-      const response = await api.post(`/group/user-management/${userId}/reset-password`);
-      if (response.data.success) {
-        toast.success(`Password reset to: ${response.data.defaultPassword}`);
-        fetchUsers(searchFilters);
-      }
-    } catch (error) {
-      console.error('Error resetting password:', error);
-      toast.error('Failed to reset password');
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deleteModal.user) return;
-
-    try {
-      await api.delete(`/group/user-management/${deleteModal.user._id}`, {
-        data: { confirmDelete: true }
-      });
-      toast.success('User deleted successfully');
-      setDeleteModal({ show: false, user: null });
-      fetchUsers(searchFilters);
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
-    }
-  };
-
-  const exportUsers = () => {
-    const csvContent = [
-      ['Full Name', 'Email', 'Role', 'Status', 'Created At'].join(','),
-      ...filteredUsers.map(user => [
-        user.fullName,
-        user.email,
-        user.role,
-        user.isActive ? 'Active' : 'Inactive',
-        new Date(user.createdAt).toLocaleDateString()
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `users_${currentOrganizationContext || 'export'}_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-  };
-
-  // Statistics cards data
-  const statisticsCards = [
+  const additionalActions = [
     {
-      title: 'Total Users',
-      value: statistics.totalUsers,
-      icon: Users,
-      color: 'from-blue-500 to-blue-600',
-      textColor: 'text-blue-600',
-      bgColor: 'bg-blue-50'
-    },
-    {
-      title: 'Active Users',
-      value: statistics.activeUsers,
-      icon: CheckCircle,
-      color: 'from-green-500 to-green-600',
-      textColor: 'text-green-600',
-      bgColor: 'bg-green-50'
-    },
-    {
-      title: 'Radiologists',
-      value: statistics.radiologists,
-      icon: Shield,
-      color: 'from-purple-500 to-purple-600',
-      textColor: 'text-purple-600',
-      bgColor: 'bg-purple-50'
-    },
-    {
-      title: 'Recent Logins',
-      value: statistics.recentLogins,
-      icon: Activity,
-      color: 'from-orange-500 to-orange-600',
-      textColor: 'text-orange-600',
-      bgColor: 'bg-orange-50'
-    }
-  ];
-
-  // Navbar actions
-  const navbarActions = [
-    {
-      label: 'Export Users',
-      icon: Download,
-      onClick: exportUsers,
+      label: 'System Overview',
+      icon: Database,
+      onClick: () => navigate('/admin/system-overview'),
       variant: 'secondary',
-      tooltip: 'Export user list'
+      tooltip: 'View comprehensive system overview'
+    },
+    {
+      label: 'User Management',
+      icon: Shield,
+      onClick: () => navigate('/admin/user-management'),
+      variant: 'primary',
+      tooltip: 'Manage users'
     },
     {
       label: 'Create User',
       icon: UserPlus,
-      onClick: handleCreateUser,
-      variant: 'primary',
-      tooltip: 'Create new user role'
+      onClick: () => navigate('/admin/create-user'),
+      variant: 'success',
+      tooltip: 'Create a new user'
+    },
+    {
+      label: 'Branding',
+      icon: Palette,
+      onClick: () => navigate('/admin/branding'),
+      variant: 'secondary',
+      tooltip: 'Configure report branding'
     }
   ];
 
-  if (loading && users.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  // ✅ CATEGORY TABS - identical to admin
+  const categoryTabs = [
+    { key: 'all', label: 'All', count: categoryValues.all },
+    { key: 'created', label: 'Created', count: categoryValues.created },
+    { key: 'history_created', label: 'History', count: categoryValues.history_created },
+    { key: 'unassigned', label: 'Unassigned', count: categoryValues.unassigned },
+    { key: 'assigned', label: 'Assigned', count: categoryValues.assigned },
+    { key: 'pending', label: 'Pending', count: categoryValues.pending },
+    { key: 'draft', label: 'Draft', count: categoryValues.draft },
+    { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
+    { key: 'final', label: 'Final', count: categoryValues.final },
+    { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },
+    { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
+    { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
+  ];
+
+  // ✅ Group ID has no worklist — show settings modal as the main UI, not auto-open
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col">
-      {/* ✅ NAVBAR - Similar to Assigner */}
+    <div className="h-screen bg-teal-50 flex flex-col">
       <Navbar
         title="Group ID Dashboard"
-        subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • Role Creator & Manager`}
-        showOrganizationSelector={false}
+        subtitle={`${currentOrganizationContext === 'global' ? 'Global View' : currentOrganizationContext || 'Organization View'} • PACS Administration`}
+        showOrganizationSelector={true}
         onRefresh={handleRefresh}
-        additionalActions={navbarActions}
+        additionalActions={additionalActions}
         notifications={0}
+        theme="admin"
       />
-      
-      {/* ✅ SEARCH BAR - Reuse Admin Search Component */}
-      <div className="bg-white border-b border-gray-300 px-3 py-2.5">
-        <div className="flex items-center gap-2">
+
+      <div className="flex-1 min-h-0 p-4">
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col items-center justify-center gap-6">
           
-          {/* Search Input */}
-          <div className="flex-1 relative max-w-md">
-            <SearchIcon className="absolute left-2.5 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
-            <input
-              type="text"
-              value={searchFilters.search || ''}
-              onChange={(e) => handleSearch({ ...searchFilters, search: e.target.value })}
-              placeholder="Search users by name, email, role..."
-              className="w-full pl-8 pr-6 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-black focus:border-black transition-colors"
-            />
-            {searchFilters.search && (
-              <button 
-                onClick={() => handleSearch({ ...searchFilters, search: '' })}
-                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
-              >
-                <X size={12} />
-              </button>
-            )}
+          <div className="text-center">
+            <Shield className="w-16 h-16 mx-auto mb-4 text-teal-600 opacity-60" />
+            <h2 className="text-xl font-bold text-slate-700 mb-2">Group ID Dashboard</h2>
+            <p className="text-sm text-slate-500">Manage users, doctors and organization settings</p>
           </div>
 
-          {/* Role Filter */}
-          <select
-            value={searchFilters.role || 'all'}
-            onChange={(e) => handleSearch({ ...searchFilters, role: e.target.value })}
-            className="px-2 py-1.5 text-xs border border-gray-300 rounded bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-black min-w-24"
-          >
-            <option value="all">All Roles</option>
-            {Object.entries(roleConfig).map(([key, config]) => (
-              <option key={key} value={key}>{config.name}</option>
-            ))}
-          </select>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-1 pl-2 border-l border-gray-300">
+          {/* ✅ Quick action buttons - the main purpose of this role */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-md px-4">
             <button
-              onClick={exportUsers}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gray-700 text-white text-xs font-medium rounded hover:bg-gray-800 transition-colors"
-              title="Export Users"
+              onClick={() => navigate('/admin/user-management')}
+              className="flex items-center gap-3 p-4 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
             >
-              <Download size={12} />
-              <span className="hidden sm:inline">Export</span>
-            </button>
-            
-            <button
-              onClick={handleCreateUser}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-medium rounded hover:from-purple-700 hover:to-indigo-700 transition-colors"
-              title="Create New User"
-            >
-              <Users size={12} />
-              <span className="hidden sm:inline">Create User</span>
-            </button>
-          </div>
-
-          {/* Refresh Button */}
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-          </button>
-
-          {/* Results Count */}
-          <div className="flex items-center gap-1 text-xs text-gray-500 pl-2 border-l border-gray-300">
-            <span className="font-bold text-black">{filteredUsers.length}</span>
-            <span className="hidden sm:inline">users</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ✅ MAIN CONTENT */}
-      <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-7xl mx-auto">
-          
-          {/* ✅ STATISTICS GRID */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {statisticsCards.map((card, index) => {
-              const Icon = card.icon;
-              return (
-                <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-all duration-200">
-                  <div className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-1">{card.title}</p>
-                        <p className="text-3xl font-bold text-gray-900">{card.value}</p>
-                      </div>
-                      <div className={`p-3 rounded-xl ${card.bgColor}`}>
-                        <Icon className={`h-6 w-6 ${card.textColor}`} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className={`h-1 bg-gradient-to-r ${card.color}`}></div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* ✅ USERS MANAGEMENT TABLE */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                    <Shield className="w-5 h-5" />
-                    <span>Users Management ({filteredUsers.length})</span>
-                  </h3>
-                  <p className="text-sm text-gray-600 mt-1">Manage all users within your organization</p>
-                </div>
+              <Shield className="w-6 h-6" />
+              <div className="text-left">
+                <p className="font-semibold text-sm">User Management</p>
+                <p className="text-xs text-white/80">Manage accounts & permissions</p>
               </div>
-            </div>
+            </button>
 
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      User Details
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Credentials
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Role
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Status
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredUsers.map((user) => (
-                    <tr key={user._id} className="hover:bg-gray-50">
-                      
-                      {/* User Details */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingUser === user._id ? (
-                          <input
-                            type="text"
-                            value={editForm.fullName}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, fullName: e.target.value }))}
-                            className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                          />
-                        ) : (
-                          <div className="flex items-center space-x-3">
-                            <div className="flex-shrink-0">
-                              <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                                <span className="text-white font-semibold text-sm">
-                                  {user.fullName.charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">{user.fullName}</div>
-                              <div className="text-sm text-gray-500">
-                                Created: {new Date(user.createdAt).toLocaleDateString()}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </td>
+            <button
+              onClick={() => navigate('/admin/create-doctor')}
+              className="flex items-center gap-3 p-4 bg-gradient-to-r from-teal-700 to-teal-800 hover:from-teal-800 hover:to-teal-900 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
+            >
+              <UserPlus className="w-6 h-6" />
+              <div className="text-left">
+                <p className="font-semibold text-sm">Create Doctor</p>
+                <p className="text-xs text-white/80">Add a new doctor account</p>
+              </div>
+            </button>
 
-                      {/* Credentials */}
-                      <td className="px-6 py-4">
-                        {editingUser === user._id ? (
-                          <div className="space-y-2">
-                            <input
-                              type="email"
-                              value={editForm.email}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                              placeholder="Email"
-                            />
-                            <input
-                              type="password"
-                              value={editForm.password}
-                              onChange={(e) => setEditForm(prev => ({ ...prev, password: e.target.value }))}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
-                              placeholder="New password (leave blank to keep current)"
-                            />
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <div className="flex items-center space-x-2">
-                              <Mail className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm text-gray-900">{user.email}</span>
-                            </div>
-                            <div className="flex items-center space-x-2">
-                              <Key className="w-4 h-4 text-gray-400" />
-                              <span className="text-sm font-mono text-gray-600">
-                                {showPasswords[user._id] ? user.password : '••••••••'}
-                              </span>
-                              <button
-                                onClick={() => handleTogglePassword(user._id)}
-                                className="text-gray-400 hover:text-gray-600"
-                              >
-                                {showPasswords[user._id] ? (
-                                  <EyeOff className="w-4 h-4" />
-                                ) : (
-                                  <Eye className="w-4 h-4" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </td>
+            <button
+              onClick={() => navigate('/admin/create-user')}
+              className="flex items-center gap-3 p-4 bg-gradient-to-r from-slate-600 to-slate-700 hover:from-slate-700 hover:to-slate-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
+            >
+              <Users className="w-6 h-6" />
+              <div className="text-left">
+                <p className="font-semibold text-sm">Create User</p>
+                <p className="text-xs text-white/80">Add a new user account</p>
+              </div>
+            </button>
 
-                      {/* Role */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingUser === user._id ? (
-                          <select
-                            value={editForm.role}
-                            onChange={(e) => setEditForm(prev => ({ ...prev, role: e.target.value }))}
-                            className="px-2 py-1 border border-gray-300 rounded text-sm"
-                          >
-                            {Object.entries(roleConfig).map(([key, config]) => (
-                              <option key={key} value={key}>{config.name}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-xs font-medium ${roleConfig[user.role]?.color || 'bg-gray-100 text-gray-800'}`}>
-                            {React.createElement(roleConfig[user.role]?.icon || Users, { className: "w-3 h-3" })}
-                            <span>{roleConfig[user.role]?.name || user.role}</span>
-                          </span>
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex flex-col space-y-1">
-                          <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                            user.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-                          }`}>
-                            {user.isActive ? 'Active' : 'Inactive'}
-                          </span>
-                          {user.lastLoginAt && (
-                            <span className="text-xs text-gray-500">
-                              Last: {new Date(user.lastLoginAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        {editingUser === user._id ? (
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleSaveUser(user._id)}
-                              className="text-green-600 hover:text-green-800"
-                              title="Save changes"
-                            >
-                              <Save className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={handleCancelEdit}
-                              className="text-gray-600 hover:text-gray-800"
-                              title="Cancel"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => handleEditUser(user)}
-                              className="text-blue-600 hover:text-blue-800"
-                              title="Edit user"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleToggleUserStatus(user._id, user.isActive)}
-                              className={`${user.isActive ? 'text-red-600 hover:text-red-800' : 'text-green-600 hover:text-green-800'}`}
-                              title={user.isActive ? 'Deactivate user' : 'Activate user'}
-                            >
-                              {user.isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                            </button>
-                            <button
-                              onClick={() => handleResetPassword(user._id)}
-                              className="text-yellow-600 hover:text-yellow-800"
-                              title="Reset password"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => setDeleteModal({ show: true, user })}
-                              className="text-red-600 hover:text-red-800"
-                              title="Delete user"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                  
-                  {filteredUsers.length === 0 && (
-                    <tr>
-                      <td colSpan="5" className="px-6 py-12 text-center">
-                        <div className="flex flex-col items-center">
-                          <Users className="h-12 w-12 text-gray-400 mb-4" />
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">No users found</h3>
-                          <p className="text-gray-600 mb-4">
-                            {searchFilters.search || searchFilters.role !== 'all' 
-                              ? 'Try adjusting your search or filter criteria' 
-                              : 'Get started by creating your first user role'}
-                          </p>
-                          {!searchFilters.search && searchFilters.role === 'all' && (
-                            <button
-                              onClick={handleCreateUser}
-                              className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-                            >
-                              <UserPlus className="h-4 w-4" />
-                              <span>Create User</span>
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <button
+              onClick={() => navigate('/admin/system-overview')}
+              className="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-lg shadow-md hover:shadow-lg transition-all transform hover:scale-105"
+            >
+              <Database className="w-6 h-6" />
+              <div className="text-left">
+                <p className="font-semibold text-sm">System Overview</p>
+                <p className="text-xs text-white/80">View system analytics</p>
+              </div>
+            </button>
           </div>
+
         </div>
       </div>
-
-      {/* ✅ DELETE CONFIRMATION MODAL */}
-      {deleteModal.show && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center space-x-3 mb-4">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-              <h3 className="text-lg font-semibold text-gray-900">Delete User</h3>
-            </div>
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deleteModal.user?.fullName}</strong>? 
-              This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <button
-                onClick={() => setDeleteModal({ show: false, user: null })}
-                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteUser}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                Delete User
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -10,18 +10,9 @@ import CreateTypistModal from '../../components/doctor/CreateTypistModal';
 import api from '../../services/api';
 import { useAuth } from '../../hooks/useAuth';
 import { formatStudiesForWorklist } from '../../utils/studyFormatter';
+import useVisibleColumns from '../../hooks/useVisibleColumns';
 
-// ✅ UTILITY: Resolve visible columns from user object
-const resolveUserVisibleColumns = (user) => {
-  if (!user) return [];
-  
-  // ✅ Primary source: visibleColumns array (from database)
-  if (user.visibleColumns && Array.isArray(user.visibleColumns)) {
-    return user.visibleColumns;
-  }
-  
-  return [];
-};
+
 
 const DoctorDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
@@ -56,11 +47,10 @@ const DoctorDashboard = () => {
     reverted: 0,
     rejected: 0
   });
+  // console.log(currentUser);
 
-  // ✅ COMPUTE visible columns from user
-  const visibleColumns = useMemo(() => {
-    return resolveUserVisibleColumns(currentUser);
-  }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
+  // ✅ Always fresh from DB — never stale sessionStorage data
+  const { visibleColumns, columnsLoading } = useVisibleColumns(currentUser);
 
   // ✅ GET USER ROLES for UnifiedWorklistTable
   const userRoles = useMemo(() => {
@@ -79,46 +69,45 @@ const DoctorDashboard = () => {
     return [];
   }, [currentUser?.accountRoles, currentUser?.role]);
 
-  // ✅ COLUMN CONFIGURATION
+  
   const getDefaultColumnConfig = () => ({
-    checkbox: { visible: false, order: 1, label: 'Select' },
-    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
-    centerName: { visible: true, order: 3, label: 'Center' },
-    patientName: { visible: true, order: 4, label: 'Patient Name' },
-    patientId: { visible: true, order: 5, label: 'Patient ID' },
-    ageGender: { visible: true, order: 6, label: 'Age/Sex' },
-    modality: { visible: true, order: 7, label: 'Modality' },
-    seriesCount: { visible: true, order: 8, label: 'Series' },
-    accessionNumber: { visible: false, order: 9, label: 'Acc. No.' },
-    referralDoctor: { visible: true, order: 10, label: 'Referral Dr.' },
-    clinicalHistory: { visible: true, order: 11, label: 'History' },
-    studyTime: { visible: true, order: 12, label: 'Study Time' },
-    uploadTime: { visible: true, order: 13, label: 'Upload Time' },
-    radiologist: { visible: false, order: 14, label: 'Radiologist' },
-    caseStatus: { visible: true, order: 15, label: 'Status' },
-    actions: { visible: true, order: 16, label: 'Actions' }
+   
+    checkbox:             { visible: false, order: 1,  label: 'Select' },
+    bharatPacsId:         { visible: true,  order: 2,  label: 'BP ID' },           // DB: bharatPacsId
+    centerName:           { visible: true,  order: 3,  label: 'Center' },           // DB: centerName
+    location:             { visible: false, order: 4,  label: 'Location' },         // DB: location
+    timeline:             { visible: true,  order: 5,  label: 'Timeline' },         // DB: timeline
+    patientName:          { visible: true,  order: 6,  label: 'Patient Name' },     // DB: patientName
+    patientId:            { visible: true,  order: 7,  label: 'Patient ID' },       // DB: patientId
+    ageGender:            { visible: true,  order: 8,  label: 'Age/Sex' },          // DB: ageGender
+    modality:             { visible: true,  order: 9,  label: 'Modality' },         // DB: modality
+    viewOnly:             { visible: true,  order: 10, label: 'View' },             
+    reporting:             { visible: true,  order: 24, label: 'reporting' },             
+    seriesCount:          { visible: true,  order: 11, label: 'Series/Images' },    // DB: studySeriesImages
+    accessionNumber:      { visible: false, order: 12, label: 'Acc. No.' },         // DB: accessionNumber
+    referralDoctor:       { visible: false, order: 13, label: 'Referral Dr.' },     // DB: referralDoctor
+    clinicalHistory:      { visible: true,  order: 14, label: 'History' },          // DB: clinicalHistory
+    studyTime:            { visible: true,  order: 15, label: 'Study Date/Time' },  // DB: studyDateTime
+    uploadTime:           { visible: true,  order: 16, label: 'Upload Date/Time' }, // DB: uploadDateTime
+    radiologist:          { visible: false, order: 17, label: 'Radiologist' },      // DB: assignedRadiologist
+    studyLock:            { visible: true,  order: 18, label: 'Lock/Unlock' },      // DB: studyLock
+    caseStatus:           { visible: true,  order: 19, label: 'Status' },           // DB: status
+    assignedVerifier:     { visible: true,  order: 20, label: 'Finalised By' },     // DB: assignedVerifier
+    verifiedDateTime:     { visible: true,  order: 21, label: 'Finalised Date' },   // DB: verifiedDateTime
+    actions:              { visible: true,  order: 22, label: 'Actions' },          // DB: actions
+    rejectionReason:      { visible: true,  order: 23, label: 'Rejection Reason' }, // DB: rejectionReason
   });
 
-  const [columnConfig, setColumnConfig] = useState(() => {
-    try {
-      const saved = localStorage.getItem('doctorWorklistColumnConfig');
-      if (saved) {
-        const parsedConfig = JSON.parse(saved);
-        return { ...getDefaultColumnConfig(), ...parsedConfig };
-      }
-    } catch (error) {
-      console.warn('Error loading column config:', error);
-    }
-    return getDefaultColumnConfig();
-  });
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('doctorWorklistColumnConfig', JSON.stringify(columnConfig));
-    } catch (error) {
-      console.warn('Error saving column config:', error);
-    }
-  }, [columnConfig]);
+  // ✅ No localStorage — always fresh from defaults, DB gates what's visible
+  const [columnConfig, setColumnConfig] = useState(getDefaultColumnConfig);
+  // useEffect(() => {
+  //   try {
+  //     localStorage.setItem('doctorWorklistColumnConfig', JSON.stringify(columnConfig));
+  //   } catch (error) {
+  //     console.warn('Error saving column config:', error);
+  //   }
+  // }, [columnConfig]);
 
   // ✅ CATEGORY-BASED ENDPOINT MAPPING (6 categories)
   const getApiEndpoint = useCallback(() => {
@@ -470,6 +459,8 @@ const DoctorDashboard = () => {
                 onColumnChange={handleColumnChange}
                 onResetToDefault={handleResetColumns}
                 theme="doctor"
+                visibleColumns={visibleColumns}
+
               />
             </div>
           </div>
@@ -477,7 +468,7 @@ const DoctorDashboard = () => {
           <div className="flex-1 min-h-0">
             <UnifiedWorklistTable
               studies={studies}
-              loading={loading}
+              loading={loading || columnsLoading} // ✅ wait for columns before rendering
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}

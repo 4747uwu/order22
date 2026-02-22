@@ -11,35 +11,47 @@ const PrintModal = ({ report, onClose }) => {
 
     useEffect(() => {
         const fetchPDFForPrint = async () => {
-            // ✅ Prevent multiple fetches
-            if (fetchedRef.current) {
-                console.log('⏭️ [PrintModal] PDF already fetched, skipping...');
-                return;
-            }
-            
+            if (fetchedRef.current) return;
+
             try {
                 setLoading(true);
                 setError(null);
-                fetchedRef.current = true; // ✅ Mark as fetched
+                fetchedRef.current = true;
 
                 console.log('🖨️ [PrintModal] Fetching PDF for report:', report._id);
 
-                const response = await api.get(`/reports/${report._id}/print`, {
-                    responseType: 'blob'
+                const response = await api.get(`/reports/reports/${report._id}/print`, {
+                    responseType: 'blob',
+                    timeout: 60000,
                 });
 
-                // Create blob URL for PDF
+                // ✅ FIX: Check if response is actually an error JSON blob (403/500)
+                // When responseType:'blob', error responses also come as blobs
+                if (response.data.type === 'application/json') {
+                    const text = await response.data.text();
+                    const json = JSON.parse(text);
+                    throw new Error(json.message || 'Server error');
+                }
+
                 const blob = new Blob([response.data], { type: 'application/pdf' });
                 const url = URL.createObjectURL(blob);
-
-                console.log('✅ [PrintModal] PDF blob created, size:', blob.size);
                 setPdfUrl(url);
 
             } catch (err) {
                 console.error('❌ [PrintModal] Error fetching PDF:', err);
-                setError(err.response?.data?.message || 'Failed to load PDF for printing');
-                toast.error('Failed to load PDF for printing');
-                fetchedRef.current = false; // ✅ Allow retry on error
+                // ✅ FIX: Parse blob error response for meaningful message
+                if (err.response?.data instanceof Blob) {
+                    try {
+                        const text = await err.response.data.text();
+                        const json = JSON.parse(text);
+                        setError(json.message || 'Failed to generate print PDF');
+                    } catch {
+                        setError('Failed to generate print PDF. Please try again.');
+                    }
+                } else {
+                    setError(err.message || 'Failed to generate print PDF. Please try again.');
+                }
+                fetchedRef.current = false;
             } finally {
                 setLoading(false);
             }
@@ -49,13 +61,10 @@ const PrintModal = ({ report, onClose }) => {
             fetchPDFForPrint();
         }
 
-        // Cleanup blob URL on unmount
         return () => {
-            if (pdfUrl) {
-                URL.revokeObjectURL(pdfUrl);
-            }
+            if (pdfUrl) URL.revokeObjectURL(pdfUrl);
         };
-    }, [report._id]); // ✅ Use report._id instead of report object
+    }, [report._id]);
 
     const handlePrint = async () => {
         if (!pdfUrl) return;
@@ -111,25 +120,28 @@ const PrintModal = ({ report, onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl">
-                {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+        // ✅ COMPACT: Reduced outer padding
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-2 sm:p-4">
+            {/* ✅ COMPACT: Slightly smaller max-width, rounded-md instead of rounded-lg */}
+            <div className="bg-white rounded-md w-full max-w-4xl h-[85vh] sm:h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                
+                {/* ✅ COMPACT HEADER: Tighter padding, smaller text and icons */}
+                <div className="flex items-center justify-between px-3 py-2 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
                     <div>
-                        <h2 className="text-xl font-semibold text-gray-800 flex items-center gap-2">
-                            <Printer className="w-5 h-5 text-blue-600" />
+                        <h2 className="text-sm sm:text-base font-semibold text-gray-800 flex items-center gap-1.5">
+                            <Printer className="w-4 h-4 text-blue-600" />
                             Print Report
                         </h2>
-                        <p className="text-sm text-gray-600 mt-1">
-                            Report ID: {report?.reportId} | Patient: {report?.patientInfo?.fullName}
+                        <p className="text-[10px] sm:text-xs text-gray-600 mt-0.5 truncate max-w-[250px] sm:max-w-full">
+                            ID: {report?.reportId} | Pt: {report?.patientInfo?.fullName}
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+                        className="p-1 hover:bg-gray-200 rounded transition-colors"
                         title="Close"
                     >
-                        <X className="w-5 h-5 text-gray-600" />
+                        <X className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                     </button>
                 </div>
 
@@ -137,22 +149,24 @@ const PrintModal = ({ report, onClose }) => {
                 <div className="flex-1 overflow-hidden flex flex-col">
                     {loading && (
                         <div className="flex-1 flex items-center justify-center">
+                            {/* ✅ COMPACT LOADING: Smaller spinner and text */}
                             <div className="text-center">
-                                <Loader className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
-                                <p className="text-gray-600 font-medium">Loading PDF...</p>
-                                <p className="text-sm text-gray-500 mt-2">Preparing report for printing</p>
+                                <Loader className="w-8 h-8 text-blue-600 animate-spin mx-auto mb-2" />
+                                <p className="text-xs text-gray-600 font-medium">Loading PDF...</p>
+                                <p className="text-[10px] text-gray-500 mt-1">Preparing report for printing</p>
                             </div>
                         </div>
                     )}
 
                     {error && (
                         <div className="flex-1 flex items-center justify-center">
-                            <div className="text-center max-w-md">
-                                <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <X className="w-8 h-8 text-red-600" />
+                            {/* ✅ COMPACT ERROR: Smaller icon container and text */}
+                            <div className="text-center max-w-xs sm:max-w-sm px-4">
+                                <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-2">
+                                    <X className="w-5 h-5 text-red-600" />
                                 </div>
-                                <p className="text-red-600 font-medium mb-2">Error Loading PDF</p>
-                                <p className="text-gray-600 text-sm">{error}</p>
+                                <p className="text-xs text-red-600 font-medium mb-1">Error Loading PDF</p>
+                                <p className="text-[10px] text-gray-600">{error}</p>
                             </div>
                         </div>
                     )}
@@ -160,7 +174,7 @@ const PrintModal = ({ report, onClose }) => {
                     {pdfUrl && !loading && !error && (
                         <>
                             {/* PDF Preview */}
-                            <div className="flex-1 overflow-hidden">
+                            <div className="flex-1 overflow-hidden bg-gray-100">
                                 <iframe
                                     src={pdfUrl}
                                     className="w-full h-full border-0"
@@ -168,28 +182,27 @@ const PrintModal = ({ report, onClose }) => {
                                 />
                             </div>
 
-                            {/* Print Actions */}
-                            <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
-                                <div className="text-sm text-gray-600">
+                            {/* ✅ COMPACT FOOTER: Tighter padding, smaller gap, tiny text */}
+                            <div className="px-3 py-2 border-t bg-gray-50 flex items-center justify-between">
+                                <div className="text-[10px] text-gray-600 hidden sm:block">
                                     <p className="font-medium">Ready to print</p>
-                                    <p className="text-xs mt-1">
-                                        Print count will be tracked automatically
-                                    </p>
+                                    <p className="text-[9px] mt-0.5">Print count tracks automatically</p>
                                 </div>
-                                <div className="flex gap-3">
+                                
+                                <div className="flex gap-2 w-full sm:w-auto justify-end">
                                     <button
                                         onClick={handleDirectPrint}
-                                        className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+                                        className="px-2.5 py-1.5 text-[10px] sm:text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 transition-colors flex items-center gap-1.5 flex-1 sm:flex-none justify-center"
                                     >
-                                        <Printer className="w-4 h-4" />
-                                        Print (Direct)
+                                        <Printer className="w-3.5 h-3.5" />
+                                        <span>Print (Direct)</span>
                                     </button>
                                     <button
                                         onClick={handlePrint}
-                                        className="px-6 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2 font-medium"
+                                        className="px-3 py-1.5 text-[10px] sm:text-xs bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded hover:from-blue-700 hover:to-indigo-700 transition-all shadow-sm hover:shadow flex items-center gap-1.5 font-medium flex-1 sm:flex-none justify-center"
                                     >
-                                        <Printer className="w-4 h-4" />
-                                        Print Report
+                                        <Printer className="w-3.5 h-3.5" />
+                                        <span>Print Dialog</span>
                                     </button>
                                 </div>
                             </div>

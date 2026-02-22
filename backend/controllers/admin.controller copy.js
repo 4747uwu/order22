@@ -361,15 +361,28 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     }
 
     // 🔍 SEARCH FILTERING
+    // ✅ FIX: Use $text for general terms (uses idx_text_search compound index = fast)
+    //         Fall back to $regex ONLY for exact ID lookups (short-circuit on first match)
     if (req.query.search) {
-        queryFilters.$or = [
-            { bharatPacsId: { $regex: req.query.search, $options: 'i' } },
-            { accessionNumber: { $regex: req.query.search, $options: 'i' } },
-            { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } },
-            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } }
-        ];
+        const searchTerm = req.query.search.trim();
+        
+        // Detect if it looks like an ID (alphanumeric, no spaces)
+        const looksLikeId = /^[a-zA-Z0-9\-_.]+$/.test(searchTerm) && searchTerm.length <= 30;
+        
+        if (looksLikeId) {
+            // ✅ ID search: use indexed fields only - NO regex on clinicalHistory
+            queryFilters.$or = [
+                { bharatPacsId: { $regex: `^${searchTerm}`, $options: 'i' } },      // prefix match - faster
+                { accessionNumber: { $regex: `^${searchTerm}`, $options: 'i' } },   // prefix match - faster
+                { 'patientInfo.patientID': { $regex: `^${searchTerm}`, $options: 'i' } }  // prefix match
+            ];
+        } else {
+            // ✅ Name/text search: use MongoDB $text index (idx_text_search covers this)
+            // $text is ALWAYS faster than $regex - uses inverted index
+            queryFilters.$text = { $search: searchTerm };
+        }
+        
+        console.log(`🔍 [Search] term="${searchTerm}" looksLikeId=${looksLikeId} strategy=${looksLikeId ? 'prefix-regex' : '$text'}`);
     }
 
     // 🔬 MODALITY FILTERING - Single or Multiple
@@ -419,8 +432,37 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     }
 
     // ⚡ PRIORITY FILTERING
-    if (req.query.priority && req.query.priority !== 'all') {
-        queryFilters['assignment.priority'] = req.query.priority;
+       // ⚡ PRIORITY FILTERING - Single or Multiple
+    // AFTER:
+    if (req.query.priorities) {
+        let priorityList = [];
+        if (Array.isArray(req.query.priorities)) {
+            priorityList = req.query.priorities.filter(Boolean);
+        } else if (typeof req.query.priorities === 'string') {
+            priorityList = req.query.priorities.split(',').map(p => p.trim()).filter(Boolean);
+        }
+        console.log('⚡ [Priority Multi-Filter]:', priorityList);
+        if (priorityList.length === 1) {
+            const p = priorityList[0];
+            queryFilters.$or = [
+                ...(queryFilters.$or || []),
+                { priority: p },
+                { 'assignment.priority': p }
+            ];
+        } else if (priorityList.length > 1) {
+            queryFilters.$or = [
+                ...(queryFilters.$or || []),
+                { priority: { $in: priorityList } },
+                { 'assignment.priority': { $in: priorityList } }
+            ];
+        }
+    } else if (req.query.priority && req.query.priority !== 'all') {
+        const p = req.query.priority;
+        queryFilters.$or = [
+            ...(queryFilters.$or || []),
+            { priority: p },
+            { 'assignment.priority': p }
+        ];
     }
 
     // 🔢 STUDY INSTANCE UIDS
@@ -540,53 +582,112 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
     return queryFilters;
 };
 
+
+
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     try {
         const skip = (page - 1) * limit;
-        const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
-        const studies = await DicomStudy.find(queryFilters)
-            // Core references
-            .populate('organization', 'name identifier contactEmail contactPhone address')
-            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
-            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
-            
-            // ✅ ADD ATTACHMENTS POPULATION
-    .populate('attachments.documentId', 'fileName fileSize contentType uploadedAt')
-    .populate('attachments.uploadedBy', 'fullName email role')
+        // ✅ Run count + find IN PARALLEL (was sequential before)
+        const [totalStudies, studies] = await Promise.all([
+            DicomStudy.countDocuments(queryFilters),
+            DicomStudy.find(queryFilters)
+                // ── WORKLIST ESSENTIAL ONLY ──────────────────────────
+                // Only 3 populates instead of 14
+                // Worklist table only shows: patient name/ID, lab name, assigned doctor name
+                .populate('sourceLab', 'name labName identifier location')
+                .populate('assignment.assignedTo', 'fullName firstName lastName role')
+                .populate('studyLock.lockedBy', 'fullName role')
+                // ❌ REMOVED - not needed in worklist table:
+                // .populate('organization', ...)           → use organizationIdentifier string
+                // .populate('patient', ...)               → use patientInfo embedded fields  
+                // .populate('attachments.documentId', ...) → load on detail view
+                // .populate('attachments.uploadedBy', ...) → load on detail view
+                // .populate('assignment.assignedBy', ...)  → load on detail view
+                // .populate('reportInfo.verificationInfo.verifiedBy', ...) → detail view
+                // .populate('currentReportStatus.lastReportedBy', ...) → detail view
+                // .populate('categoryTracking.created.uploadedBy', ...) → detail view
+                // .populate('categoryTracking.historyCreated.createdBy', ...) → detail view
+                // .populate('categoryTracking.assigned.assignedTo', ...) → detail view
+                // .populate('categoryTracking.assigned.assignedBy', ...) → detail view
+                // .populate('categoryTracking.final.finalizedBy', ...) → detail view
+                // .populate('categoryTracking.urgent.markedUrgentBy', ...) → detail view
+                .select([
+                    // ── CORE IDENTITY ──
+                    '_id', 'bharatPacsId', 'studyInstanceUID', 'orthancStudyID', 'accessionNumber',
+                    // ── ORG ──
+                    'organizationIdentifier', 'organization',
+                    // ── PATIENT ──
+                    'patientInfo', 'patientId', 'age', 'gender',
+                    // ── STUDY DETAILS ──
+                    'modality', 'modalitiesInStudy', 'studyDate', 'studyTime',
+                    'examDescription', 'seriesCount', 'instanceCount', 'seriesImages',
+                    // ── WORKFLOW ──
+                    'workflowStatus', 'currentCategory', 'priority', 'caseType',
+                    'ReportAvailable', 'reprintNeeded', 'hasStudyNotes', 'hasAttachments',
+                    // ── ASSIGNMENT ──
+                    'assignment',
+                    // ── LAB ──
+                    'sourceLab', 'labLocation',
+                    // ── LOCK ──
+                    'studyLock.isLocked', 'studyLock.lockedBy', 'studyLock.lockedByRole', 'studyLock.lockExpiry',
+                    // ── REPORT STATUS ──
+                    'currentReportStatus.hasReports', 'currentReportStatus.latestReportStatus',
+                    'currentReportStatus.latestReportType', 'currentReportStatus.reportCount',
+                    'currentReportStatus.lastReportedAt',
+                    // ── REVERT ──
+                    'revertInfo.isReverted', 'revertInfo.revertCount',
+                    // ── TAT ──
+                    'calculatedTAT.totalTATFormatted', 'calculatedTAT.isOverdue',
+                    'calculatedTAT.phase', 'calculatedTAT.totalTATMinutes',
+                    // ── TIMESTAMPS ──
+                    'createdAt', 'updatedAt', 'reportDate',
+                    // ── REFERRING ──
+                    'referringPhysicianName',
+                    // ── NOTES COUNT ──
+                    'notesCount'
+                ].join(' '))
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean()
+        ]);
 
-    
-            // Assignment references
-            .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
-            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
-            
-            // Report and verification references
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role')
-            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
-            
-            // Category tracking references
-            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
-            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
-            
-            // Lock references
-            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
-            
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies (page ${page}), Total: ${totalStudies}`);
+        console.log(`📊 ADMIN QUERY: Found ${studies.length} studies (page ${page}/${Math.ceil(totalStudies/limit)}), Total: ${totalStudies}`);
 
         return { studies, totalStudies, currentPage: page };
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
         throw error;
     }
+};
+
+// ✅ NEW: Full detail query - only called when user clicks a specific study
+// This can do all 14 populates because it's 1 document, not 50
+const executeStudyDetailQuery = async (studyId, orgIdentifier) => {
+    const query = mongoose.Types.ObjectId.isValid(studyId)
+        ? { _id: studyId, organizationIdentifier: orgIdentifier }
+        : { bharatPacsId: studyId, organizationIdentifier: orgIdentifier };
+
+    return DicomStudy.findOne(query)
+        // Full populate for detail view
+        .populate('organization', 'name identifier contactEmail contactPhone address')
+        .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
+        .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
+        .populate('attachments.documentId', 'fileName fileSize contentType uploadedAt')
+        .populate('attachments.uploadedBy', 'fullName email role')
+        .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
+        .populate('assignment.assignedBy', 'fullName firstName lastName email role')
+        .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role')
+        .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
+        .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
+        .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
+        .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
+        .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
+        .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
+        .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
+        .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
+        .lean();
 };
 
 // 🎯 GET DASHBOARD VALUES - Multi-tenant with assignment analytics
@@ -905,154 +1006,89 @@ export const getCategoryValues = async (req, res) => {
     try {
         const startTime = Date.now();
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
         const queryFilters = buildBaseQuery(req, user);
-        
-        console.log(`🔍 Category query filters:`, JSON.stringify(queryFilters, null, 2));
 
-        // Execute parallel queries for all categories
-        const [
-            allCount,
-            createdCount,
-            historyCreatedCount,
-            unassignedCount,
-            assignedCount,
-            pendingCount,
-            draftCount,
-            verificationPendingCount,
-            finalCount,
-            urgentCount,
-            reprintNeedCount,
-            revertedCount  // ✅ NEW: Add reverted count
-        ] = await Promise.all([
-            // ALL
-            DicomStudy.countDocuments(queryFilters),
-            
-            // CREATED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['new_study_received', 'metadata_extracted', 'no_active_study'] }
-            }),
-            
-            // HISTORY CREATED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['history_pending', 'history_created', 'history_verified'] }
-            }),
-            
-            // UNASSIGNED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] }
-            }),
-            
-            // ASSIGNED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['assigned_to_doctor', 'assignment_accepted'] }
-            }),
-            
-            // PENDING
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['doctor_opened_report', 'report_in_progress', 'pending_completion'] }
-            }),
-            
-            // DRAFT
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['report_drafted', 'draft_saved'] }
-            }),
-            
-            // VERIFICATION PENDING
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['verification_pending', 'verification_in_progress'] }
-            }),
-            
-            // FINAL - Remove revert_to_radiologist from here
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { 
-                    $in: [
-                        'report_finalized', 
-                        'final_approved', 
-                        'report_completed',
-                        'report_uploaded',
-                        'report_downloaded_radiologist',
-                        'report_downloaded',
-                        'final_report_downloaded',
-                        'report_verified',
-                        'report_rejected',
-                        'archived'
-                    ] 
+        // ✅ SINGLE aggregation instead of 12 countDocuments queries
+        // BEFORE: 12 parallel countDocuments = 12 MongoDB round trips
+        // AFTER:  1 aggregation = 1 MongoDB round trip
+        const pipeline = [
+            { $match: queryFilters },
+            {
+                $group: {
+                    _id: '$workflowStatus',
+                    count: { $sum: 1 },
+                    hasEmergency: {
+                        $sum: {
+                            $cond: [{ $eq: ['$studyPriority', 'Emergency Case'] }, 1, 0]
+                        }
+                    }
                 }
-            }),
-            
-            // URGENT - Based on studyPriority = 'Emergency Case'
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                studyPriority: 'Emergency Case'
-            }),
-            
-            // REPRINT NEED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['reprint_requested', 'correction_needed'] }
-            }),
-            
-            // ✅ NEW: REVERTED - Studies reverted back to radiologist
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: 'revert_to_radiologist'
-            })
+            }
+        ];
+
+        const [statusCounts, totalCount] = await Promise.all([
+            DicomStudy.aggregate(pipeline).allowDiskUse(false),
+            DicomStudy.countDocuments(queryFilters)
         ]);
 
-        const processingTime = Date.now() - startTime;
-        console.log(`🎯 Category values fetched in ${processingTime}ms`);
-        console.log(`🚨 URGENT (Emergency Case) count: ${urgentCount}`);
+        // ── Map workflow statuses to categories ──────────────────
+        const categoryMap = {
+            created:              ['new_study_received', 'metadata_extracted', 'no_active_study'],
+            history_created:      ['history_pending', 'history_created', 'history_verified'],
+            assigned:             ['assigned_to_doctor', 'assignment_accepted'],
+            pending:              ['doctor_opened_report', 'report_in_progress', 'pending_completion'],
+            draft:                ['report_drafted', 'draft_saved'],
+            verification_pending: ['verification_pending', 'verification_in_progress'],
+            final:                ['report_finalized', 'final_approved', 'report_completed',
+                                  'report_uploaded', 'report_downloaded_radiologist',
+                                  'report_downloaded', 'final_report_downloaded',
+                                  'report_verified', 'archived'],
+            reprint_need:         ['reprint_requested', 'correction_needed', 'report_reprint_needed'],
+            reverted:             ['revert_to_radiologist', 'report_rejected'],
+            unassigned:           ['pending_assignment', 'awaiting_radiologist'],
+        };
 
-        const response = {
+        // Build reverse lookup: status → category
+        const statusToCategory = {};
+        Object.entries(categoryMap).forEach(([cat, statuses]) => {
+            statuses.forEach(s => { statusToCategory[s] = cat; });
+        });
+
+        // Tally counts
+        const counts = {
+            all: totalCount,
+            created: 0, history_created: 0, unassigned: 0, assigned: 0,
+            pending: 0, draft: 0, verification_pending: 0, final: 0,
+            urgent: 0, reprint_need: 0, reverted: 0
+        };
+
+        statusCounts.forEach(({ _id: status, count, hasEmergency }) => {
+            const cat = statusToCategory[status];
+            if (cat && counts[cat] !== undefined) counts[cat] += count;
+            counts.urgent += hasEmergency;
+        });
+
+        const processingTime = Date.now() - startTime;
+        console.log(`🎯 Category values fetched in ${processingTime}ms (1 aggregation vs 12 queries)`);
+
+        res.status(200).json({
             success: true,
-            all: allCount,
-            created: createdCount,
-            history_created: historyCreatedCount,
-            unassigned: unassignedCount,
-            assigned: assignedCount,
-            pending: pendingCount,
-            draft: draftCount,
-            verification_pending: verificationPendingCount,
-            final: finalCount,
-            urgent: urgentCount,
-            reprint_need: reprintNeedCount,
-            reverted: revertedCount,  // ✅ NEW: Add reverted count
+            ...counts,
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
                 filtersApplied: Object.keys(queryFilters).length > 0
-            }
-        };
-
-        if (process.env.NODE_ENV === 'development') {
-            response.debug = {
-                filtersApplied: queryFilters,
-                userRole: user.role,
-                organization: user.organizationIdentifier
-            };
-        }
-
-        res.status(200).json(response);
+            },
+            ...(process.env.NODE_ENV === 'development' ? {
+                debug: { filtersApplied: queryFilters, userRole: user.role }
+            } : {})
+        });
 
     } catch (error) {
         console.error('❌ Error fetching category values:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching category statistics.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching category statistics.' });
     }
 };
 
@@ -1090,10 +1126,23 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
                 
             case 'unassigned':
-                // UNASSIGNED: Studies awaiting assignment
-                queryFilters.workflowStatus = { 
-                    $in: ['pending_assignment', 'awaiting_radiologist'] 
-                };
+                // UNASSIGNED: Studies awaiting assignment OR with no valid assignments
+                queryFilters.$or = [
+                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
+                    { assignment: { $exists: false } },
+                    { assignment: { $size: 0 } },
+                    { assignment: null },
+                    { 
+                        assignment: { 
+                            $not: { 
+                                $elemMatch: { 
+                                    assignedTo: { $exists: true, $ne: null }
+                                } 
+                            } 
+                        }
+                    }
+                ];
+                console.log(`📋 [UNASSIGNED] Filtering by workflow status OR empty/invalid assignments`);
                 break;
                 
             case 'assigned':
@@ -1136,7 +1185,6 @@ export const getStudiesByCategory = async (req, res) => {
                         'report_downloaded',
                         'final_report_downloaded',
                         'report_verified',
-                        'report_rejected',
                         'archived'
                     ] 
                 };
@@ -1151,14 +1199,19 @@ export const getStudiesByCategory = async (req, res) => {
             case 'reprint-need':
                 // REPRINT NEED: Studies needing reprint/correction
                 queryFilters.workflowStatus = { 
-                    $in: ['reprint_requested', 'correction_needed'] 
+                    $in: ['reprint_requested', 'correction_needed', 'report_reprint_needed'] 
                 };
                 break;
                 
             // ✅ NEW: REVERTED category
             case 'reverted':
                 // REVERTED: Studies reverted back to radiologist
-                queryFilters.workflowStatus = 'revert_to_radiologist';
+//                 queryFilters.workflowStatus = {'revert_to_radiologist',  'report_rejected',
+// };
+            queryFilters.workflowStatus = { 
+                    $in: ['revert_to_radiologist',  'report_rejected']
+
+                };
                 console.log(`🔄 [REVERTED] Filtering reverted studies`);
                 break;
             
@@ -1236,9 +1289,8 @@ export const getAllStudiesForAdmin = async (req, res) => {
                 'inprogress': [
                     'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
                     'report_finalized', 'report_drafted', 'report_uploaded', 
-                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
-                    'report_rejected'
-                ],
+                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified', 'report_rejected'],
+                
                 'completed': ['final_report_downloaded', 'archived']
             };
             workflowStatuses = statusMap[req.query.category];
@@ -1246,38 +1298,73 @@ export const getAllStudiesForAdmin = async (req, res) => {
 
         const queryFilters = buildBaseQuery(req, user, workflowStatuses);
 
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
-        const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
+        // ✅ PARALLEL: studies + count + category breakdown - all in ONE round trip
+        const categoryPipeline = [
+            { $match: queryFilters },
+            { $group: { _id: '$workflowStatus', count: { $sum: 1 } } }
+        ];
+
+        const skip = (page - 1) * limit;
+
+        const [totalStudies, studies, statusBreakdown] = await Promise.all([
+            DicomStudy.countDocuments(queryFilters),
+            DicomStudy.find(queryFilters)
+                .populate('sourceLab', 'name labName identifier location')
+                .populate('assignment.assignedTo', 'fullName firstName lastName role')
+                .populate('studyLock.lockedBy', 'fullName role')
+                .select([
+                    '_id', 'bharatPacsId', 'studyInstanceUID', 'orthancStudyID', 'accessionNumber',
+                    'organizationIdentifier', 'organization',
+                    'patientInfo', 'patientId', 'age', 'gender',
+                    'modality', 'modalitiesInStudy', 'studyDate', 'studyTime',
+                    'examDescription', 'seriesCount', 'instanceCount', 'seriesImages',
+                    'workflowStatus', 'currentCategory', 'priority', 'caseType',
+                    'ReportAvailable', 'reprintNeeded', 'hasStudyNotes', 'hasAttachments',
+                    'assignment', 'sourceLab', 'labLocation',
+                    'studyLock.isLocked', 'studyLock.lockedBy', 'studyLock.lockedByRole', 'studyLock.lockExpiry',
+                    'currentReportStatus.hasReports', 'currentReportStatus.latestReportStatus',
+                    'currentReportStatus.latestReportType', 'currentReportStatus.reportCount',
+                    'currentReportStatus.lastReportedAt',
+                    'revertInfo.isReverted', 'revertInfo.revertCount',
+                    'calculatedTAT.totalTATFormatted', 'calculatedTAT.isOverdue',
+                    'calculatedTAT.phase', 'calculatedTAT.totalTATMinutes',
+                    'createdAt', 'updatedAt', 'reportDate', 'referringPhysicianName', 'notesCount'
+                ].join(' '))
+                .sort({ createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+            // ✅ Only compute breakdown when there's a search/filter (not on plain list)
+            req.query.search ? DicomStudy.aggregate(categoryPipeline).allowDiskUse(false) : Promise.resolve(null)
+        ]);
 
         const processingTime = Date.now() - startTime;
-        console.log(`✅ [ALL STUDIES]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
+        console.log(`✅ [ALL STUDIES]: Page ${page} - ${studies.length} studies (Total: ${totalStudies}) in ${processingTime}ms`);
 
         return res.status(200).json({
             success: true,
             count: studies.length,
             totalRecords: totalStudies,
             data: studies,
+            // ✅ Include breakdown so frontend skips /category-values call
+            categoryBreakdown: statusBreakdown,
             pagination: {
-                currentPage: currentPage,
+                currentPage: page,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
-                hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                limit,
+                hasNextPage: page < Math.ceil(totalStudies / limit),
+                hasPrevPage: page > 1
             },
             metadata: {
                 category: req.query.category || 'all',
-                statusesIncluded: workflowStatuses || 'all',
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
                 userRole: user.role,
-                processingTime: processingTime,
-                appliedFilters: {
-                    modality: req.query.modality || 'all',
-                    labId: req.query.labId || 'all',
-                    priority: req.query.priority || 'all',
-                    search: req.query.search || null,
-                    dateType: req.query.dateType || 'createdAt'
-                }
+                processingTime,
+                searchStrategy: req.query.search ? 
+                    (/^[a-zA-Z0-9\-_.]+$/.test(req.query.search.trim()) && req.query.search.trim().length <= 30 
+                        ? 'prefix-index' : 'text-index') 
+                    : 'none'
             }
         });
 
@@ -1292,7 +1379,6 @@ export const getAllStudiesForAdmin = async (req, res) => {
 };
 
 
-// backend/controllers/admin.controller.js (or create new file if needed)
 
 // ✅ GET ALL LABS IN ORGANIZATION
 export const getOrganizationLabs = async (req, res) => {

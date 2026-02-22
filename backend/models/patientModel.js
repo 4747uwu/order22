@@ -29,7 +29,7 @@ const PatientSchema = new mongoose.Schema({
     globalPatientID: {
         type: String,
         unique: true,
-        index: true
+        // index: true
     },
     
     mrn: {

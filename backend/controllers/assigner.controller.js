@@ -1661,11 +1661,210 @@ export const getAssignmentAnalytics = async (req, res) => {
 //     }
 // };
 
+
+
+// ...existing code...
+
+// ✅ NEW: BULK MULTI-STUDY ASSIGN - assign multiple studies to ONE doctor at once
+export const bulkMultiStudyAssign = async (req, res) => {
+    const session = await mongoose.startSession();
+    try {
+        const result = await session.withTransaction(async (currentSession) => {
+            const { studyIds, assignedToId, assigneeRole = 'radiologist', priority, notes } = req.body;
+            const assignedBy = req.user._id;
+
+            if (!['assignor', 'admin', 'super_admin'].includes(req.user.role)) {
+                throw new Error('Only assignor or admin can bulk assign studies');
+            }
+            if (!studyIds || !Array.isArray(studyIds) || studyIds.length === 0) {
+                throw new Error('studyIds array is required');
+            }
+            if (!assignedToId) throw new Error('assignedToId is required');
+            if (!['radiologist', 'verifier'].includes(assigneeRole)) {
+                throw new Error('Can only assign to radiologist or verifier');
+            }
+
+            // Verify assignee
+            const assignee = await User.findOne({
+                _id: assignedToId,
+                organizationIdentifier: req.user.organizationIdentifier,
+                role: assigneeRole,
+                isActive: true
+            }).session(currentSession).read('primary');
+
+            if (!assignee) throw new Error(`${assigneeRole} not found or inactive`);
+
+            const currentTime = new Date();
+            const validatedPriority = validatePriority(priority || 'NORMAL');
+
+            // ✅ Fetch all studies in ONE query
+            const studies = await DicomStudy.find({
+                _id: { $in: studyIds },
+                organizationIdentifier: req.user.organizationIdentifier
+            }).session(currentSession).read('primary');
+
+            const results = { success: [], failed: [], skipped: [] };
+
+            // ✅ Process each study
+            for (const study of studies) {
+                try {
+                    // Skip locked studies
+                    if (study.studyLock?.isLocked) {
+                        results.skipped.push({
+                            studyId: study._id,
+                            bharatPacsId: study.bharatPacsId,
+                            reason: `Locked by ${study.studyLock.lockedByName}`
+                        });
+                        continue;
+                    }
+
+                    const validatedStudyPriority = validatePriority(study.priority);
+                    const newAssignment = {
+                        assignedTo: assignedToId,
+                        assignedBy: assignedBy,
+                        assignedAt: currentTime,
+                        role: assigneeRole,
+                        status: 'assigned',
+                        priority: validatedPriority,
+                        notes: notes || `Bulk assigned to ${assignee.fullName}`,
+                        dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000)
+                    };
+
+                    const categoryTrackingAssigned = {
+                        assignedAt: currentTime,
+                        assignedTo: assignedToId,
+                        assignedBy: assignedBy,
+                        acceptedAt: null,
+                        assignmentHistory: [
+                            ...(study.categoryTracking?.assigned?.assignmentHistory || []),
+                            { assignedTo: assignedToId, assignedAt: currentTime, reason: 'Bulk assignment' }
+                        ]
+                    };
+
+                    const actionLog = {
+                        actionType: 'study_assigned',
+                        actionCategory: 'assignment',
+                        performedBy: assignedBy,
+                        performedByName: req.user.fullName || req.user.email,
+                        performedByRole: req.user.role,
+                        performedAt: currentTime,
+                        targetUser: assignedToId,
+                        targetUserName: assignee.fullName || assignee.email,
+                        targetUserRole: assigneeRole,
+                        assignmentInfo: {
+                            assignmentType: 'bulk_multi_study',
+                            priority: validatedPriority
+                        },
+                        notes: notes || `Bulk assigned`,
+                        ipAddress: req.ip,
+                        userAgent: req.get('user-agent')
+                    };
+
+                    // ✅ Clear existing assignments + set new one atomically
+                    await DicomStudy.findByIdAndUpdate(
+                        study._id,
+                        {
+                            $set: {
+                                assignment: [newAssignment],
+                                lastAssignedDoctor: [{ doctorId: assignedToId, assignedAt: currentTime }],
+                                workflowStatus: 'assigned_to_doctor',
+                                currentCategory: 'ASSIGNED',
+                                priority: validatedStudyPriority,
+                                'categoryTracking.assigned': categoryTrackingAssigned
+                            },
+                            $push: {
+                                statusHistory: {
+                                    status: 'assigned_to_doctor',
+                                    changedAt: currentTime,
+                                    changedBy: assignedBy,
+                                    note: `Bulk assigned to ${assignee.fullName}`
+                                },
+                                actionLog
+                            }
+                        },
+                        { session: currentSession, runValidators: false }
+                    );
+
+                    results.success.push({
+                        studyId: study._id,
+                        bharatPacsId: study.bharatPacsId,
+                        patientName: study.patientInfo?.patientName
+                    });
+                } catch (err) {
+                    results.failed.push({
+                        studyId: study._id,
+                        bharatPacsId: study.bharatPacsId,
+                        reason: err.message
+                    });
+                }
+            }
+
+            // ✅ Update assignee activity stats once
+            if (results.success.length > 0) {
+                await User.findByIdAndUpdate(
+                    assignedToId,
+                    {
+                        $inc: { 'activityStats.casesAssigned': results.success.length },
+                        $set: { 'activityStats.lastActivityAt': currentTime }
+                    },
+                    { session: currentSession }
+                );
+                await User.findByIdAndUpdate(
+                    assignedBy,
+                    {
+                        $inc: { 'activityStats.casesAssigned': results.success.length },
+                        $set: { 'activityStats.lastActivityAt': currentTime }
+                    },
+                    { session: currentSession }
+                );
+            }
+
+            return {
+                assigneeName: assignee.fullName || assignee.email,
+                assigneeRole,
+                totalRequested: studyIds.length,
+                successCount: results.success.length,
+                failedCount: results.failed.length,
+                skippedCount: results.skipped.length,
+                results
+            };
+        });
+
+        res.json({
+            success: true,
+            message: `Bulk assigned ${result.successCount}/${result.totalRequested} studies to ${result.assigneeName}`,
+            data: result
+        });
+    } catch (error) {
+        console.error('❌ Bulk multi-study assign error:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to bulk assign studies'
+        });
+    } finally {
+        await session.endSession();
+    }
+};
+
+// ...existing code...
+// export default {
+//     getUnassignedStudies,
+//     getAvailableAssignees,
+//     assignStudy,
+//     bulkAssignStudies,
+//     bulkMultiStudyAssign,   // ✅ NEW
+//     getAssignedStudies,
+//     reassignStudy,
+//     getAssignmentAnalytics,
+//     updateStudyAssignments
+// };
+
 export default {
     getUnassignedStudies,
     getAvailableAssignees,
     assignStudy,
     bulkAssignStudies,
+    bulkMultiStudyAssign,
     getAssignedStudies,
     reassignStudy,
     getAssignmentAnalytics,

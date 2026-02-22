@@ -641,6 +641,152 @@ ReportSchema.index({
     }
 });
 
+// Replace the existing indexes block with these:
+
+// ── TIER 1: PRIMARY ORG QUERIES ───────────────────────────────
+// #1 - all reports in org by date (report management dashboard)
+ReportSchema.index(
+    { organizationIdentifier: 1, createdAt: -1 },
+    { name: 'idx_org_createdAt', background: true }
+);
+
+// #2 - org + status + date (filter by status on dashboard)
+ReportSchema.index(
+    { organizationIdentifier: 1, reportStatus: 1, createdAt: -1 },
+    { name: 'idx_org_status_createdAt', background: true }
+);
+
+// #3 - org + type + date (filter by report type)
+ReportSchema.index(
+    { organizationIdentifier: 1, reportType: 1, createdAt: -1 },
+    { name: 'idx_org_type_createdAt', background: true }
+);
+
+// #4 - org + status + type (combined filter)
+ReportSchema.index(
+    { organizationIdentifier: 1, reportStatus: 1, reportType: 1, createdAt: -1 },
+    { name: 'idx_org_status_type_createdAt', background: true }
+);
+
+// ── TIER 2: STUDY ↔ REPORT RELATIONSHIP ──────────────────────
+// #5 - get all reports for a study (most common join)
+ReportSchema.index(
+    { dicomStudy: 1, reportType: 1, reportStatus: 1 },
+    { name: 'idx_study_type_status', background: true }
+);
+
+// #6 - get report by studyInstanceUID (DICOM lookup)
+ReportSchema.index(
+    { studyInstanceUID: 1 },
+    { name: 'idx_studyInstanceUID', background: true }
+);
+
+// #7 - get report by reportId (unique report lookup)
+ReportSchema.index(
+    { reportId: 1 },
+    { name: 'idx_reportId_unique', unique: true, background: true }
+);
+
+// ── TIER 3: DOCTOR / RADIOLOGIST DASHBOARD ────────────────────
+// #8 - all reports by a doctor (radiologist worklist)
+ReportSchema.index(
+    { doctorId: 1, reportStatus: 1, createdAt: -1 },
+    { name: 'idx_doctor_status_createdAt', background: true }
+);
+
+// #9 - doctor + org (multi-org radiologist)
+ReportSchema.index(
+    { organizationIdentifier: 1, doctorId: 1, reportStatus: 1, createdAt: -1 },
+    { name: 'idx_org_doctor_status_createdAt', background: true }
+);
+
+// #10 - doctor + type (find drafts vs finalized)
+ReportSchema.index(
+    { doctorId: 1, reportType: 1, createdAt: -1 },
+    { name: 'idx_doctor_type_createdAt', background: true }
+);
+
+// ── TIER 4: VERIFIER DASHBOARD ────────────────────────────────
+// #11 - verifier workload (pending verification queue)
+ReportSchema.index(
+    { organizationIdentifier: 1, verifierId: 1, 'verificationInfo.verificationStatus': 1, createdAt: -1 },
+    { name: 'idx_org_verifier_verificationStatus_createdAt', background: true, sparse: true }
+);
+
+// #12 - verification status across org (admin monitoring)
+ReportSchema.index(
+    { organizationIdentifier: 1, 'verificationInfo.verificationStatus': 1, createdAt: -1 },
+    { name: 'idx_org_verificationStatus_createdAt', background: true }
+);
+
+// #13 - verification finalized date (TAT tracking)
+ReportSchema.index(
+    { organizationIdentifier: 1, 'workflowInfo.finalizedAt': -1, reportStatus: 1 },
+    { name: 'idx_org_finalizedAt_status', background: true, sparse: true }
+);
+
+// ── TIER 5: PATIENT REPORTS ───────────────────────────────────
+// #14 - all reports for a patient  
+ReportSchema.index(
+    { patient: 1, 'studyInfo.studyDate': -1, reportStatus: 1 },
+    { name: 'idx_patient_studyDate_status', background: true }
+);
+
+// #15 - org + patient (patient report history page)
+ReportSchema.index(
+    { organizationIdentifier: 1, patient: 1, createdAt: -1 },
+    { name: 'idx_org_patient_createdAt', background: true }
+);
+
+// ── TIER 6: DOWNLOAD / PRINT TRACKING ────────────────────────
+// #16 - last downloaded (find recently downloaded reports)
+ReportSchema.index(
+    { organizationIdentifier: 1, 'downloadInfo.lastDownloaded': -1, reportStatus: 1 },
+    { name: 'idx_org_lastDownloaded_status', background: true, sparse: true }
+);
+
+// #17 - download count analytics
+ReportSchema.index(
+    { organizationIdentifier: 1, 'downloadInfo.totalDownloads': -1 },
+    { name: 'idx_org_totalDownloads', background: true }
+);
+
+// ── TIER 7: ANALYTICS QUERIES ─────────────────────────────────
+// #18 - report creation time analytics (TAT)
+ReportSchema.index(
+    { organizationIdentifier: 1, 'workflowInfo.draftedAt': -1 },
+    { name: 'idx_org_draftedAt', background: true, sparse: true }
+);
+
+// #19 - accession number lookup
+ReportSchema.index(
+    { organizationIdentifier: 1, accessionNumber: 1 },
+    { name: 'idx_org_accessionNumber', background: true, sparse: true }
+);
+
+// ── TIER 8: TEXT SEARCH ───────────────────────────────────────
+// NOTE: 1 text index per collection max
+ReportSchema.index(
+    {
+        searchText: 'text',
+        'patientInfo.fullName': 'text',
+        'patientInfo.patientName': 'text',
+        'reportContent.plainTextContent': 'text',
+        accessionNumber: 'text'
+    },
+    {
+        name: 'idx_report_text_search',
+        background: true,
+        weights: {
+            searchText: 10,
+            'patientInfo.fullName': 9,
+            'patientInfo.patientName': 9,
+            accessionNumber: 7,
+            'reportContent.plainTextContent': 4
+        }
+    }
+);
+
 // ✅ PRE-SAVE MIDDLEWARE
 ReportSchema.pre('save', function(next) {
     // Generate report ID if not provided

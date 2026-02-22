@@ -8,6 +8,7 @@ const connectDB = async () => {
     try {
         console.log('🔗 Connecting to MongoDB replica set...');
         const MONGODB_URI ='mongodb+srv://pawrangerskyler_db_user:y7zV2rO5KRfPO5Hs@cluster0.ku1pxkx.mongodb.net/order2?retryWrites=true&w=majority&appName=Cluster0';
+        // const MONGODB_URI ='mongodb://localhost:27017/order22';
         
         const conn = await mongoose.connect(MONGODB_URI, {
             // 🎯 OPTIMIZED for 2vCPU, 16GB RAM droplet

@@ -192,6 +192,25 @@ export const loginUser = async (req, res) => {
     }
 };
 
+export const getMyColumns = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('visibleColumns');
+        
+        if (!user) {
+            return res.status(404).json({ success: false, message: 'User not found' });
+        }
+
+        return res.status(200).json({
+            success: true,
+            visibleColumns: user.visibleColumns || []
+        });
+    } catch (error) {
+        console.error('Get columns error:', error);
+        res.status(500).json({ success: false, message: 'Server error' });
+    }
+};
+// ...existing code...
+
 // Helper function to determine dashboard route based on role
 const getDashboardRouteForRole = (role) => {
     switch (role) {

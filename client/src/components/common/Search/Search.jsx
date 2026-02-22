@@ -29,6 +29,9 @@ const Search = ({
     const navigate = useNavigate();
     const { currentUser } = useAuth();
     
+    // ✅ normalize role to avoid case/format mismatches (GROUP_ID vs group_id)
+    const role = (currentUser?.role || '').toString().toLowerCase();
+
     // ✅ NEW: Settings modal state
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     
@@ -133,14 +136,14 @@ const Search = ({
     ];
 
     // Check if user is admin or assignor
-    const isAdmin = currentUser?.role === 'admin';
-    const isAssignor = currentUser?.role === 'assignor';
-    const isGreenTheme = theme === 'adminn';
+    const isAdmin = role === 'admin';
+    const isAssignor = role === 'assignor';
+    const isGreenTheme = theme === 'admin'; // ✅ fixed typo: was 'adminn'
 
     // Check user permissions for settings access
-    const canCreateDoctor = ['admin', 'group_id'].includes(currentUser?.role);
-    const canCreateLab = ['admin'].includes(currentUser?.role);
-    const canCreateUser = ['admin', 'group_id'].includes(currentUser?.role);
+    const canCreateDoctor = ['admin', 'group_id'].includes(role);
+    const canCreateLab = ['admin'].includes(role);
+    const canCreateUser = ['admin', 'group_id'].includes(role);
     const hasSettingsAccess = canCreateDoctor || canCreateLab || canCreateUser || isAdmin;
 
     const dateOptions = [
@@ -388,26 +391,33 @@ const Search = ({
     useEffect(() => {
         const fetchFilterOptions = async () => {
             try {
-                const response = await api.get('/api/filter-options');
-                if (response.data.success) {
-                    setRadiologistOptions(response.data.radiologists.map(r => ({
-                        value: r._id,
-                        label: r.name
-                    })));
-                    setLabOptions(response.data.labs.map(l => ({
-                        value: l._id,
-                        label: l.labName
-                    })));
+                // ✅ FIX: Use correct separate endpoints (matching filterOptions.controller.js routes)
+                const [radResponse, labResponse] = await Promise.all([
+                    api.get('/admin/filters/radiologists'),
+                    api.get('/admin/filters/labs')
+                ]);
+
+                if (radResponse.data.success) {
+                    // ✅ FIX: Controller already returns {value, label} — use data directly
+                    setRadiologistOptions(radResponse.data.data);
+                }
+
+                if (labResponse.data.success) {
+                    // ✅ FIX: Controller already returns {value, label} — use data directly
+                    setLabOptions(labResponse.data.data);
                 }
             } catch (error) {
                 console.error('Error fetching filter options:', error);
             }
         };
 
-        fetchFilterOptions();
-    }, []);
+        // ✅ Only fetch if user can access these filters
+        if (['super_admin', 'admin', 'assignor'].includes(role)) {
+            fetchFilterOptions();
+        }
+    }, [role]);
 
-    const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(currentUser?.role);
+    const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(role);
 
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>

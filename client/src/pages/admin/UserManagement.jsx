@@ -14,6 +14,7 @@ import {
     UserX, 
     Settings, 
     X, 
+    Building2,
     Check,
     Package,      // ✅ NEW: For compression icon
     Lock,         // ✅ NEW: For API key icon
@@ -81,7 +82,7 @@ const UserManagement = () => {
     ];
 
     useEffect(() => {
-        if (!currentUser || currentUser.role !== 'admin') {
+        if (!currentUser || !['admin', 'super_admin', 'group_id', 'assignor'].includes(currentUser.role)) {
             navigate('/');
             return;
         }
@@ -129,31 +130,26 @@ const UserManagement = () => {
 
     // ✅ OPEN EDIT MODAL
     const handleOpenEditModal = async (user) => {
-        setEditModal({ show: true, user, loading: true });
+        setEditModal({ show: true, user, loading: true }); // ✅ keep this one
         
         let requireVerification = false;
         
         try {
-            // ✅ Fetch verification setting based on user role
             if (user.role === 'radiologist' && user._id) {
-                // Fetch doctor profile to get the ID
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
                 const doctorProfile = doctors.find(doc => doc.userAccount?._id === user._id);
                 
                 if (doctorProfile) {
                     requireVerification = doctorProfile.requireReportVerification || false;
-                    console.log('📋 [Edit Modal] Doctor verification:', requireVerification);
                 }
             } else if (user.role === 'lab_staff' && user.lab) {
-                // Fetch lab to get the ID
                 const response = await api.get(`/admin/admin-crud/labs`);
                 const labs = response.data.data;
                 const labProfile = labs.find(lab => lab._id === user.lab);
                 
                 if (labProfile) {
                     requireVerification = labProfile.settings?.requireReportVerification || false;
-                    console.log('📋 [Edit Modal] Lab verification:', requireVerification);
                 }
             }
         } catch (error) {
@@ -169,7 +165,7 @@ const UserManagement = () => {
             requireReportVerification: requireVerification
         });
         
-        setEditModal({ show: true, user, loading: false });
+        setEditModal(prev => ({ ...prev, loading: false })); // ✅ only update loading
     };
 
     // ✅ CLOSE EDIT MODAL
@@ -187,40 +183,34 @@ const UserManagement = () => {
     // ✅ SAVE USER CHANGES
     const handleSaveUser = async () => {
         try {
-            setEditModal({ ...editModal, loading: true });
+            setEditModal(prev => ({ ...prev, loading: true }));
             
             const updateData = {
                 fullName: editForm.fullName,
                 visibleColumns: editForm.visibleColumns,
             };
 
-            // ✅ Handle password update if provided
             if (editForm.password && editForm.password.trim() !== '') {
                 updateData.password = editForm.password;
             }
 
-            // ✅ Handle verification toggle based on role
             if (editModal.user.role === 'radiologist') {
-                // Fetch doctor profile to get the ID
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
                 const doctorProfile = doctors.find(doc => doc.userAccount?._id === editModal.user._id);
                 
                 if (doctorProfile) {
-                    // Update doctor profile with verification setting
                     await api.put(`/admin/admin-crud/doctors/${doctorProfile._id}`, {
                         requireReportVerification: editForm.requireReportVerification
                     });
                 }
             } else if (editModal.user.role === 'lab_staff' && editModal.user.lab) {
-                // Update lab settings - FIX: Use correct endpoint and data structure
                 await api.put(`/admin/admin-crud/labs/${editModal.user.lab}`, {
                     'settings.requireReportVerification': editForm.requireReportVerification
                 });
             }
 
-            // Update user account (fullName, visibleColumns, password only)
-            // await api.put(`/admin/user-management/users/${editModal.user._id}`, updateData);
+            await api.put(`/admin/manage-users/${editModal.user._id}`, updateData);
 
             toast.success('User updated successfully!');
             handleCloseEditModal();
@@ -229,8 +219,7 @@ const UserManagement = () => {
         } catch (error) {
             console.error('Error updating user:', error);
             toast.error(error.response?.data?.message || 'Failed to update user');
-        } finally {
-            setEditModal({ ...editModal, loading: false });
+            setEditModal(prev => ({ ...prev, loading: false }));
         }
     };
 
@@ -442,6 +431,16 @@ const UserManagement = () => {
                         </div>
                         <div className="flex gap-3">
                             {/* ✅ NEW: Compression Toggle Button */}
+
+                             <button
+                           onClick={() => navigate('/admin/manage-labs')}
+                          className="px-4 py-2 bg-teal-600 text-white rounded-lg            hover:bg-teal-700 flex items-center gap-2"
+                       >
+                           <Building2 className="w-4 h-4" />
+                           Manage Labs
+                       </button>
+
+
                             <button
                                 onClick={handleOpenCompressionModal}
                                 className="px-4 py-2 bg-purple-500 text-white rounded-lg hover:bg-purple-600 flex items-center gap-2"

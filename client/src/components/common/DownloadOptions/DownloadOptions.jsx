@@ -1,30 +1,23 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Cloud, HardDrive, Loader2, FileArchive, X } from 'lucide-react';
+import { Download, HardDrive, Loader2, FileArchive, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../../services/api';
 
 const DownloadOptions = ({ study, isOpen, onClose, position }) => {
   const [downloadingFrom, setDownloadingFrom] = useState(null);
+  const [downloadProgress, setDownloadProgress] = useState({});
   const [seriesData, setSeriesData] = useState([]);
   const [loadingSeries, setLoadingSeries] = useState(false);
   const [showSeriesModal, setShowSeriesModal] = useState(false);
   const dropdownRef = useRef(null);
-  const seriesModalRef = useRef(null); // ✅ ADD THIS
+  const seriesModalRef = useRef(null);
 
   useEffect(() => {
     if (!isOpen) return;
-
     const handleClickOutside = (event) => {
-      // ✅ FIX: Don't close if clicking inside series modal
-      if (seriesModalRef.current && seriesModalRef.current.contains(event.target)) {
-        return;
-      }
-      
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        onClose();
-      }
+      if (seriesModalRef.current?.contains(event.target)) return;
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) onClose();
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
@@ -33,121 +26,97 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
     setLoadingSeries(true);
     try {
       const response = await api.get(`/download/study-series/${study._id}`);
-      
       if (response.data.success) {
-        console.log('✅ Series data received:', response.data.data.series);
         setSeriesData(response.data.data.series);
         setShowSeriesModal(true);
       } else {
         toast.error(response.data.message || 'Failed to load series');
       }
     } catch (error) {
-      console.error('❌ Error fetching series:', error);
       toast.error(error.response?.data?.message || 'Failed to load series data');
     } finally {
       setLoadingSeries(false);
     }
   };
 
-  const handleCloudflareDownload = async () => {
-    setDownloadingFrom('cloudflare');
+  // ✅ UNIFIED stream downloader using api instance
+  const streamDownload = async (url, filename, toastId, progressKey) => {
     try {
-      const response = await api.get(`/download/cloudflare-zip/${study._id}`);
-      
-      if (response.data.success) {
-        const zipUrl = response.data.data.zipUrl;
-        
-        const link = document.createElement('a');
-        link.href = zipUrl;
-        link.download = `${study.bharatPacsId || study._id}_study.zip`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        toast.success('Download started from Cloudflare R2');
-        onClose();
-      } else {
-        toast.error(response.data.message || 'ZIP not available');
-      }
-    } catch (error) {
-      console.error('❌ Cloudflare download error:', error);
-      toast.error(error.response?.data?.message || 'Failed to download from Cloudflare R2');
-    } finally {
-      setDownloadingFrom(null);
-    }
-  };
-
-  // ✅ UPDATED: Download anonymized via backend proxy
-  const handleAnonymizedDownload = async () => {
-    setDownloadingFrom('orthanc-anon');
-    const downloadToast = toast.loading('Creating anonymized study...');
-    
-    try {
-      const response = await api.get(`/download/anonymized/${study._id}`, {
-        responseType: 'blob' // ✅ Important: get as blob
+      const response = await api.get(url, {
+        responseType: 'blob',  // ✅ FIX: Use 'blob' not 'stream' in browser
+        onDownloadProgress: (progressEvent) => {
+          const total = progressEvent.total;
+          const current = progressEvent.loaded;
+          
+          if (total) {
+            const pct = Math.round((current / total) * 100);
+            setDownloadProgress(prev => ({ ...prev, [progressKey]: pct }));
+            toast.loading(`Downloading... ${pct}%`, { id: toastId });
+          } else {
+            const mb = (current / 1024 / 1024).toFixed(1);
+            toast.loading(`Downloading... ${mb} MB`, { id: toastId });
+          }
+        }
       });
-      
-      // Create download URL from blob
-      const blob = new Blob([response.data], { type: 'application/zip' });
-      const downloadUrl = window.URL.createObjectURL(blob);
-      
+
+      // ✅ FIX: response.data is already a Blob — don't try to listen for 'data' events
+      const blob = response.data;
+
+      // ✅ Trigger download
+      const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `${study.bharatPacsId || study._id}_anonymized.zip`;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      
-      // Cleanup
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      toast.success('Anonymized study downloaded!', { id: downloadToast });
-      onClose();
+      URL.revokeObjectURL(downloadUrl);
+
+      setDownloadProgress(prev => ({ ...prev, [progressKey]: 100 }));
+      toast.success('Download complete!', { id: toastId });
+
     } catch (error) {
       console.error('❌ Download error:', error);
-      toast.error('Failed to download', { id: downloadToast });
+      toast.error(`Download failed: ${error.message}`, { id: toastId });
+      throw error;
+    } finally {
+      setDownloadProgress(prev => { const n = { ...prev }; delete n[progressKey]; return n; });
+    }
+  };
+
+  const handleAnonymizedDownload = async () => {
+    setDownloadingFrom('anonymized');
+    const toastId = toast.loading('Creating anonymized study...');
+    try {
+      await streamDownload(
+        `/download/anonymized/${study._id}`,
+        `${study.bharatPacsId || study._id}_anonymized.zip`,
+        toastId,
+        'anonymized'
+      );
+      onClose();
+    } catch (e) {
+      console.error('Anonymized download failed:', e);
     } finally {
       setDownloadingFrom(null);
     }
   };
 
-  // ✅ FIX: Download series via backend proxy (use blob)
   const handleSeriesDownload = async (series, event) => {
-    event.stopPropagation(); // ✅ CRITICAL: Stop event bubbling
-    
-    setDownloadingFrom(`series-${series.ID}`);
-    const downloadToast = toast.loading(`Downloading ${series.MainDicomTags.SeriesDescription}...`);
-
+    event?.stopPropagation?.();
+    const key = `series-${series.ID}`;
+    setDownloadingFrom(key);
+    const toastId = toast.loading(`Starting series download...`);
+    const desc = series.MainDicomTags.SeriesDescription.replace(/[^a-zA-Z0-9]/g, '_');
     try {
-      // ✅ Use blob download (same as anonymized)
-      const response = await api.get(`/download/series/${study._id}/${series.ID}`, {
-        responseType: 'blob' // ✅ Important
-      });
-
-      // Create download from blob
-      const blob = new Blob([response.data], { type: 'application/zip' });
-      const downloadUrl = window.URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      const cleanDesc = series.MainDicomTags.SeriesDescription.replace(/[^a-zA-Z0-9]/g, '_');
-      link.download = `${study.bharatPacsId || study._id}_${cleanDesc}.zip`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      // Cleanup
-      window.URL.revokeObjectURL(downloadUrl);
-      
-      toast.success(`Series "${series.MainDicomTags.SeriesDescription}" downloaded!`, { id: downloadToast });
-      
-      // ✅ DON'T CLOSE MODAL - Let user download multiple series
-      // setShowSeriesModal(false);
-      // onClose();
-      
-    } catch (error) {
-      console.error('❌ Series download error:', error);
-      toast.error('Failed to download series', { id: downloadToast });
+      await streamDownload(
+        `/download/series/${study._id}/${series.ID}`,
+        `${study.bharatPacsId || study._id}_${desc}.zip`,
+        toastId,
+        key
+      );
+    } catch (e) {
+      console.error('Series download failed:', e);
     } finally {
       setDownloadingFrom(null);
     }
@@ -157,166 +126,134 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
 
   return (
     <>
-      {/* Download Options Dropdown */}
+      {/* ✅ DROPDOWN */}
       <div
         ref={dropdownRef}
-        className="fixed bg-white rounded-md shadow-2xl border border-gray-300 z-[10000]"
+        className="fixed bg-white rounded border border-gray-900 shadow-2xl z-[10000] overflow-hidden"
         style={{
           top: `${position?.top || 0}px`,
           left: `${position?.left || 0}px`,
-          minWidth: '280px'
+          minWidth: '220px'
         }}
       >
-        <div className="py-2">
-          <button
-            onClick={handleCloudflareDownload}
-            disabled={downloadingFrom === 'cloudflare'}
-            className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {downloadingFrom === 'cloudflare' ? (
-              <Loader2 className="w-4 h-4 mr-3 animate-spin text-blue-600" />
-            ) : (
-              <Cloud className="w-4 h-4 mr-3 text-blue-600" />
-            )}
-            <div className="flex-1 text-left">
-              <div className="font-medium">Cloudflare R2</div>
-              <div className="text-xs text-gray-500">Fast CDN download</div>
-            </div>
-          </button>
+        <button
+          onClick={handleAnonymizedDownload}
+          disabled={downloadingFrom === 'anonymized'}
+          className="w-full flex items-center px-3 py-2.5 text-[10px] font-bold text-gray-800 hover:bg-gray-100 disabled:opacity-50 uppercase transition-colors border-b border-gray-200"
+        >
+          {downloadingFrom === 'anonymized' ? (
+            <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+          ) : (
+            <HardDrive className="w-3.5 h-3.5 mr-2" />
+          )}
+          <div className="flex-1 text-left">
+            <div>Anonymized Zip</div>
+            <div className="text-[8px] text-gray-500">Remove patient data</div>
+          </div>
+        </button>
 
-          <button
-            onClick={handleAnonymizedDownload}
-            disabled={downloadingFrom === 'orthanc-anon'}
-            className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-green-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {downloadingFrom === 'orthanc-anon' ? (
-              <Loader2 className="w-4 h-4 mr-3 animate-spin text-green-600" />
-            ) : (
-              <HardDrive className="w-4 h-4 mr-3 text-green-600" />
-            )}
-            <div className="flex-1 text-left">
-              <div className="font-medium">Anonymized (Orthanc)</div>
-              <div className="text-xs text-gray-500">Remove patient data</div>
-            </div>
-          </button>
-
-          <button
-            onClick={handleShowSeriesSelection}
-            disabled={loadingSeries}
-            className="flex items-center w-full px-4 py-3 text-sm text-gray-700 hover:bg-purple-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors border-t border-gray-200"
-          >
-            {loadingSeries ? (
-              <Loader2 className="w-4 h-4 mr-3 animate-spin text-purple-600" />
-            ) : (
-              <FileArchive className="w-4 h-4 mr-3 text-purple-600" />
-            )}
-            <div className="flex-1 text-left">
-              <div className="font-medium">Series-wise Download</div>
-              <div className="text-xs text-gray-500">Choose specific series</div>
-            </div>
-          </button>
-        </div>
+        <button
+          onClick={handleShowSeriesSelection}
+          disabled={loadingSeries}
+          className="w-full flex items-center px-3 py-2.5 text-[10px] font-bold text-gray-800 hover:bg-gray-100 disabled:opacity-50 uppercase transition-colors"
+        >
+          {loadingSeries ? (
+            <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+          ) : (
+            <FileArchive className="w-3.5 h-3.5 mr-2" />
+          )}
+          <div className="flex-1 text-left">
+            <div>Series-wise Zip</div>
+            <div className="text-[8px] text-gray-500">Choose specific series</div>
+          </div>
+        </button>
       </div>
 
-      {/* Series Selection Modal */}
+      {/* ✅ SERIES MODAL */}
       {showSeriesModal && (
         <div 
-          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10001]"
-          onClick={(e) => {
-            // ✅ Only close if clicking the backdrop (not modal content)
-            if (e.target === e.currentTarget) {
-              setShowSeriesModal(false);
-              onClose();
-            }
-          }}
+          className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[10001] p-2"
+          onClick={(e) => e.target === e.currentTarget && (setShowSeriesModal(false), onClose())}
         >
           <div 
-            ref={seriesModalRef} // ✅ ADD REF
-            className="bg-white rounded-lg shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden"
-            onClick={(e) => e.stopPropagation()} // ✅ PREVENT BACKDROP CLOSE
+            ref={seriesModalRef}
+            className="bg-white rounded shadow-2xl w-full max-w-xl max-h-[90vh] overflow-hidden flex flex-col border border-gray-900"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="px-6 py-4 border-b bg-purple-600 text-white flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold">Select Series to Download</h2>
-                <p className="text-sm text-purple-100 mt-1">
-                  {study.patientName} - {study.bharatPacsId || study._id}
+            {/* Header */}
+            <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
+              <div className="flex-1 pr-2 min-w-0">
+                <h2 className="text-xs font-bold uppercase truncate">Select Series</h2>
+                <p className="text-[9px] text-gray-300 mt-0.5 uppercase truncate">
+                  {study.patientName} | {study.bharatPacsId || study._id}
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setShowSeriesModal(false);
-                  onClose();
-                }}
-                className="p-1 hover:bg-purple-700 rounded"
+                onClick={() => { setShowSeriesModal(false); onClose(); }}
+                className="p-1 hover:bg-gray-700 rounded flex-shrink-0"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="p-4 overflow-y-auto max-h-[60vh]">
+            {/* List */}
+            <div className="flex-1 overflow-y-auto p-2 bg-gray-50">
               {seriesData.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <FileArchive className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p>No series found</p>
+                <div className="text-center py-6 text-gray-400">
+                  <FileArchive className="w-6 h-6 mx-auto mb-1 opacity-50" />
+                  <p className="text-[10px] font-bold uppercase">No series found</p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {seriesData.map((series, index) => (
-                    <button
-                      key={series.ID}
-                      onClick={(e) => handleSeriesDownload(series, e)} // ✅ PASS EVENT
-                      disabled={downloadingFrom === `series-${series.ID}`}
-                      className="w-full flex items-center justify-between p-4 border rounded-lg hover:bg-purple-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <div className="flex items-center gap-4 flex-1 text-left">
-                        <div className="flex items-center justify-center w-10 h-10 rounded-full bg-purple-100 text-purple-600 font-bold">
-                          {index + 1}
-                        </div>
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">
-                            {series.MainDicomTags?.SeriesDescription || 'Unnamed Series'}
+                <div className="space-y-1.5">
+                  {seriesData.map((series, index) => {
+                    const key = `series-${series.ID}`;
+                    const pct = downloadProgress[key];
+                    return (
+                      <button
+                        key={series.ID}
+                        onClick={(e) => handleSeriesDownload(series, e)}
+                        disabled={!!downloadingFrom}
+                        className="w-full flex items-center justify-between p-2 bg-white border border-gray-200 rounded hover:border-gray-400 disabled:opacity-50"
+                      >
+                        <div className="flex items-center gap-2.5 flex-1 min-w-0 text-left">
+                          <div className="flex items-center justify-center w-6 h-6 rounded bg-gray-100 text-[10px] font-bold">
+                            {index + 1}
                           </div>
-                          <div className="text-sm text-gray-600">
-                            Modality: {series.MainDicomTags?.Modality || 'Unknown'} • 
-                            Series #{series.MainDicomTags?.SeriesNumber || '0'} • 
-                            {series.InstanceCount || 0} images
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[10px] font-bold text-gray-900 uppercase truncate">
+                              {series.MainDicomTags?.SeriesDescription || 'UNNAMED'}
+                            </div>
+                            <div className="text-[8px] text-gray-500 uppercase">
+                              {series.MainDicomTags?.Modality} • {series.InstanceCount} images
+                            </div>
+                            {pct !== undefined && (
+                              <div className="mt-1 w-full bg-gray-200 rounded h-1">
+                                <div className="bg-gray-900 h-1 rounded" style={{ width: `${pct}%` }} />
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
-                      {downloadingFrom === `series-${series.ID}` ? (
-                        <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                      ) : (
-                        <Download className="w-5 h-5 text-purple-600" />
-                      )}
-                    </button>
-                  ))}
+                        <div className="ml-2 flex-shrink-0">
+                          {downloadingFrom === key ? (
+                            <span className="text-[9px] font-bold">{pct ?? 0}%</span>
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
-            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+            {/* Footer */}
+            <div className="px-3 py-2 border-t bg-white flex justify-end gap-2">
               <button
-                onClick={() => {
-                  setShowSeriesModal(false);
-                  onClose();
-                }}
-                className="px-6 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                onClick={() => { setShowSeriesModal(false); onClose(); }}
+                className="px-4 py-1 text-[10px] font-bold bg-gray-100 text-gray-700 rounded"
               >
-                Close
-              </button>
-              
-              {/* ✅ OPTIONAL: Download All Button */}
-              <button
-                onClick={async () => {
-                  for (const series of seriesData) {
-                    await handleSeriesDownload(series, { stopPropagation: () => {} });
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Delay between downloads
-                  }
-                }}
-                disabled={downloadingFrom}
-                className="px-6 py-2 text-sm bg-purple-600 text-white rounded hover:bg-purple-700 disabled:opacity-50"
-              >
-                Download All ({seriesData.length})
+                CLOSE
               </button>
             </div>
           </div>

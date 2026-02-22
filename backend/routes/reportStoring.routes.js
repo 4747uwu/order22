@@ -1,7 +1,6 @@
 import express from 'express';
 import reportStoringController from '../controllers/ReportStoring.controller.js';
 import ReportDownloadController from '../controllers/ReportDownload.controller.js';
-
 import { protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -9,25 +8,31 @@ const router = express.Router();
 // ✅ REPORT STORAGE ROUTES
 router.post('/studies/:studyId/store-draft', protect, reportStoringController.storeDraftReport);
 router.post('/studies/:studyId/store-finalized', protect, reportStoringController.storeFinalizedReport);
-// Add this route (assuming you have a reports router)
 router.get('/studies/:studyId/edit-report', protect, reportStoringController.getReportForEditing);
 
 // ✅ REPORT RETRIEVAL ROUTES
 router.get('/studies/:studyId/reports', protect, reportStoringController.getStudyReports);
 router.get('/reports/:reportId/download', protect, reportStoringController.downloadReport);
+//multi report storing
+router.post('/studies/:studyId/store-multiple', protect, reportStoringController.storeMultipleReports);
 
-//print routes
-router.get('/:reportId/print', ReportDownloadController.printReportAsPDF);
+
+router.get('/studies/:studyId/all-reports', protect, reportStoringController.getStudyReports);
+
+router.get('/studies/:studyId/all-reports', protect, reportStoringController.getAllReportsWithContent);
 
 
-//Report download Routes 
 
-// Add to your reports routes file
-
-// Download routes
+// ✅ DOWNLOAD ROUTES
 router.use(protect);
-router.get('/reports/:reportId/download/pdf', ReportDownloadController.downloadReportAsPDF);
+router.get('/reports/:reportId/download/pdf',  ReportDownloadController.downloadReportAsPDF);
 router.get('/reports/:reportId/download/docx', ReportDownloadController.downloadReportAsDOCX);
-router.post('/:reportId/track-print',  ReportDownloadController.trackPrintClick);
+
+// ✅ FIX: was '/:reportId/print' → must be '/reports/:reportId/print'
+// Frontend calls: /api/reports/reports/:reportId/print
+router.get('/reports/:reportId/print', ReportDownloadController.printReportAsPDF);
+
+// ✅ TRACK PRINT
+router.post('/reports/:reportId/track-print', ReportDownloadController.trackPrintClick);
 
 export default router;

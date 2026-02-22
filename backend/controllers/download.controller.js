@@ -60,167 +60,104 @@ export const getCloudflareZipUrl = async (req, res) => {
     }
 };
 
-// ✅ NEW: Proxy anonymized study download (stream through backend)
+// ✅ CHUNKED STREAM: Anonymized study — no buffering, direct pipe
 export const downloadAnonymizedStudy = async (req, res) => {
     try {
         const { studyId } = req.params;
         const user = req.user;
-
-        console.log(`📥 Anonymized download request - Study: ${studyId}, User Org: ${user?.organizationIdentifier}`);
 
         const study = await DicomStudy.findOne({
             _id: studyId,
             organizationIdentifier: user.organizationIdentifier
         }).select('orthancStudyID bharatPacsId');
 
-        console.log(`🔍 Study lookup result:`, study);
-
-        if (!study) {
-            console.warn(`⚠️ Study not found: ${studyId} for org ${user.organizationIdentifier}`);
-            return res.status(404).json({
-                success: false,
-                message: 'Study not found or access denied',
-                debug: { studyId, userOrg: user.organizationIdentifier }
-            });
+        if (!study?.orthancStudyID) {
+            return res.status(404).json({ success: false, message: 'Study not found' });
         }
 
-        if (!study.orthancStudyID) {
-            console.warn(`⚠️ Study found but orthancStudyID missing: ${studyId}`);
-            return res.status(404).json({
-                success: false,
-                message: 'Study not associated with Orthanc',
-                debug: { studyId, orthancStudyID: study.orthancStudyID }
-            });
-        }
-
-        console.log(`🔐 Creating and downloading anonymized study for: ${study.orthancStudyID}`);
-
-        // Create anonymization job
+        // Step 1: Create anonymization job
         const anonymizeResponse = await axios.post(
             `${ORTHANC_BASE_URL}/studies/${study.orthancStudyID}/anonymize`,
             {
-                Replace: {
-                    PatientName: 'ANONYMIZED',
-                    PatientID: study.bharatPacsId || 'ANON_PATIENT'
-                },
+                Replace: { PatientName: 'ANONYMIZED', PatientID: study.bharatPacsId || 'ANON' },
                 Keep: ['StudyDescription', 'Modality'],
                 KeepPrivateTags: false,
                 Force: true,
                 Synchronous: false
             },
-            {
-                headers: { 
-                    'Authorization': orthancAuth,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 60000
-            }
+            { headers: { 'Authorization': orthancAuth, 'Content-Type': 'application/json' }, timeout: 60000 }
         );
 
         const jobId = anonymizeResponse.data.ID;
-        console.log(`🔄 Anonymization job created: ${jobId}`);
 
-        // Wait for job completion
+        // Step 2: Poll job
         let anonymizedStudyId = null;
-        let attempts = 0;
-        const maxAttempts = 120;
-
-        while (attempts < maxAttempts) {
-            const jobStatus = await axios.get(
-                `${ORTHANC_BASE_URL}/jobs/${jobId}`,
-                { headers: { 'Authorization': orthancAuth } }
-            );
-
-            if (jobStatus.data.State === 'Success') {
-                anonymizedStudyId = jobStatus.data.Content?.ID;
-                console.log(`✅ Anonymization completed: ${anonymizedStudyId}`);
-                break;
-            } else if (jobStatus.data.State === 'Failure') {
-                throw new Error(`Anonymization failed: ${jobStatus.data.ErrorDetails || 'Unknown'}`);
-            }
-
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            attempts++;
+        for (let i = 0; i < 120; i++) {
+            const job = await axios.get(`${ORTHANC_BASE_URL}/jobs/${jobId}`, {
+                headers: { 'Authorization': orthancAuth }
+            });
+            if (job.data.State === 'Success') { anonymizedStudyId = job.data.Content?.ID; break; }
+            if (job.data.State === 'Failure') throw new Error(`Anonymization failed: ${job.data.ErrorDetails}`);
+            await new Promise(r => setTimeout(r, 1000));
         }
 
-        if (!anonymizedStudyId) {
-            throw new Error('Anonymization timeout after 2 minutes');
-        }
+        if (!anonymizedStudyId) throw new Error('Anonymization timeout');
 
-        // ✅ FIX: Get the archive as a stream with proper headers
+        // Step 3: ✅ STREAM DIRECTLY — no buffering
         const archiveResponse = await axios.get(
             `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}/archive`,
             {
                 headers: { 'Authorization': orthancAuth },
-                responseType: 'stream',
-                timeout: 300000 // 5 minutes
+                responseType: 'stream',   // ✅ key: stream not arraybuffer
+                timeout: 0                // ✅ no timeout for large files
             }
         );
 
         const filename = `${study.bharatPacsId || study._id}_anonymized.zip`;
 
-        // ✅ FIX: Set CORS and download headers BEFORE streaming
-        res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-        res.setHeader('Access-Control-Allow-Credentials', 'true');
-        res.setHeader('Access-Control-Expose-Headers', 'Content-Disposition, Content-Length');
+        // ✅ Set headers BEFORE piping
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        
-        // ✅ FIX: Set Content-Length if available
+        res.setHeader('Transfer-Encoding', 'chunked');      // ✅ tell browser it's chunked
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        // ✅ Content-Length if available — lets browser show progress
         if (archiveResponse.headers['content-length']) {
             res.setHeader('Content-Length', archiveResponse.headers['content-length']);
         }
 
-        // ✅ FIX: Handle stream errors
-        archiveResponse.data.on('error', (streamError) => {
-            console.error('❌ Stream error:', streamError);
-            if (!res.headersSent) {
-                res.status(500).json({
-                    success: false,
-                    message: 'Stream error during download'
-                });
-            }
-        });
-
-        // ✅ FIX: Pipe the stream to response
+        // ✅ Pipe chunks directly — Orthanc → backend → frontend
         archiveResponse.data.pipe(res);
 
-        // ✅ FIX: Cleanup ONLY after stream ends successfully
+        // ✅ Cleanup AFTER stream ends
         archiveResponse.data.on('end', async () => {
-            console.log('✅ Stream completed successfully');
+            console.log(`✅ Stream complete for ${study.bharatPacsId}`);
             try {
                 await axios.delete(
                     `${ORTHANC_BASE_URL}/studies/${anonymizedStudyId}`,
                     { headers: { 'Authorization': orthancAuth } }
                 );
-                console.log(`🗑️ Cleaned up anonymized study: ${anonymizedStudyId}`);
-            } catch (cleanupError) {
-                console.warn('⚠️ Cleanup failed:', cleanupError.message);
-            }
+            } catch (e) { console.warn('Cleanup failed:', e.message); }
         });
 
-        // ✅ FIX: Handle response close/abort
-        res.on('close', () => {
-            if (!res.writableEnded) {
-                console.warn('⚠️ Client closed connection before stream completed');
-            }
+        archiveResponse.data.on('error', (err) => {
+            console.error('❌ Stream error:', err.message);
+            if (!res.headersSent) res.status(500).end();
+        });
+
+        req.on('close', () => {
+            console.warn('⚠️ Client disconnected — destroying stream');
+            archiveResponse.data.destroy(); // ✅ stop streaming if client leaves
         });
 
     } catch (error) {
-        console.error('❌ Error downloading anonymized study:', error);
-        
-        // ✅ FIX: Only send JSON error if headers not sent
+        console.error('❌ Error:', error.message);
         if (!res.headersSent) {
-            res.status(500).json({
-                success: false,
-                message: 'Failed to download anonymized study',
-                error: process.env.NODE_ENV === 'development' ? error.message : undefined
-            });
+            res.status(500).json({ success: false, message: error.message });
         }
     }
 };
 
-// ✅ NEW: Proxy series download (stream through backend)
+// ✅ CHUNKED STREAM: Series download
 export const downloadSeries = async (req, res) => {
     try {
         const { studyId, seriesId } = req.params;
@@ -229,49 +166,37 @@ export const downloadSeries = async (req, res) => {
         const study = await DicomStudy.findOne({
             _id: studyId,
             organizationIdentifier: user.organizationIdentifier
-        }).select('bharatPacsId patientInfo');
+        }).select('bharatPacsId');
 
-        if (!study) {
-            return res.status(404).json({
-                success: false,
-                message: 'Study not found'
-            });
-        }
+        if (!study) return res.status(404).json({ success: false, message: 'Study not found' });
 
-        console.log(`📥 Downloading series ${seriesId} for study ${studyId}`);
+        const seriesMeta = await axios.get(`${ORTHANC_BASE_URL}/series/${seriesId}`, {
+            headers: { 'Authorization': orthancAuth }, timeout: 10000
+        });
 
-        // Get series metadata for filename
-        const seriesMetadata = await axios.get(
-            `${ORTHANC_BASE_URL}/series/${seriesId}`,
-            { headers: { 'Authorization': orthancAuth } }
-        );
+        const desc = (seriesMeta.data.MainDicomTags?.SeriesDescription || 'Series').replace(/[^a-zA-Z0-9]/g, '_');
+        const filename = `${study.bharatPacsId || study._id}_${desc}.zip`;
 
-        const description = seriesMetadata.data.MainDicomTags?.SeriesDescription || 'Series';
-        const cleanDesc = description.replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = `${study.bharatPacsId || study._id}_${cleanDesc}.zip`;
-
-        // Stream series archive
+        // ✅ STREAM directly
         const archiveResponse = await axios.get(
             `${ORTHANC_BASE_URL}/series/${seriesId}/archive`,
-            {
-                headers: { 'Authorization': orthancAuth },
-                responseType: 'stream',
-                timeout: 300000
-            }
+            { headers: { 'Authorization': orthancAuth }, responseType: 'stream', timeout: 0 }
         );
 
         res.setHeader('Content-Type', 'application/zip');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+        res.setHeader('Transfer-Encoding', 'chunked');
+        if (archiveResponse.headers['content-length']) {
+            res.setHeader('Content-Length', archiveResponse.headers['content-length']);
+        }
 
         archiveResponse.data.pipe(res);
 
+        req.on('close', () => archiveResponse.data.destroy());
+
     } catch (error) {
-        console.error('❌ Error downloading series:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to download series',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        console.error('❌ Series stream error:', error.message);
+        if (!res.headersSent) res.status(500).json({ success: false, message: 'Failed to stream series' });
     }
 };
 

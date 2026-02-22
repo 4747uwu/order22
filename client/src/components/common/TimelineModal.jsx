@@ -3,152 +3,169 @@ import {
   X, Upload, FileText, UserCheck, Lock, 
   CheckCircle, Clock, FileCheck, Printer, 
   AlertCircle, RefreshCw, FileWarning, Calendar,
-  User, MessageSquare, Download, Hash
+  User, MessageSquare, Download, Hash, History,
+  RotateCcw, RotateCw
 } from 'lucide-react';
 import api from '../../services/api';
 
+// ✅ FIXED ORDERED STRUCTURE — always in this order, only show if data exists
+const TIMELINE_STRUCTURE = [
+  {
+    key: 'study_received',
+    label: 'Study Received',
+    matchStatuses: ['new_study_received', 'study_uploaded', 'study_received', 'metadata_extracted'],
+    icon: Upload,
+    colors: {
+      bg: 'bg-blue-50', text: 'text-blue-700',
+      dot: 'bg-blue-500', border: 'border-blue-300', icon: 'text-blue-600'
+    }
+  },
+  {
+    key: 'history_created',
+    label: 'History Created',
+    matchStatuses: ['history_created', 'history_pending', 'history_verified', 'clinical_notes_added'],
+    icon: History,
+    colors: {
+      bg: 'bg-teal-50', text: 'text-teal-700',
+      dot: 'bg-teal-500', border: 'border-teal-300', icon: 'text-teal-600'
+    }
+  },
+  {
+    key: 'study_assigned',
+    label: 'Study Assigned',
+    matchStatuses: ['assigned_to_doctor', 'study_assigned', 'study_reassigned', 'assignment_accepted', 'pending_assignment'],
+    icon: UserCheck,
+    colors: {
+      bg: 'bg-emerald-50', text: 'text-emerald-700',
+      dot: 'bg-emerald-500', border: 'border-emerald-300', icon: 'text-emerald-600'
+    }
+  },
+  {
+    key: 'report_drafted',
+    label: 'Report Drafted',
+    matchStatuses: ['report_drafted', 'draft_saved', 'report_in_progress', 'doctor_opened_report', 'report_started'],
+    icon: FileText,
+    colors: {
+      bg: 'bg-amber-50', text: 'text-amber-700',
+      dot: 'bg-amber-500', border: 'border-amber-300', icon: 'text-amber-600'
+    }
+  },
+  {
+    key: 'report_finalized',
+    label: 'Report Finalized',
+    matchStatuses: ['report_finalized', 'final_approved', 'report_completed', 'report_uploaded'],
+    icon: FileCheck,
+    colors: {
+      bg: 'bg-violet-50', text: 'text-violet-700',
+      dot: 'bg-violet-500', border: 'border-violet-300', icon: 'text-violet-600'
+    }
+  },
+  {
+    key: 'verification_pending',
+    label: 'Verification Pending',
+    matchStatuses: ['verification_pending', 'verification_in_progress', 'sent_for_verification'],
+    icon: Clock,
+    colors: {
+      bg: 'bg-orange-50', text: 'text-orange-700',
+      dot: 'bg-orange-500', border: 'border-orange-300', icon: 'text-orange-600'
+    }
+  },
+  {
+    key: 'report_verified',
+    label: 'Report Verified',
+    matchStatuses: ['report_verified', 'verification_completed'],
+    icon: CheckCircle,
+    colors: {
+      bg: 'bg-indigo-50', text: 'text-indigo-700',
+      dot: 'bg-indigo-500', border: 'border-indigo-300', icon: 'text-indigo-600'
+    }
+  },
+  {
+    key: 'report_downloaded',
+    label: 'Report Downloaded',
+    matchStatuses: ['report_downloaded', 'final_report_downloaded', 'report_downloaded_radiologist'],
+    icon: Download,
+    colors: {
+      bg: 'bg-cyan-50', text: 'text-cyan-700',
+      dot: 'bg-cyan-500', border: 'border-cyan-300', icon: 'text-cyan-600'
+    }
+  },
+  {
+    key: 'report_reverted',
+    label: 'Report Reverted',
+    matchStatuses: ['report_reverted', 'revert_to_radiologist', 'report_rejected'],
+    icon: RotateCcw,
+    colors: {
+      bg: 'bg-rose-50', text: 'text-rose-700',
+      dot: 'bg-rose-500', border: 'border-rose-300', icon: 'text-rose-600'
+    }
+  },
+  {
+    key: 'report_reprint',
+    label: 'Report Reprint',
+    matchStatuses: ['report_printed', 'report_reprinted', 'reprint_requested', 'report_reprint_needed'],
+    icon: Printer,
+    colors: {
+      bg: 'bg-purple-50', text: 'text-purple-700',
+      dot: 'bg-purple-500', border: 'border-purple-300', icon: 'text-purple-600'
+    }
+  },
+];
+
 const formatDate = (iso) => {
-  if (!iso) return '-';
+  if (!iso) return { date: '-', time: '-' };
   try {
     const d = new Date(iso);
-    const date = d.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric', 
-      year: 'numeric' 
-    });
-    const time = d.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: true 
-    });
-    return { date, time };
+    return {
+      date: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      time: d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+    };
   } catch {
     return { date: '-', time: '-' };
   }
 };
 
-const getStatusIcon = (status) => {
-  const iconProps = { className: "w-4 h-4", strokeWidth: 2 };
-  
-  if (!status) return <Clock {...iconProps} />;
-  
-  // Status-based icons
-  if (status === 'new_study_received' || status === 'study_uploaded') 
-    return <Upload {...iconProps} />;
-  if (status === 'assigned_to_doctor' || status === 'study_assigned' || status === 'study_reassigned' || status === 'assignments_cleared') 
-    return <UserCheck {...iconProps} />;
-  if (status === 'study_locked' || status === 'study_locked_for_reporting') 
-    return <Lock {...iconProps} />;
-  if (status === 'report_finalized' || status === 'verification_pending') 
-    return <FileText {...iconProps} />;
-  if (status === 'report_verified') 
-    return <CheckCircle {...iconProps} />;
-  if (status === 'final_report_downloaded' || status === 'report_downloaded') 
-    return <Download {...iconProps} />;
-  if (status === 'report_printed' || status === 'report_reprinted') 
-    return <Printer {...iconProps} />;
-  
-  return <Clock {...iconProps} />;
-};
+// ✅ CORE: Match API data to structure, pick LATEST entry per slot
+const buildOrderedTimeline = (apiTimeline = []) => {
+  const result = [];
 
-const getStatusColor = (status) => {
-  if (!status) return { 
-    bg: 'bg-slate-50', 
-    text: 'text-slate-700', 
-    dot: 'bg-slate-400',
-    border: 'border-slate-300',
-    icon: 'text-slate-500'
-  };
-  
-  // Status-based colors
-  if (status === 'new_study_received' || status === 'study_uploaded') 
-    return { 
-      bg: 'bg-blue-50', 
-      text: 'text-blue-700', 
-      dot: 'bg-blue-500',
-      border: 'border-blue-300',
-      icon: 'text-blue-600'
-    };
-  if (status === 'assigned_to_doctor' || status === 'study_assigned' || status === 'study_reassigned' || status === 'assignments_cleared') 
-    return { 
-      bg: 'bg-emerald-50', 
-      text: 'text-emerald-700', 
-      dot: 'bg-emerald-500',
-      border: 'border-emerald-300',
-      icon: 'text-emerald-600'
-    };
-  if (status === 'study_locked' || status === 'study_locked_for_reporting') 
-    return { 
-      bg: 'bg-amber-50', 
-      text: 'text-amber-700', 
-      dot: 'bg-amber-500',
-      border: 'border-amber-300',
-      icon: 'text-amber-600'
-    };
-  if (status === 'report_finalized' || status === 'verification_pending') 
-    return { 
-      bg: 'bg-violet-50', 
-      text: 'text-violet-700', 
-      dot: 'bg-violet-500',
-      border: 'border-violet-300',
-      icon: 'text-violet-600'
-    };
-  if (status === 'report_verified') 
-    return { 
-      bg: 'bg-indigo-50', 
-      text: 'text-indigo-700', 
-      dot: 'bg-indigo-500',
-      border: 'border-indigo-300',
-      icon: 'text-indigo-600'
-    };
-  if (status === 'final_report_downloaded' || status === 'report_downloaded') 
-    return { 
-      bg: 'bg-cyan-50', 
-      text: 'text-cyan-700', 
-      dot: 'bg-cyan-500',
-      border: 'border-cyan-300',
-      icon: 'text-cyan-600'
-    };
-  if (status === 'report_printed' || status === 'report_reprinted') 
-    return { 
-      bg: 'bg-purple-50', 
-      text: 'text-purple-700', 
-      dot: 'bg-purple-500',
-      border: 'border-purple-300',
-      icon: 'text-purple-600'
-    };
-  
-  return { 
-    bg: 'bg-slate-50', 
-    text: 'text-slate-700', 
-    dot: 'bg-slate-400',
-    border: 'border-slate-300',
-    icon: 'text-slate-500'
-  };
-};
+  for (const slot of TIMELINE_STRUCTURE) {
+    const matches = apiTimeline.filter(entry =>
+      slot.matchStatuses.includes(entry.status)
+    );
 
-const formatStatusLabel = (status = '') => {
-  if (!status) return 'Status Update';
-  
-  const labels = {
-    study_uploaded: 'Study Uploaded',
-    new_study_received: 'Study Received',
-    assigned_to_doctor: 'Assigned to Radiologist',
-    study_assigned: 'Assigned to Radiologist',
-    study_reassigned: 'Reassigned',
-    assignments_cleared: 'Assignments Cleared',
-    study_locked: 'Locked for Reporting',
-    study_locked_for_reporting: 'Locked for Reporting',
-    report_finalized: 'Report Finalized',
-    verification_pending: 'Verification Pending',
-    report_verified: 'Report Verified',
-    final_report_downloaded: 'Report Downloaded',
-    report_downloaded: 'Report Downloaded',
-    report_printed: 'Report Printed',
-    report_reprinted: 'Report Reprinted'
-  };
-  
-  return labels[status] || status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    if (matches.length === 0) continue;
+
+    const latest = matches.sort(
+      (a, b) => new Date(b.changedAt) - new Date(a.changedAt)
+    )[0];
+
+    const cleanNote = latest.note
+      ? latest.note
+          .replace(/UID:\s*[\d.]+/gi, '')
+          .replace(/\buid\b.*$/gi, '')
+          .replace(/\d+ series,\s*\d+ instances?\./gi, '')
+          .replace(/Study created:\s*/gi, '')
+          .replace(/,\s*$/, '')
+          .trim()
+      : null;
+
+    result.push({
+      ...slot,
+      entry: { ...latest, note: cleanNote || null },
+      count: matches.length,
+    });
+  }
+
+  // ✅ Sort by structure index (Study Received first internally)
+  result.sort(
+    (a, b) =>
+      TIMELINE_STRUCTURE.findIndex(s => s.key === a.key) -
+      TIMELINE_STRUCTURE.findIndex(s => s.key === b.key)
+  );
+
+  // ✅ REVERSE so LATEST is on TOP, Study Received at BOTTOM
+  return result.reverse();
 };
 
 const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
@@ -157,19 +174,19 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!isOpen || !studyId) {
-      return;
-    }
+    if (!isOpen || !studyId) return;
 
     const fetchTimeline = async () => {
       try {
         setLoading(true);
         setError(null);
-        
+
         const response = await api.get(`/admin/study/${studyId}/status-history`);
-        
+
         if (response.data.success) {
-          setTimeline(response.data.timeline || []);
+          // ✅ Build ordered structure from raw API data
+          const ordered = buildOrderedTimeline(response.data.timeline || []);
+          setTimeline(ordered);
         } else {
           setError('Failed to load timeline');
         }
@@ -189,18 +206,16 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
   return (
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-[9999] p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
           <div>
             <h2 className="text-sm font-semibold text-slate-800">Study Timeline</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              {studyData?.patientName || 'Patient'} • {studyData?.studyName || 'Study'}
+              {studyData?.patientName || 'Patient'} • {studyData?.studyName || studyData?.studyDescription || 'Study'}
             </p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
             <X className="w-4 h-4 text-slate-500" />
           </button>
         </div>
@@ -224,38 +239,34 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
             </div>
           ) : (
             <div className="relative">
-              {/* Timeline line */}
-              <div className="absolute left-[19px] top-3 bottom-3 w-0.5 bg-gradient-to-b from-slate-200 via-slate-300 to-slate-200" />
-              
-              {/* Timeline entries - GROUPED WITH COUNTS */}
+              {/* ✅ Vertical line — bottom to top */}
+              <div className="absolute left-[19px] top-3 bottom-3 w-0.5 bg-gradient-to-t from-slate-200 via-slate-300 to-slate-200" />
+
               <div className="space-y-4">
-                {timeline.map((entry, index) => {
-                  const colors = getStatusColor(entry.status);
-                  const icon = getStatusIcon(entry.status);
+                {timeline.map((slot, index) => {
+                  const { entry, colors, label, count } = slot;
+                  const IconComponent = slot.icon;
                   const { date, time } = formatDate(entry.changedAt);
-                  
+
                   return (
-                    <div key={entry._id} className="relative flex gap-4">
-                      {/* Timeline dot */}
+                    <div key={slot.key} className="relative flex gap-4">
+                      {/* Icon dot */}
                       <div className={`relative z-10 flex-shrink-0 w-10 h-10 rounded-full ${colors.bg} border-2 ${colors.border} flex items-center justify-center shadow-sm`}>
-                        <div className={colors.icon}>
-                          {icon}
-                        </div>
+                        <IconComponent className={`w-4 h-4 ${colors.icon}`} strokeWidth={2} />
                       </div>
 
-                      {/* Content card */}
+                      {/* Card */}
                       <div className={`flex-1 ${colors.bg} border ${colors.border} rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow`}>
-                        {/* Status badge with count */}
+                        {/* Top row */}
                         <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className={`text-xs font-semibold ${colors.text}`}>
-                              {formatStatusLabel(entry.status)}
+                              {label}
                             </span>
-                            {/* ✅ Show count badge if more than 1 occurrence */}
-                            {entry.count > 1 && (
+                            {count > 1 && (
                               <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${colors.bg} ${colors.text} border ${colors.border}`}>
                                 <Hash className="w-3 h-3" />
-                                {entry.count}x
+                                {count}x
                               </span>
                             )}
                           </div>
@@ -290,17 +301,14 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
                         {entry.note && (
                           <div className="flex items-start gap-1.5 mt-2 pt-2 border-t border-slate-200/50">
                             <MessageSquare className="w-3 h-3 text-slate-400 mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-slate-600 leading-relaxed">
-                              {entry.note}
-                            </p>
+                            <p className="text-xs text-slate-600 leading-relaxed">{entry.note}</p>
                           </div>
                         )}
 
-                        {/* ✅ Count text if more than 1 occurrence */}
-                        {entry.count > 1 && (
+                        {count > 1 && (
                           <div className="mt-2 pt-2 border-t border-slate-200/50">
                             <p className="text-[10px] text-slate-500 italic">
-                              This action occurred {entry.count} times. Showing latest occurrence.
+                              Occurred {count} times — showing latest.
                             </p>
                           </div>
                         )}
@@ -308,6 +316,14 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
                     </div>
                   );
                 })}
+
+                {/* ✅ GROUND MARKER — Study Received anchor at bottom */}
+                <div className="relative flex gap-4 items-center">
+                  <div className="relative z-10 flex-shrink-0 w-10 h-10 rounded-full bg-slate-100 border-2 border-slate-300 flex items-center justify-center">
+                    <div className="w-2 h-2 rounded-full bg-slate-400" />
+                  </div>
+                  <span className="text-[10px] text-slate-400 italic">Study origin</span>
+                </div>
               </div>
             </div>
           )}
@@ -316,7 +332,7 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
         {/* Footer */}
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-200 bg-slate-50/50">
           <span className="text-[10px] text-slate-500">
-            {timeline.length} unique {timeline.length === 1 ? 'event' : 'events'}
+            {timeline.length} {timeline.length === 1 ? 'stage' : 'stages'} completed
           </span>
           <button
             onClick={onClose}

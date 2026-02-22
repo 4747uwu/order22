@@ -309,18 +309,14 @@ export const lockStudyForReporting = async (req, res) => {
 
         // ✅ CHECK ASSIGNMENT - radiologists and verifiers must be assigned
         if (!canBypassLock && (isRadiologist || isVerifier || isTypist)) {
-            const assignedRadiologistId = study.assignedTo?.toString() || 
-                                          study.radiologist?._id?.toString() || 
-                                          study.radiologist?.toString();
+            // ✅ FIX: Check the correct assignment array field
+            const isAssignedToUser = study.assignment?.some(
+                a => a.assignedTo?.toString() === user._id.toString()
+            );
 
-            const assignedVerifierId = study.verifier?._id?.toString() || 
-                                       study.verifier?.toString();
-
-            const isAssignedAsRadiologist = assignedRadiologistId === user._id.toString();
-            const isAssignedAsVerifier = assignedVerifierId === user._id.toString();
-
-            if (!isAssignedAsRadiologist && !isAssignedAsVerifier) {
+            if (!isAssignedToUser) {
                 console.log(`❌ Study ${studyId} not assigned to user ${user.email}`);
+                console.log(`   assignment array:`, study.assignment?.map(a => a.assignedTo?.toString()));
                 return res.status(403).json({
                     success: false,
                     message: 'You cannot open this study. It is not assigned to you.',

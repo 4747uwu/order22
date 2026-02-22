@@ -5,612 +5,711 @@ import Lab from '../models/labModel.js';
 import Organization from '../models/organisation.js';
 import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+
+const WORKFLOW_STATUS_MAP = {
+    pending: ['new_study_received', 'pending_assignment'],
+    inprogress: [
+        'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
+        'report_finalized', 'report_drafted', 'report_uploaded',
+        'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
+        'report_rejected',
+    ],
+    completed: ['final_report_downloaded', 'archived'],
+};
+
+// ─── DATE FILTER ──────────────────────────────────────────────────────────────
+
 const buildDateFilter = (req) => {
-    const IST_OFFSET = 5.5 * 60 * 60 * 1000;
-    let filterStartDate = null;
-    let filterEndDate = null;
-    let preset = null;
+    const preset = req.query.quickDatePreset || req.query.dateFilter;
+    const nowUTC  = Date.now();
 
-    if (req.query.quickDatePreset || req.query.dateFilter) {
-        const preset = req.query.quickDatePreset || req.query.dateFilter;
-        const now = Date.now();
+    const istToUTC = (y, m, d, h = 0, min = 0, s = 0, ms = 0) =>
+        new Date(Date.UTC(y, m, d, h, min, s, ms) - IST_OFFSET_MS);
 
-        console.log('🗓️ DATE FILTER DEBUG:', {
-            preset,
-            currentTime: new Date(now).toISOString(),
-            timezone: 'IST (+5:30)'
-        });
+    const nowIST = new Date(nowUTC + IST_OFFSET_MS);
+    const Y = nowIST.getFullYear(), M = nowIST.getMonth(), D = nowIST.getDate();
 
-        switch (preset) {
-            case 'last24h':
-                filterStartDate = new Date(now - 86400000);
-                filterEndDate = new Date(now);
-                break;
+    const todayRange = () => ({
+        filterStartDate: istToUTC(Y, M, D, 0, 0, 0, 0),
+        filterEndDate:   istToUTC(Y, M, D, 23, 59, 59, 999),
+    });
 
-            case 'today':
-                const currentTimeIST = new Date(Date.now() + IST_OFFSET);
-                const todayStartIST = new Date(
-                    currentTimeIST.getFullYear(),
-                    currentTimeIST.getMonth(),
-                    currentTimeIST.getDate(),
-                    0, 0, 0, 0
-                );
-                const todayEndIST = new Date(
-                    currentTimeIST.getFullYear(),
-                    currentTimeIST.getMonth(),
-                    currentTimeIST.getDate(),
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(todayStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(todayEndIST.getTime() - IST_OFFSET);
-                break;
+    if (!preset) return todayRange();
 
-            case 'yesterday':
-                const currentTimeISTYesterday = new Date(Date.now() + IST_OFFSET);
-                const yesterdayIST = new Date(currentTimeISTYesterday.getTime() - 86400000);
-                const yesterdayStartIST = new Date(
-                    yesterdayIST.getFullYear(),
-                    yesterdayIST.getMonth(),
-                    yesterdayIST.getDate(),
-                    0, 0, 0, 0
-                );
-                const yesterdayEndIST = new Date(
-                    yesterdayIST.getFullYear(),
-                    yesterdayIST.getMonth(),
-                    yesterdayIST.getDate(),
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(yesterdayStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(yesterdayEndIST.getTime() - IST_OFFSET);
-                break;
+    console.log('🗓️ DATE FILTER DEBUG:', { preset, currentTime: new Date(nowUTC).toISOString(), timezone: 'IST (+5:30)' });
 
-            // ✅ NEW: Tomorrow filter
-            case 'tomorrow':
-                const currentTimeISTTomorrow = new Date(Date.now() + IST_OFFSET);
-                const tomorrowIST = new Date(currentTimeISTTomorrow.getTime() + 86400000);
-                const tomorrowStartIST = new Date(
-                    tomorrowIST.getFullYear(),
-                    tomorrowIST.getMonth(),
-                    tomorrowIST.getDate(),
-                    0, 0, 0, 0
-                );
-                const tomorrowEndIST = new Date(
-                    tomorrowIST.getFullYear(),
-                    tomorrowIST.getMonth(),
-                    tomorrowIST.getDate(),
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(tomorrowStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(tomorrowEndIST.getTime() - IST_OFFSET);
-                break;
+    let filterStartDate, filterEndDate;
 
-            // ✅ NEW: Last 2 days
-            case 'last2days':
-                const currentTimeIST2Days = new Date(Date.now() + IST_OFFSET);
-                const twoDaysAgoIST = new Date(currentTimeIST2Days.getTime() - (2 * 86400000));
-                const twoDaysStartIST = new Date(
-                    twoDaysAgoIST.getFullYear(),
-                    twoDaysAgoIST.getMonth(),
-                    twoDaysAgoIST.getDate(),
-                    0, 0, 0, 0
-                );
-                const currentEndIST = new Date(currentTimeIST2Days.getTime());
-                filterStartDate = new Date(twoDaysStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentEndIST.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last 7 days
-            case 'last7days':
-                const currentTimeIST7Days = new Date(Date.now() + IST_OFFSET);
-                const sevenDaysAgoIST = new Date(currentTimeIST7Days.getTime() - (7 * 86400000));
-                const sevenDaysStartIST = new Date(
-                    sevenDaysAgoIST.getFullYear(),
-                    sevenDaysAgoIST.getMonth(),
-                    sevenDaysAgoIST.getDate(),
-                    0, 0, 0, 0
-                );
-                filterStartDate = new Date(sevenDaysStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentTimeIST7Days.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last 30 days
-            case 'last30days':
-                const currentTimeIST30Days = new Date(Date.now() + IST_OFFSET);
-                const thirtyDaysAgoIST = new Date(currentTimeIST30Days.getTime() - (30 * 86400000));
-                const thirtyDaysStartIST = new Date(
-                    thirtyDaysAgoIST.getFullYear(),
-                    thirtyDaysAgoIST.getMonth(),
-                    thirtyDaysAgoIST.getDate(),
-                    0, 0, 0, 0
-                );
-                filterStartDate = new Date(thirtyDaysStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentTimeIST30Days.getTime() - IST_OFFSET);
-                break;
-
-            case 'thisWeek':
-                const currentTimeISTWeek = new Date(Date.now() + IST_OFFSET);
-                const dayOfWeek = currentTimeISTWeek.getDay();
-                const weekStartIST = new Date(
-                    currentTimeISTWeek.getFullYear(),
-                    currentTimeISTWeek.getMonth(),
-                    currentTimeISTWeek.getDate() - dayOfWeek,
-                    0, 0, 0, 0
-                );
-                const weekEndIST = new Date(currentTimeISTWeek.getTime());
-                filterStartDate = new Date(weekStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(weekEndIST.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last week
-            case 'lastWeek':
-                const currentTimeISTLastWeek = new Date(Date.now() + IST_OFFSET);
-                const lastWeekEnd = new Date(currentTimeISTLastWeek.getTime() - (currentTimeISTLastWeek.getDay() * 86400000) - 86400000);
-                lastWeekEnd.setHours(23, 59, 59, 999);
-                const lastWeekStart = new Date(lastWeekEnd.getTime() - (6 * 86400000));
-                lastWeekStart.setHours(0, 0, 0, 0);
-                filterStartDate = new Date(lastWeekStart.getTime() - IST_OFFSET);
-                filterEndDate = new Date(lastWeekEnd.getTime() - IST_OFFSET);
-                break;
-
-            case 'thisMonth':
-                const currentTimeISTMonth = new Date(Date.now() + IST_OFFSET);
-                const monthStartIST = new Date(
-                    currentTimeISTMonth.getFullYear(),
-                    currentTimeISTMonth.getMonth(),
-                    1,
-                    0, 0, 0, 0
-                );
-                const monthEndIST = new Date(currentTimeISTMonth.getTime());
-                filterStartDate = new Date(monthStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(monthEndIST.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last month
-            case 'lastMonth':
-                const currentTimeISTLastMonth = new Date(Date.now() + IST_OFFSET);
-                const lastMonthStartIST = new Date(
-                    currentTimeISTLastMonth.getFullYear(),
-                    currentTimeISTLastMonth.getMonth() - 1,
-                    1,
-                    0, 0, 0, 0
-                );
-                const lastMonthEndIST = new Date(
-                    currentTimeISTLastMonth.getFullYear(),
-                    currentTimeISTLastMonth.getMonth(),
-                    0,
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(lastMonthStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(lastMonthEndIST.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last 3 months
-            case 'last3months':
-                const currentTimeIST3Months = new Date(Date.now() + IST_OFFSET);
-                const threeMonthsAgoIST = new Date(
-                    currentTimeIST3Months.getFullYear(),
-                    currentTimeIST3Months.getMonth() - 3,
-                    1,
-                    0, 0, 0, 0
-                );
-                filterStartDate = new Date(threeMonthsAgoIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentTimeIST3Months.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last 6 months
-            case 'last6months':
-                const currentTimeIST6Months = new Date(Date.now() + IST_OFFSET);
-                const sixMonthsAgoIST = new Date(
-                    currentTimeIST6Months.getFullYear(),
-                    currentTimeIST6Months.getMonth() - 6,
-                    1,
-                    0, 0, 0, 0
-                );
-                filterStartDate = new Date(sixMonthsAgoIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentTimeIST6Months.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: This year
-            case 'thisYear':
-                const currentTimeISTYear = new Date(Date.now() + IST_OFFSET);
-                const yearStartIST = new Date(
-                    currentTimeISTYear.getFullYear(),
-                    0,
-                    1,
-                    0, 0, 0, 0
-                );
-                filterStartDate = new Date(yearStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(currentTimeISTYear.getTime() - IST_OFFSET);
-                break;
-
-            // ✅ NEW: Last year
-            case 'lastYear':
-                const currentTimeISTLastYear = new Date(Date.now() + IST_OFFSET);
-                const lastYearStartIST = new Date(
-                    currentTimeISTLastYear.getFullYear() - 1,
-                    0,
-                    1,
-                    0, 0, 0, 0
-                );
-                const lastYearEndIST = new Date(
-                    currentTimeISTLastYear.getFullYear() - 1,
-                    11,
-                    31,
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(lastYearStartIST.getTime() - IST_OFFSET);
-                filterEndDate = new Date(lastYearEndIST.getTime() - IST_OFFSET);
-                break;
-
-            case 'custom':
-                if (req.query.customDateFrom || req.query.customDateTo) {
-                    if (req.query.customDateFrom) {
-                        const customStartIST = new Date(req.query.customDateFrom + 'T00:00:00');
-                        filterStartDate = new Date(customStartIST.getTime() - IST_OFFSET);
-                    }
-                    if (req.query.customDateTo) {
-                        const customEndIST = new Date(req.query.customDateTo + 'T23:59:59');
-                        filterEndDate = new Date(customEndIST.getTime() - IST_OFFSET);
-                    }
-                } else {
-                    filterStartDate = new Date(now - 86400000);
-                    filterEndDate = new Date(now);
-                }
-                break;
-
-            default:
-                // Default to today if no valid preset
-                const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
-                const todayStartISTDefault = new Date(
-                    currentTimeISTDefault.getFullYear(),
-                    currentTimeISTDefault.getMonth(),
-                    currentTimeISTDefault.getDate(),
-                    0, 0, 0, 0
-                );
-                const todayEndISTDefault = new Date(
-                    currentTimeISTDefault.getFullYear(),
-                    currentTimeISTDefault.getMonth(),
-                    currentTimeISTDefault.getDate(),
-                    23, 59, 59, 999
-                );
-                filterStartDate = new Date(todayStartISTDefault.getTime() - IST_OFFSET);
-                filterEndDate = new Date(todayEndISTDefault.getTime() - IST_OFFSET);
+    switch (preset) {
+        case 'last24h':
+            filterStartDate = new Date(nowUTC - 86_400_000);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        case 'today':
+            return todayRange();
+        case 'yesterday': {
+            const d = new Date(nowIST.getTime() - 86_400_000);
+            filterStartDate = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+            filterEndDate   = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+            break;
         }
-    } else {
-        // Default to today if no filter provided
-        const currentTimeISTDefault = new Date(Date.now() + IST_OFFSET);
-        const todayStartISTDefault = new Date(
-            currentTimeISTDefault.getFullYear(),
-            currentTimeISTDefault.getMonth(),
-            currentTimeISTDefault.getDate(),
-            0, 0, 0, 0
-        );
-        const todayEndISTDefault = new Date(
-            currentTimeISTDefault.getFullYear(),
-            currentTimeISTDefault.getMonth(),
-            currentTimeISTDefault.getDate(),
-            23, 59, 59, 999
-        );
-        filterStartDate = new Date(todayStartISTDefault.getTime() - IST_OFFSET);
-        filterEndDate = new Date(todayEndISTDefault.getTime() - IST_OFFSET);
+        case 'tomorrow': {
+            const d = new Date(nowIST.getTime() + 86_400_000);
+            filterStartDate = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+            filterEndDate   = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+            break;
+        }
+        case 'last2days': {
+            const d = new Date(nowIST.getTime() - 2 * 86_400_000);
+            filterStartDate = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        }
+        case 'last7days': {
+            const d = new Date(nowIST.getTime() - 7 * 86_400_000);
+            filterStartDate = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        }
+        case 'last30days': {
+            const d = new Date(nowIST.getTime() - 30 * 86_400_000);
+            filterStartDate = istToUTC(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        }
+        case 'thisWeek': {
+            const dow = nowIST.getDay();
+            filterStartDate = istToUTC(Y, M, D - dow, 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        }
+        case 'lastWeek': {
+            const lastSun = new Date(nowIST.getTime() - nowIST.getDay() * 86_400_000);
+            lastSun.setHours(23, 59, 59, 999);
+            const lastMon = new Date(lastSun.getTime() - 6 * 86_400_000);
+            lastMon.setHours(0, 0, 0, 0);
+            filterStartDate = new Date(lastMon.getTime() - IST_OFFSET_MS);
+            filterEndDate   = new Date(lastSun.getTime() - IST_OFFSET_MS);
+            break;
+        }
+        case 'thisMonth':
+            filterStartDate = istToUTC(Y, M, 1, 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        case 'lastMonth':
+            filterStartDate = istToUTC(Y, M - 1, 1, 0, 0, 0, 0);
+            filterEndDate   = istToUTC(Y, M, 0, 23, 59, 59, 999);
+            break;
+        case 'last3months':
+            filterStartDate = istToUTC(Y, M - 3, 1, 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        case 'last6months':
+            filterStartDate = istToUTC(Y, M - 6, 1, 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        case 'thisYear':
+            filterStartDate = istToUTC(Y, 0, 1, 0, 0, 0, 0);
+            filterEndDate   = new Date(nowUTC);
+            break;
+        case 'lastYear':
+            filterStartDate = istToUTC(Y - 1, 0, 1, 0, 0, 0, 0);
+            filterEndDate   = istToUTC(Y - 1, 11, 31, 23, 59, 59, 999);
+            break;
+        case 'custom':
+            filterStartDate = req.query.customDateFrom
+                ? new Date(new Date(req.query.customDateFrom + 'T00:00:00').getTime() - IST_OFFSET_MS)
+                : null;
+            filterEndDate = req.query.customDateTo
+                ? new Date(new Date(req.query.customDateTo + 'T23:59:59').getTime() - IST_OFFSET_MS)
+                : null;
+            if (!filterStartDate && !filterEndDate) {
+                filterStartDate = new Date(nowUTC - 86_400_000);
+                filterEndDate   = new Date(nowUTC);
+            }
+            break;
+        default:
+            return todayRange();
     }
 
     console.log('🎯 FINAL DATE RANGE (IST):', {
         preset,
         filterStartDate: filterStartDate?.toISOString(),
-        filterEndDate: filterEndDate?.toISOString(),
-        localStart: filterStartDate ? new Date(filterStartDate.getTime() + IST_OFFSET).toLocaleString() : null,
-        localEnd: filterEndDate ? new Date(filterEndDate.getTime() + IST_OFFSET).toLocaleString() : null
+        filterEndDate:   filterEndDate?.toISOString(),
+        localStart: filterStartDate ? new Date(filterStartDate.getTime() + IST_OFFSET_MS).toLocaleString() : null,
+        localEnd:   filterEndDate   ? new Date(filterEndDate.getTime()   + IST_OFFSET_MS).toLocaleString() : null,
     });
 
     return { filterStartDate, filterEndDate };
 };
 
-// 🔧 CENTRALIZED: Build base query with multi-tenant support
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+const parseListParam = (param) => {
+    if (!param) return [];
+    if (Array.isArray(param)) return param.filter(Boolean);
+    return param.includes(',')
+        ? param.split(',').map(s => s.trim()).filter(Boolean)
+        : [param];
+};
+
+const parseObjectIdList = (param) =>
+    parseListParam(param)
+        .filter(id => mongoose.Types.ObjectId.isValid(id))
+        .map(id => new mongoose.Types.ObjectId(id));
+
+// ─── QUERY BUILDER ────────────────────────────────────────────────────────────
+
 const buildBaseQuery = (req, user, workflowStatuses = null) => {
     const queryFilters = {};
+    const orGroups = [];
 
-    // 🏢 MULTI-TENANT: Organization-based filtering
-    // ✅ FIX: Check for organizationContext from token (when super admin switches org)
+    // ── MULTI-TENANT ──────────────────────────────────────────────────────────
     if (user.role === 'super_admin' && user.tokenContext?.organizationIdentifier) {
-        // Super admin viewing a specific organization
         queryFilters.organizationIdentifier = user.tokenContext.organizationIdentifier;
         console.log(`🏢 [Super Admin Context] Filtering for organization: ${user.tokenContext.organizationIdentifier}`);
     } else if (user.role !== 'super_admin') {
-        // Regular users - always filter by their organization
         queryFilters.organizationIdentifier = user.organizationIdentifier;
         console.log(`🏢 [Multi-tenant] Filter applied for organization: ${user.organizationIdentifier}`);
     } else {
-        // Super admin without organization context - see all organizations
-        console.log(`🏢 [Super Admin] No organization filter - viewing all orgs`);
+        console.log('🏢 [Super Admin] No organization filter - viewing all orgs');
     }
 
-    // ✅ NEW: ASSIGNOR LAB FILTERING - Apply before other filters
+    // ── ASSIGNOR LAB RESTRICTIONS ─────────────────────────────────────────────
     if (user.role === 'assignor' || user.primaryRole === 'assignor') {
         const assignorLabAccessMode = user.roleConfig?.labAccessMode || 'all';
-        const assignedLabs = user.roleConfig?.assignedLabs || [];
-
+        const assignedLabs          = user.roleConfig?.assignedLabs  || [];
         console.log('🔍 [Assignor Lab Filter in Admin Controller]:', {
-            userId: user._id,
-            userName: user.fullName,
+            userId: user._id, userName: user.fullName,
             labAccessMode: assignorLabAccessMode,
-            assignedLabsCount: assignedLabs.length,
-            assignedLabs: assignedLabs
+            assignedLabsCount: assignedLabs.length, assignedLabs,
         });
-
         if (assignorLabAccessMode === 'selected' && assignedLabs.length > 0) {
             queryFilters.sourceLab = { $in: assignedLabs.map(id => new mongoose.Types.ObjectId(id)) };
         } else if (assignorLabAccessMode === 'none') {
             queryFilters.sourceLab = null;
         }
-        // If 'all' mode, no additional filtering needed
     }
 
-    // 🔧 WORKFLOW STATUS: Apply status filter if provided
-    if (workflowStatuses && workflowStatuses.length > 0) {
-        queryFilters.workflowStatus = workflowStatuses.length === 1 ? workflowStatuses[0] : { $in: workflowStatuses };
+    // ── WORKFLOW STATUS ───────────────────────────────────────────────────────
+    if (workflowStatuses?.length) {
+        queryFilters.workflowStatus = workflowStatuses.length === 1
+            ? workflowStatuses[0]
+            : { $in: workflowStatuses };
     }
 
-    // 🕐 DATE FILTERING
+    // ── DATE ──────────────────────────────────────────────────────────────────
     const { filterStartDate, filterEndDate } = buildDateFilter(req);
     if (filterStartDate || filterEndDate) {
         const dateField = req.query.dateType === 'StudyDate' ? 'studyDate' : 'createdAt';
         queryFilters[dateField] = {};
         if (filterStartDate) queryFilters[dateField].$gte = filterStartDate;
-        if (filterEndDate) queryFilters[dateField].$lte = filterEndDate;
+        if (filterEndDate)   queryFilters[dateField].$lte = filterEndDate;
     }
 
-    // 🔍 SEARCH FILTERING
+    // ── SEARCH ────────────────────────────────────────────────────────────────
     if (req.query.search) {
-        queryFilters.$or = [
-            { bharatPacsId: { $regex: req.query.search, $options: 'i' } },
-            { accessionNumber: { $regex: req.query.search, $options: 'i' } },
-            { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } },
-            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } }
-        ];
+        orGroups.push([
+            { bharatPacsId:                      { $regex: req.query.search, $options: 'i' } },
+            { accessionNumber:                   { $regex: req.query.search, $options: 'i' } },
+            { studyInstanceUID:                  { $regex: req.query.search, $options: 'i' } },
+            { 'patientInfo.patientName':         { $regex: req.query.search, $options: 'i' } },
+            { 'patientInfo.patientID':           { $regex: req.query.search, $options: 'i' } },
+            { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } },
+        ]);
     }
 
-    // 🔬 MODALITY FILTERING - Single or Multiple
-    if (req.query.modalities) {
-        let modalityList = [];
-        
-        // Handle both array and comma-separated string formats
-        if (Array.isArray(req.query.modalities)) {
-            modalityList = req.query.modalities;
-        } else if (typeof req.query.modalities === 'string') {
-            // Single value or comma-separated
-            modalityList = req.query.modalities.includes(',') 
-                ? req.query.modalities.split(',').map(m => m.trim()).filter(Boolean)
-                : [req.query.modalities];
-        }
-        
-        console.log('🔬 [Modality Filter - Raw]:', {
-            rawParam: req.query.modalities,
-            isArray: Array.isArray(req.query.modalities),
-            parsedModalities: modalityList
-        });
-        
-        if (modalityList.length > 0) {
-            // Query studies where modality OR modalitiesInStudy matches any of the selected modalities
-            queryFilters.$or = [
-                { modality: { $in: modalityList } },
-                { modalitiesInStudy: { $in: modalityList } }
-            ];
-            
-            console.log('✅ [Modality Filter Applied]:', {
-                modalityCount: modalityList.length,
-                modalities: modalityList,
-                filter: queryFilters.$or
-            });
-        }
+    // ── MODALITY ─────────────────────────────────────────────────────────────
+     const modalities = parseListParam(req.query.modalities);
+    if (modalities.length > 0) {
+        console.log('🔬 [Modality Filter]:', { parsedModalities: modalities });
+        // ✅ FIX: Only filter on modalitiesInStudy (modality field has bad defaults)
+        queryFilters.modalitiesInStudy = { $in: modalities };
     } else if (req.query.modality && req.query.modality !== 'all') {
-        // Fallback to single modality filter for backward compatibility
-        queryFilters.$or = [
-            { modality: req.query.modality },
-            { modalitiesInStudy: req.query.modality }
-        ];
+        queryFilters.modalitiesInStudy = req.query.modality;
     }
 
-    // 🏥 LAB FILTERING (within organization) - Old single select
+    // ── LAB (single legacy) ───────────────────────────────────────────────────
     if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
         queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
     }
 
-    // ⚡ PRIORITY FILTERING
-       // ⚡ PRIORITY FILTERING - Single or Multiple
-    // AFTER:
-    if (req.query.priorities) {
-        let priorityList = [];
-        if (Array.isArray(req.query.priorities)) {
-            priorityList = req.query.priorities.filter(Boolean);
-        } else if (typeof req.query.priorities === 'string') {
-            priorityList = req.query.priorities.split(',').map(p => p.trim()).filter(Boolean);
-        }
-        console.log('⚡ [Priority Multi-Filter]:', priorityList);
-        if (priorityList.length === 1) {
-            const p = priorityList[0];
-            queryFilters.$or = [
-                ...(queryFilters.$or || []),
-                { priority: p },
-                { 'assignment.priority': p }
-            ];
-        } else if (priorityList.length > 1) {
-            queryFilters.$or = [
-                ...(queryFilters.$or || []),
-                { priority: { $in: priorityList } },
-                { 'assignment.priority': { $in: priorityList } }
-            ];
-        }
+    // ── PRIORITY ─────────────────────────────────────────────────────────────
+    const priorities = parseListParam(req.query.priorities);
+    if (priorities.length > 0) {
+        console.log('⚡ [Priority Multi-Filter]:', priorities);
+        orGroups.push(
+            priorities.length === 1
+                ? [{ priority: priorities[0] }, { 'assignment.priority': priorities[0] }]
+                : [{ priority: { $in: priorities } }, { 'assignment.priority': { $in: priorities } }]
+        );
     } else if (req.query.priority && req.query.priority !== 'all') {
         const p = req.query.priority;
-        queryFilters.$or = [
-            ...(queryFilters.$or || []),
-            { priority: p },
-            { 'assignment.priority': p }
-        ];
+        orGroups.push([{ priority: p }, { 'assignment.priority': p }]);
     }
 
-    // 🔢 STUDY INSTANCE UIDS
+    // ── STUDY INSTANCE UIDs ───────────────────────────────────────────────────
     if (req.query.StudyInstanceUIDs && req.query.StudyInstanceUIDs !== 'undefined') {
-        const studyUIDs = req.query.StudyInstanceUIDs.split(',').map(uid => uid.trim()).filter(Boolean);
-        if (studyUIDs.length > 0) {
-            queryFilters.studyInstanceUID = { $in: studyUIDs };
-        }
+        const uids = req.query.StudyInstanceUIDs.split(',').map(s => s.trim()).filter(Boolean);
+        if (uids.length) queryFilters.studyInstanceUID = { $in: uids };
     }
 
-    // ✅ NEW: RADIOLOGIST MULTI-SELECT FILTER
-    if (req.query.radiologists) {
-        let radiologistIds = [];
-        
-        // Handle both array and comma-separated string formats
-        if (Array.isArray(req.query.radiologists)) {
-            radiologistIds = req.query.radiologists;
-        } else if (typeof req.query.radiologists === 'string') {
-            // Single value or comma-separated
-            radiologistIds = req.query.radiologists.includes(',') 
-                ? req.query.radiologists.split(',').map(id => id.trim()).filter(Boolean)
-                : [req.query.radiologists];
-        }
-        
-        console.log('🔍 [Radiologist Filter - Raw]:', {
-            rawParam: req.query.radiologists,
-            isArray: Array.isArray(req.query.radiologists),
-            parsedIds: radiologistIds
-        });
-        
-        if (radiologistIds.length > 0) {
-            // Convert to ObjectIds and validate
-            const validObjectIds = radiologistIds
-                .filter(id => mongoose.Types.ObjectId.isValid(id))
-                .map(id => new mongoose.Types.ObjectId(id));
-            
-            if (validObjectIds.length > 0) {
-                // Query the assignment array to find studies assigned to these radiologists
-                queryFilters['assignment.assignedTo'] = { $in: validObjectIds };
-                
-                console.log('✅ [Radiologist Filter Applied]:', {
-                    radiologistCount: validObjectIds.length,
-                    radiologistIds: validObjectIds.map(id => id.toString()),
-                    filter: queryFilters['assignment.assignedTo']
-                });
-            } else {
-                console.warn('⚠️ [Radiologist Filter] No valid ObjectIds found');
-            }
-        }
+    // ── RADIOLOGIST ───────────────────────────────────────────────────────────
+    const radiologistIds = parseObjectIdList(req.query.radiologists);
+    if (radiologistIds.length > 0) {
+        queryFilters['assignment.assignedTo'] = { $in: radiologistIds };
+        console.log('✅ [Radiologist Filter Applied]:', { count: radiologistIds.length });
     }
 
-    // ✅ NEW: LAB/CENTER MULTI-SELECT FILTER
-    if (req.query.labs) {
-        let labIds = [];
-        
-        // Handle both array and comma-separated string formats
-        if (Array.isArray(req.query.labs)) {
-            labIds = req.query.labs;
-        } else if (typeof req.query.labs === 'string') {
-            // Single value or comma-separated
-            labIds = req.query.labs.includes(',')
-                ? req.query.labs.split(',').map(id => id.trim()).filter(Boolean)
-                : [req.query.labs];
+    // ── LAB (multi-select) ────────────────────────────────────────────────────
+    const labIds = parseObjectIdList(req.query.labs);
+    if (labIds.length > 0) {
+        if (queryFilters.sourceLab?.$in) {
+            const assignorSet  = new Set(queryFilters.sourceLab.$in.map(String));
+            const intersection = labIds.filter(id => assignorSet.has(String(id)));
+            queryFilters.sourceLab = intersection.length ? { $in: intersection } : null;
+        } else {
+            queryFilters.sourceLab = { $in: labIds };
         }
-        
-        console.log('🔍 [Lab Filter - Raw]:', {
-            rawParam: req.query.labs,
-            isArray: Array.isArray(req.query.labs),
-            parsedIds: labIds
-        });
-        
-        if (labIds.length > 0) {
-            // Convert to ObjectIds and validate
-            const validObjectIds = labIds
-                .filter(id => mongoose.Types.ObjectId.isValid(id))
-                .map(id => new mongoose.Types.ObjectId(id));
-            
-            if (validObjectIds.length > 0) {
-                // Check if there's already a sourceLab filter from assignor restrictions
-                if (queryFilters.sourceLab && queryFilters.sourceLab.$in) {
-                    // Find intersection of assignor's labs and selected labs
-                    const assignorLabIds = queryFilters.sourceLab.$in.map(id => id.toString());
-                    const selectedLabIds = validObjectIds.map(id => id.toString());
-                    const intersection = assignorLabIds.filter(id => selectedLabIds.includes(id));
-                    
-                    console.log('🔍 [Lab Filter - Intersection with Assignor]:', {
-                        assignorLabs: assignorLabIds,
-                        selectedLabs: selectedLabIds,
-                        intersection: intersection
-                    });
-                    
-                    if (intersection.length > 0) {
-                        queryFilters.sourceLab = { $in: intersection.map(id => new mongoose.Types.ObjectId(id)) };
-                    } else {
-                        // No intersection, return empty results
-                        console.warn('⚠️ [Lab Filter] No intersection between assignor labs and selected labs');
-                        queryFilters.sourceLab = null; // This will return no results
-                    }
-                } else {
-                    // No assignor restriction, apply selected labs directly
-                    queryFilters.sourceLab = { $in: validObjectIds };
-                }
-                
-                console.log('✅ [Lab Filter Applied]:', {
-                    labCount: validObjectIds.length,
-                    labIds: validObjectIds.map(id => id.toString()),
-                    finalFilter: queryFilters.sourceLab
-                });
-            } else {
-                console.warn('⚠️ [Lab Filter] No valid ObjectIds found');
-            }
-        }
+        console.log('✅ [Lab Filter Applied]:', { count: labIds.length, finalFilter: queryFilters.sourceLab });
+    }
+
+    // ── MERGE $or GROUPS (fix clobber bug) ────────────────────────────────────
+    if (orGroups.length === 1) {
+        queryFilters.$or = orGroups[0];
+    } else if (orGroups.length > 1) {
+        queryFilters.$and = orGroups.map(group => ({ $or: group }));
     }
 
     console.log('🎯 [Final Query Filters]:', JSON.stringify(queryFilters, null, 2));
-
     return queryFilters;
 };
 
+// ─── AGGREGATION PIPELINE BUILDER ────────────────────────────────────────────
+/**
+ * THE CORE OPTIMIZATION
+ *
+ * Original: 14 separate .populate() calls
+ *   → Mongoose fires N additional queries per populate (one per unique foreign ID).
+ *   → With 29 docs and 14 populates that's potentially hundreds of round-trips.
+ *
+ * Optimized: Single aggregation pipeline with targeted $lookup stages
+ *   → MongoDB resolves all joins server-side in ONE network round-trip.
+ *   → $lookup with pipeline + $in is the fastest join pattern in MongoDB 5+.
+ *
+ * Additional tricks:
+ *   - $project at the START narrows the working set before any $lookup runs
+ *   - Each $lookup uses $in (index scan) not $eq on array (collection scan)
+ *   - $addFields with $arrayElemAt is used to flatten 1-to-1 lookups
+ *   - No $unwind (expensive) — we use $first / $arrayElemAt instead
+ */
+const buildStudyAggregationPipeline = (queryFilters, skip, limit) => {
+    // User fields we need from referenced collections
+    const USER_FIELDS = {
+        fullName: 1, firstName: 1, lastName: 1,
+        email: 1, role: 1, organizationIdentifier: 1,
+    };
+
+    return [
+        // ── STAGE 1: Filter (uses indexes) ────────────────────────────────────
+        { $match: queryFilters },
+
+        // ── STAGE 2: Sort before pagination ──────────────────────────────────
+        { $sort: { createdAt: -1 } },
+
+        // ── STAGE 3: $facet for parallel count + paginated slice ──────────────
+        // This replaces the separate countDocuments call — both happen in one pass.
+        {
+            $facet: {
+                metadata: [{ $count: 'total' }],
+                data: [
+                    { $skip: skip },
+                    { $limit: limit },
+
+                    // ── PROJECT: Only carry fields we actually need ───────────
+                    // Dropping heavy unused fields before $lookup saves memory.
+                    {
+                        $project: {
+                            _id: 1, bharatPacsId: 1, studyInstanceUID: 1,
+                            orthancStudyID: 1, accessionNumber: 1,
+                            organizationIdentifier: 1, organization: 1,
+                            patientInfo: 1, patientId: 1, patient: 1,
+                            age: 1, gender: 1,
+                            modality: 1, modalitiesInStudy: 1,
+                            studyDate: 1, studyTime: 1,
+                            examDescription: 1, seriesCount: 1,
+                            instanceCount: 1, seriesImages: 1,
+                            workflowStatus: 1, currentCategory: 1,
+                            priority: 1, caseType: 1, studyPriority: 1,
+                            ReportAvailable: 1, reprintNeeded: 1,
+                            hasStudyNotes: 1, hasAttachments: 1,
+                            assignment: 1,
+                            sourceLab: 1, labLocation: 1,
+                            studyLock: 1,
+                            currentReportStatus: 1,
+                            reportInfo: 1,
+                            revertInfo: 1,
+                            calculatedTAT: 1,
+                            categoryTracking: 1,
+                            attachments: 1,
+                            createdAt: 1, updatedAt: 1, reportDate: 1,
+                            referringPhysicianName: 1, notesCount: 1,
+                            clinicalHistory: 1,
+                        },
+                    },
+
+                    // ── LOOKUP 1: sourceLab ───────────────────────────────────
+                    {
+                        $lookup: {
+                            from: 'labs',
+                            localField: 'sourceLab',
+                            foreignField: '_id',
+                            pipeline: [
+                                { $project: { name: 1, labName: 1, identifier: 1, location: 1, contactPerson: 1, contactNumber: 1 } },
+                            ],
+                            as: '_sourceLab',
+                        },
+                    },
+                    { $addFields: { sourceLab: { $arrayElemAt: ['$_sourceLab', 0] } } },
+                    { $unset: '_sourceLab' },
+
+                    // ── LOOKUP 2: organization ────────────────────────────────
+                    {
+                        $lookup: {
+                            from: 'organizations',
+                            localField: 'organization',
+                            foreignField: '_id',
+                            pipeline: [
+                                { $project: { name: 1, identifier: 1, contactEmail: 1, contactPhone: 1, address: 1 } },
+                            ],
+                            as: '_org',
+                        },
+                    },
+                    { $addFields: { organization: { $arrayElemAt: ['$_org', 0] } } },
+                    { $unset: '_org' },
+
+                    // ── LOOKUP 3: patient ─────────────────────────────────────
+                    {
+                        $lookup: {
+                            from: 'patients',
+                            localField: 'patient',
+                            foreignField: '_id',
+                            pipeline: [
+                                { $project: { patientID: 1, patientNameRaw: 1, firstName: 1, lastName: 1, age: 1, gender: 1, dateOfBirth: 1, contactNumber: 1 } },
+                            ],
+                            as: '_patient',
+                        },
+                    },
+                    { $addFields: { patient: { $arrayElemAt: ['$_patient', 0] } } },
+                    { $unset: '_patient' },
+
+                    // ── LOOKUP 4: studyLock.lockedBy ──────────────────────────
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'studyLock.lockedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_lockedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'studyLock.lockedBy': { $arrayElemAt: ['$_lockedBy', 0] },
+                        },
+                    },
+                    { $unset: '_lockedBy' },
+
+                    // ── LOOKUP 5: assignment.assignedTo (array) ───────────────
+                    // Collect all unique assignedTo IDs from the assignment array first,
+                    // then do a single $lookup with $in — far cheaper than per-element lookups.
+                    {
+                        $lookup: {
+                            from: 'users',
+                            let: { ids: '$assignment.assignedTo' },
+                            pipeline: [
+                                { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$ids', []] }] } } },
+                                { $project: { ...USER_FIELDS } },
+                            ],
+                            as: '_assignedToUsers',
+                        },
+                    },
+                    // ── LOOKUP 6: assignment.assignedBy (array) ───────────────
+                    {
+                        $lookup: {
+                            from: 'users',
+                            let: { ids: '$assignment.assignedBy' },
+                            pipeline: [
+                                { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$ids', []] }] } } },
+                                { $project: { ...USER_FIELDS } },
+                            ],
+                            as: '_assignedByUsers',
+                        },
+                    },
+                    // Merge user docs back into assignment array elements
+                    {
+                        $addFields: {
+                            assignment: {
+                                $map: {
+                                    input: { $ifNull: ['$assignment', []] },
+                                    as: 'a',
+                                    in: {
+                                        $mergeObjects: [
+                                            '$$a',
+                                            {
+                                                assignedTo: {
+                                                    $arrayElemAt: [
+                                                        {
+                                                            $filter: {
+                                                                input: '$_assignedToUsers',
+                                                                cond: { $eq: ['$$this._id', '$$a.assignedTo'] },
+                                                            },
+                                                        },
+                                                        0,
+                                                    ],
+                                                },
+                                                assignedBy: {
+                                                    $arrayElemAt: [
+                                                        {
+                                                            $filter: {
+                                                                input: '$_assignedByUsers',
+                                                                cond: { $eq: ['$$this._id', '$$a.assignedBy'] },
+                                                            },
+                                                        },
+                                                        0,
+                                                    ],
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    { $unset: ['_assignedToUsers', '_assignedByUsers'] },
+
+                    // ── LOOKUP 7: reportInfo.verificationInfo.verifiedBy ──────
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'reportInfo.verificationInfo.verifiedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_verifiedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'reportInfo.verificationInfo.verifiedBy': { $arrayElemAt: ['$_verifiedBy', 0] },
+                        },
+                    },
+                    { $unset: '_verifiedBy' },
+
+                    // ── LOOKUP 8: currentReportStatus.lastReportedBy ──────────
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'currentReportStatus.lastReportedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_lastReportedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'currentReportStatus.lastReportedBy': { $arrayElemAt: ['$_lastReportedBy', 0] },
+                        },
+                    },
+                    { $unset: '_lastReportedBy' },
+
+                    // ── LOOKUP 9-14: categoryTracking user refs ───────────────
+                    // Batch all 6 categoryTracking user refs into a SINGLE $lookup each.
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.created.uploadedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctCreatedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.created.uploadedBy': { $arrayElemAt: ['$_ctCreatedBy', 0] },
+                        },
+                    },
+                    { $unset: '_ctCreatedBy' },
+
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.historyCreated.createdBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctHistCreatedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.historyCreated.createdBy': { $arrayElemAt: ['$_ctHistCreatedBy', 0] },
+                        },
+                    },
+                    { $unset: '_ctHistCreatedBy' },
+
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.assigned.assignedTo',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctAssignedTo',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.assigned.assignedTo': { $arrayElemAt: ['$_ctAssignedTo', 0] },
+                        },
+                    },
+                    { $unset: '_ctAssignedTo' },
+
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.assigned.assignedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctAssignedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.assigned.assignedBy': { $arrayElemAt: ['$_ctAssignedBy', 0] },
+                        },
+                    },
+                    { $unset: '_ctAssignedBy' },
+
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.final.finalizedBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctFinalizedBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.final.finalizedBy': { $arrayElemAt: ['$_ctFinalizedBy', 0] },
+                        },
+                    },
+                    { $unset: '_ctFinalizedBy' },
+
+                    {
+                        $lookup: {
+                            from: 'users',
+                            localField: 'categoryTracking.urgent.markedUrgentBy',
+                            foreignField: '_id',
+                            pipeline: [{ $project: USER_FIELDS }],
+                            as: '_ctUrgentBy',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            'categoryTracking.urgent.markedUrgentBy': { $arrayElemAt: ['$_ctUrgentBy', 0] },
+                        },
+                    },
+                    { $unset: '_ctUrgentBy' },
+
+                    // ── LOOKUP: attachments ───────────────────────────────────
+                    // Resolve documentId refs within attachments array
+                    {
+                        $lookup: {
+                            from: 'documents',
+                            let: { ids: '$attachments.documentId' },
+                            pipeline: [
+                                { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$ids', []] }] } } },
+                                { $project: { fileName: 1, fileSize: 1, contentType: 1, uploadedAt: 1 } },
+                            ],
+                            as: '_attachmentDocs',
+                        },
+                    },
+                    {
+                        $lookup: {
+                            from: 'users',
+                            let: { ids: '$attachments.uploadedBy' },
+                            pipeline: [
+                                { $match: { $expr: { $in: ['$_id', { $ifNull: ['$$ids', []] }] } } },
+                                { $project: { fullName: 1, email: 1, role: 1 } },
+                            ],
+                            as: '_attachmentUsers',
+                        },
+                    },
+                    {
+                        $addFields: {
+                            attachments: {
+                                $map: {
+                                    input: { $ifNull: ['$attachments', []] },
+                                    as: 'att',
+                                    in: {
+                                        $mergeObjects: [
+                                            '$$att',
+                                            {
+                                                documentId: {
+                                                    $arrayElemAt: [
+                                                        {
+                                                            $filter: {
+                                                                input: '$_attachmentDocs',
+                                                                cond: { $eq: ['$$this._id', '$$att.documentId'] },
+                                                            },
+                                                        },
+                                                        0,
+                                                    ],
+                                                },
+                                                uploadedBy: {
+                                                    $arrayElemAt: [
+                                                        {
+                                                            $filter: {
+                                                                input: '$_attachmentUsers',
+                                                                cond: { $eq: ['$$this._id', '$$att.uploadedBy'] },
+                                                            },
+                                                        },
+                                                        0,
+                                                    ],
+                                                },
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    { $unset: ['_attachmentDocs', '_attachmentUsers'] },
+                ],
+            },
+        },
+    ];
+};
+
+// ─── STUDY QUERY EXECUTOR ─────────────────────────────────────────────────────
+/**
+ * Uses a single aggregation pipeline instead of .find() + 14 .populate() calls.
+ * Count and paginated data are fetched in ONE MongoDB round-trip via $facet.
+ */
 const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     try {
         const skip = (page - 1) * limit;
-        const totalStudies = await DicomStudy.countDocuments(queryFilters);
-        
-        const studies = await DicomStudy.find(queryFilters)
-            // Core references
-            .populate('organization', 'name identifier contactEmail contactPhone address')
-            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
-            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
-            
-            // ✅ ADD ATTACHMENTS POPULATION
-    .populate('attachments.documentId', 'fileName fileSize contentType uploadedAt')
-    .populate('attachments.uploadedBy', 'fullName email role')
 
-    
-            // Assignment references
-            .populate('assignment.assignedTo', 'fullName firstName lastName email role organizationIdentifier')
-            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
-            
-            // Report and verification references
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role')
-            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
-            
-            // Category tracking references
-            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
-            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
-            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
-            
-            // Lock references
-            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
-            
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .lean();
+        const pipeline = buildStudyAggregationPipeline(queryFilters, skip, limit);
 
-        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies (page ${page}), Total: ${totalStudies}`);
+        const [result] = await DicomStudy.aggregate(pipeline).allowDiskUse(false);
 
+        const totalStudies = result.metadata[0]?.total ?? 0;
+        const studies      = result.data ?? [];
+
+        console.log(`📊 ADMIN QUERY EXECUTED: Found ${studies.length} studies (page ${page}/${Math.ceil(totalStudies / limit)}), Total: ${totalStudies}`);
         return { studies, totalStudies, currentPage: page };
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
@@ -618,142 +717,111 @@ const executeStudyQuery = async (queryFilters, limit, page = 1) => {
     }
 };
 
-// 🎯 GET DASHBOARD VALUES - Multi-tenant with assignment analytics
+// ─── CONTROLLERS ──────────────────────────────────────────────────────────────
+
+// 🎯 GET DASHBOARD VALUES
 export const getValues = async (req, res) => {
     console.log(`🔍 Fetching dashboard values with filters: ${JSON.stringify(req.query)}`);
     try {
         const startTime = Date.now();
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
-        // Build query filters with multi-tenant support
         const queryFilters = buildBaseQuery(req, user);
-        
-        console.log(`🔍 Dashboard query filters:`, JSON.stringify(queryFilters, null, 2));
+        console.log('🔍 Dashboard query filters:', JSON.stringify(queryFilters, null, 2));
 
-        // Status mapping
         const statusCategories = {
-            pending: ['new_study_received', 'pending_assignment', 'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
-                    'report_downloaded_radiologist', 'report_downloaded'],
+            pending: [
+                'new_study_received', 'pending_assignment', 'assigned_to_doctor',
+                'doctor_opened_report', 'report_in_progress',
+                'report_downloaded_radiologist', 'report_downloaded',
+            ],
             inprogress: ['report_finalized', 'report_drafted', 'report_uploaded', 'report_verified'],
-            completed: ['final_report_downloaded']
+            completed:  ['final_report_downloaded'],
         };
 
-        // 🔥 STEP 2: Optimized aggregation pipeline with filters
-        const pipeline = [
+        const [facetResult] = await DicomStudy.aggregate([
             { $match: queryFilters },
             {
-                $group: {
-                    _id: '$workflowStatus',
-                    count: { $sum: 1 }
-                }
-            }
-        ];
+                $facet: {
+                    statusGroups: [{ $group: { _id: '$workflowStatus', count: { $sum: 1 } } }],
+                    total:        [{ $count: 'n' }],
+                },
+            },
+        ]).allowDiskUse(false);
 
-        // Execute queries with same filters
-        const [statusCountsResult, totalFilteredResult] = await Promise.allSettled([
-            DicomStudy.aggregate(pipeline).allowDiskUse(false),
-            DicomStudy.countDocuments(queryFilters)
-        ]);
+        const totalFiltered = facetResult.total[0]?.n ?? 0;
+        let pending = 0, inprogress = 0, completed = 0;
 
-        if (statusCountsResult.status === 'rejected') {
-            throw new Error(`Status counts query failed: ${statusCountsResult.reason.message}`);
+        for (const { _id: status, count } of facetResult.statusGroups) {
+            if      (statusCategories.pending.includes(status))    pending    += count;
+            else if (statusCategories.inprogress.includes(status)) inprogress += count;
+            else if (statusCategories.completed.includes(status))  completed  += count;
         }
-
-        const statusCounts = statusCountsResult.value;
-        const totalFiltered = totalFilteredResult.status === 'fulfilled' ? totalFilteredResult.value : 0;
-
-        // Calculate category totals with filtered data
-        let pending = 0;
-        let inprogress = 0;
-        let completed = 0;
-
-        statusCounts.forEach(({ _id: status, count }) => {
-            if (statusCategories.pending.includes(status)) {
-                pending += count;
-            } else if (statusCategories.inprogress.includes(status)) {
-                inprogress += count;
-            } else if (statusCategories.completed.includes(status)) {
-                completed += count;
-            }
-        });
 
         const processingTime = Date.now() - startTime;
         console.log(`🎯 Dashboard values fetched in ${processingTime}ms with filters applied`);
 
-        // Base response
         const response = {
             success: true,
             total: totalFiltered,
-            pending: pending,
-            inprogress: inprogress,
-            completed: completed,
+            pending,
+            inprogress,
+            completed,
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
-                filtersApplied: Object.keys(queryFilters).length > 0
-            }
+                filtersApplied: Object.keys(queryFilters).length > 0,
+            },
         };
 
-        // ✅ ADD ASSIGNMENT ANALYTICS FOR ASSIGNOR
         if (user.role === 'assignor') {
-            const unassignedQuery = {
-                ...queryFilters,
+            const unassignedCondition = {
                 $or: [
+                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
                     { assignment: { $exists: false } },
                     { assignment: { $size: 0 } },
-                    { 
-                        assignment: {
-                            $not: {
-                                $elemMatch: {
-                                    status: { $in: ['assigned', 'in_progress'] }
-                                }
-                            }
-                        }
-                    }
-                ]
+                    { assignment: null },
+                    { assignment: { $not: { $elemMatch: { assignedTo: { $exists: true, $ne: null } } } } },
+                ],
             };
+
+            // ✅ FIX: Merge $or safely using $and so search filters are preserved
+            const unassignedQuery = queryFilters.$or
+                ? { ...queryFilters, $and: [...(queryFilters.$and || []), { $or: queryFilters.$or }, unassignedCondition] }
+                : { ...queryFilters, ...unassignedCondition };
+            delete unassignedQuery.$or; // prevent clobbering
 
             const [unassignedResult, overdueResult] = await Promise.allSettled([
                 DicomStudy.countDocuments(unassignedQuery),
                 DicomStudy.countDocuments({
                     ...queryFilters,
-                    'assignment.status': 'assigned',
-                    'assignment.assignedAt': { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-                })
+                    'assignment.status':     'assigned',
+                    'assignment.assignedAt': { $lt: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                }),
             ]);
-
             const totalUnassigned = unassignedResult.status === 'fulfilled' ? unassignedResult.value : 0;
-            const overdueStudies = overdueResult.status === 'fulfilled' ? overdueResult.value : 0;
-
-            response.overview = {
-                totalUnassigned,
-                totalAssigned: totalFiltered - totalUnassigned,
-                overdueStudies
-            };
-
+            const overdueStudies  = overdueResult.status  === 'fulfilled' ? overdueResult.value  : 0;
+            response.overview = { totalUnassigned, totalAssigned: totalFiltered - totalUnassigned, overdueStudies };
             console.log(`📊 ASSIGNOR ANALYTICS: Unassigned: ${totalUnassigned}, Assigned: ${response.overview.totalAssigned}, Overdue: ${overdueStudies}`);
         }
 
         if (process.env.NODE_ENV === 'development') {
             response.debug = {
                 filtersApplied: queryFilters,
-                rawStatusCounts: statusCounts,
+                rawStatusCounts: facetResult.statusGroups,
                 userRole: user.role,
-                organization: user.organizationIdentifier
+                organization: user.organizationIdentifier,
             };
         }
 
         res.status(200).json(response);
-
     } catch (error) {
         console.error('❌ Error fetching dashboard values:', error);
-        res.status(500).json({ 
-            success: false, 
+        res.status(500).json({
+            success: false,
             message: 'Server error fetching dashboard statistics.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
         });
     }
 };
@@ -763,23 +831,16 @@ export const getPendingStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
-        
+        const page  = parseInt(req.query.page)  || 1;
         console.log(`🟡 PENDING: Fetching - Page: ${page}, Limit: ${limit}`);
-        
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
-        const pendingStatuses = ['new_study_received', 'pending_assignment'];
-        const queryFilters = buildBaseQuery(req, user, pendingStatuses);
-        
-        console.log(`🔍 PENDING query filters:`, JSON.stringify(queryFilters, null, 2));
+        const pendingStatuses = WORKFLOW_STATUS_MAP.pending;
+        const queryFilters    = buildBaseQuery(req, user, pendingStatuses);
+        console.log('🔍 PENDING query filters:', JSON.stringify(queryFilters, null, 2));
 
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
         const processingTime = Date.now() - startTime;
         console.log(`✅ PENDING: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
@@ -789,56 +850,37 @@ export const getPendingStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
+                currentPage, totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies, limit,
                 hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                hasPrevPage: currentPage > 1,
             },
             metadata: {
-                category: 'pending',
-                statusesIncluded: pendingStatuses,
+                category: 'pending', statusesIncluded: pendingStatuses,
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
-                userRole: user.role,
-                processingTime: processingTime
-            }
+                userRole: user.role, processingTime,
+            },
         });
-
     } catch (error) {
         console.error('❌ PENDING: Error fetching pending studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching pending studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching pending studies.', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
     }
 };
 
+// 🔵 GET IN-PROGRESS STUDIES
 export const getInProgressStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
-        
+        const page  = parseInt(req.query.page)  || 1;
         console.log(`🔵 IN-PROGRESS: Fetching - Page: ${page}, Limit: ${limit}`);
-        
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
-        const inProgressStatuses = [
-            'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
-            'report_finalized', 'report_drafted', 'report_uploaded', 
-            'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
-            'report_rejected'
-        ];
-        const queryFilters = buildBaseQuery(req, user, inProgressStatuses);
+        const inProgressStatuses = WORKFLOW_STATUS_MAP.inprogress;
+        const queryFilters       = buildBaseQuery(req, user, inProgressStatuses);
 
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
         const processingTime = Date.now() - startTime;
         console.log(`✅ IN-PROGRESS: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
@@ -848,51 +890,37 @@ export const getInProgressStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
+                currentPage, totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies, limit,
                 hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                hasPrevPage: currentPage > 1,
             },
             metadata: {
-                category: 'inprogress',
-                statusesIncluded: inProgressStatuses,
+                category: 'inprogress', statusesIncluded: inProgressStatuses,
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
-                userRole: user.role,
-                processingTime: processingTime
-            }
+                userRole: user.role, processingTime,
+            },
         });
-
     } catch (error) {
         console.error('❌ IN-PROGRESS: Error fetching in-progress studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching in-progress studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching in-progress studies.', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
     }
 };
 
+// 🟢 GET COMPLETED STUDIES
 export const getCompletedStudies = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
-        
+        const page  = parseInt(req.query.page)  || 1;
         console.log(`🟢 COMPLETED: Fetching - Page: ${page}, Limit: ${limit}`);
-        
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
-        const completedStatuses = ['final_report_downloaded', 'archived'];
-        const queryFilters = buildBaseQuery(req, user, completedStatuses);
+        const completedStatuses = WORKFLOW_STATUS_MAP.completed;
+        const queryFilters      = buildBaseQuery(req, user, completedStatuses);
 
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
         const processingTime = Date.now() - startTime;
         console.log(`✅ COMPLETED: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
@@ -902,77 +930,46 @@ export const getCompletedStudies = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
+                currentPage, totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies, limit,
                 hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                hasPrevPage: currentPage > 1,
             },
             metadata: {
-                category: 'completed',
-                statusesIncluded: completedStatuses,
+                category: 'completed', statusesIncluded: completedStatuses,
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
-                userRole: user.role,
-                processingTime: processingTime
-            }
+                userRole: user.role, processingTime,
+            },
         });
-
     } catch (error) {
         console.error('❌ COMPLETED: Error fetching completed studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching completed studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching completed studies.', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
     }
 };
 
-// ✅ NEW: Get category values for all categories - COUNT BY WORKFLOW STATUS
+// ✅ GET CATEGORY VALUES
 export const getCategoryValues = async (req, res) => {
     console.log(`🔍 Fetching category values with filters: ${JSON.stringify(req.query)}`);
     try {
         const startTime = Date.now();
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
         const queryFilters = buildBaseQuery(req, user);
-        
-        console.log(`🔍 Category query filters:`, JSON.stringify(queryFilters, null, 2));
+        console.log('🔍 Category query filters:', JSON.stringify(queryFilters, null, 2));
 
-        // Execute parallel queries for all categories
-        const [
-            allCount,
-            createdCount,
-            historyCreatedCount,
-            unassignedCount,
-            assignedCount,
-            pendingCount,
-            draftCount,
-            verificationPendingCount,
-            finalCount,
-            urgentCount,
-            reprintNeedCount,
-            revertedCount  // ✅ NEW: Add reverted count
-        ] = await Promise.all([
-            // ALL
-            DicomStudy.countDocuments(queryFilters),
-            
-            // CREATED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['new_study_received', 'metadata_extracted', 'no_active_study'] }
-            }),
-            
-            // HISTORY CREATED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['history_pending', 'history_created', 'history_verified'] }
-            }),
-            
-            // UNASSIGNED
+        const [facetResult, unassignedCount] = await Promise.all([
+            DicomStudy.aggregate([
+                { $match: queryFilters },
+                {
+                    $facet: {
+                        statusGroups: [{ $group: { _id: '$workflowStatus', count: { $sum: 1 } } }],
+                        total:  [{ $count: 'n' }],
+                        urgent: [{ $match: { studyPriority: 'Emergency Case' } }, { $count: 'n' }],
+                    },
+                },
+            ]).allowDiskUse(false),
+
             DicomStudy.countDocuments({
                 ...queryFilters,
                 $or: [
@@ -980,264 +977,168 @@ export const getCategoryValues = async (req, res) => {
                     { assignment: { $exists: false } },
                     { assignment: { $size: 0 } },
                     { assignment: null },
-                    { 
-                        assignment: { 
-                            $not: { 
-                                $elemMatch: { 
-                                    assignedTo: { $exists: true, $ne: null }
-                                } 
-                            } 
-                        }
-                    }
-                ]
+                    { assignment: { $not: { $elemMatch: { assignedTo: { $exists: true, $ne: null } } } } },
+                ],
             }),
-            
-            // ASSIGNED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['assigned_to_doctor', 'assignment_accepted'] }
-            }),
-            
-            // PENDING
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['doctor_opened_report', 'report_in_progress', 'pending_completion'] }
-            }),
-            
-            // DRAFT
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['report_drafted', 'draft_saved'] }
-            }),
-            
-            // VERIFICATION PENDING
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['verification_pending', 'verification_in_progress'] }
-            }),
-            
-            // FINAL - Remove revert_to_radiologist from here
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { 
-                    $in: [
-                        'report_finalized', 
-                        'final_approved', 
-                        'report_completed',
-                        'report_uploaded',
-                        'report_downloaded_radiologist',
-                        'report_downloaded',
-                        'final_report_downloaded',
-                        'report_verified',
-                        // 'report_rejected',
-                        'archived'
-                    ] 
-                }
-            }),
-            
-            // URGENT - Based on studyPriority = 'Emergency Case'
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                studyPriority: 'Emergency Case'
-            }),
-            
-            // REPRINT NEED
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { $in: ['reprint_requested', 'correction_needed', 'report_reprint_needed'] }
-            }),
-            
-            // ✅ NEW: REVERTED - Studies reverted back to radiologist
-            DicomStudy.countDocuments({
-                ...queryFilters,
-                workflowStatus: { 
-                    $in: ['revert_to_radiologist',  'report_rejected']
-
-                }
-            })
         ]);
 
+        const STATUS_TO_CATEGORY = {
+            new_study_received: 'created', metadata_extracted: 'created', no_active_study: 'created',
+            history_pending: 'history_created', history_created: 'history_created', history_verified: 'history_created',
+            assigned_to_doctor: 'assigned', assignment_accepted: 'assigned',
+            doctor_opened_report: 'pending', report_in_progress: 'pending', pending_completion: 'pending',
+            report_drafted: 'draft', draft_saved: 'draft',
+            verification_pending: 'verification_pending', verification_in_progress: 'verification_pending',
+            report_finalized: 'final', final_approved: 'final', report_completed: 'final',
+            report_uploaded: 'final', report_downloaded_radiologist: 'final',
+            report_downloaded: 'final', final_report_downloaded: 'final',
+            report_verified: 'final', archived: 'final',
+            reprint_requested: 'reprint_need', correction_needed: 'reprint_need', report_reprint_needed: 'reprint_need',
+            revert_to_radiologist: 'reverted', report_rejected: 'reverted',
+        };
+
+        const counts = {
+            created: 0, history_created: 0, assigned: 0, pending: 0,
+            draft: 0, verification_pending: 0, final: 0, reprint_need: 0, reverted: 0,
+        };
+        for (const { _id: status, count } of facetResult[0].statusGroups) {
+            const cat = STATUS_TO_CATEGORY[status];
+            if (cat) counts[cat] += count;
+        }
+
+        const allCount    = facetResult[0].total[0]?.n  ?? 0;
+        const urgentCount = facetResult[0].urgent[0]?.n ?? 0;
         const processingTime = Date.now() - startTime;
+
         console.log(`🎯 Category values fetched in ${processingTime}ms`);
         console.log(`🚨 URGENT (Emergency Case) count: ${urgentCount}`);
 
         const response = {
             success: true,
             all: allCount,
-            created: createdCount,
-            history_created: historyCreatedCount,
+            created: counts.created,
+            history_created: counts.history_created,
             unassigned: unassignedCount,
-            assigned: assignedCount,
-            pending: pendingCount,
-            draft: draftCount,
-            verification_pending: verificationPendingCount,
-            final: finalCount,
+            assigned: counts.assigned,
+            pending: counts.pending,
+            draft: counts.draft,
+            verification_pending: counts.verification_pending,
+            final: counts.final,
             urgent: urgentCount,
-            reprint_need: reprintNeedCount,
-            reverted: revertedCount,  // ✅ NEW: Add reverted count
+            reprint_need: counts.reprint_need,
+            reverted: counts.reverted,
             performance: {
                 queryTime: processingTime,
                 fromCache: false,
-                filtersApplied: Object.keys(queryFilters).length > 0
-            }
+                filtersApplied: Object.keys(queryFilters).length > 0,
+            },
         };
 
         if (process.env.NODE_ENV === 'development') {
-            response.debug = {
-                filtersApplied: queryFilters,
-                userRole: user.role,
-                organization: user.organizationIdentifier
-            };
+            response.debug = { filtersApplied: queryFilters, userRole: user.role, organization: user.organizationIdentifier };
         }
 
         res.status(200).json(response);
-
     } catch (error) {
         console.error('❌ Error fetching category values:', error);
-        res.status(500).json({ 
-            success: false, 
+        res.status(500).json({
+            success: false,
             message: 'Server error fetching category statistics.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
         });
     }
 };
 
-// ✅ FIX: Get studies by category WITH PAGINATION AND PROPER WORKFLOW STATUS MAPPING
+// ✅ GET STUDIES BY CATEGORY
 export const getStudiesByCategory = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1;
+        const page  = parseInt(req.query.page)  || 1;
         const { category } = req.params;
-        
         const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
         console.log(`🔍 [${category.toUpperCase()}] Fetching studies - Page: ${page}, Limit: ${limit}`);
 
         const queryFilters = buildBaseQuery(req, user);
-        
-        // ✅ COMPREHENSIVE WORKFLOW STATUS MAPPING BY CATEGORY
+
         switch (category) {
             case 'created':
-                // CREATED: New studies that just arrived
-                queryFilters.workflowStatus = { 
-                    $in: ['new_study_received', 'metadata_extracted', 'no_active_study'] 
-                };
+                // ✅ CREATED: Only new_study_received
+                queryFilters.workflowStatus = 'new_study_received';
+                console.log('📋 [CREATED] Filtering: new_study_received');
                 break;
-                
-            case 'history-created':
-                // HISTORY CREATED: Studies with history being created
-                queryFilters.workflowStatus = { 
-                    $in: ['history_pending', 'history_created', 'history_verified'] 
-                };
-                break;
-                
-            case 'unassigned':
-                // UNASSIGNED: Studies awaiting assignment OR with no valid assignments
-                queryFilters.$or = [
-                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
-                    { assignment: { $exists: false } },
-                    { assignment: { $size: 0 } },
-                    { assignment: null },
-                    { 
-                        assignment: { 
-                            $not: { 
-                                $elemMatch: { 
-                                    assignedTo: { $exists: true, $ne: null }
-                                } 
-                            } 
-                        }
-                    }
-                ];
-                console.log(`📋 [UNASSIGNED] Filtering by workflow status OR empty/invalid assignments`);
-                break;
-                
-            case 'assigned':
-                // ASSIGNED: Studies assigned to radiologist
-                queryFilters.workflowStatus = { 
-                    $in: ['assigned_to_doctor', 'assignment_accepted'] 
-                };
-                break;
-                
-            case 'pending':
-                // PENDING: Report work in progress
-                queryFilters.workflowStatus = { 
-                    $in: ['doctor_opened_report', 'report_in_progress', 'pending_completion'] 
-                };
-                break;
-                
-            case 'draft':
-                // DRAFT: Draft reports saved
-                queryFilters.workflowStatus = { 
-                    $in: ['report_drafted', 'draft_saved'] 
-                };
-                break;
-                
-            case 'verification-pending':
-                // VERIFICATION PENDING: Reports awaiting verification
-                queryFilters.workflowStatus = { 
-                    $in: ['verification_pending', 'verification_in_progress'] 
-                };
-                break;
-                
-            case 'final':
-                // FINAL: Finalized reports (removed revert_to_radiologist from here)
-                queryFilters.workflowStatus = { 
-                    $in: [
-                        'report_finalized', 
-                        'final_approved', 
-                        'report_completed',
-                        'report_uploaded',
-                        'report_downloaded_radiologist',
-                        'report_downloaded',
-                        'final_report_downloaded',
-                        'report_verified',
-                        'archived'
-                    ] 
-                };
-                break;
-                
-            case 'urgent':
-                // URGENT: Filter by studyPriority = 'Emergency Case'
-                queryFilters.studyPriority = 'Emergency Case';
-                console.log(`🚨 [URGENT] Filtering by studyPriority: 'Emergency Case'`);
-                break;
-                
-            case 'reprint-need':
-                // REPRINT NEED: Studies needing reprint/correction
-                queryFilters.workflowStatus = { 
-                    $in: ['reprint_requested', 'correction_needed', 'report_reprint_needed'] 
-                };
-                break;
-                
-            // ✅ NEW: REVERTED category
-            case 'reverted':
-                // REVERTED: Studies reverted back to radiologist
-//                 queryFilters.workflowStatus = {'revert_to_radiologist',  'report_rejected',
-// };
-            queryFilters.workflowStatus = { 
-                    $in: ['revert_to_radiologist',  'report_rejected']
 
-                };
-                console.log(`🔄 [REVERTED] Filtering reverted studies`);
+            case 'history-created':
+                // ✅ HISTORY-CREATED: Only history_created status
+                queryFilters.workflowStatus = 'history_created';
+                console.log('📋 [HISTORY-CREATED] Filtering: history_created');
                 break;
-            
+
+            case 'unassigned':
+                // ✅ UNASSIGNED: new_study_received + history_created
+                queryFilters.workflowStatus = { $in: ['new_study_received', 'history_created'] };
+                console.log('📋 [UNASSIGNED] Filtering: new_study_received, history_created');
+                break;
+
+            case 'assigned':
+                // ✅ ASSIGNED: assigned_to_doctor
+                queryFilters.workflowStatus = 'assigned_to_doctor';
+                console.log('📋 [ASSIGNED] Filtering: assigned_to_doctor');
+                break;
+
+            case 'pending':
+                // ✅ PENDING: new_study_received + history_created + assigned_to_doctor
+                queryFilters.workflowStatus = { $in: ['new_study_received', 'history_created', 'assigned_to_doctor', 'doctor_opened_report'] };
+                console.log('📋 [PENDING] Filtering: new_study_received, history_created, assigned_to_doctor');
+                break;
+
+            case 'draft':
+                // ✅ DRAFT: report_drafted
+                queryFilters.workflowStatus = 'report_drafted';
+                console.log('📋 [DRAFT] Filtering: report_drafted');
+                break;
+
+            case 'verification-pending':
+                // ✅ VERIFICATION-PENDING: verification_pending
+                queryFilters.workflowStatus = 'verification_pending';
+                console.log('📋 [VERIFICATION-PENDING] Filtering: verification_pending');
+                break;
+
+            case 'final':
+                // ✅ FINAL: report_completed
+                queryFilters.workflowStatus = 'report_completed';
+                console.log('📋 [FINAL] Filtering: report_completed');
+                break;
+
+            case 'reverted':
+                // ✅ REVERTED: study_reverted + report_rejected
+                queryFilters.workflowStatus = { $in: ['study_reverted', 'report_rejected', 'revert_to_radiologist'] };
+                console.log('📋 [REVERTED] Filtering: study_reverted, report_rejected');
+                break;
+
+            case 'urgent':
+                // ✅ URGENT: EMERGENCY + PRIORITY
+                queryFilters.$or = [
+                    { priority: { $in: ['EMERGENCY', 'PRIORITY'] } },
+                    { 'assignment.priority': { $in: ['EMERGENCY', 'PRIORITY'] } }
+                ];
+                console.log('🚨 [URGENT] Filtering by priority: EMERGENCY, PRIORITY');
+                break;
+
+            case 'reprint-need':
+                // ✅ REPRINT-NEED: report_reprint_needed
+                queryFilters.workflowStatus = 'report_reprint_needed';
+                console.log('📋 [REPRINT-NEED] Filtering: report_reprint_needed');
+                break;
+
             default:
-                // 'all' - no workflow status filter
+                console.log(`⚠️  Unknown category: ${category}`);
                 break;
         }
 
-        console.log(`🔍 [${category.toUpperCase()}] Query filter:`, 
-            category === 'urgent' 
-                ? `studyPriority: ${queryFilters.studyPriority}` 
-                : `workflowStatus: ${JSON.stringify(queryFilters.workflowStatus)}`
-        );
-
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
-
         const processingTime = Date.now() - startTime;
         console.log(`✅ [${category.toUpperCase()}]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
 
@@ -1247,73 +1148,47 @@ export const getStudiesByCategory = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
+                currentPage, totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies, limit,
                 hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                hasPrevPage: currentPage > 1,
             },
             metadata: {
-                category: category,
-                // ✅ Show correct filter type in metadata
-                filterType: category === 'urgent' ? 'studyPriority' : 'workflowStatus',
-                filterValue: category === 'urgent' 
-                    ? queryFilters.studyPriority 
-                    : (queryFilters.workflowStatus?.$in || 'all'),
+                category,
+                filterType: category === 'urgent' ? 'priority' : 'workflowStatus',
+                filterValue: category === 'urgent' ? queryFilters.studyPriority : (queryFilters.workflowStatus?.$in || 'all'),
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
-                userRole: user.role,
-                processingTime: processingTime
-            }
+                userRole: user.role, 
+                processingTime,
+            },
         });
-
     } catch (error) {
         console.error(`❌ [${req.params.category?.toUpperCase()}]: Error fetching studies:`, error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching studies.', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
     }
 };
 
-// ✅ FIX: Get all studies WITH PAGINATION
+// ✅ GET ALL STUDIES FOR ADMIN
 export const getAllStudiesForAdmin = async (req, res) => {
     try {
         const startTime = Date.now();
         const limit = parseInt(req.query.limit) || 50;
-        const page = parseInt(req.query.page) || 1; // ✅ GET PAGE FROM QUERY
-        
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({ success: false, message: 'User not authenticated' });
-        }
+        const page  = parseInt(req.query.page)  || 1;
+        const user  = req.user;
+        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
 
         console.log(`🔍 [ALL STUDIES] Fetching - Page: ${page}, Limit: ${limit}`);
 
-        // Determine workflow statuses based on category
         let workflowStatuses = null;
         if (req.query.category && req.query.category !== 'all') {
-            const statusMap = {
-                'pending': ['new_study_received', 'pending_assignment'],
-                'inprogress': [
-                    'assigned_to_doctor', 'doctor_opened_report', 'report_in_progress',
-                    'report_finalized', 'report_drafted', 'report_uploaded', 
-                    'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
-                    'report_rejected'
-                ],
-                'completed': ['final_report_downloaded', 'archived']
-            };
-            workflowStatuses = statusMap[req.query.category];
+            workflowStatuses = WORKFLOW_STATUS_MAP[req.query.category] ?? null;
         }
 
         const queryFilters = buildBaseQuery(req, user, workflowStatuses);
-
-        // ✅ CRITICAL: Pass PAGE to executeStudyQuery
         const { studies, totalStudies, currentPage } = await executeStudyQuery(queryFilters, limit, page);
 
         const processingTime = Date.now() - startTime;
-        console.log(`✅ [ALL STUDIES]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies})`);
+        console.log(`✅ [ALL STUDIES]: Page ${currentPage} - ${studies.length} studies (Total: ${totalStudies}) in ${processingTime}ms`);
 
         return res.status(200).json({
             success: true,
@@ -1321,53 +1196,39 @@ export const getAllStudiesForAdmin = async (req, res) => {
             totalRecords: totalStudies,
             data: studies,
             pagination: {
-                currentPage: currentPage,
-                totalPages: Math.ceil(totalStudies / limit),
-                totalRecords: totalStudies,
-                limit: limit,
+                currentPage, totalPages: Math.ceil(totalStudies / limit),
+                totalRecords: totalStudies, limit,
                 hasNextPage: currentPage < Math.ceil(totalStudies / limit),
-                hasPrevPage: currentPage > 1
+                hasPrevPage: currentPage > 1,
             },
             metadata: {
                 category: req.query.category || 'all',
                 statusesIncluded: workflowStatuses || 'all',
                 organizationFilter: user.role !== 'super_admin' ? user.organizationIdentifier : 'all',
                 userRole: user.role,
-                processingTime: processingTime,
+                processingTime,
                 appliedFilters: {
                     modality: req.query.modality || 'all',
-                    labId: req.query.labId || 'all',
+                    labId:    req.query.labId    || 'all',
                     priority: req.query.priority || 'all',
-                    search: req.query.search || null,
-                    dateType: req.query.dateType || 'createdAt'
-                }
-            }
+                    search:   req.query.search   || null,
+                    dateType: req.query.dateType || 'createdAt',
+                },
+            },
         });
-
     } catch (error) {
         console.error('❌ ALL STUDIES: Error fetching studies:', error);
-        res.status(500).json({ 
-            success: false, 
-            message: 'Server error fetching studies.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined
-        });
+        res.status(500).json({ success: false, message: 'Server error fetching studies.', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
     }
 };
-
-
 
 // ✅ GET ALL LABS IN ORGANIZATION
 export const getOrganizationLabs = async (req, res) => {
     try {
-        const userRole = req.user.role;
+        const userRole      = req.user.role;
         const orgIdentifier = req.user.organizationIdentifier;
-
-        // Build query based on role
-        let query = { isActive: true };
-        
-        if (userRole !== 'super_admin') {
-            query.organizationIdentifier = orgIdentifier;
-        }
+        const query = { isActive: true };
+        if (userRole !== 'super_admin') query.organizationIdentifier = orgIdentifier;
 
         const labs = await Lab.find(query)
             .populate('organization', 'name displayName identifier')
@@ -1376,29 +1237,20 @@ export const getOrganizationLabs = async (req, res) => {
             .lean();
 
         console.log(`✅ Found ${labs.length} labs for organization ${orgIdentifier || 'all'}`);
-
-        res.json({
-            success: true,
-            data: labs,
-            count: labs.length
-        });
-
+        res.json({ success: true, data: labs, count: labs.length });
     } catch (error) {
         console.error('❌ Get organization labs error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to fetch labs'
-        });
+        res.status(500).json({ success: false, message: 'Failed to fetch labs' });
     }
 };
 
 export default {
     getValues,
-    getCategoryValues, // ✅ NEW
-    getStudiesByCategory, // ✅ NEW
+    getCategoryValues,
+    getStudiesByCategory,
     getPendingStudies,
     getInProgressStudies,
     getCompletedStudies,
     getAllStudiesForAdmin,
-    getOrganizationLabs
+    getOrganizationLabs,
 };

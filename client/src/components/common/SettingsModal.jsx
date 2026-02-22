@@ -6,16 +6,18 @@ import { useAuth } from '../../hooks/useAuth';
 const SettingsModal = ({ isOpen, onClose, onNavigate, theme = 'default' }) => {
     const { currentUser } = useAuth();
     
-    if (!isOpen) return null;
-
-    const isAdmin = currentUser?.role === 'admin';
-    const isGreenTheme = theme === 'adminn';
+    // normalize role to avoid case / format mismatches
+    const role = (currentUser?.role || '').toString().toLowerCase();
+    const isAdmin = role === 'admin';
+    const isGreenTheme = theme === 'admin';
+    const isGroupId = role === 'group_id';
     
+    console.log('Current User Role:', currentUser?.role);
     // Check user permissions for creating entities
-    const canCreateDoctor = ['admin', 'group_id'].includes(currentUser?.role);
-    const canCreateLab = ['admin'].includes(currentUser?.role);
-    const canCreateUser = ['admin', 'group_id'].includes(currentUser?.role);
-    const canManageUsers = isAdmin;
+    const canCreateDoctor = ['admin', 'group_id'].includes(role);
+    const canCreateLab = ['admin'].includes(role);
+    const canCreateUser = ['admin', 'group_id'].includes(role);
+    const canManageUsers = isAdmin || isGroupId;
 
     const themeColors = isGreenTheme ? {
         primary: 'teal-600',

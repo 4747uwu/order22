@@ -8,7 +8,7 @@ import {
 // import ColorBends from '../creative/maxColor';
 
 const LoginPage = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [formData, setFormData] = useState({ username: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -38,10 +38,13 @@ const LoginPage = () => {
     setIsLoading(true);
 
     try {
-      const { email, password } = formData;
-      if (!email.trim() || !password.trim()) throw new Error('Please provide both email and password');
+      const { username, password } = formData;
+      if (!username.trim() || !password.trim()) throw new Error('Please provide both username and password');
       
-      const { user, redirectTo } = await login(email.trim(), password);
+      // Append @bharatpacs.com if no @ is provided
+      const loginEmail = username.includes('@') ? username.trim() : `${username.trim()}@bharatpacs.com`;
+      
+      const { user, redirectTo } = await login(loginEmail, password);
       console.log('✅ Login successful:', { role: user.role, email: user.email });
       
       const from = location.state?.from || redirectTo || getDashboardRoute();
@@ -79,24 +82,24 @@ const LoginPage = () => {
           <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-4">
               
-              {/* Email */}
+              {/* Username */}
               <div>
-                <label htmlFor="email" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
-                  Email Address
+                <label htmlFor="username" className="block text-xs font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  Username
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <Mail className="h-5 w-5 text-gray-400" />
                   </div>
                   <input
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
+                    id="username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
                     required
-                    value={formData.email}
+                    value={formData.username}
                     onChange={handleInputChange}
-                    placeholder="doctor@hospital.com"
+                    placeholder="john"
                     className="block w-full pl-10 py-3 border border-gray-200 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-transparent transition-all text-sm bg-gray-50 hover:bg-white hover:border-gray-300"
                   />
                 </div>

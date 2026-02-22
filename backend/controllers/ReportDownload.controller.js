@@ -387,11 +387,8 @@ class ReportDownloadController {
             return res.status(400).json({ success: false, message: 'Report ID is required.' });
         }
 
-        // ✅ UPDATED: Accept both reportId (direct) OR studyId (indirect via dicomStudy)
-        let report;
-        
         // Try to find by reportId first
-        report = await Report.findById(reportId)
+        let report = await Report.findById(reportId)
             .populate('patient', 'fullName patientId age gender')
             .populate({
                 path: 'dicomStudy',
@@ -400,14 +397,14 @@ class ReportDownloadController {
             })
             .populate('doctorId', 'fullName email');
         
-        // ✅ NEW: If not found by reportId, try finding by studyId (dicomStudy)
+        // If not found by reportId, try finding by studyId
         if (!report) {
             console.log('🔍 [Print] Report not found by ID, trying as studyId...');
             report = await Report.findOne({ 
                 dicomStudy: reportId,
-                reportStatus: 'finalized'  // Only get finalized reports
+                reportStatus: { $in: ['finalized', 'verified'] }
             })
-            .sort({ createdAt: -1 })  // Get latest report
+            .sort({ createdAt: -1 })
             .populate('patient', 'fullName patientId age gender')
             .populate({
                 path: 'dicomStudy',
@@ -415,10 +412,6 @@ class ReportDownloadController {
                 populate: { path: 'sourceLab', model: 'Lab' }
             })
             .populate('doctorId', 'fullName email');
-            
-            if (report) {
-                console.log('✅ [Print] Found report by studyId:', report._id);
-            }
         }
         
         if (!report) {
@@ -428,14 +421,14 @@ class ReportDownloadController {
             });
         }
 
-        // ✅ VALIDATE WORKFLOW STATUS
-        const study = report.dicomStudy;
-        const allowedStatuses = ['report_reprint_needed', 'report_completed', 'reprint_requested'];
-        
-        if (study && !allowedStatuses.includes(study.workflowStatus)) {
+        // ✅ FIX: Remove workflow status gate — print should work for ANY finalized/verified report
+        // DOCX and PDF download don't have this restriction, print shouldn't either
+        // The old check was blocking report_verified, report_finalized, assigned_to_doctor etc.
+        const printableReportStatuses = ['finalized', 'verified', 'approved'];
+        if (!printableReportStatuses.includes(report.reportStatus)) {
             return res.status(403).json({ 
                 success: false, 
-                message: `Cannot print report in "${study.workflowStatus}" status. Only completed or reprint-requested reports can be printed.` 
+                message: `Report is not ready for printing. Current status: ${report.reportStatus}` 
             });
         }
 

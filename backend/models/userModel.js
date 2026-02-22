@@ -347,85 +347,7 @@
 // UserSchema.index({ organization: 1, role: 1, isActive: 1 });
 // UserSchema.index({ role: 1, isActive: 1 });
 
-// // Pre-save middleware
-// UserSchema.pre('save', async function (next) {
-//     // Hash password if modified
-//     if (this.isModified('password')) {
-//         const salt = await bcrypt.genSalt(parseInt(process.env.BCRYPT_SALT_ROUNDS) || 10);
-//         this.password = await bcrypt.hash(this.password, salt);
-//     }
-    
-//     // Set permissions based on role
-//     if (this.isModified('role') || this.isNew) {
-//         this.setPermissionsByRole();
-//     }
-    
-//     next();
-// });
-
-// // Method to set permissions based on role
-// UserSchema.methods.setPermissionsByRole = function() {
-//     // Reset all permissions
-//     this.permissions = {};
-    
-//     switch (this.role) {
-//         case 'super_admin':
-//             this.permissions = {
-//                 canManageOrganizations: true,
-//                 canViewAllOrganizations: true,
-//                 canManageGlobalSettings: true,
-//                 canAccessSystemReports: true,
-//                 canManageUsers: true,
-//                 canManageLabs: true,
-//                 canViewReports: true,
-//                 canManageSettings: true,
-//                 canViewAllLabs: true,
-//                 canManageBilling: true,
-//                 canSetPricing: true,
-//                 canGenerateReports: true
-//             };
-//             break;
-            
-//         case 'admin':
-//             this.permissions = {
-//                 canManageUsers: true,
-//                 canManageLabs: true,
-//                 canViewReports: true,
-//                 canManageSettings: true,
-//                 canViewAllLabs: true
-//             };
-//             break;
-            
-//         case 'owner':
-//             this.permissions = {
-//                 canViewAllLabs: true,
-//                 canManageBilling: true,
-//                 canSetPricing: true,
-//                 canGenerateReports: true
-//             };
-//             break;
-            
-//         case 'doctor_account':
-//             this.permissions = {
-//                 canViewReports: true
-//             };
-//             break;
-            
-//         case 'lab_staff':
-//             this.permissions = {};
-//             break;
-//     }
-// };
-
-// UserSchema.methods.comparePassword = async function (enteredPassword) {
-//     return await bcrypt.compare(enteredPassword, this.password);
-// };
-
-// const User = mongoose.model('User', UserSchema);
-// export default User;
-
-
-
+// // Replace the existing 4 index lines with these:
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
@@ -766,19 +688,102 @@ const UserSchema = new mongoose.Schema({
     timestamps: true,
     collection: 'users'
 });
+// ── TIER 1: MULTI-TENANT UNIQUE CONSTRAINTS ───────────────────
+UserSchema.index(
+    { organizationIdentifier: 1, username: 1 },
+    { name: 'idx_org_username_unique', unique: true, background: true }
+);
 
-// Compound indexes for multi-tenancy and hierarchy
-UserSchema.index({ organizationIdentifier: 1, username: 1 }, { unique: true });
-UserSchema.index({ organizationIdentifier: 1, email: 1 }, { unique: true });
-UserSchema.index({ organization: 1, role: 1, isActive: 1 });
-UserSchema.index({ role: 1, isActive: 1 });
-UserSchema.index({ 'hierarchy.parentUser': 1, role: 1 });
-UserSchema.index({ 'roleConfig.linkedRadiologist': 1 });
-UserSchema.index({ 'linkedLabs.labId': 1 }); // ✅ NEW: For lab-based filtering
-UserSchema.index({ 'linkedAccounts.userId': 1 }); // ✅ NEW: For multi-account linking
+UserSchema.index(
+    { organizationIdentifier: 1, email: 1 },
+    { name: 'idx_org_email_unique', unique: true, background: true }
+);
 
+// ── TIER 2: LOGIN / AUTH HOT PATH ────────────────────────────
+// #3 - login by email (auth.controller loginUser)
+UserSchema.index(
+    { email: 1 },
+    { name: 'idx_email', background: true }
+);
 
-//pre-save middleware
+// #4 - org + role + active (find all radiologists, find all verifiers)
+UserSchema.index(
+    { organizationIdentifier: 1, role: 1, isActive: 1 },
+    { name: 'idx_org_role_active', background: true }
+);
+
+// #5 - org + active (list all active users in org)
+UserSchema.index(
+    { organizationIdentifier: 1, isActive: 1 },
+    { name: 'idx_org_isActive', background: true }
+);
+
+// ── TIER 3: ROLE-BASED LOOKUPS ────────────────────────────────
+// #6 - role + active global (super admin queries across orgs)
+UserSchema.index(
+    { role: 1, isActive: 1 },
+    { name: 'idx_role_active', background: true }
+);
+
+// #7 - org + role (get all users by role in org - user management page)
+UserSchema.index(
+    { organizationIdentifier: 1, role: 1 },
+    { name: 'idx_org_role', background: true }
+);
+
+// ── TIER 4: HIERARCHY QUERIES ─────────────────────────────────
+// #8 - who created what users (createdBy chain)
+UserSchema.index(
+    { 'hierarchy.createdBy': 1, role: 1 },
+    { name: 'idx_hierarchy_createdBy_role', background: true }
+);
+
+// #9 - parent → child user tree
+UserSchema.index(
+    { 'hierarchy.parentUser': 1, role: 1, isActive: 1 },
+    { name: 'idx_hierarchy_parent_role_active', background: true }
+);
+
+// ── TIER 5: ROLE CONFIG LOOKUPS ───────────────────────────────
+// #10 - typist → linked radiologist lookup
+UserSchema.index(
+    { 'roleConfig.linkedRadiologist': 1, isActive: 1 },
+    { name: 'idx_roleConfig_linkedRadiologist', background: true, sparse: true }
+);
+
+// #11 - assignor → assigned labs filter
+UserSchema.index(
+    { organizationIdentifier: 1, 'roleConfig.assignedLabs': 1 },
+    { name: 'idx_org_roleConfig_assignedLabs', background: true, sparse: true }
+);
+
+// #12 - lab access mode filter (assignor lab visibility)
+UserSchema.index(
+    { organizationIdentifier: 1, 'roleConfig.labAccessMode': 1, role: 1 },
+    { name: 'idx_org_labAccessMode_role', background: true }
+);
+
+// ── TIER 6: LAB LINKING ───────────────────────────────────────
+// #13 - users linked to a specific lab
+UserSchema.index(
+    { organizationIdentifier: 1, 'linkedLabs.labId': 1, isActive: 1 },
+    { name: 'idx_org_linkedLabs_active', background: true, sparse: true }
+);
+
+// ── TIER 7: ACTIVITY / AUDIT ──────────────────────────────────
+// #14 - last login tracking (recently active users)
+UserSchema.index(
+    { organizationIdentifier: 1, lastLoginAt: -1 },
+    { name: 'idx_org_lastLoginAt', background: true }
+);
+
+// #15 - login count analytics
+UserSchema.index(
+    { organizationIdentifier: 1, role: 1, lastLoginAt: -1 },
+    { name: 'idx_org_role_lastLogin', background: true }
+);
+
+// Pre-save middleware
 UserSchema.pre('save', async function (next) {
   if (this.isModified('password')) {
     const rawPassword = this.password; // capture raw before hashing

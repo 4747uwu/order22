@@ -9,7 +9,7 @@ import bcrypt from 'bcryptjs';
 export const getOrganizationUsers = async (req, res) => {
     try {
         // Only admin can access this
-        if (!['admin', 'super_admin'].includes(req.user.role)) {
+        if (!['admin', 'super_admin', 'group_id'].includes(req.user.role)) {
             return res.status(403).json({
                 success: false,
                 message: 'Only admin can access user credentials'
@@ -19,7 +19,7 @@ export const getOrganizationUsers = async (req, res) => {
         let query = { isActive: true };
         
         // For admin, limit to their organization
-        if (req.user.role === 'admin') {
+        if (req.user.role === 'admin' || req.user.role === 'group_id') {
             query.organizationIdentifier = req.user.organizationIdentifier;
         }
 

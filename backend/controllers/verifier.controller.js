@@ -12,40 +12,85 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
         throw new Error('Access denied: Verifier role required');
     }
 
+    // ✅ BASE: org + workflow statuses
     const queryFilters = {
-        // ✅ UPDATED: More flexible organization filtering
-        $or: [
-            { organizationIdentifier: user.organizationIdentifier },
-            { organizationIdentifier: { $exists: false } },
-            { organizationIdentifier: null }
-        ],
-        // ✅ UPDATED: Include study_reverted status for verifiers to see
-        workflowStatus: { 
-            $in: [
-                'verification_pending',
-                'report_finalized',  // ✅ Main status for verifiers
-                'verification_in_progress',
-                'report_verified',
-                'report_rejected',
-                // 'report_completed',
-                'revert_to_radiologist' // ✅ NEW: Show reverted studies
-            ] 
-        }
+        organizationIdentifier: user.organizationIdentifier
     };
 
-    // If user has organization identifier, prioritize their org studies
-    if (user.organizationIdentifier) {
-        console.log('🔍 [Verifier Query] Filtering for organization:', user.organizationIdentifier);
-    } else {
-        console.log('🔍 [Verifier Query] No organization restriction for user');
-    }
+    // ✅ DETERMINE VERIFIABLE STATUSES based on verification requirements
+    let verifiableStatuses = [
+        'verification_pending',
+        'report_finalized',
+        'verification_in_progress',
+        'report_verified',
+        'report_rejected',
+        'revert_to_radiologist'
+    ];
 
-    // ✅ WORKFLOW STATUS: Apply status filter if provided
+    // ✅ CRITICAL: Include report_completed ONLY if verification was required
+    // This is determined by checking:
+    // 1. Doctor's requireReportVerification flag
+    // 2. Lab's requireReportVerification setting
+    // 3. Study's explicit requiresVerification flag
+    
+    // For now, always include it and let the query filter below handle it
+    verifiableStatuses.push('report_completed');
+
+    // ✅ WORKFLOW STATUS OVERRIDE
     if (workflowStatuses && workflowStatuses.length > 0) {
-        queryFilters.workflowStatus = workflowStatuses.length === 1 ? workflowStatuses[0] : { $in: workflowStatuses };
+        queryFilters.workflowStatus = workflowStatuses.length === 1 
+            ? workflowStatuses[0] 
+            : { $in: workflowStatuses };
+    } else {
+        queryFilters.workflowStatus = { $in: verifiableStatuses };
     }
 
-    // Rest of the existing filter logic...
+    // ✅ FILTER BY ASSIGNED LABS (lab binding)
+    const assignedLabs = user.roleConfig?.assignedLabs || [];
+    const labAccessMode = user.roleConfig?.labAccessMode || 'all';
+
+    let labFilter = null;
+    
+    if (labAccessMode === 'selected' && assignedLabs.length > 0) {
+        labFilter = { sourceLab: { $in: assignedLabs } };
+        console.log(`🏥 [Verifier] Restricted to ${assignedLabs.length} lab(s):`, assignedLabs);
+    } else if (labAccessMode === 'none') {
+        labFilter = { sourceLab: { $in: [] } };
+        console.log('🚫 [Verifier] Lab access mode = none');
+    } else {
+        labFilter = null;
+        console.log('🏥 [Verifier] Lab access mode = all');
+    }
+
+    // ✅ FILTER BY ASSIGNED RADIOLOGISTS (doctor binding)
+    const assignedRadiologists = user.roleConfig?.assignedRadiologists || [];
+    
+    let radiologistFilter = null;
+    if (assignedRadiologists.length > 0) {
+        radiologistFilter = { 'assignment.assignedTo': { $in: assignedRadiologists } };
+        console.log(`🔒 [Verifier] Restricted to ${assignedRadiologists.length} radiologist(s):`, assignedRadiologists);
+    } else {
+        console.log('🔓 [Verifier] No radiologist restriction - seeing all org studies');
+    }
+
+    // ✅ CRITICAL: COMBINE FILTERS WITH $OR LOGIC
+    if (radiologistFilter && labFilter) {
+        queryFilters.$or = [
+            radiologistFilter,
+            labFilter
+        ];
+        console.log('🔀 [Verifier Filter] Using $OR: study matches if assigned to bound radiologist OR from bound lab');
+    } else if (radiologistFilter) {
+        Object.assign(queryFilters, radiologistFilter);
+        console.log('🔍 [Verifier Filter] Using radiologist filter only');
+    } else if (labFilter) {
+        Object.assign(queryFilters, labFilter);
+        console.log('🔍 [Verifier Filter] Using lab filter only');
+    } else {
+        console.log('🔓 [Verifier Filter] No radiologist or lab restrictions');
+    }
+
+    // ✅ DATE FILTERING
     const { filterStartDate, filterEndDate } = buildDateFilter(req);
     if (filterStartDate || filterEndDate) {
         const dateField = req.query.dateType === 'StudyDate' ? 'studyDate' : 'createdAt';
@@ -54,36 +99,48 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
         if (filterEndDate) queryFilters[dateField].$lte = filterEndDate;
     }
 
+    // ✅ SEARCH - no regex on clinicalHistory
     if (req.query.search) {
-        queryFilters.$or = [
-            { accessionNumber: { $regex: req.query.search, $options: 'i' } },
-            { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } }
-        ];
+        const searchTerm = req.query.search.trim();
+        const looksLikeId = /^[a-zA-Z0-9\-_.]+$/.test(searchTerm) && searchTerm.length <= 30;
+
+        if (looksLikeId) {
+            queryFilters.$or = [
+                { bharatPacsId: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { accessionNumber: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { 'patientInfo.patientID': { $regex: `^${searchTerm}`, $options: 'i' } }
+            ];
+        } else {
+            queryFilters.$text = { $search: searchTerm };
+        }
     }
 
+    // ✅ MODALITY - single field, hits index
     if (req.query.modality && req.query.modality !== 'all') {
-        queryFilters.$or = [
-            { modality: req.query.modality },
-            { modalitiesInStudy: req.query.modality }
-        ];
+        queryFilters.modality = req.query.modality;
     }
 
+    // ✅ LAB override from query (admin viewing specific lab)
     if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
-        queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
+        if (labAccessMode === 'all' || assignedLabs.map(l => l.toString()).includes(req.query.labId)) {
+            queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
+        }
     }
 
-    if (req.query.priority && req.query.priority !== 'all') {
-        queryFilters['assignment.priority'] = req.query.priority;
-    }
-
+    // ✅ SPECIFIC RADIOLOGIST filter from query (override)
     if (req.query.radiologist && req.query.radiologist !== 'all' && mongoose.Types.ObjectId.isValid(req.query.radiologist)) {
-        queryFilters['assignment.assignedTo'] = new mongoose.Types.ObjectId(req.query.radiologist);
+        const requestedRadId = new mongoose.Types.ObjectId(req.query.radiologist);
+        if (assignedRadiologists.length === 0 || assignedRadiologists.map(r => r.toString()).includes(req.query.radiologist)) {
+            queryFilters['assignment.assignedTo'] = requestedRadId;
+        }
     }
 
-    console.log('🔍 [Verifier Query] Built query filters:', JSON.stringify(queryFilters, null, 2));
+    // ✅ PRIORITY filter
+    if (req.query.priority && req.query.priority !== 'all') {
+        queryFilters.priority = req.query.priority;
+    }
 
+    console.log('🔍 [Verifier Query] Final filters:', JSON.stringify(queryFilters, null, 2));
     return queryFilters;
 };
 
