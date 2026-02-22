@@ -260,32 +260,21 @@ const getPriorityTag = (study, userRoles = [], userRole = '') => {
       return null;
   }
 };
-
-
-
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
-    patientName: '',
-    patientAge: '',
-    patientGender: '',
-    studyName: '',
-    referringPhysician: '',
-    accessionNumber: '',
-    clinicalHistory: '',
-    priority: 'NORMAL',
+    patientName: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (study && isOpen) {
-      // Normalize existing priority to one of our 5 canonical values
       const rawPriority = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase().trim();
       const validValues = CASE_PRIORITY_OPTIONS.map(o => o.value);
       const resolvedPriority = validValues.includes(rawPriority) ? rawPriority : 'NORMAL';
 
       setFormData({
         patientName:       study.patientName || study.patientInfo?.patientName || '',
-        patientAge:        study.patientAge  || study.patientInfo?.age          || '',
+        patientAge:        study.patientAge  || study.patientInfo?.age         || '',
         patientGender:     study.patientSex  || study.patientInfo?.gender       || '',
         studyName:         study.studyDescription || study.examDescription      || '',
         referringPhysician:study.referralNumber   || study.referringPhysicianName || '',
@@ -315,230 +304,103 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000]">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden border-2 border-gray-900">
+    // ✅ ULTRA COMPACT: Reduced modal max-width, shaved off outer padding
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-2">
+      <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-900 flex flex-col">
 
-        {/* Header */}
-        <div className="px-6 py-4 border-b-2 bg-gray-900 text-white flex items-center justify-between">
+        {/* ✅ ULTRA COMPACT HEADER: Smaller padding, smaller text */}
+        <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold uppercase">{study?.patientName || 'Edit Study Details'}</h2>
-            <p className="text-xs text-gray-300 mt-0.5 uppercase">
-              BP ID: {study?.bharatPacsId} | MODALITY: {study?.modality}
+            <h2 className="text-xs sm:text-sm font-bold uppercase truncate max-w-[200px] sm:max-w-md">{study?.patientName || 'Edit Study'}</h2>
+            <p className="text-[9px] text-gray-300 mt-0 uppercase leading-tight">
+              BP ID: {study?.bharatPacsId} | MOD: {study?.modality}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-700 rounded-lg transition-colors">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+          <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded transition-colors">
+            <XCircle className="w-4 h-4" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
-
-          {/* ── PRIORITY PICKER ─────────────────────────────────────────── */}
-          <div className={`mb-6 p-4 rounded-lg border-2 ${selectedOption.border} ${selectedOption.bg} transition-all`}>
-            <h3 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2 uppercase">
-              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white ${
-                formData.priority === 'EMERGENCY' ? 'bg-red-600'    :
-                formData.priority === 'PRIORITY'  ? 'bg-purple-600' :
-                formData.priority === 'MLC'       ? 'bg-amber-600'  :
-                formData.priority === 'STAT'      ? 'bg-sky-600'    :
-                'bg-gray-500'
-              }`}>!</span>
-              Case Priority
-            </h3>
-
-            {/* Card-style selector */}
-            <div className="grid grid-cols-5 gap-2 mb-3">
+        {/* ✅ ULTRA COMPACT FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
+        <form onSubmit={handleSubmit} className="p-3 overflow-y-auto flex-1">
+          
+          {/* PRIORITY */}
+          <div className={`mb-3 p-2 rounded border ${selectedOption.border} ${selectedOption.bg} transition-all`}>
+            <div className="flex justify-between items-end mb-1.5">
+              <h3 className="text-[10px] font-bold text-gray-800 uppercase">Case Priority</h3>
+              <span className={`text-[8px] ${selectedOption.text} font-medium`}>{selectedOption.desc}</span>
+            </div>
+            
+            <div className="grid grid-cols-5 gap-1.5">
               {CASE_PRIORITY_OPTIONS.map(opt => (
                 <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, priority: opt.value }))}
-                  className={`p-2 rounded-lg border-2 text-center transition-all hover:scale-105 ${
-                    formData.priority === opt.value
-                      ? `${opt.border} ${opt.bg} ${opt.text} shadow-md font-bold`
-                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-400'
+                  key={opt.value} type="button" onClick={() => setFormData(prev => ({ ...prev, priority: opt.value }))}
+                  className={`p-1 rounded border text-center transition-all ${
+                    formData.priority === opt.value ? `${opt.border} ${opt.bg} ${opt.text} shadow-sm font-bold scale-[1.02]` : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                   }`}
                 >
-                  <div className="text-lg leading-none mb-1">
-                    {opt.label.split(' ')[0]}
-                  </div>
-                  <div className="text-[10px] font-bold leading-tight">
-                    {opt.label.split(' ').slice(1).join(' ')}
-                  </div>
+                  <div className="text-[10px] leading-none mb-0.5">{opt.label.split(' ')[0]}</div>
+                  <div className="text-[8px] font-bold leading-tight truncate">{opt.label.split(' ').slice(1).join(' ')}</div>
                 </button>
               ))}
             </div>
-
-            {/* Description of selected */}
-            <p className={`text-xs ${selectedOption.text} font-medium`}>
-              {selectedOption.desc}
-            </p>
           </div>
 
-          {/* ── PATIENT INFORMATION ────────────────────────────────────── */}
-          <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
-              <span className="w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs">1</span>
-              Patient Information
-            </h3>
-            <div className="grid grid-cols-3 gap-4">
+          {/* PATIENT INFO */}
+          <div className="mb-3">
+            <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">Patient Info</h3>
+            <div className="grid grid-cols-3 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Patient Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.patientName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
-                  placeholder="ENTER PATIENT NAME"
-                />
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Name *</label>
+                <input type="text" value={formData.patientName} onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Age <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.patientAge}
-                  onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
-                  placeholder="E.G., 45Y"
-                />
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Age *</label>
+                <input type="text" value={formData.patientAge} onChange={(e) => setFormData(prev => ({ ...prev, patientAge: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Gender <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={formData.patientGender}
-                  onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
-                >
-                  <option value="">SELECT GENDER</option>
-                  <option value="M">MALE</option>
-                  <option value="F">FEMALE</option>
-                  <option value="O">OTHER</option>
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Gender</label>
+                <select value={formData.patientGender} onChange={(e) => setFormData(prev => ({ ...prev, patientGender: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase">
+                  <option value="">SEL</option><option value="M">M</option><option value="F">F</option><option value="O">O</option>
                 </select>
               </div>
             </div>
           </div>
 
-          {/* ── STUDY INFORMATION ──────────────────────────────────────── */}
-          <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
-              <span className="w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-xs">2</span>
-              Study Information
-            </h3>
-            <div className="grid grid-cols-2 gap-4">
+          {/* STUDY INFO */}
+          <div className="mb-3">
+            <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">Study Info</h3>
+            <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Study Name / Description <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.studyName}
-                  onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
-                  placeholder="E.G., CT HEAD PLAIN"
-                />
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Study Name *</label>
+                <input type="text" value={formData.studyName} onChange={(e) => setFormData(prev => ({ ...prev, studyName: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded uppercase" required />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Accession Number
-                </label>
-                <input
-                  type="text"
-                  value={formData.accessionNumber}
-                  onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  placeholder="ENTER ACCESSION NUMBER"
-                />
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Accession #</label>
+                <input type="text" value={formData.accessionNumber} onChange={(e) => setFormData(prev => ({ ...prev, accessionNumber: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded uppercase" />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                  Referring Physician <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={formData.referringPhysician}
-                  onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 uppercase"
-                  required
-                  placeholder="ENTER REFERRING PHYSICIAN NAME"
-                />
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Ref. Physician *</label>
+                <input type="text" value={formData.referringPhysician} onChange={(e) => setFormData(prev => ({ ...prev, referringPhysician: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded uppercase" required />
               </div>
             </div>
           </div>
 
-          {/* ── CLINICAL HISTORY ───────────────────────────────────────── */}
-          <div className="mb-6">
-            <h3 className="text-sm font-bold text-gray-800 mb-4 flex items-center gap-2 uppercase">
-              <span className="w-6 h-6 bg-purple-600 text-white rounded-full flex items-center justify-center text-xs">3</span>
-              Clinical History
-            </h3>
+          {/* CLINICAL HISTORY - Reduced to 2 rows */}
+          <div className="mb-2">
+            <h3 className="text-[10px] font-bold text-gray-800 mb-1 uppercase">Clinical History</h3>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1 uppercase">
-                Clinical History / Notes <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={formData.clinicalHistory}
-                onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))}
-                rows={4}
-                className="w-full px-3 py-2 text-sm font-semibold border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-none uppercase"
-                
-                placeholder="ENTER CLINICAL HISTORY, SYMPTOMS, OR RELEVANT NOTES..."
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                {formData.clinicalHistory.length} / 2000 CHARACTERS
-              </p>
+              <textarea value={formData.clinicalHistory} onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))} rows={2} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded resize-none uppercase" />
             </div>
           </div>
 
-          {/* ── FOOTER ─────────────────────────────────────────────────── */}
-          <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-gray-200">
-            <div className="text-xs text-gray-500 uppercase">
-              <span className="text-red-500">*</span> REQUIRED FIELDS
-            </div>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2.5 text-sm font-bold bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 border-2 border-gray-300 transition-colors uppercase"
-                disabled={loading}
-              >
-                CANCEL
-              </button>
-              <button
-                type="submit"
-                className={`px-6 py-2.5 text-sm font-bold text-white rounded-lg disabled:opacity-50 border-2 transition-colors flex items-center gap-2 uppercase ${
-                  formData.priority === 'EMERGENCY' ? 'bg-red-600 border-red-600 hover:bg-red-700'       :
-                  formData.priority === 'PRIORITY'  ? 'bg-purple-600 border-purple-600 hover:bg-purple-700' :
-                  formData.priority === 'MLC'        ? 'bg-amber-600 border-amber-600 hover:bg-amber-700'  :
-                  formData.priority === 'STAT'       ? 'bg-sky-600 border-sky-600 hover:bg-sky-700'       :
-                  'bg-gray-900 border-gray-900 hover:bg-black'
-                }`}
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    SAVING...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    SAVE CHANGES
-                  </>
-                )}
+          {/* FOOTER */}
+          <div className="flex justify-between items-center pt-2 mt-2 border-t border-gray-200">
+            <div className="text-[8px] text-gray-500 uppercase"><span className="text-red-500">*</span> REQ</div>
+            <div className="flex gap-2">
+              <button type="button" onClick={onClose} className="px-3 py-1 text-[10px] font-bold bg-gray-100 text-gray-700 rounded border border-gray-300 uppercase" disabled={loading}>CANCEL</button>
+              <button type="submit" className="px-3 py-1 text-[10px] font-bold text-white rounded bg-gray-900 border border-gray-900 uppercase flex items-center gap-1" disabled={loading}>
+                {loading ? 'SAVING...' : 'SAVE'}
               </button>
             </div>
           </div>

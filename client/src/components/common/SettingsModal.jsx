@@ -109,6 +109,9 @@ const SettingsModal = ({ isOpen, onClose, onNavigate, theme = 'default' }) => {
 
     if (settingsOptions.length === 0) return null;
 
+    // ✅ CRITICAL FIX: Don't render anything if modal is closed
+    if (!isOpen) return null;
+
     return (
         <>
             {/* Backdrop */}
