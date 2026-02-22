@@ -949,102 +949,141 @@ export const getCompletedStudies = async (req, res) => {
 
 // ✅ GET CATEGORY VALUES
 export const getCategoryValues = async (req, res) => {
-    console.log(`🔍 Fetching category values with filters: ${JSON.stringify(req.query)}`);
+    const startTime = Date.now();
     try {
-        const startTime = Date.now();
         const user = req.user;
-        if (!user) return res.status(401).json({ success: false, message: 'User not authenticated' });
-
         const queryFilters = buildBaseQuery(req, user);
+
         console.log('🔍 Category query filters:', JSON.stringify(queryFilters, null, 2));
 
-        const [facetResult, unassignedCount] = await Promise.all([
+        // ✅ MUST EXACTLY MATCH getStudiesByCategory switch cases
+        const STATUS_TO_CATEGORY = {
+            // case 'created' → workflowStatus = 'new_study_received'
+            new_study_received: 'created',
+
+            // case 'history-created' → workflowStatus = 'history_created'
+            history_created: 'history_created',
+
+            // case 'assigned' → workflowStatus = 'assigned_to_doctor'
+            assigned_to_doctor: 'assigned',
+
+            // case 'pending' → { $in: ['new_study_received', 'history_created', 'assigned_to_doctor', 'doctor_opened_report'] }
+            // NOTE: new_study_received, history_created, assigned_to_doctor already counted above
+            // pending tab TOTAL = created + history_created + assigned + doctor_opened_report
+            doctor_opened_report: 'pending',
+
+            // case 'draft' → workflowStatus = 'report_drafted'
+            report_drafted: 'draft',
+
+            // case 'verification-pending' → workflowStatus = 'verification_pending'
+            verification_pending: 'verification_pending',
+
+            // case 'final' → workflowStatus = 'report_completed' ONLY
+            report_completed: 'final',
+
+            // case 'reverted' → { $in: ['study_reverted', 'report_rejected', 'revert_to_radiologist'] }
+            study_reverted: 'reverted',
+            report_rejected: 'reverted',
+            revert_to_radiologist: 'reverted',
+
+            // case 'reprint-need' → workflowStatus = 'report_reprint_needed'
+            report_reprint_needed: 'reprint_need',
+        };
+
+        const [facetResult, unassignedCount, urgentCount, pendingCount] = await Promise.all([
+            // ── Single aggregation for all status-based counts ──────────────
             DicomStudy.aggregate([
                 { $match: queryFilters },
                 {
                     $facet: {
-                        statusGroups: [{ $group: { _id: '$workflowStatus', count: { $sum: 1 } } }],
-                        total:  [{ $count: 'n' }],
-                        urgent: [{ $match: { studyPriority: 'Emergency Case' } }, { $count: 'n' }],
+                        statusGroups: [
+                            { $group: { _id: '$workflowStatus', count: { $sum: 1 } } }
+                        ],
+                        total: [{ $count: 'n' }],
                     },
                 },
             ]).allowDiskUse(false),
 
+            // ── UNASSIGNED: exactly matches case 'unassigned' ───────────────
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                workflowStatus: { $in: ['new_study_received', 'history_created'] },
+            }),
+
+            // ── URGENT: exactly matches case 'urgent' ───────────────────────
             DicomStudy.countDocuments({
                 ...queryFilters,
                 $or: [
-                    { workflowStatus: { $in: ['pending_assignment', 'awaiting_radiologist'] } },
-                    { assignment: { $exists: false } },
-                    { assignment: { $size: 0 } },
-                    { assignment: null },
-                    { assignment: { $not: { $elemMatch: { assignedTo: { $exists: true, $ne: null } } } } },
+                    { priority: { $in: ['EMERGENCY', 'PRIORITY'] } },
+                    { 'assignment.priority': { $in: ['EMERGENCY', 'PRIORITY'] } }
                 ],
+            }),
+
+            // ── PENDING: exactly matches case 'pending' ─────────────────────
+            DicomStudy.countDocuments({
+                ...queryFilters,
+                workflowStatus: { 
+                    $in: ['new_study_received', 'history_created', 'assigned_to_doctor', 'doctor_opened_report'] 
+                },
             }),
         ]);
 
-        const STATUS_TO_CATEGORY = {
-            new_study_received: 'created', metadata_extracted: 'created', no_active_study: 'created',
-            history_pending: 'history_created', history_created: 'history_created', history_verified: 'history_created',
-            assigned_to_doctor: 'assigned', assignment_accepted: 'assigned',
-            doctor_opened_report: 'pending', report_in_progress: 'pending', pending_completion: 'pending',
-            report_drafted: 'draft', draft_saved: 'draft',
-            verification_pending: 'verification_pending', verification_in_progress: 'verification_pending',
-            report_finalized: 'final', final_approved: 'final', report_completed: 'final',
-            report_uploaded: 'final', report_downloaded_radiologist: 'final',
-            report_downloaded: 'final', final_report_downloaded: 'final',
-            report_verified: 'final', archived: 'final',
-            reprint_requested: 'reprint_need', correction_needed: 'reprint_need', report_reprint_needed: 'reprint_need',
-            revert_to_radiologist: 'reverted', report_rejected: 'reverted',
-        };
-
+        // ── Build counts from facet result ──────────────────────────────────
         const counts = {
-            created: 0, history_created: 0, assigned: 0, pending: 0,
-            draft: 0, verification_pending: 0, final: 0, reprint_need: 0, reverted: 0,
+            created: 0,
+            history_created: 0,
+            assigned: 0,
+            draft: 0,
+            verification_pending: 0,
+            final: 0,
+            reverted: 0,
+            reprint_need: 0,
         };
-        for (const { _id: status, count } of facetResult[0].statusGroups) {
-            const cat = STATUS_TO_CATEGORY[status];
-            if (cat) counts[cat] += count;
+
+        const statusGroups = facetResult[0]?.statusGroups ?? [];
+        const allCount     = facetResult[0]?.total[0]?.n  ?? 0;
+
+        for (const { _id: status, count } of statusGroups) {
+            const category = STATUS_TO_CATEGORY[status];
+            if (category && counts[category] !== undefined) {
+                counts[category] += count;
+            }
         }
 
-        const allCount    = facetResult[0].total[0]?.n  ?? 0;
-        const urgentCount = facetResult[0].urgent[0]?.n ?? 0;
         const processingTime = Date.now() - startTime;
-
         console.log(`🎯 Category values fetched in ${processingTime}ms`);
-        console.log(`🚨 URGENT (Emergency Case) count: ${urgentCount}`);
-
-        const response = {
-            success: true,
+        console.log(`📊 STATUS GROUPS:`, statusGroups);
+        console.log(`📊 COUNTS:`, {
             all: allCount,
-            created: counts.created,
-            history_created: counts.history_created,
+            ...counts,
             unassigned: unassignedCount,
-            assigned: counts.assigned,
-            pending: counts.pending,
-            draft: counts.draft,
-            verification_pending: counts.verification_pending,
-            final: counts.final,
+            pending: pendingCount,
             urgent: urgentCount,
-            reprint_need: counts.reprint_need,
-            reverted: counts.reverted,
-            performance: {
-                queryTime: processingTime,
-                fromCache: false,
-                filtersApplied: Object.keys(queryFilters).length > 0,
-            },
-        };
+        });
 
-        if (process.env.NODE_ENV === 'development') {
-            response.debug = { filtersApplied: queryFilters, userRole: user.role, organization: user.organizationIdentifier };
-        }
+        return res.status(200).json({
+            success: true,
+            all:                  allCount,
+            created:              counts.created,
+            history_created:      counts.history_created,
+            unassigned:           unassignedCount,       // ✅ countDocuments exact match
+            assigned:             counts.assigned,
+            pending:              pendingCount,          // ✅ countDocuments exact match
+            draft:                counts.draft,
+            verification_pending: counts.verification_pending,
+            final:                counts.final,          // ✅ only report_completed
+            urgent:               urgentCount,           // ✅ countDocuments exact match
+            reprint_need:         counts.reprint_need,
+            reverted:             counts.reverted,
+            processingTime,
+        });
 
-        res.status(200).json(response);
     } catch (error) {
         console.error('❌ Error fetching category values:', error);
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
-            message: 'Server error fetching category statistics.',
-            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+            message: 'Failed to fetch category values',
+            error: error.message,
         });
     }
 };
