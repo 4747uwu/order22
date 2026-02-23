@@ -28,6 +28,8 @@ router.use(protect);
 router.get('/reports/:reportId/download/pdf',  ReportDownloadController.downloadReportAsPDF);
 router.get('/reports/:reportId/download/docx', ReportDownloadController.downloadReportAsDOCX);
 
+router.get('/studies/:studyId/report-ids', ReportDownloadController.getStudyReportIds);
+
 // ✅ FIX: was '/:reportId/print' → must be '/reports/:reportId/print'
 // Frontend calls: /api/reports/reports/:reportId/print
 router.get('/reports/:reportId/print', ReportDownloadController.printReportAsPDF);

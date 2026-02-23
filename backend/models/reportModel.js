@@ -403,7 +403,7 @@ capturedImages: [{
             },
             downloadType: {
                 type: String,
-                enum: ['draft', 'final', 'verification']
+                enum: ['draft', 'final', 'verification', 'pdf', 'docx'] 
             },
             userRole: String,
             ipAddress: String,

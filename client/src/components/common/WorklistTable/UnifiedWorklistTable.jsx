@@ -620,40 +620,41 @@ const UnifiedStudyRow = ({
     }
   };
 
-  const handleDirectPrint = useCallback(async (study) => {
+    const handleDirectPrint = useCallback(async (study) => {
+      toast.loading('Fetching reports...', { id: 'print-load' });
       try {
-        const loadingToast = toast.loading('Loading report...', { icon: '🖨️' });
-  
-        // Step 1: Get reports for study (same endpoint ReportModal uses)
-        const response = await api.get(`/reports/studies/${study._id}/reports`);
-  
-        if (!response.data.success || !response.data.data?.reports?.length) {
-          toast.dismiss(loadingToast);
-          toast.error('No report found for this study');
-          return;
-        }
-  
-        // Step 2: Pick latest finalized report
-        const reports = response.data.data.reports;
-        const latestReport =
-          reports.find(r => r.reportStatus === 'finalized') || reports[0];
-  
-        if (!latestReport) {
-          toast.dismiss(loadingToast);
-          toast.error('No finalized report available');
-          return;
-        }
-  
-        toast.dismiss(loadingToast);
-  
-        // Step 3: Open PrintModal with reportId (same as DOCX flow)
-        setPrintModal({ show: true, report: latestReport });
-  
+          const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+          if (!response.data.success || !response.data.data?.reports?.length) {
+              toast.error('No finalized reports found', { id: 'print-load' });
+              return;
+          }
+
+          const { reports, totalReports } = response.data.data;
+          toast.dismiss('print-load');
+
+          // ✅ Just open PrintModal with all reports — no new tabs, no browser tricks
+          setPrintModal({
+              show: true,
+              report: null,
+              // ✅ Pass full report objects (with _id at minimum)
+              reports: reports.map(r => ({
+                  _id: r.reportId,
+                  reportId: r.reportId,
+                  patientInfo: { fullName: study.patientName },
+                  doctorId: { fullName: r.doctorName }
+              }))
+          });
+
+          if (totalReports > 1) {
+              toast.success(`${totalReports} reports ready — use tabs to switch`, { duration: 3000 });
+          }
+
       } catch (error) {
-        console.error('❌ [Print] Error:', error);
-        toast.error('Failed to load report for printing');
+          console.error('❌ [Print] Error:', error);
+          toast.error('Failed to load reports for printing', { id: 'print-load' });
       }
-    }, []);
+  }, []);
 
 
         const handleDirectDownloadPDF = useCallback(async (study) => {

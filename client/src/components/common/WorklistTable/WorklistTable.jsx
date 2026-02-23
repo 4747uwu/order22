@@ -423,10 +423,10 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 };
 
 const StudyRow = ({ 
-  study, activeViewers = [], index, selectedStudies, availableAssignees, onSelectStudy, onPatienIdClick, onAssignDoctor, onShowDetailedView, onViewReport, onShowStudyNotes, onViewStudy, onEditPatient, onAssignmentSubmit, onShowTimeline, onToggleLock, onShowDocuments, onShowRevertModal, setPrintModal, userRole, userRoles = [], getColumnWidth, isColumnVisible = () => true,
+  study, activeViewers = [], index, selectedStudies, availableAssignees, onSelectStudy, onPatienIdClick, onAssignDoctor, onShowDetailedView, onViewReport, onShowStudyNotes, onViewStudy, onEditPatient, onAssignmentSubmit, onShowTimeline, onToggleLock, onShowDocuments, onShowRevertModal, setPrintModal, onDirectPrint, userRole, userRoles = [], getColumnWidth, isColumnVisible = () => true,
 }) => {
   const navigate = useNavigate();
-  console.log('Rendering StudyRow for study:', study);
+  // console.log('Rendering StudyRow for study:', study);
   
   const assignInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
@@ -549,40 +549,70 @@ const StudyRow = ({
   };
 
   // ✅ UNIFIED: Get report then download as PDF (same pattern as DOCX)
-  const handleDirectPrint = useCallback(async (study) => {
-    try {
-      const loadingToast = toast.loading('Loading report...', { icon: '🖨️' });
+// const handleDirectPrint = useCallback(async (study) => {
+//         toast.loading('Fetching reports...', { id: 'print-load' });
+//         try {
+//             // Step 1: Get all finalized report IDs
+//             const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-      // Step 1: Get reports for study (same endpoint ReportModal uses)
-      const response = await api.get(`/reports/studies/${study._id}/reports`);
+//             if (!response.data.success || !response.data.data?.reports?.length) {
+//                 toast.error('No finalized reports found', { id: 'print-load' });
+//                 return;
+//             }
 
-      if (!response.data.success || !response.data.data?.reports?.length) {
-        toast.dismiss(loadingToast);
-        toast.error('No report found for this study');
-        return;
-      }
+//             const { reports, totalReports } = response.data.data;
+//             toast.success(`Found ${totalReports} report(s). Opening for print...`, { id: 'print-load', duration: 2000 });
 
-      // Step 2: Pick latest finalized report
-      const reports = response.data.data.reports;
-      const latestReport =
-        reports.find(r => r.reportStatus === 'finalized') || reports[0];
+//             // Step 2: Print each report one by one
+//             for (let i = 0; i < reports.length; i++) {
+//                 const reportMeta = reports[i];
 
-      if (!latestReport) {
-        toast.dismiss(loadingToast);
-        toast.error('No finalized report available');
-        return;
-      }
+//                 if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
 
-      toast.dismiss(loadingToast);
+//                 toast.loading(`Preparing print ${i + 1} of ${totalReports}...`, { id: `print-${i}` });
 
-      // Step 3: Open PrintModal with reportId (same as DOCX flow)
-      setPrintModal({ show: true, report: latestReport });
+//                 try {
+//                     const pdfResponse = await api.get(
+//                         `/reports/reports/${reportMeta.reportId}/print`,
+//                         { responseType: 'blob', timeout: 60000 }
+//                     );
 
-    } catch (error) {
-      console.error('❌ [Print] Error:', error);
-      toast.error('Failed to load report for printing');
-    }
-  }, []);
+//                     const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+//                     const url = window.URL.createObjectURL(blob);
+
+//                     // Open PDF inline in new tab — browser print dialog opens
+//                     const printWindow = window.open(url, '_blank');
+//                     if (printWindow) {
+//                         printWindow.onload = () => {
+//                             printWindow.focus();
+//                             printWindow.print();
+//                         };
+//                     }
+
+//                     // Clean up blob URL after a delay
+//                     setTimeout(() => window.URL.revokeObjectURL(url), 30000);
+
+//                     toast.success(
+//                         totalReports > 1
+//                             ? `🖨️ Print ${i + 1} of ${totalReports} opened!`
+//                             : '🖨️ Print dialog opened!',
+//                         { id: `print-${i}`, duration: 2500 }
+//                     );
+//                 } catch (err) {
+//                     console.error(`❌ Failed to print report ${i + 1}:`, err);
+//                     toast.error(`❌ Print ${i + 1} failed`, { id: `print-${i}`, duration: 3000 });
+//                 }
+//             }
+
+//             if (totalReports > 1) {
+//                 toast.success(`🎉 All ${totalReports} reports sent to print!`, { id: 'print-done', duration: 3000 });
+//             }
+
+//         } catch (error) {
+//             console.error('❌ [Print] Error:', error);
+//             toast.error('Failed to load reports for printing.', { id: 'print-load' });
+//         }
+//     }, []);
 
   // ✅ UNIFIED: Get report then download as PDF (same pattern as DOCX)
   const handleDownloadPDF = useCallback(async (study) => {
@@ -721,50 +751,116 @@ const StudyRow = ({
     }
   };
 
-   const handleDirectDownloadPDF = useCallback(async (study) => {
-    try {
-      const loadingToast = toast.loading('Generating PDF...', { icon: '⚙️' });
 
-      const response = await api.get(`/reports/studies/${study._id}/reports`);
 
-      if (!response.data.success || !response.data.data?.reports?.length) {
-        toast.dismiss(loadingToast);
-        toast.error('No report found for this study');
-        return;
+  const handleDirectDownloadPDF = useCallback(async (study) => {
+      toast.loading('Fetching reports...', { id: 'pdf-download' });
+      try {
+          const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+          if (!response.data.success || !response.data.data?.reports?.length) {
+              toast.error('No finalized reports found', { id: 'pdf-download' });
+              return;
+          }
+
+          const { reports, totalReports } = response.data.data;
+          toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
+
+          for (let i = 0; i < reports.length; i++) {
+              const reportMeta = reports[i];
+              if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+              toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
+
+              try {
+                  const pdfResponse = await api.get(
+                      `/reports/reports/${reportMeta.reportId}/download/pdf`,
+                      { responseType: 'blob', timeout: 60000 }
+                  );
+                  const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+                  const url = window.URL.createObjectURL(blob);
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}_of_${totalReports}.pdf`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                  window.URL.revokeObjectURL(url);
+                  toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
+              } catch (err) {
+                  console.error(`❌ Failed to download report ${i + 1}:`, err);
+                  toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
+              }
+          }
+
+          toast.success(
+              totalReports > 1 ? `🎉 All ${totalReports} reports downloaded!` : '🎉 Report downloaded!',
+              { id: 'pdf-download-done', duration: 3000 }
+          );
+
+      } catch (error) {
+          console.error('❌ [Download PDF] Error:', error);
+          toast.error('Failed to fetch reports', { id: 'pdf-download' });
       }
-
-      const reports = response.data.data.reports;
-      const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
-
-      if (!latestReport) {
-        toast.dismiss(loadingToast);
-        toast.error('No finalized report available');
-        return;
-      }
-
-      const pdfResponse = await api.get(
-        `/reports/reports/${latestReport._id}/download/pdf`,
-        { responseType: 'blob', timeout: 60000 }
-      );
-
-      toast.dismiss(loadingToast);
-
-      const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-
-      toast.success('PDF downloaded!', { icon: '📥' });
-    } catch (error) {
-      console.error('❌ [Download PDF] Error:', error);
-      toast.error('Failed to download PDF');
-    }
   }, []);
+
+  const handleDirectPrint = useCallback(async (study) => {
+      toast.loading('Fetching reports...', { id: 'print-load' });
+      try {
+          const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+          if (!response.data.success || !response.data.data?.reports?.length) {
+              toast.error('No finalized reports found', { id: 'print-load' });
+              return;
+          }
+
+          const { reports, totalReports } = response.data.data;
+          toast.success(`Found ${totalReports} report(s). Opening for print...`, { id: 'print-load', duration: 2000 });
+
+          for (let i = 0; i < reports.length; i++) {
+              const reportMeta = reports[i];
+              if (i > 0) await new Promise(resolve => setTimeout(resolve, 1000));
+
+              toast.loading(`Preparing print ${i + 1} of ${totalReports}...`, { id: `print-${i}` });
+
+              try {
+                  const pdfResponse = await api.get(
+                      `/reports/reports/${reportMeta.reportId}/print`,
+                      { responseType: 'blob', timeout: 60000 }
+                  );
+                  const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+                  const url = window.URL.createObjectURL(blob);
+
+                  const printWindow = window.open(url, '_blank');
+                  if (printWindow) {
+                      printWindow.onload = () => {
+                          printWindow.focus();
+                          printWindow.print();
+                      };
+                  }
+                  setTimeout(() => window.URL.revokeObjectURL(url), 30000);
+
+                  toast.success(
+                      totalReports > 1 ? `🖨️ Print ${i + 1} of ${totalReports} opened!` : '🖨️ Print dialog opened!',
+                      { id: `print-${i}`, duration: 2500 }
+                  );
+              } catch (err) {
+                  console.error(`❌ Failed to print report ${i + 1}:`, err);
+                  toast.error(`❌ Print ${i + 1} failed`, { id: `print-${i}`, duration: 3000 });
+              }
+          }
+
+          if (totalReports > 1) {
+              toast.success(`🎉 All ${totalReports} reports sent to print!`, { id: 'print-done', duration: 3000 });
+          }
+
+      } catch (error) {
+          console.error('❌ [Print] Error:', error);
+          toast.error('Failed to load reports for printing', { id: 'print-load' });
+      }
+  }, []);
+
+
 
   const handleLockToggle = async (e) => {
     e.stopPropagation();
@@ -1022,7 +1118,7 @@ const StudyRow = ({
                     <div className="flex items-center gap-1 justify-center">
                         {/* Print */}
                         <button 
-                            onClick={() => handleDirectPrint(study)} 
+                            onClick={() => onDirectPrint(study)} 
                             className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110" 
                             title="Print Report"
                         >
@@ -1250,8 +1346,7 @@ const WorklistTable = ({
   const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
   const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
-  const [printModal, setPrintModal] = useState({ show: false, report: false });
-
+const [printModal, setPrintModal] = useState({ show: false, report: null, reports: [] });
   useEffect(() => {
     if (readyState === WebSocket.OPEN) {
       sendMessage({ type: 'subscribe_to_viewer_updates' });
@@ -1299,45 +1394,86 @@ const WorklistTable = ({
     window.location.reload();
   }, []);
 
-  const handleDirectPrint = useCallback(async (study) => {
-    try {
-      const loadingToast = toast.loading('Loading report...', { icon: '🖨️' });
+  // const handleDirectPrint = useCallback(async (study) => {
+  //   try {
+  //     const loadingToast = toast.loading('Loading report...', { icon: '🖨️' });
 
-      // Step 1: Get reports for study (same endpoint ReportModal uses)
-      const response = await api.get(`/reports/studies/${study._id}/reports`);
+  //     // Step 1: Get reports for study (same endpoint ReportModal uses)
+  //     const response = await api.get(`/reports/studies/${study._id}/reports`);
 
-      if (!response.data.success || !response.data.data?.reports?.length) {
-        toast.dismiss(loadingToast);
-        toast.error('No report found for this study');
-        return;
-      }
+  //     if (!response.data.success || !response.data.data?.reports?.length) {
+  //       toast.dismiss(loadingToast);
+  //       toast.error('No report found for this study');
+  //       return;
+  //     }
 
-      // Step 2: Pick latest finalized report
-      const reports = response.data.data.reports;
-      const latestReport =
-        reports.find(r => r.reportStatus === 'finalized') || reports[0];
+  //     // Step 2: Pick latest finalized report
+  //     const reports = response.data.data.reports;
+  //     const latestReport =
+  //       reports.find(r => r.reportStatus === 'finalized') || reports[0];
 
-      if (!latestReport) {
-        toast.dismiss(loadingToast);
-        toast.error('No finalized report available');
-        return;
-      }
+  //     if (!latestReport) {
+  //       toast.dismiss(loadingToast);
+  //       toast.error('No finalized report available');
+  //       return;
+  //     }
 
-      toast.dismiss(loadingToast);
+  //     toast.dismiss(loadingToast);
 
-      // Step 3: Open PrintModal with reportId (same as DOCX flow)
-      setPrintModal({ show: true, report: latestReport });
+  //     // Step 3: Open PrintModal with reportId (same as DOCX flow)
+  //     setPrintModal({ show: true, report: latestReport });
 
-    } catch (error) {
-      console.error('❌ [Print] Error:', error);
-      toast.error('Failed to load report for printing');
-    }
-  }, []);
+  //   } catch (error) {
+  //     console.error('❌ [Print] Error:', error);
+  //     toast.error('Failed to load report for printing');
+  //   }
+  // }, []);
 
-  const handleClosePrintModal = useCallback(() => setPrintModal({ show: false, report: false }),[]);
+  const handleClosePrintModal = useCallback(() => setPrintModal({ show: false, report: null, reports: [] }), []);
   const handleEditPatient = useCallback((study) => setPatientEditModal({ show: true, study }), []);
   const handleSavePatientEdit = useCallback(async (formData) => { await onUpdateStudyDetails?.(formData); setPatientEditModal({ show: false, study: null }); }, [onUpdateStudyDetails]);
   const handleShowDocuments = useCallback((study) => setDocumentsModal({ show: true, studyId: study?._id || null, studyMeta: { patientId: study?.patientId || study?.patientInfo?.patientID || study?.patient?.PatientID || '', patientName: study?.patientName || study?.patientInfo?.patientName || study?.patient?.PatientName || '' } }), []);
+
+
+ 
+
+  const handleDirectPrint = useCallback(async (study) => {
+      toast.loading('Fetching reports...', { id: 'print-load' });
+      try {
+          const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+          if (!response.data.success || !response.data.data?.reports?.length) {
+              toast.error('No finalized reports found', { id: 'print-load' });
+              return;
+          }
+
+          const { reports, totalReports } = response.data.data;
+          toast.dismiss('print-load');
+
+          // ✅ Just open PrintModal with all reports — no new tabs, no browser tricks
+          setPrintModal({
+              show: true,
+              report: null,
+              // ✅ Pass full report objects (with _id at minimum)
+              reports: reports.map(r => ({
+                  _id: r.reportId,
+                  reportId: r.reportId,
+                  patientInfo: { fullName: study.patientName },
+                  doctorId: { fullName: r.doctorName }
+              }))
+          });
+
+          if (totalReports > 1) {
+              toast.success(`${totalReports} reports ready — use tabs to switch`, { duration: 3000 });
+          }
+
+      } catch (error) {
+          console.error('❌ [Print] Error:', error);
+          toast.error('Failed to load reports for printing', { id: 'print-load' });
+      }
+  }, []);
+
+
   
   const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
     try {
@@ -1408,7 +1544,7 @@ const WorklistTable = ({
           </thead>
           <tbody>
             {sortStudiesByPriority(studies).map((study, index) => (
-              <StudyRow key={study._id} study={study} activeViewers={activeViweres[study._id] || []} index={index} selectedStudies={selectedStudies} availableAssignees={availableAssignees} onSelectStudy={onSelectStudy} onPatienIdClick={onPatienIdClick} onAssignDoctor={onAssignDoctor} onShowDetailedView={handleShowDetailedView} onViewReport={handleViewReport} onShowStudyNotes={handleShowStudyNotes} onViewStudy={handleViewStudy} onEditPatient={handleEditPatient} onAssignmentSubmit={onAssignmentSubmit} onShowTimeline={handleShowTimeline} onToggleLock={handleToggleStudyLock} onShowDocuments={handleShowDocuments} onShowRevertModal={handleShowRevertModal} setPrintModal={setPrintModal} userRole={userRole} userRoles={userAccountRoles} getColumnWidth={getColumnWidth} isColumnVisible={isColumnVisible} />
+              <StudyRow key={study._id} study={study} activeViewers={activeViweres[study._id] || []} index={index} selectedStudies={selectedStudies} availableAssignees={availableAssignees} onSelectStudy={onSelectStudy} onPatienIdClick={onPatienIdClick} onAssignDoctor={onAssignDoctor} onShowDetailedView={handleShowDetailedView} onViewReport={handleViewReport} onShowStudyNotes={handleShowStudyNotes} onViewStudy={handleViewStudy} onEditPatient={handleEditPatient} onAssignmentSubmit={onAssignmentSubmit} onShowTimeline={handleShowTimeline} onToggleLock={handleToggleStudyLock} onShowDocuments={handleShowDocuments} onShowRevertModal={handleShowRevertModal} setPrintModal={setPrintModal} userRole={userRole} userRoles={userAccountRoles} getColumnWidth={getColumnWidth} isColumnVisible={isColumnVisible}  onDirectPrint={handleDirectPrint}  />
             ))}
           </tbody>
         </table>
@@ -1424,7 +1560,17 @@ const WorklistTable = ({
       {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
       {documentsModal.show && <StudyDocumentsManager studyId={documentsModal.studyId} studyMeta={documentsModal.studyMeta} isOpen={documentsModal.show} onClose={() => setDocumentsModal({ show: false, studyId: null, studyMeta: null })} />}
       {revertModal.show && <RevertModal isOpen={revertModal.show} study={revertModal.study} onClose={() => setRevertModal({ show: false, study: null })} onSuccess={handleRevertSuccess} />}
-      {printModal.show && <PrintModal report={printModal.report} onClose={handleClosePrintModal} />}
+      {/* {printModal.show && <PrintModal report={printModal.report} onClose={handleClosePrintModal} />} */}
+
+      {printModal.show && (
+      <PrintModal 
+          report={printModal.report} 
+          reports={printModal.reports}      
+          onClose={handleClosePrintModal} 
+      />
+      )}
+
+
     </div>
   );
 };
