@@ -127,8 +127,9 @@ export const storeDraftReport = async (req, res) => {
                 : 'N/A';
 
             // ✅ FILENAME: Use doctor name (not admin)
-            const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
-            const fileName = `${doctorNameForFilename}_draft_${Date.now()}.docx`;
+            const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
+                .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+            const fileName = `${patientNameForFilename}`;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
@@ -387,8 +388,9 @@ export const storeFinalizedReport = async (req, res) => {
                 : 'N/A';
 
             // ✅ FILENAME: Use doctor name (not admin)
-            const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
-            const fileName = `${doctorNameForFilename}_final_${Date.now()}.${format}`;
+            const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
+                .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+            const fileName = `${patientNameForFilename}`;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
@@ -650,10 +652,11 @@ export const storeMultipleReports = async (req, res) => {
                     : referringPhysicianData?.name || 'N/A';
 
                 // ✅ Filename includes report number if multiple
-                const doctorNameForFilename = doctorName.toLowerCase().replace(/\s+/g, '_');
+                const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
+                    .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
                 const fileName = reports.length > 1
-                    ? `${doctorNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                    : `${doctorNameForFilename}_final_${Date.now()}.docx`;
+                    ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                    : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
                 const newReport = new Report({
                     reportId: `RPT_${studyId}_${reportNumber}_${Date.now()}`,

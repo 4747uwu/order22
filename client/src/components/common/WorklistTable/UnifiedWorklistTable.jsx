@@ -620,41 +620,42 @@ const UnifiedStudyRow = ({
     }
   };
 
-    const handleDirectPrint = useCallback(async (study) => {
-      toast.loading('Fetching reports...', { id: 'print-load' });
-      try {
-          const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-          if (!response.data.success || !response.data.data?.reports?.length) {
-              toast.error('No finalized reports found', { id: 'print-load' });
-              return;
-          }
 
-          const { reports, totalReports } = response.data.data;
-          toast.dismiss('print-load');
+const handleDirectPrint = useCallback(async (study) => {
+    toast.loading('Fetching reports...', { id: 'print-load' });
+    try {
+        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-          // ✅ Just open PrintModal with all reports — no new tabs, no browser tricks
-          setPrintModal({
-              show: true,
-              report: null,
-              // ✅ Pass full report objects (with _id at minimum)
-              reports: reports.map(r => ({
-                  _id: r.reportId,
-                  reportId: r.reportId,
-                  patientInfo: { fullName: study.patientName },
-                  doctorId: { fullName: r.doctorName }
-              }))
-          });
+        if (!response.data.success || !response.data.data?.reports?.length) {
+            toast.error('No finalized reports found', { id: 'print-load' });
+            return;
+        }
 
-          if (totalReports > 1) {
-              toast.success(`${totalReports} reports ready — use tabs to switch`, { duration: 3000 });
-          }
+        const { reports, totalReports } = response.data.data;
+        toast.dismiss('print-load');
 
-      } catch (error) {
-          console.error('❌ [Print] Error:', error);
-          toast.error('Failed to load reports for printing', { id: 'print-load' });
-      }
-  }, []);
+        // ✅ Pass FULL reports array structure
+        setPrintModal({
+            show: true,
+            report: null,
+            reports: reports.map(r => ({
+                _id: r.reportId,
+                reportId: r.reportId,
+                patientInfo: { fullName: study.patientName },
+                doctorId: { fullName: r.doctorName }
+            }))
+        });
+
+        if (totalReports > 1) {
+            toast.success(`${totalReports} reports ready — use tabs to switch`, { duration: 3000 });
+        }
+
+    } catch (error) {
+        console.error('❌ [Print] Error:', error);
+        toast.error('Failed to load reports for printing', { id: 'print-load' });
+    }
+}, [setPrintModal]); // ✅ ADD setPrintModal as dependency
 
 
         const handleDirectDownloadPDF = useCallback(async (study) => {
@@ -1484,6 +1485,28 @@ const UnifiedStudyRow = ({
         </td>
     )}
 
+
+      {showDownloadOptions && (
+                <DownloadOptions
+                    study={study}
+                    isOpen={showDownloadOptions}
+                    onClose={() => setShowDownloadOptions(false)}
+                    position={downloadPosition}
+                />
+            )}
+
+            {/* ✅ AssignmentModal MUST be here — it uses createPortal internally so renders correctly */}
+            {showAssignmentModal && (
+                <AssignmentModal
+                    study={study}
+                    availableAssignees={availableAssignees}
+                    onSubmit={handleAssignmentSubmit}
+                    onClose={handleCloseAssignmentModal}
+                    position={assignmentModalPosition}
+                    searchTerm={assignInputValue}
+                />
+            )}
+
     {shareModal && (
       <ShareModal 
         study={study} 
@@ -1823,7 +1846,7 @@ const DB_TO_CONFIG_KEY_MAP = {
     const [patientEditModal, setPatientEditModal] = useState({ show: false, study: null });
     const [timelineModal, setTimelineModal] = useState({ show: false, studyId: null, studyData: null });
     const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
-    const [printModal, setPrintModal] = useState({ show: false, report: null });
+const [printModal, setPrintModal] = useState({ show: false, report: null, reports: [] });
 
     const handleShowTimeline = useCallback((study) => {
         setTimelineModal({ show: true, studyId: study._id, studyData: study });
@@ -1883,8 +1906,8 @@ const DB_TO_CONFIG_KEY_MAP = {
     }, []);
 
     const handleClosePrintModal = useCallback(() => {
-        setPrintModal({ show: false, report: null });
-    }, []);
+    setPrintModal({ show: false, report: null, reports: [] }); // ✅ ADD reports: []
+}, []);
 
     if (loading) {
         return (
@@ -2280,6 +2303,8 @@ const DB_TO_CONFIG_KEY_MAP = {
                 />
             )}
 
+
+
             {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
             {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
             {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
@@ -2295,11 +2320,12 @@ const DB_TO_CONFIG_KEY_MAP = {
                 
                 )}
             {printModal.show && (
-                <PrintModal
-                    report={printModal.report}
-                    onClose={handleClosePrintModal}
-                />
-            )}
+    <PrintModal
+        report={printModal.report}
+        reports={printModal.reports}  // ✅ THIS WAS MISSING
+        onClose={handleClosePrintModal}
+    />
+)}
         </div>
     );
 };

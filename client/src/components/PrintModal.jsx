@@ -147,7 +147,7 @@ const PrintModal = ({ report, reports: multiReports, onClose }) => {
                             {activeReport?.reportId || activeReport?._id} | {activeReport?.patientInfo?.fullName || activeReport?.patientName}
                         </p>
                     </div>
-                    {/* <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                         {totalReports > 1 && (
                             <button
                                 onClick={handlePrintAll}
@@ -158,10 +158,14 @@ const PrintModal = ({ report, reports: multiReports, onClose }) => {
                                 Print All ({totalReports})
                             </button>
                         )}
-                        <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded transition-colors">
+                        <button 
+                            onClick={onClose} 
+                            className="p-1 hover:bg-gray-200 rounded transition-colors"
+                            title="Close"
+                        >
                             <X className="w-4 h-4 text-gray-600" />
                         </button>
-                    </div> */}
+                    </div>
                 </div>
 
                 {/* ✅ TABS — only show if multiple reports */}

@@ -12,16 +12,16 @@ const LabBrandingSettings = () => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+
   // ✅ Header/footer heights in PIXELS
   const [headerHeight, setHeaderHeight] = useState(120);
   const [footerHeight, setFooterHeight] = useState(80);
   const [isDragging, setIsDragging] = useState({ type: null, active: false });
-  
+
   // ✅ Input field states for manual entry
   const [headerInput, setHeaderInput] = useState('120');
   const [footerInput, setFooterInput] = useState('80');
-  
+
   // ✅ React Image Crop states
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropType, setCropType] = useState(null);
@@ -36,7 +36,7 @@ const LabBrandingSettings = () => {
   const [completedCrop, setCompletedCrop] = useState(null);
   const [rotation, setRotation] = useState(0);
   const [scale, setScale] = useState(1);
-  
+
   // ✅ Pending changes management with size tracking
   const [pendingChanges, setPendingChanges] = useState({
     header: null,
@@ -48,10 +48,10 @@ const LabBrandingSettings = () => {
     header: false,
     footer: false
   });
-  
+
   const imgRef = useRef(null);
   const previewCanvasRef = useRef(null);
-  
+
   const [brandingData, setBrandingData] = useState({
     headerImage: { url: '', width: 0, height: 0, size: 0 },
     footerImage: { url: '', width: 0, height: 0, size: 0 },
@@ -102,10 +102,10 @@ const LabBrandingSettings = () => {
   const checkSizeMatch = (type) => {
     const pendingImage = pendingChanges[type];
     if (!pendingImage) return false;
-    
+
     const targetHeight = type === 'header' ? headerHeight : footerHeight;
     const actualHeight = pendingImage.height;
-    
+
     return Math.abs(actualHeight - targetHeight) <= 5;
   };
 
@@ -129,14 +129,14 @@ const LabBrandingSettings = () => {
   // Fetch branding data for current lab
   const fetchBrandingData = useCallback(async () => {
     if (!labId) return;
-    
+
     try {
       setLoading(true);
       const response = await api.get(`/branding/labs/${labId}/branding`);
-      
+
       if (response.data.success && response.data.data) {
         const fetchedData = response.data.data;
-        
+
         setBrandingData(prev => ({
           headerImage: fetchedData.headerImage || prev.headerImage,
           footerImage: fetchedData.footerImage || prev.footerImage,
@@ -149,13 +149,13 @@ const LabBrandingSettings = () => {
         }));
 
         if (fetchedData.paperSettings) {
-          const headerPx = fetchedData.paperSettings.headerHeight > 50 
-            ? fetchedData.paperSettings.headerHeight 
+          const headerPx = fetchedData.paperSettings.headerHeight > 50
+            ? fetchedData.paperSettings.headerHeight
             : Math.round(fetchedData.paperSettings.headerHeight * 96 / 25.4);
-          const footerPx = fetchedData.paperSettings.footerHeight > 50 
-            ? fetchedData.paperSettings.footerHeight 
+          const footerPx = fetchedData.paperSettings.footerHeight > 50
+            ? fetchedData.paperSettings.footerHeight
             : Math.round(fetchedData.paperSettings.footerHeight * 96 / 25.4);
-            
+
           setHeaderHeight(headerPx || 120);
           setFooterHeight(footerPx || 80);
         }
@@ -175,16 +175,16 @@ const LabBrandingSettings = () => {
   const handleMouseDown = (type, e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     setIsDragging({ type, active: true });
-    
+
     const startY = e.clientY;
     const startHeight = type === 'header' ? headerHeight : footerHeight;
 
     const handleMouseMove = (moveEvent) => {
       moveEvent.preventDefault();
       moveEvent.stopPropagation();
-      
+
       const deltaY = moveEvent.clientY - startY;
       const pixelDelta = deltaY / LETTER_CONSTANTS.SCALE_FACTOR;
       const finalDelta = type === 'footer' ? -pixelDelta : pixelDelta;
@@ -215,7 +215,7 @@ const LabBrandingSettings = () => {
     } else {
       setFooterInput(value);
     }
-    
+
     const numValue = parseInt(value, 10);
     if (!isNaN(numValue) && numValue >= 20 && numValue <= 400) {
       if (type === 'header') {
@@ -231,7 +231,7 @@ const LabBrandingSettings = () => {
   const handleHeightInputBlur = (type) => {
     const currentValue = type === 'header' ? headerInput : footerInput;
     const numValue = parseInt(currentValue, 10);
-    
+
     if (isNaN(numValue) || numValue < 20 || numValue > 400) {
       const validValue = type === 'header' ? headerHeight : footerHeight;
       if (type === 'header') {
@@ -281,7 +281,7 @@ const LabBrandingSettings = () => {
         return;
       }
     }
-    
+
     setCropType(type);
     const input = document.createElement('input');
     input.type = 'file';
@@ -368,13 +368,13 @@ const LabBrandingSettings = () => {
   const applyCropToPending = () => {
     const image = imgRef.current;
     const croppedCanvas = generateCroppedImage(image, completedCrop, rotation, scale);
-    
+
     if (croppedCanvas) {
       const croppedWidth = Math.round(croppedCanvas.width);
       const croppedHeight = Math.round(croppedCanvas.height);
       const targetHeight = cropType === 'header' ? headerHeight : footerHeight;
       const isMatch = Math.abs(croppedHeight - targetHeight) <= 5;
-      
+
       croppedCanvas.toBlob((blob) => {
         const url = URL.createObjectURL(blob);
         setPendingChanges(prev => ({
@@ -388,7 +388,7 @@ const LabBrandingSettings = () => {
             isMatch
           }
         }));
-        
+
         if (cropType === 'header') {
           setHeaderHeight(croppedHeight);
           setHeaderInput(String(croppedHeight));
@@ -396,17 +396,17 @@ const LabBrandingSettings = () => {
           setFooterHeight(croppedHeight);
           setFooterInput(String(croppedHeight));
         }
-        
+
         const matchText = isMatch ? ' (Size matched perfectly! ✅)' : ` (Slider adjusted to ${croppedHeight}px)`;
         toast.success(`${cropType === 'header' ? 'Header' : 'Footer'} cropped to ${croppedHeight}px!${matchText}`, {
           duration: 5000,
           className: 'border-green-400'
         });
-        
+
         if (isMatch) {
           triggerFlashAnimation(cropType);
         }
-        
+
         setShowCropModal(false);
         setCropImageSrc(null);
         updatePaperSettings();
@@ -415,75 +415,70 @@ const LabBrandingSettings = () => {
   };
 
   // ✅ Save all pending changes
-  const saveAllChanges = async () => {
+
+const saveAllChanges = async () => {
     if (!labId || (!pendingChanges.header && !pendingChanges.footer)) {
-      toast.error('No changes to save');
-      return;
+        toast.error('No changes to save');
+        return;
     }
 
     try {
-      setSaving(true);
+        setSaving(true);
 
-      if (pendingChanges.header) {
-        toast.loading('Converting header to black & white...', { id: 'bw-header' });
-        const bwBlob = await convertToBlackAndWhite(pendingChanges.header.blob);
-        toast.dismiss('bw-header');
+        if (pendingChanges.header) {
+            // ✅ NO B&W conversion — upload original color blob directly
+            const formData = new FormData();
+            formData.append('image', pendingChanges.header.blob, `header_${Date.now()}.png`);
+            formData.append('type', 'header');
+            formData.append('width', pendingChanges.header.width.toString());
+            formData.append('height', pendingChanges.header.height.toString());
 
-        const formData = new FormData();
-        formData.append('image', bwBlob, `header_${Date.now()}.png`);
-        formData.append('type', 'header');
-        formData.append('width', pendingChanges.header.width.toString());
-        formData.append('height', pendingChanges.header.height.toString());
+            const response = await api.post(`/branding/labs/${labId}/branding/upload`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
 
-        const response = await api.post(`/branding/labs/${labId}/branding/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        if (response.data.success) {
-          setBrandingData(prev => ({
-            ...prev,
-            headerImage: response.data.data.headerImage
-          }));
+            if (response.data.success) {
+                setBrandingData(prev => ({
+                    ...prev,
+                    headerImage: response.data.data.headerImage
+                }));
+            }
         }
-      }
 
-      if (pendingChanges.footer) {
-        toast.loading('Converting footer to black & white...', { id: 'bw-footer' });
-        const bwBlob = await convertToBlackAndWhite(pendingChanges.footer.blob);
-        toast.dismiss('bw-footer');
+        if (pendingChanges.footer) {
+            // ✅ NO B&W conversion — upload original color blob directly
+            const formData = new FormData();
+            formData.append('image', pendingChanges.footer.blob, `footer_${Date.now()}.png`);
+            formData.append('type', 'footer');
+            formData.append('width', pendingChanges.footer.width.toString());
+            formData.append('height', pendingChanges.footer.height.toString());
 
-        const formData = new FormData();
-        formData.append('image', bwBlob, `footer_${Date.now()}.png`);
-        formData.append('type', 'footer');
-        formData.append('width', pendingChanges.footer.width.toString());
-        formData.append('height', pendingChanges.footer.height.toString());
+            const response = await api.post(`/branding/labs/${labId}/branding/upload`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
 
-        const response = await api.post(`/branding/labs/${labId}/branding/upload`, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        });
-
-        if (response.data.success) {
-          setBrandingData(prev => ({
-            ...prev,
-            footerImage: response.data.data.footerImage
-          }));
+            if (response.data.success) {
+                setBrandingData(prev => ({
+                    ...prev,
+                    footerImage: response.data.data.footerImage
+                }));
+            }
         }
-      }
 
-      Object.values(pendingChanges).forEach(change => {
-        if (change?.url) URL.revokeObjectURL(change.url);
-      });
-      setPendingChanges({ header: null, footer: null });
+        Object.values(pendingChanges).forEach(change => {
+            if (change?.url) URL.revokeObjectURL(change.url);
+        });
+        setPendingChanges({ header: null, footer: null });
 
-      toast.success('Branding images saved as black & white successfully!');
+        toast.success('Branding images saved in full color successfully!');
 
     } catch (error) {
-      console.error('Error saving changes:', error);
-      toast.error('Failed to save changes');
+        console.error('Error saving changes:', error);
+        toast.error('Failed to save changes');
     } finally {
-      setSaving(false);
+        setSaving(false);
     }
-  };
+};
 
   // ✅ Discard pending changes
   const discardPendingChanges = () => {
@@ -500,7 +495,7 @@ const LabBrandingSettings = () => {
 
     try {
       setSaving(true);
-      
+
       const response = await api.delete(`/branding/labs/${labId}/branding/${type}`);
 
       if (response.data.success) {
@@ -508,7 +503,7 @@ const LabBrandingSettings = () => {
           ...prev,
           [`${type}Image`]: { url: '', width: 0, height: 0, size: 0 }
         }));
-        
+
         toast.success(`${type === 'header' ? 'Header' : 'Footer'} image removed`);
       }
     } catch (error) {
@@ -550,18 +545,18 @@ const LabBrandingSettings = () => {
     return new Promise((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(blob);
-      
+
       img.onload = () => {
         const canvas = document.createElement('canvas');
         canvas.width = img.width;
         canvas.height = img.height;
-        
+
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0);
-        
+
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         const data = imageData.data;
-        
+
         for (let i = 0; i < data.length; i += 4) {
           // Luminance formula for accurate grayscale
           const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
@@ -570,13 +565,13 @@ const LabBrandingSettings = () => {
           data[i + 2] = gray;
           // Alpha unchanged
         }
-        
+
         ctx.putImageData(imageData, 0, 0);
         URL.revokeObjectURL(url);
-        
+
         canvas.toBlob((bwBlob) => resolve(bwBlob), 'image/png', 0.95);
       };
-      
+
       img.src = url;
     });
   };
@@ -609,7 +604,7 @@ const LabBrandingSettings = () => {
             <ArrowLeft className="w-3 h-3" />
             <span className="font-medium text-xs">Back</span>
           </button>
-          
+
           <div className="flex items-center space-x-1 mb-3">
             <Sparkles className="w-3 h-3 text-purple-500" />
             <h1 className="text-xs font-bold text-gray-900">Report Branding</h1>
@@ -642,7 +637,7 @@ const LabBrandingSettings = () => {
           {/* ✅ Manual Height Input Controls */}
           <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded text-xs space-y-2">
             <div className="text-blue-700 font-medium mb-2">Precise Control</div>
-            
+
             <div>
               <label className="text-blue-600 font-medium block mb-1">Header Height (px)</label>
               <input
@@ -656,7 +651,7 @@ const LabBrandingSettings = () => {
                 placeholder="120"
               />
             </div>
-            
+
             <div>
               <label className="text-blue-600 font-medium block mb-1">Footer Height (px)</label>
               <input
@@ -670,7 +665,7 @@ const LabBrandingSettings = () => {
                 placeholder="80"
               />
             </div>
-            
+
             <p className="text-blue-500 text-xs italic mt-1">Range: 20-400px</p>
           </div>
         </div>
@@ -715,7 +710,7 @@ const LabBrandingSettings = () => {
               <h2 className="text-base font-bold text-gray-900">{currentUser?.lab?.name || 'Your Lab'}</h2>
               <p className="text-xs text-gray-600">Letter Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
             </div>
-            
+
             <div className="flex items-center gap-3 text-xs text-gray-600">
               <span>📐 816×1056px (Letter 8.5"×11")</span>
               <span className={`${headerSizeMatch ? 'text-green-600 font-semibold' : ''}`}>
@@ -736,17 +731,17 @@ const LabBrandingSettings = () => {
         <div className="flex-1 bg-gray-100 p-3 overflow-auto">
           <div className="flex justify-center items-center min-h-full">
             <div className="relative">
-              <div 
+              <div
                 className="bg-white shadow-2xl border border-gray-300 relative mx-auto"
-                style={{ 
+                style={{
                   width: `${displayDims.paperWidth}px`,
                   height: `${displayDims.paperHeight}px`,
                 }}
               >
-                
+
                 {/* Paper Guidelines */}
                 <div className="absolute inset-0 pointer-events-none">
-                  <div 
+                  <div
                     className="absolute border border-dashed border-gray-300 opacity-50"
                     style={{
                       top: `${displayDims.marginTop}px`,
@@ -759,15 +754,13 @@ const LabBrandingSettings = () => {
 
                 {/* ✅ Header Section */}
                 <div
-                  className={`relative border-b border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 group overflow-hidden transition-all duration-500 ${
-                    headerSizeMatch 
-                      ? 'ring-4 ring-green-400 ring-opacity-100 shadow-lg shadow-green-200 animate-pulse bg-gradient-to-r from-green-50 to-emerald-50' 
+                  className={`relative border-b border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 group overflow-hidden transition-all duration-500 ${headerSizeMatch
+                      ? 'ring-4 ring-green-400 ring-opacity-100 shadow-lg shadow-green-200 animate-pulse bg-gradient-to-r from-green-50 to-emerald-50'
                       : ''
-                  } ${
-                    flashAnimation.header 
-                      ? 'ring-8 ring-green-500 ring-opacity-75 animate-ping bg-green-100' 
+                    } ${flashAnimation.header
+                      ? 'ring-8 ring-green-500 ring-opacity-75 animate-ping bg-green-100'
                       : ''
-                  }`}
+                    }`}
                   style={{
                     position: 'absolute',
                     top: `${displayDims.marginTop}px`,
@@ -777,11 +770,10 @@ const LabBrandingSettings = () => {
                   }}
                 >
                   <div className="absolute top-1 left-2 z-20">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded shadow-md transition-all duration-300 ${
-                      headerSizeMatch 
-                        ? 'text-green-800 bg-green-200 border border-green-400 animate-bounce' 
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded shadow-md transition-all duration-300 ${headerSizeMatch
+                        ? 'text-green-800 bg-green-200 border border-green-400 animate-bounce'
                         : 'text-purple-700 bg-white border border-purple-200'
-                    }`}>
+                      }`}>
                       Header: {headerHeight}px {pendingChanges.header && '• Modified'} {headerSizeMatch && '🎯 Perfect!'}
                     </span>
                   </div>
@@ -789,11 +781,10 @@ const LabBrandingSettings = () => {
                   <div className="absolute top-1 right-2 z-20 flex gap-1">
                     <button
                       onClick={() => handleToggleVisibility('header')}
-                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                        brandingData.showHeader
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${brandingData.showHeader
                           ? 'bg-green-500 text-white hover:bg-green-600'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
+                        }`}
                     >
                       {brandingData.showHeader ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                     </button>
@@ -803,18 +794,17 @@ const LabBrandingSettings = () => {
                     <>
                       {(pendingChanges.header?.url || brandingData.headerImage?.url) ? (
                         <div className="absolute inset-0 group">
-                          <img 
-                            src={pendingChanges.header?.url || brandingData.headerImage.url} 
+                          <img
+                            src={pendingChanges.header?.url || brandingData.headerImage.url}
                             alt="Header"
-                            className={`w-full h-full object-cover transition-all duration-500 ${
-                              pendingChanges.header 
-                                ? headerSizeMatch 
-                                  ? 'ring-4 ring-green-400 ring-inset shadow-lg shadow-green-200 brightness-105' 
+                            className={`w-full h-full object-cover transition-all duration-500 ${pendingChanges.header
+                                ? headerSizeMatch
+                                  ? 'ring-4 ring-green-400 ring-inset shadow-lg shadow-green-200 brightness-105'
                                   : 'ring-3 ring-amber-400 ring-inset shadow-lg shadow-amber-200'
                                 : ''
-                            }`}
+                              }`}
                           />
-                          
+
                           <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                             <button
                               onClick={() => openCropModal('header', true)}
@@ -840,7 +830,7 @@ const LabBrandingSettings = () => {
                           </div>
                         </div>
                       ) : (
-                        <div 
+                        <div
                           className="absolute inset-0 border-2 border-dashed border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50 transition-colors cursor-pointer flex items-center justify-center"
                           onClick={() => openCropModal('header')}
                         >
@@ -855,9 +845,8 @@ const LabBrandingSettings = () => {
                   )}
 
                   <div
-                    className={`absolute bottom-0 left-0 w-full h-3 bg-purple-400 cursor-ns-resize hover:bg-purple-600 transition-colors z-10 ${
-                      isDragging.type === 'header' && isDragging.active ? 'bg-purple-700' : ''
-                    }`}
+                    className={`absolute bottom-0 left-0 w-full h-3 bg-purple-400 cursor-ns-resize hover:bg-purple-600 transition-colors z-10 ${isDragging.type === 'header' && isDragging.active ? 'bg-purple-700' : ''
+                      }`}
                     onMouseDown={(e) => handleMouseDown('header', e)}
                     title={`Drag to resize header height (current: ${headerHeight}px)`}
                   >
@@ -866,7 +855,7 @@ const LabBrandingSettings = () => {
                 </div>
 
                 {/* Content Area */}
-                <div 
+                <div
                   className="bg-gray-50 border-l border-r border-dashed border-gray-300 relative overflow-hidden"
                   style={{
                     position: 'absolute',
@@ -888,7 +877,7 @@ const LabBrandingSettings = () => {
                         <div className="h-3 bg-gray-200 rounded w-36"></div>
                       </div>
                     </div>
-                    
+
                     <div className="space-y-3 pt-6">
                       <div className="h-3 bg-gray-200 rounded w-full"></div>
                       <div className="h-3 bg-gray-200 rounded w-full"></div>
@@ -919,15 +908,13 @@ const LabBrandingSettings = () => {
 
                 {/* ✅ Footer Section */}
                 <div
-                  className={`relative border-t border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 group overflow-hidden transition-all duration-500 ${
-                    footerSizeMatch 
-                      ? 'ring-4 ring-green-400 ring-opacity-100 shadow-lg shadow-green-200 animate-pulse bg-gradient-to-r from-green-50 to-emerald-50' 
+                  className={`relative border-t border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 group overflow-hidden transition-all duration-500 ${footerSizeMatch
+                      ? 'ring-4 ring-green-400 ring-opacity-100 shadow-lg shadow-green-200 animate-pulse bg-gradient-to-r from-green-50 to-emerald-50'
                       : ''
-                  } ${
-                    flashAnimation.footer 
-                      ? 'ring-8 ring-green-500 ring-opacity-75 animate-ping bg-green-100' 
+                    } ${flashAnimation.footer
+                      ? 'ring-8 ring-green-500 ring-opacity-75 animate-ping bg-green-100'
                       : ''
-                  }`}
+                    }`}
                   style={{
                     position: 'absolute',
                     bottom: `${displayDims.marginBottom}px`,
@@ -937,9 +924,8 @@ const LabBrandingSettings = () => {
                   }}
                 >
                   <div
-                    className={`absolute top-0 left-0 w-full h-3 bg-purple-400 cursor-ns-resize hover:bg-purple-600 transition-colors z-10 ${
-                      isDragging.type === 'footer' && isDragging.active ? 'bg-purple-700' : ''
-                    }`}
+                    className={`absolute top-0 left-0 w-full h-3 bg-purple-400 cursor-ns-resize hover:bg-purple-600 transition-colors z-10 ${isDragging.type === 'footer' && isDragging.active ? 'bg-purple-700' : ''
+                      }`}
                     onMouseDown={(e) => handleMouseDown('footer', e)}
                     title={`Drag to resize footer height (current: ${footerHeight}px)`}
                   >
@@ -947,11 +933,10 @@ const LabBrandingSettings = () => {
                   </div>
 
                   <div className="absolute bottom-1 left-2 z-20">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded shadow-md transition-all duration-300 ${
-                      footerSizeMatch 
-                        ? 'text-green-800 bg-green-200 border border-green-400 animate-bounce' 
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded shadow-md transition-all duration-300 ${footerSizeMatch
+                        ? 'text-green-800 bg-green-200 border border-green-400 animate-bounce'
                         : 'text-purple-700 bg-white border border-purple-200'
-                    }`}>
+                      }`}>
                       Footer: {footerHeight}px {pendingChanges.footer && '• Modified'} {footerSizeMatch && '🎯 Perfect!'}
                     </span>
                   </div>
@@ -959,11 +944,10 @@ const LabBrandingSettings = () => {
                   <div className="absolute bottom-1 right-2 z-20 flex gap-1">
                     <button
                       onClick={() => handleToggleVisibility('footer')}
-                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${
-                        brandingData.showFooter
+                      className={`px-2 py-0.5 rounded text-xs font-medium transition-colors ${brandingData.showFooter
                           ? 'bg-green-500 text-white hover:bg-green-600'
                           : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                      }`}
+                        }`}
                     >
                       {brandingData.showFooter ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
                     </button>
@@ -973,18 +957,17 @@ const LabBrandingSettings = () => {
                     <>
                       {(pendingChanges.footer?.url || brandingData.footerImage?.url) ? (
                         <div className="absolute inset-0 group">
-                          <img 
-                            src={pendingChanges.footer?.url || brandingData.footerImage.url} 
+                          <img
+                            src={pendingChanges.footer?.url || brandingData.footerImage.url}
                             alt="Footer"
-                            className={`w-full h-full object-cover transition-all duration-500 ${
-                              pendingChanges.footer 
-                                ? footerSizeMatch 
-                                  ? 'ring-4 ring-green-400 ring-inset shadow-lg shadow-green-200 brightness-105' 
+                            className={`w-full h-full object-cover transition-all duration-500 ${pendingChanges.footer
+                                ? footerSizeMatch
+                                  ? 'ring-4 ring-green-400 ring-inset shadow-lg shadow-green-200 brightness-105'
                                   : 'ring-3 ring-amber-400 ring-inset shadow-lg shadow-amber-200'
                                 : ''
-                            }`}
+                              }`}
                           />
-                          
+
                           <div className="absolute inset-0 bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                             <button
                               onClick={() => openCropModal('footer', true)}
@@ -1010,7 +993,7 @@ const LabBrandingSettings = () => {
                           </div>
                         </div>
                       ) : (
-                        <div 
+                        <div
                           className="absolute inset-0 border-2 border-dashed border-gray-300 bg-gray-50 hover:border-purple-400 hover:bg-purple-50 transition-colors cursor-pointer flex items-center justify-center"
                           onClick={() => openCropModal('footer')}
                         >
@@ -1058,7 +1041,7 @@ const LabBrandingSettings = () => {
                     📏 Content area: 624px wide (8.5" - 2" margins) • Drag to select crop area • Adjust corners to resize
                   </p>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setRotation(prev => (prev + 90) % 360)}
@@ -1067,7 +1050,7 @@ const LabBrandingSettings = () => {
                     <RotateCw className="w-3 h-3" />
                     Rotate
                   </button>
-                  
+
                   <button
                     onClick={() => {
                       setCrop({
@@ -1086,7 +1069,7 @@ const LabBrandingSettings = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="p-6 bg-gray-100 flex justify-center">
               <div className="max-w-full max-h-[70vh] overflow-auto">
                 {cropImageSrc && (
@@ -1141,7 +1124,7 @@ const LabBrandingSettings = () => {
                   />
                   <span className="text-gray-600 w-8">{scale.toFixed(1)}x</span>
                 </div>
-                
+
                 <div className="flex items-center gap-2">
                   <label className="font-medium text-gray-700">Rotation:</label>
                   <span className="text-gray-600 w-8">{rotation}°</span>
@@ -1154,23 +1137,22 @@ const LabBrandingSettings = () => {
                 )}
 
                 {completedCrop && (
-                  <div className={`text-sm font-bold px-3 py-1 rounded transition-all duration-300 ${
-                    Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5
+                  <div className={`text-sm font-bold px-3 py-1 rounded transition-all duration-300 ${Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5
                       ? 'text-green-700 bg-green-100 border border-green-400 animate-bounce'
                       : 'text-amber-700 bg-amber-100 border border-amber-400'
-                  }`}>
+                    }`}>
                     Target: {cropType === 'header' ? headerHeight : footerHeight}px height
                     {Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5 && ' 🎯 Perfect Match!'}
                   </div>
                 )}
               </div>
             </div>
-            
+
             <div className="p-4 border-t border-gray-200 bg-white flex justify-between items-center">
               <div className="text-sm text-gray-600">
                 Professional image cropping • Aim for <span className="font-semibold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px height</span> for perfect fit
               </div>
-              
+
               <div className="flex gap-3">
                 <button
                   onClick={() => {
@@ -1184,15 +1166,14 @@ const LabBrandingSettings = () => {
                 <button
                   onClick={applyCropToPending}
                   disabled={!completedCrop}
-                  className={`px-6 py-2 rounded flex items-center gap-2 transition-all ${
-                    completedCrop && Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5
+                  className={`px-6 py-2 rounded flex items-center gap-2 transition-all ${completedCrop && Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5
                       ? 'bg-green-600 hover:bg-green-700 text-white animate-pulse'
                       : 'bg-blue-600 hover:bg-blue-700 text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   <Check className="w-4 h-4" />
-                  {completedCrop && Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5 
-                    ? 'Perfect! Apply Crop' 
+                  {completedCrop && Math.abs(Math.round(completedCrop.height) - (cropType === 'header' ? headerHeight : footerHeight)) <= 5
+                    ? 'Perfect! Apply Crop'
                     : 'Apply Crop'
                   }
                 </button>

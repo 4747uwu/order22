@@ -478,17 +478,10 @@ const BrandingSettings = () => {
     try {
       setSaving(true);
 
-      // Upload header if changed
       if (pendingChanges.header) {
-        toast.loading('Converting header to black & white...', { id: 'bw-header' });
-        
-        // ✅ Convert to B&W before uploading
-        const bwBlob = await convertToBlackAndWhite(pendingChanges.header.blob);
-        
-        toast.dismiss('bw-header');
-
+        // ✅ NO B&W conversion — upload original color blob directly
         const formData = new FormData();
-        formData.append('image', bwBlob, `header_${Date.now()}.png`);
+        formData.append('image', pendingChanges.header.blob, `header_${Date.now()}.png`);
         formData.append('type', 'header');
         formData.append('labId', selectedLab);
         formData.append('width', pendingChanges.header.width.toString());
@@ -506,17 +499,10 @@ const BrandingSettings = () => {
         }
       }
 
-      // Upload footer if changed
       if (pendingChanges.footer) {
-        toast.loading('Converting footer to black & white...', { id: 'bw-footer' });
-        
-        // ✅ Convert to B&W before uploading
-        const bwBlob = await convertToBlackAndWhite(pendingChanges.footer.blob);
-        
-        toast.dismiss('bw-footer');
-
+        // ✅ NO B&W conversion — upload original color blob directly
         const formData = new FormData();
-        formData.append('image', bwBlob, `footer_${Date.now()}.png`);
+        formData.append('image', pendingChanges.footer.blob, `footer_${Date.now()}.png`);
         formData.append('type', 'footer');
         formData.append('labId', selectedLab);
         formData.append('width', pendingChanges.footer.width.toString());
@@ -534,13 +520,12 @@ const BrandingSettings = () => {
         }
       }
 
-      // Clean up pending changes
       Object.values(pendingChanges).forEach(change => {
         if (change?.url) URL.revokeObjectURL(change.url);
       });
       setPendingChanges({ header: null, footer: null });
 
-      toast.success('Branding images saved as black & white successfully!');
+      toast.success('Branding images saved in full color successfully!');
 
     } catch (error) {
       console.error('Error saving changes:', error);
@@ -1323,43 +1308,3 @@ const BrandingSettings = () => {
 };
 
 export default BrandingSettings;
-
-// ✅ NEW: Convert image blob to black & white
-const convertToBlackAndWhite = (blob) => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    const url = URL.createObjectURL(blob);
-      
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0);
-      
-      // Get pixel data and convert to grayscale
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-      
-      for (let i = 0; i < data.length; i += 4) {
-        // Luminance formula for accurate grayscale conversion
-        const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
-        data[i] = gray;     // R
-        data[i + 1] = gray; // G
-        data[i + 2] = gray; // B
-        // Alpha (data[i + 3]) unchanged
-      }
-      
-      ctx.putImageData(imageData, 0, 0);
-      
-      URL.revokeObjectURL(url);
-      
-      canvas.toBlob((bwBlob) => {
-        resolve(bwBlob);
-      }, 'image/png', 0.95);
-    };
-    
-    img.src = url;
-  });
-};
