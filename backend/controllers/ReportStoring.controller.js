@@ -62,6 +62,19 @@ export const storeDraftReport = async (req, res) => {
                 });
             }
 
+            // ✅ FIX: Reject draft save if study already completed/verified
+            const LOCKED_STATUSES = ['report_completed', 'verification_pending', 'final_report_downloaded'];
+            const isAutoSave = req.body.isAutoSave === true;
+            if (isAutoSave && LOCKED_STATUSES.includes(study.workflowStatus)) {
+                await session.abortTransaction();
+                console.log(`⚠️ [Draft Store] Auto-save rejected — study status is locked: ${study.workflowStatus}`);
+                return res.status(200).json({
+                    success: false,
+                    message: `Auto-save skipped — study already in ${study.workflowStatus} state`,
+                    skipped: true
+                });
+            }
+
             if (!study.organizationIdentifier) {
                 study.organizationIdentifier = currentUser.organizationIdentifier;
             }

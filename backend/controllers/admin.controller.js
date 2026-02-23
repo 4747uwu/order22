@@ -978,8 +978,9 @@ export const getCategoryValues = async (req, res) => {
             // case 'verification-pending' → workflowStatus = 'verification_pending'
             verification_pending: 'verification_pending',
 
-            // case 'final' → workflowStatus = 'report_completed' ONLY
+            // case 'final' → workflowStatus = 'report_completed' or 'final_report_downloaded'
             report_completed: 'final',
+            final_report_downloaded: 'final',
 
             // case 'reverted' → { $in: ['study_reverted', 'report_rejected', 'revert_to_radiologist'] }
             study_reverted: 'reverted',
@@ -1146,9 +1147,9 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
 
             case 'final':
-                // ✅ FINAL: report_completed
-                queryFilters.workflowStatus = 'report_completed';
-                console.log('📋 [FINAL] Filtering: report_completed');
+                // ✅ FINAL: report_completed or final_report_downloaded
+                queryFilters.workflowStatus = { $in: ['report_completed', 'final_report_downloaded'] };
+                console.log('📋 [FINAL] Filtering: report_completed, final_report_downloaded');
                 break;
 
             case 'reverted':

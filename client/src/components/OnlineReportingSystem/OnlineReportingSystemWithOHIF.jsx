@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
-import toast from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
 import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2 } from 'lucide-react';
 import useWebSocket from '../../hooks/useWebSocket';
+import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
@@ -15,6 +16,7 @@ const OnlineReportingSystemWithOHIF = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
+  const { getDashboardRoute } = useAuth(); // ✅ ADD this
 
   const [isReportOpen, setIsReportOpen] = useState(false);
 
@@ -29,6 +31,7 @@ const OnlineReportingSystemWithOHIF = () => {
   const [reportData, setReportData] = useState({});
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const isFinalizedRef = useRef(false); // ✅ ADD: tracks finalization state across closures
   const [exportFormat, setExportFormat] = useState('docx');
 
   // ✅ ADD: Auto-save state
@@ -256,7 +259,7 @@ const OnlineReportingSystemWithOHIF = () => {
             return 'No clinical history available';
           })()
         });
-        toast.success(`Loaded study: ${currentStudy.accessionNumber || studyId}`);
+        // toast.success(`Loaded study: ${currentStudy.accessionNumber || studyId}`);
       }
 
       if (templatesResponse.status === 'fulfilled' && templatesResponse.value.data.success) {
@@ -301,7 +304,7 @@ const OnlineReportingSystemWithOHIF = () => {
         const existingReport = existingReportResponse.value.data.data.report;
         if (existingReport.reportContent?.htmlContent) {
           setReports([{ id: existingReport._id || 1, content: existingReport.reportContent.htmlContent, capturedImages: existingReport.reportContent?.capturedImages || [], template: null, existingReportId: existingReport._id }]);
-          toast.success('📝 Loaded existing report');
+          // toast.success('📝 Loaded existing report');
           setIsReportOpen(true);
         }
         if (existingReport.reportContent?.templateInfo?.templateId) {
@@ -461,6 +464,15 @@ const OnlineReportingSystemWithOHIF = () => {
     }
 
     if (!window.confirm(`Finalize ${isMulti ? reports.length + ' reports' : 'this report'} as ${exportFormat.toUpperCase()}?`)) return;
+    
+    // ✅ FIX: Stop auto-save BEFORE setting finalizing state
+    if (autoSaveIntervalRef.current) {
+      clearInterval(autoSaveIntervalRef.current);
+      autoSaveIntervalRef.current = null;
+      console.log('⏹️ [AutoSave] Stopped before finalization');
+    }
+    isFinalizedRef.current = true; // ✅ Block any in-flight auto-save from writing after finalize
+
     setFinalizing(true);
     try {
       const currentUser = sessionManager.getCurrentUser();
@@ -496,7 +508,12 @@ const OnlineReportingSystemWithOHIF = () => {
           setTimeout(() => handleBackToWorklist(), 3000);
         } else throw new Error(response.data.message);
       }
-    } catch (error) { toast.error(`Failed to finalize: ${error.message}`); } finally { setFinalizing(false); }
+    } catch (error) { 
+      toast.error(`Failed to finalize: ${error.message}`); 
+      isFinalizedRef.current = false; // ✅ Reset on failure so auto-save can resume
+    } finally { 
+      setFinalizing(false); 
+    }
   };
 
   const handleUpdateReport = async () => {
@@ -507,7 +524,9 @@ const OnlineReportingSystemWithOHIF = () => {
         htmlContent: reportContent,
         verificationNotes: 'Report updated during verification',
         templateId: selectedTemplate?._id,
-        templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
+        templateInfo: selectedTemplate
+          ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+          : null,
         maintainFinalizedStatus: true
       });
       if (response.data.success) toast.success('Report updated!', { icon: '✏️' });
@@ -539,12 +558,9 @@ const OnlineReportingSystemWithOHIF = () => {
   };
 
   const handleBackToWorklist = () => {
-    if (isVerifierMode || hasRole('verifier')) navigate('/verifier/dashboard');
-    else if (hasRole('assignor')) navigate('/assignor/dashboard');
-    else if (hasRole('radiologist') || hasRole('doctor_account')) navigate('/doctor/dashboard');
-    else if (hasRole('admin')) navigate('/admin/dashboard');
-    else if (hasRole('lab_staff')) navigate('/lab/dashboard');
-    else navigate('/login');
+    const route = getDashboardRoute(); // ✅ uses currentUser.role from authContext
+    console.log(`🔙 [Back] Role: ${currentUser?.role} → Redirecting to: ${route}`);
+    navigate(route);
   };
 
 
@@ -552,11 +568,11 @@ const OnlineReportingSystemWithOHIF = () => {
   // ✅ ADD: Auto-save handler — must be defined BEFORE the useEffect that uses it
   const handleAutoSave = useCallback(async () => {
     const currentContent = reports[activeReportIndex]?.content || '';
-
-    // ✅ GUARD: Only save if there's actual text content (strip HTML tags to check)
     const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
-    if (!textContent || saving || finalizing || isVerifierMode) {
-      console.log('⏭️ [AutoSave] Skipped — empty content or already saving');
+
+    // ✅ FIX: Block auto-save if already finalized or currently finalizing
+    if (!textContent || saving || finalizing || isVerifierMode || isFinalizedRef.current) {
+      console.log('⏭️ [AutoSave] Skipped — empty content, already saving, or finalized');
       return;
     }
 
@@ -652,6 +668,31 @@ const OnlineReportingSystemWithOHIF = () => {
 
   return (
     <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
+
+      {/* ✅ Single Toaster - bottom-left */}
+      <Toaster
+        position="bottom-left"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            fontSize: '12px',
+            maxWidth: '320px',
+            padding: '8px 12px',
+            borderRadius: '6px'
+          },
+          success: {
+            duration: 2500,
+            style: { background: '#10b981', color: '#fff' }
+          },
+          error: {
+            duration: 3000,
+            style: { background: '#ef4444', color: '#fff' }
+          },
+          loading: {
+            style: { background: '#3b82f6', color: '#fff' }
+          }
+        }}
+      />
 
       {/* Top Control Bar */}
       <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">

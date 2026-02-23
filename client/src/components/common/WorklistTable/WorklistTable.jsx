@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users, X, Link, Shield, Hash } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -21,8 +21,94 @@ import useWebSocket from '../../../hooks/useWebSocket';
 import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 import sessionManager from '../../../services/sessionManager.jsx';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
+import { useStudyShare } from '../../../hooks/useStudyShare';
 
 // ✅ UTILITY FUNCTIONS
+
+
+// ...existing code...
+
+
+const ShareModal = ({ study, isOpen, onClose }) => {
+  const [copied, setCopied] = useState(false);
+
+  if (!isOpen) return null;
+
+  const studyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
+  const viewerUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(viewerUrl).then(() => {
+      setCopied(true);
+      toast.success('Viewer link copied!');
+      setTimeout(() => setCopied(false), 3000);
+    }).catch(() => toast.error('Failed to copy'));
+  };
+
+  return (
+    /* Removed bg-black and bg-opacity-60 from the div below */
+    <div className="fixed inset-0 flex items-center justify-center z-[99999] p-3">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm border border-gray-200">
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 bg-gray-900 text-white rounded-t-xl">
+          <div className="flex items-center gap-2">
+            <Share2 className="w-4 h-4 text-sky-400" />
+            <div>
+              <h2 className="text-xs font-bold uppercase">Share Study</h2>
+              <p className="text-[9px] text-gray-400 mt-0.5">
+                {study?.bharatPacsId} · {study?.patientName || study?.patientInfo?.patientName}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-gray-500 mb-1">
+              👁️ View-Only OHIF Link
+            </label>
+            <div className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <input
+                readOnly
+                value={viewerUrl}
+                className="flex-1 text-[9px] font-mono bg-transparent text-gray-700 truncate outline-none"
+              />
+              <button
+                onClick={handleCopy}
+                className={`flex-shrink-0 flex items-center gap-1 px-2 py-1 rounded text-[9px] font-bold transition-colors ${
+                  copied
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-900 text-white hover:bg-gray-700'
+                }`}
+              >
+                {copied ? (
+                  <><CheckCircle className="w-3 h-3" /> Copied!</>
+                ) : (
+                  <><Copy className="w-3 h-3" /> Copy</>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <p className="text-[8px] text-gray-400 text-center">
+            Anyone with this link can view the study images in the OHIF viewer.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
+
+// ...existing code...
+
+
 const getStatusColor = (status) => {
   switch (status) {
     case 'new_study_received':
@@ -354,6 +440,8 @@ const StudyRow = ({
   const [togglingLock, setTogglingLock] = useState(false);
   const [restoringStudy, setRestoringStudy] = useState(false); 
   const hasActiveViewers  = activeViewers.length > 0;
+    const [shareModal, setShareModal] = useState(false);
+
 
   const isSelected = selectedStudies?.includes(study._id);
   const studyPriority = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase();
@@ -1010,15 +1098,35 @@ const StudyRow = ({
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
         </button>
         
-                    <button onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/study/${study._id}`); toast.success('Link copied!'); }} className="p-1 hover:bg-sky-50 rounded" title="Share Study"><Share2 className="w-3.5 h-3.5 text-sky-600" /></button>
+                     <button 
+                      onClick={() => setShareModal(true)} 
+                      className="p-1 hover:bg-sky-50 rounded" 
+                      title="Share Study (Secure Link)"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                    </button>
 
-                    {userAccountRoles.includes('admin') && (
-                        <>
-                            <button className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-semibold bg-green-600 text-white rounded hover:bg-green-700" title="Verify" onClick={() => window.open(`/online-reporting/${study._id}?openOHIF=true&verifierMode=true&action=verify`, '_blank')}>Verify</button>
-                            {study.workflowStatus === 'report_verified' && <CheckCircle className="w-3 h-3 text-green-600" />}
-                            {study.workflowStatus === 'report_rejected' && <XCircle className="w-3 h-3 text-red-600" />}
-                        </>
-                    )}
+                  
+{userAccountRoles.includes('admin') && (
+    <>
+        {(['report_finalized','report_drafted','verification_pending'].includes(study.workflowStatus) && !['report_verified','report_rejected'].includes(study.workflowStatus)) && (
+            <button
+                className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-semibold bg-green-600 text-white rounded hover:bg-green-700"
+                title="Verify"
+                onClick={() => window.open(`/online-reporting/${study._id}?openOHIF=true&verifierMode=true&action=verify`, '_blank')}
+            >
+                Verify
+            </button>
+        )}
+
+        {(['report_completed','final_report_downloaded','report_verified'].includes(study.workflowStatus)) && (
+            <CheckCircle className="w-3 h-3 text-green-600" />
+        )}
+
+        {study.workflowStatus === 'report_rejected' && <XCircle className="w-3 h-3 text-red-600" />}
+    </>
+)}
+
                 </>
                 )}
 
@@ -1056,6 +1164,13 @@ const StudyRow = ({
 
     {showDownloadOptions && <DownloadOptions study={study} isOpen={showDownloadOptions} onClose={() => setShowDownloadOptions(false)} position={downloadPosition} />}
     {showAssignmentModal && <AssignmentModal study={study} availableAssignees={availableAssignees} onSubmit={handleAssignmentSubmit} onClose={handleCloseAssignmentModal} position={assignmentModalPosition} searchTerm={assignInputValue} />}
+        {shareModal && (
+      <ShareModal 
+        study={study} 
+        isOpen={shareModal} 
+        onClose={() => setShareModal(false)} 
+      />
+    )}
 </tr>
 );
 };
