@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, HardDrive, Loader2, FileArchive, X } from 'lucide-react';
+import { Download, Cloud, HardDrive, Loader2, FileArchive, X } from 'lucide-react'; // ✅ ADD Cloud
 import toast from 'react-hot-toast';
 import api from '../../../services/api';
 
@@ -97,11 +97,53 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
     }
   };
 
+  const handleCloudflareDownload = async () => {
+    setDownloadingFrom('cloudflare');
+    const toastId = toast.loading('Fetching Cloudflare download link...');
+    try {
+      const response = await api.get(`/download/cloudflare-zip/${study._id}`); // ✅ FIXED endpoint
+
+      if (response.data.success) {
+        const zipUrl = response.data.data.zipUrl; // ✅ FIXED: was response.data.data.downloadUrl
+
+        const link = document.createElement('a');
+        link.href = zipUrl;
+        link.download = `${study.bharatPacsId || study._id}_study.zip`;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        toast.success('Cloudflare download started!', { id: toastId, duration: 3000 });
+        setTimeout(() => onClose(), 1000);
+      } else {
+        toast.error(response.data.message || 'ZIP not available', { id: toastId });
+      }
+    } catch (error) {
+      console.error('❌ Cloudflare download failed:', error);
+      if (error.response?.status === 404) {
+        toast.error('ZIP file not found in Cloudflare R2', { id: toastId });
+      } else if (error.response?.status === 410) {
+        toast.error('ZIP file has expired — please regenerate', { id: toastId });
+      } else {
+        toast.error(error.response?.data?.message || 'Cloudflare download failed', { id: toastId });
+      }
+    } finally {
+      setDownloadingFrom(null);
+    }
+  };
+
+  const hasCloudflare = !!(
+    study?.downloadOptions?.hasR2CDN ||
+    study?._raw?.downloadOptions?.hasR2CDN ||
+    study?.preProcessedDownload?.cloudflare?.zipUrl ||
+    study?._raw?.preProcessedDownload?.cloudflare?.zipUrl
+  );
+
   if (!isOpen) return null;
 
   return (
     <>
-      {/* ✅ DROPDOWN */}
       <div
         ref={dropdownRef}
         className="fixed bg-white rounded border border-gray-900 shadow-2xl z-[10000] overflow-hidden"
@@ -111,6 +153,37 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
           minWidth: '220px'
         }}
       >
+        {/* ✅ Cloudflare — always attempt, show availability from hasCloudflare */}
+        <button
+          onClick={handleCloudflareDownload}
+          disabled={downloadingFrom === 'cloudflare'}
+          className={`w-full flex items-center px-3 py-2.5 text-[10px] font-bold uppercase transition-colors border-b border-gray-200 disabled:opacity-50 ${
+            hasCloudflare
+              ? 'text-orange-800 hover:bg-orange-50'
+              : 'text-orange-800 hover:bg-gray-50'
+          }`}
+          title={hasCloudflare ? 'Download from Cloudflare CDN' : 'Cloudflare ZIP may not be ready yet'}
+        >
+          {downloadingFrom === 'cloudflare' ? (
+            <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+          ) : (
+            <Cloud className="w-3.5 h-3.5 mr-2 text-orange-500" />
+          )}
+          <div className="flex-1 text-left">
+            <div className="flex items-center gap-1">
+              Fast Download
+              {/* {hasCloudflare
+                ? <span className="px-1 py-0.5 bg-orange-100 text-orange-700 text-[8px] rounded font-bold">FAST</span>
+                : <span className="px-1 py-0.5 bg-gray-100 text-gray-500 text-[8px] rounded font-bold">MAYBE</span>
+              } */}
+            </div>
+            <div className={`text-[8px] ${hasCloudflare ? 'text-orange-600' : 'text-gray-400'}`}>
+              {hasCloudflare ? 'Global CDN — fastest download' : 'ZIP may still be processing'}
+            </div>
+          </div>
+        </button>
+
+        {/* Anonymized Zip */}
         <button
           onClick={handleAnonymizedDownload}
           disabled={downloadingFrom === 'anonymized'}
@@ -127,6 +200,7 @@ const DownloadOptions = ({ study, isOpen, onClose, position }) => {
           </div>
         </button>
 
+        {/* Series-wise Zip */}
         <button
           onClick={handleShowSeriesSelection}
           disabled={loadingSeries}

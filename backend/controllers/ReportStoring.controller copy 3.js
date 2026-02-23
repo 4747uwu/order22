@@ -798,19 +798,22 @@ export const getStudyReports = async (req, res) => {
     try {
         const { studyId } = req.params;
         const currentUser = req.user;
+        
+        // ✅ Check if this is the all-reports endpoint (needs full content) or just listing
         const needsFullContent = req.path.includes('all-reports');
         
         console.log('📄 [Get Reports] Fetching reports for study:', studyId, { needsFullContent });
 
         if (!studyId || !mongoose.Types.ObjectId.isValid(studyId)) {
-            return res.status(400).json({ success: false, message: 'Valid study ID is required' });
+            return res.status(400).json({
+                success: false,
+                message: 'Valid study ID is required'
+            });
         }
 
-        // ✅ FIX: No status filter — return ALL reports regardless of status
         const reports = await Report.find({
             dicomStudy: studyId,
             organizationIdentifier: currentUser.organizationIdentifier
-            // ❌ REMOVED: reportStatus filter — was excluding verified reports
         })
         .populate('doctorId', 'fullName email role')
         .populate('verifierId', 'fullName email role')
@@ -902,15 +905,13 @@ export const getAllReportsWithContent = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Valid study ID is required' });
         }
 
-        // ✅ FIX: No status filter — fetch ALL reports including verified ones
         const reports = await Report.find({
             dicomStudy: studyId,
             organizationIdentifier: currentUser.organizationIdentifier
-            // ❌ REMOVED: reportStatus filter
         })
         .populate('doctorId', 'fullName email role')
         .populate('createdBy', 'fullName email role')
-        .sort({ createdAt: 1 })
+        .sort({ createdAt: 1 }) // ✅ ASC: Report 1 = first created, Report 2 = second
         .lean();
 
         console.log('📄 [All Reports] Found:', reports.length, 'reports');

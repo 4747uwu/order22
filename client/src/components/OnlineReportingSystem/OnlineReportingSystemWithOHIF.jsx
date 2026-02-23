@@ -30,6 +30,13 @@ const OnlineReportingSystemWithOHIF = () => {
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [exportFormat, setExportFormat] = useState('docx');
+
+  // ✅ ADD: Auto-save state
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const [lastAutoSaved, setLastAutoSaved] = useState(null);
+  const autoSaveIntervalRef = useRef(null);
+  const autoSaveStatusTimerRef = useRef(null);
+
   const [ohifViewerUrl, setOhifViewerUrl] = useState('');
   const [downloadOptions, setDownloadOptions] = useState(null);
   const [verifying, setVerifying] = useState(false);
@@ -54,6 +61,20 @@ const OnlineReportingSystemWithOHIF = () => {
   const setCapturedImages = (images) => {
     setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, capturedImages: typeof images === 'function' ? images(r.capturedImages) : images } : r));
   };
+
+
+  //  const [saving, setSaving] = useState(false);
+  // const [finalizing, setFinalizing] = useState(false);
+  // const [exportFormat, setExportFormat] = useState('docx');
+
+  // // ✅ ADD: Auto-save state
+  // const [autoSaveStatus, setAutoSaveStatus] = useState('idle');
+  // const [lastAutoSaved, setLastAutoSaved] = useState(null);
+  // const autoSaveIntervalRef = useRef(null);
+  // const autoSaveStatusTimerRef = useRef(null);
+
+// ...existing code...
+
 
   // ✅ Add new report
   const handleAddReport = () => {
@@ -175,6 +196,10 @@ const OnlineReportingSystemWithOHIF = () => {
       initializeReportingSystem();
     }
   }, [studyId]);
+
+
+
+  
 
   const initializeReportingSystem = async () => {
     setLoading(true);
@@ -522,6 +547,98 @@ const OnlineReportingSystemWithOHIF = () => {
     else navigate('/login');
   };
 
+
+  
+  // ✅ ADD: Auto-save handler — must be defined BEFORE the useEffect that uses it
+  const handleAutoSave = useCallback(async () => {
+    const currentContent = reports[activeReportIndex]?.content || '';
+
+    // ✅ GUARD: Only save if there's actual text content (strip HTML tags to check)
+    const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
+    if (!textContent || saving || finalizing || isVerifierMode) {
+      console.log('⏭️ [AutoSave] Skipped — empty content or already saving');
+      return;
+    }
+
+    setAutoSaveStatus('saving');
+    try {
+      const currentUser = sessionManager.getCurrentUser();
+
+      const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
+        templateName: `${currentUser.email.split('@')[0]}_autosave_${Date.now()}.docx`,
+        placeholders: buildPlaceholders(currentContent),
+        htmlContent: currentContent,
+        templateId: selectedTemplate?._id,
+        templateInfo: selectedTemplate
+          ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+          : null,
+        capturedImages: (reports[activeReportIndex]?.capturedImages || []).map(img => ({ ...img, capturedBy: currentUser._id })),
+        existingReportId: reportData.existingReport?.id || null,  // ✅ UPDATE same report each time
+        reportStatus: 'report_drafted',
+        isAutoSave: true
+      });
+
+      if (response.data.success) {
+        // ✅ Store reportId so next auto-save UPDATEs instead of INSERTs
+        if (!reportData.existingReport?.id && response.data.data?.reportId) {
+          setReportData(prev => ({
+            ...prev,
+            existingReport: {
+              id: response.data.data.reportId,
+              reportType: 'draft',
+              reportStatus: 'report_drafted'
+            }
+          }));
+        }
+        setAutoSaveStatus('saved');
+        setLastAutoSaved(new Date());
+        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString());
+      } else {
+        setAutoSaveStatus('error');
+        console.warn('⚠️ [AutoSave] Server returned failure:', response.data.message);
+      }
+    } catch (error) {
+      console.error('❌ [AutoSave] Failed:', error);
+      setAutoSaveStatus('error');
+    } finally {
+      // ✅ Reset status back to idle after 3s
+      if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
+      autoSaveStatusTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 3000);
+    }
+  }, [reports, activeReportIndex, saving, finalizing, isVerifierMode, studyId, selectedTemplate, reportData, buildPlaceholders]);
+
+  // ✅ ADD: Start/stop auto-save interval when report panel opens/closes
+  useEffect(() => {
+    // Clear any existing interval first
+    if (autoSaveIntervalRef.current) {
+      clearInterval(autoSaveIntervalRef.current);
+      autoSaveIntervalRef.current = null;
+    }
+
+    if (isReportOpen && !isVerifierMode) {
+      console.log('⏱️ [AutoSave] Starting auto-save interval (every 10s)');
+      autoSaveIntervalRef.current = setInterval(handleAutoSave, 10000);
+    } else {
+      console.log('⏹️ [AutoSave] Auto-save stopped');
+    }
+
+    // Cleanup on unmount or dependency change
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+    };
+  }, [isReportOpen, isVerifierMode, handleAutoSave]); // ✅ handleAutoSave in deps so it uses fresh state
+
+  // ✅ ADD: Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
+      if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
+    };
+  }, []);
+
   if (loading) {
     return (
       <div className="h-screen w-full bg-white flex items-center justify-center">
@@ -646,8 +763,33 @@ const OnlineReportingSystemWithOHIF = () => {
               )}
             </div>
 
-            {/* Right — Actions + ✅ REPORT SWITCHER */}
+            {/* Right — Actions + REPORT SWITCHER */}
             <div className="flex items-center space-x-1.5">
+
+              {/* ✅ ADD: Auto-save status indicator */}
+              {isReportOpen && !isVerifierMode && (
+                <div className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-medium transition-all ${
+                  autoSaveStatus === 'saving' ? 'border-blue-200 bg-blue-50' :
+                  autoSaveStatus === 'saved'  ? 'border-green-200 bg-green-50' :
+                  autoSaveStatus === 'error'  ? 'border-red-200 bg-red-50' :
+                  'border-gray-200 bg-gray-50'
+                }`}>
+                  {autoSaveStatus === 'saving' && (
+                    <><div className="animate-spin rounded-full h-2 w-2 border border-blue-500 border-t-transparent" /><span className="text-blue-600">Saving...</span></>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-green-600">Saved {lastAutoSaved?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></>
+                  )}
+                  {autoSaveStatus === 'error' && (
+                    <><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-red-600">Save failed</span></>
+                  )}
+                  {autoSaveStatus === 'idle' && (
+                    <><div className="w-2 h-2 rounded-full bg-gray-300" /><span className="text-gray-400">Auto-save on</span></>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ Save, Finalize buttons */}
               {(isReportOpen && !isVerifierMode) && (
                 <>
                   <button 
