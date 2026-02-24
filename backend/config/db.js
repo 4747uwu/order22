@@ -7,7 +7,8 @@ dotenv.config();
 const connectDB = async () => {
     try {
         console.log('🔗 Connecting to MongoDB replica set...');
-        const MONGODB_URI ='mongodb://appuser:apppassword@mongo:27017/order2?replicaSet=rs0&authSource=admin';
+        // const MONGODB_URI ='mongodb://appuser:apppassword@mongo:27017/order2?replicaSet=rs0&authSource=admin';
+        const MONGODB_URI ='mongodb://appuser:apppassword@206.189.133.52:27017/order2?authSource=admin&directConnection=true';
         // const MONGODB_URI ='mongodb+srv://pawrangerskyler_db_user:y7zV2rO5KRfPO5Hs@cluster0.ku1pxkx.mongodb.net/order2?retryWrites=true&w=majority&appName=Cluster0';
         // const MONGODB_URI ='mongodb://localhost:27017/order22';
 
