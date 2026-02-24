@@ -229,7 +229,7 @@ const SuperAdminDashboard = () => {
     if (!formData.companyType) errors.companyType = 'Company type is required';
     
     if (!showEditModal) {
-      if (!formData.adminEmail?.trim()) errors.adminEmail = 'Admin email is required';
+      if (!formData.adminEmail?.trim()) errors.adminEmail = 'Admin username is required';
       if (!formData.adminPassword?.trim()) errors.adminPassword = 'Admin password is required';
       if (!formData.adminFullName?.trim()) errors.adminFullName = 'Admin full name is required';
     }

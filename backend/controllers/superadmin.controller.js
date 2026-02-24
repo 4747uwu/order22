@@ -187,9 +187,14 @@ export const createOrganization = async (req, res) => {
         const identifier = await generateUniqueIdentifier(session);
         console.log('✅ Generated unique identifier:', identifier);
 
+        // ✅ Append @bharatpacs.com if no domain provided
+        const finalAdminEmail = adminEmail.includes('@')
+            ? adminEmail.toLowerCase().trim()
+            : `${adminEmail.toLowerCase().trim()}@bharatpacs.com`;
+
         // Check if admin email is unique
         const existingUser = await User.findOne({ 
-            email: adminEmail.toLowerCase() 
+            email: finalAdminEmail
         }).session(session);
 
         if (existingUser) {
@@ -221,8 +226,8 @@ export const createOrganization = async (req, res) => {
         const adminUser = new User({
             organization: organization._id,
             organizationIdentifier: organization.identifier,
-            username: adminEmail.split('@')[0].toLowerCase(),
-            email: adminEmail.toLowerCase().trim(),
+            username: finalAdminEmail.split('@')[0].toLowerCase(),
+            email: finalAdminEmail,
             password: adminPassword,
             tempPassword: adminPassword,
             fullName: adminFullName.trim(),

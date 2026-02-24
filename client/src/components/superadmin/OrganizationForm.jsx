@@ -301,23 +301,31 @@ const OrganizationForm = ({
             
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Email * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
+                Admin Username * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
               </label>
-              <input
-                type="email"
-                value={formData.adminEmail || ''}
-                onChange={(e) => updateFormData('adminEmail', e.target.value)}
-                className={`w-full px-4 py-3 border rounded-lg transition-all ${
-                  isEdit
-                    ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
-                    : formErrors.adminEmail 
-                    ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
-                    : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
-                }`}
-                placeholder="admin@organization.com"
-                disabled={isEdit || isSubmitting}
-                readOnly={isEdit}
-              />
+              <div className={`flex rounded-lg border overflow-hidden transition-all ${
+                isEdit
+                  ? 'bg-gray-100 border-gray-300'
+                  : formErrors.adminEmail
+                  ? 'border-red-500 bg-red-50 ring-2 ring-red-300'
+                  : 'border-gray-300 focus-within:ring-2 focus-within:ring-black focus-within:border-black'
+              }`}>
+                <input
+                  type="text"
+                  value={formData.adminEmail || ''}
+                  onChange={(e) => updateFormData('adminEmail', e.target.value.replace(/[@\s]/g, '').toLowerCase())}
+                  className="flex-1 px-4 py-3 outline-none border-none bg-transparent focus:ring-0"
+                  placeholder="username"
+                  disabled={isEdit || isSubmitting}
+                  readOnly={isEdit}
+                />
+                <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
+                  @bharatpacs.com
+                </span>
+              </div>
+              {!isEdit && formData.adminEmail && (
+                <p className="text-xs text-gray-400 mt-1">Login: <strong>{formData.adminEmail}@bharatpacs.com</strong></p>
+              )}
               {formErrors.adminEmail && <p className="text-sm text-red-600 mt-1">{formErrors.adminEmail}</p>}
             </div>
 

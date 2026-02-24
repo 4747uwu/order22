@@ -215,19 +215,22 @@ export const createLab = async (req, res) => {
         }
 
         // ✅ BACKEND: Auto-generate identifier from lab name
-        const generateIdentifier = (labName) => {
-            const cleaned = labName.replace(/[^a-zA-Z]/g, '').toUpperCase();
-            return cleaned.substring(0, 5).padEnd(5, 'X');
+        const generateIdentifier = () => {
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+            let id = '';
+            for (let i = 0; i < 5; i++) {
+                id += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return id;
         };
 
-        let finalIdentifier = generateIdentifier(name);
+        let finalIdentifier = generateIdentifier();
 
-        // ✅ Check uniqueness - if exists append number
-        let suffix = 1;
-        let baseIdentifier = finalIdentifier;
-        while (await Lab.findOne({ organizationIdentifier: req.user.organizationIdentifier, identifier: finalIdentifier })) {
-            finalIdentifier = `${baseIdentifier.substring(0, 4)}${suffix}`;
-            suffix++;
+        // ✅ Check uniqueness - keep regenerating random IDs until unique
+        let attempts = 0;
+        while (await Lab.findOne({ organizationIdentifier: req.user.organizationIdentifier, identifier: finalIdentifier }) && attempts < 100) {
+            finalIdentifier = generateIdentifier();
+            attempts++;
         }
 
         // ✅ BACKEND: Build email from username
