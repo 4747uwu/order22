@@ -21,12 +21,37 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
     const capturedImages = report.reportContent?.capturedImages || [];
     const imageCount = capturedImages.length;
 
-    let templateName = 'MyReport.docx';
-    if (imageCount > 0 && imageCount <= 5) templateName = `MyReport${imageCount}.docx`;
-    else if (imageCount > 5) templateName = 'MyReport5.docx';
-
     // Lab branding
     const labBranding = report.dicomStudy?.sourceLab?.reportBranding || null;
+
+    // ✅ DETERMINE TEMPLATE NAME based on header/footer availability
+    let hasHeaderFooter = false;
+    if (labBranding) {
+        const hasHeader = labBranding.showHeader !== false && labBranding.headerImage?.url;
+        const hasFooter = labBranding.showFooter !== false && labBranding.footerImage?.url;
+        hasHeaderFooter = hasHeader || hasFooter;
+    }
+
+    let templateName = 'MyReport.docx';
+    
+    if (!hasHeaderFooter) {
+        // ✅ No header/footer: use MyReportNoHeader template with image count increment
+        templateName = 'MyReportNoHeader.docx';
+        if (imageCount > 0 && imageCount <= 5) {
+            templateName = `MyReportNoHeader${imageCount}.docx`;
+        } else if (imageCount > 5) {
+            templateName = 'MyReportNoHeader5.docx';
+        }
+        console.log(`📄 Using NoHeader template (no branding): ${templateName}`);
+    } else {
+        // ✅ Has header/footer: use standard MyReport template with image count increment
+        if (imageCount > 0 && imageCount <= 5) {
+            templateName = `MyReport${imageCount}.docx`;
+        } else if (imageCount > 5) {
+            templateName = 'MyReport5.docx';
+        }
+        console.log(`📄 Using standard template (with branding): ${templateName}`);
+    }
 
     // Doctor data
     let doctorData = null;
@@ -67,7 +92,9 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
     }
 
     const images = {};
-    if (labBranding) {
+    
+    // ✅ Only add header/footer images if they exist
+    if (labBranding && hasHeaderFooter) {
         if (labBranding.showHeader !== false && labBranding.headerImage?.url) {
             images['HeaderPlaceholder'] = {
                 data: labBranding.headerImage.url.replace(/^data:image\/\w+;base64,/, ''),
@@ -97,6 +124,8 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
             width: null, height: null
         };
     });
+
+    console.log(`🎨 [Template Selection] Lab: ${report.dicomStudy?.sourceLab?.name || 'Unknown'}, HasBranding: ${hasHeaderFooter}, ImageCount: ${imageCount}, Template: ${templateName}`);
 
     return {
         templateName,

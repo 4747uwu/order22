@@ -504,34 +504,35 @@ async function findOrCreatePatientFromTags(tags, organization) {
       organizationIdentifier: organization.identifier,
       mrn: patientIdDicom || `ANON_${Date.now()}`,
       patientID: patientIdDicom || `ANON_${Date.now()}`,
-      patientNameRaw: nameInfo.formattedForDisplay,
+      // ✅ CRITICAL FIX: Save the original DICOM format name as patientNameRaw
+      patientNameRaw: tags.PatientName || nameInfo.formattedForDisplay,  // ✅ USE ORIGINAL FIRST
       firstName: nameInfo.firstName,
       lastName: nameInfo.lastName,
       ageString: tags.PatientAge || 'N/A',  
       computed: {
-        fullName: nameInfo.formattedForDisplay,
+        fullName: nameInfo.formattedForDisplay,  // Keep parsed version for display
         namePrefix: nameInfo.namePrefix,
         nameSuffix: nameInfo.nameSuffix,
-        originalDicomName: nameInfo.originalDicomFormat
+        originalDicomName: nameInfo.originalDicomFormat,
+        originalRawDicomName: tags.PatientName  // ✅ PRESERVE ORIGINAL
       },
       gender: patientSex || '',
       dateOfBirth: patientBirthDate ? formatDicomDateToISO(patientBirthDate) : ''
     });
     
     await patient.save();
-    console.log(`👤 Created patient in ${organization.name}: ${nameInfo.formattedForDisplay} (${patientIdDicom})`);
+    console.log(`👤 Created patient in ${organization.name}: ${tags.PatientName} (${patientIdDicom})`);
   } else {
-    // Update existing patient if name format has improved
-    if (patient.patientNameRaw && patient.patientNameRaw.includes('^') && nameInfo.formattedForDisplay && !nameInfo.formattedForDisplay.includes('^')) {
-      console.log(`🔄 Updating patient name format from "${patient.patientNameRaw}" to "${nameInfo.formattedForDisplay}"`);
+    // ✅ CRITICAL FIX: Update to use original DICOM name if it's different
+    if (patient.patientNameRaw !== tags.PatientName && tags.PatientName) {
+      console.log(`🔄 Updating patient name to original DICOM format: "${tags.PatientName}"`);
       
-      patient.patientNameRaw = nameInfo.formattedForDisplay;
-      patient.firstName = nameInfo.firstName;
-      patient.lastName = nameInfo.lastName;
+      patient.patientNameRaw = tags.PatientName;  // ✅ USE ORIGINAL
       
       if (!patient.computed) patient.computed = {};
       patient.computed.fullName = nameInfo.formattedForDisplay;
       patient.computed.originalDicomName = nameInfo.originalDicomFormat;
+      patient.computed.originalRawDicomName = tags.PatientName;  // ✅ PRESERVE ORIGINAL
       
       await patient.save();
     }

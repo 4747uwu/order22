@@ -9,7 +9,9 @@ import {
     getInProgressStudies, 
     getCompletedStudies, 
     getAllStudiesForAdmin ,
-    getOrganizationLabs
+    getOrganizationLabs,
+    deleteStudy, 
+    bulkDeleteStudies
 } from '../controllers/admin.controller.js';
 
 //revert to radiologist
@@ -240,7 +242,12 @@ router.post('/create-manual-study', protect, manualUpload.fields([
 
 
 
-// ✅ SYSTEM OVERVIEW ROUTES
+//superadmin delete routes
+
+router.delete('/studies/:studyId', protect, deleteStudy);
+router.post('/studies/bulk-delete', protect, bulkDeleteStudies);
+
+
 router.get('/system-overview', 
     protect
     , 

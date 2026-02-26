@@ -546,15 +546,15 @@ const OnlineReportingSystemWithOHIF = () => {
   };
 
   const handleRejectReport = async () => {
-    const reason = prompt('Reason for rejection:');
-    if (!reason?.trim()) { toast.error('Rejection reason is required.'); return; }
-    if (!window.confirm('Reject this report?')) return;
+    const reason = prompt('Reason To Revert:');
+    if (!reason?.trim()) { toast.error('Revert reason is required.'); return; }
+    if (!window.confirm('Revert this report?')) return;
     setRejecting(true);
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: false, verificationNotes: reason, rejectionReason: reason, corrections: [], verificationTimeMinutes: 0 });
-      if (response.data.success) { toast.success('Report rejected!', { icon: '❌' }); setTimeout(() => navigate('/verifier/dashboard'), 2000); }
+      if (response.data.success) { toast.success('Report Reverted!', { icon: '❌' }); setTimeout(() => navigate('/verifier/dashboard'), 2000); }
       else throw new Error(response.data.message);
-    } catch (error) { toast.error(`Failed to reject: ${error.message}`); } finally { setRejecting(false); }
+    } catch (error) { toast.error(`Failed to Revert: ${error.message}`); } finally { setRejecting(false); }
   };
 
   const handleBackToWorklist = () => {
@@ -792,7 +792,7 @@ const OnlineReportingSystemWithOHIF = () => {
                       <div className="h-6 w-px bg-purple-300"></div>
                       <div className="flex items-center space-x-1">
                         <button onClick={handleUpdateReport} disabled={saving || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Updating...' : 'Update'}</button>
-                        <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Rejecting...' : 'Reject'}</button>
+                        <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Reverting...' : 'Revert'}</button>
                         <button onClick={handleVerifyReport} disabled={verifying || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded disabled:opacity-50">{verifying ? 'Verifying...' : 'Verify'}</button>
                       </div>
                     </>

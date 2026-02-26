@@ -15,13 +15,9 @@ const AssignerDashboard = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
   
   // ✅ RESOLVE VISIBLE COLUMNS ONCE
-  // const visibleColumns = useMemo(() => {
-  //   return resolveUserVisibleColumns(currentUser);
-  // }, [currentUser?.visibleColumns, currentUser?.accountRoles, currentUser?.primaryRole]);
-
   const { visibleColumns, columnsLoading } = useVisibleColumns(currentUser);
 
-  console.log('🎯 Dashboard Visible Columns:', {
+  console.log('🎯 Assignor Dashboard Visible Columns:', {
     total: visibleColumns.length,
     columns: visibleColumns,
     user: {
@@ -50,7 +46,7 @@ const AssignerDashboard = () => {
   const [selectedStudies, setSelectedStudies] = useState([]);
   const [availableAssignees, setAvailableAssignees] = useState({ radiologists: [], verifiers: [] });
 
-  // ✅ UPDATED: CATEGORY-BASED API VALUES (ADD REVERTED)
+  // ✅ UPDATED: CATEGORY-BASED API VALUES
   const [categoryValues, setCategoryValues] = useState({
     all: 0,
     created: 0,
@@ -63,36 +59,37 @@ const AssignerDashboard = () => {
     final: 0,
     urgent: 0,
     reprint_need: 0,
-    reverted: 0  // ✅ ADD THIS
+    reverted: 0
   });
 
-  // ...existing code...
-  // ...existing code...
+  // ✅ Column configuration - match admin defaults
   const getDefaultColumnConfig = () => ({
-    checkbox:          { visible: false, order: 1,  label: 'Select' },
-    bharatPacsId:      { visible: true,  order: 2,  label: 'BP ID' },
-    centerName:        { visible: true,  order: 3,  label: 'Center' },
-    timeline:          { visible: true,  order: 4,  label: 'Timeline' },      // ✅ ADD
-    patientName:       { visible: true,  order: 5,  label: 'Patient Name' },
-    patientId:         { visible: true,  order: 6,  label: 'Patient ID' },
-    ageGender:         { visible: true,  order: 7,  label: 'Age/Sex' },
-    modality:          { visible: true,  order: 8,  label: 'Modality' },
-    viewOnly:          { visible: true,  order: 9,  label: 'View' },          // ✅ ADD
-    seriesCount:       { visible: true,  order: 10, label: 'Series/Images' }, // ← was missing 'studySeriesImages' mapping
-    accessionNumber:   { visible: false, order: 11, label: 'Acc. No.' },
-    referralDoctor:    { visible: true,  order: 12, label: 'Referral Dr.' },
-    clinicalHistory:   { visible: true,  order: 13, label: 'History' },
-    studyTime:         { visible: true,  order: 14, label: 'Study Time' },    // maps ← studyDateTime
-    uploadTime:        { visible: true,  order: 15, label: 'Upload Time' },   // maps ← uploadDateTime
-    radiologist:       { visible: false, order: 16, label: 'Radiologist' },   // maps ← assignedRadiologist
-    studyLock:         { visible: true,  order: 17, label: 'Lock/Unlock' },   // ✅ ADD
-    caseStatus:        { visible: true,  order: 18, label: 'Status' },        // maps ← status
-    assignedVerifier:  { visible: true,  order: 19, label: 'Finalised By' },  // ✅ ADD
-    verifiedDateTime:  { visible: true,  order: 20, label: 'Finalised Date' },// ✅ ADD
-    actions:           { visible: true,  order: 21, label: 'Actions' },
-    rejectionReason:   { visible: true,  order: 22, label: 'Rejection' },     // ✅ ADD
+    checkbox: { visible: true, order: 1, label: 'Select' },
+    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
+    centerName: { visible: true, order: 3, label: 'Center' },
+    location: { visible: true, order: 4, label: 'Location' },
+    timeline: { visible: true, order: 5, label: 'Timeline' },
+    patientName: { visible: true, order: 6, label: 'Patient Name' },
+    patientId: { visible: true, order: 7, label: 'Patient ID' },
+    ageGender: { visible: true, order: 8, label: 'Age/Sex' },
+    modality: { visible: true, order: 9, label: 'Modality' },
+    viewOnly: { visible: true, order: 9.5, label: 'View' },
+    reporting: { visible: true, order: 10, label: 'Reporting' },
+    studySeriesImages: { visible: true, order: 10.5, label: 'Series/Images' },
+    accessionNumber: { visible: false, order: 11, label: 'Acc. No.' },
+    referralDoctor: { visible: true, order: 12, label: 'Referral Dr.' },
+    clinicalHistory: { visible: true, order: 13, label: 'History' },
+    studyDateTime: { visible: true, order: 14, label: 'Study Date/Time' },
+    uploadDateTime: { visible: true, order: 15, label: 'Upload Date/Time' },
+    assignedRadiologist: { visible: true, order: 16, label: 'Radiologist' },
+    studyLock: { visible: true, order: 17, label: 'Lock/Unlock' },
+    status: { visible: true, order: 18, label: 'Status' },
+    printCount: { visible: true, order: 19, label: 'Print Report' },
+    rejectionReason: { visible: true, order: 20, label: 'Reverted Reason' },
+    assignedVerifier: { visible: true, order: 21, label: 'Finalised By' },
+    verifiedDateTime: { visible: true, order: 22, label: 'Finalised Date/Time' },
+    actions: { visible: true, order: 23, label: 'Actions' }
   });
-// ...existing code...
 
   const [columnConfig, setColumnConfig] = useState(() => {
     try {
@@ -112,7 +109,6 @@ const AssignerDashboard = () => {
     }
     return getDefaultColumnConfig();
   });
-
 
   useEffect(() => {
     try {
@@ -135,8 +131,7 @@ const AssignerDashboard = () => {
       case 'final': return '/admin/studies/category/final';
       case 'urgent': return '/admin/studies/category/urgent';
       case 'reprint_need': return '/admin/studies/category/reprint-need';
-            case 'reverted': return '/admin/studies/category/reverted';  // ✅ NEW
-
+      case 'reverted': return '/admin/studies/category/reverted';
       default: return '/admin/studies';
     }
   }, [currentView]);
@@ -146,7 +141,6 @@ const AssignerDashboard = () => {
     setLoading(true);
     setError(null);
     
-    // ✅ CRITICAL: Use parameters if provided, otherwise use current state
     const requestPage = page !== null ? page : pagination.currentPage;
     const requestLimit = limit !== null ? limit : pagination.recordsPerPage;
     
@@ -159,7 +153,7 @@ const AssignerDashboard = () => {
         page: requestPage,
         limit: requestLimit
       };
-      delete params.category; // ✅ Don't send category in params
+      delete params.category;
       
       console.log('🔍 [Assignor] Fetching studies:', {
         endpoint,
@@ -175,7 +169,6 @@ const AssignerDashboard = () => {
         const formattedStudies = formatStudiesForWorklist(rawStudies);
         setStudies(formattedStudies);
         
-        // ✅ CRITICAL: Update pagination with response data but keep our requested values
         setPagination({
           currentPage: requestPage,
           totalPages: response.data.pagination?.totalPages || 1,
@@ -199,9 +192,9 @@ const AssignerDashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [getApiEndpoint, searchFilters, currentView]); // ✅ REMOVED pagination from dependencies
+  }, [getApiEndpoint, searchFilters, currentView]);
 
-  // ✅ UPDATED: FETCH CATEGORY VALUES (same as admin)
+  // ✅ FETCH CATEGORY VALUES (same as admin)
   const fetchCategoryValues = useCallback(async (filters = {}) => {
     try {
       const params = Object.keys(filters).length > 0 ? filters : searchFilters;
@@ -231,7 +224,7 @@ const AssignerDashboard = () => {
       console.error('Error fetching assignor category values:', error);
       setCategoryValues({
         all: 0, created: 0, history_created: 0, unassigned: 0, assigned: 0,
-        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, reprint_need: 0
+        pending: 0, draft: 0, verification_pending: 0, final: 0, urgent: 0, reprint_need: 0, reverted: 0
       });
     }
   }, [searchFilters]);
@@ -262,63 +255,71 @@ const AssignerDashboard = () => {
     fetchStudies(defaultFilters, 1, 50);
     fetchCategoryValues(defaultFilters);
     fetchAvailableAssignees();
-  }, []); // ✅ Empty deps - only run once on mount
+  }, []);
 
   // ✅ FETCH STUDIES WHEN CURRENT VIEW CHANGES
   useEffect(() => {
+    if (Object.keys(searchFilters).length === 0) {
+      return;
+    }
+    
     console.log(`🔄 [Assignor] currentView changed to: ${currentView}`);
-    // ✅ Reset to page 1, keep current limit
     fetchStudies(searchFilters, 1, pagination.recordsPerPage);
-  }, [currentView]); // ✅ Only depend on currentView, NOT fetchStudies
+  }, [currentView]);
 
   // ✅ SIMPLIFIED: Handle page change
   const handlePageChange = useCallback((newPage) => {
     console.log(`📄 [Assignor] Changing page: ${pagination.currentPage} -> ${newPage}`);
-    
-    // ✅ Just fetch with new page, keeping current limit
     fetchStudies(searchFilters, newPage, pagination.recordsPerPage);
   }, [fetchStudies, searchFilters, pagination.recordsPerPage]);
 
   // ✅ SIMPLIFIED: Handle records per page change
   const handleRecordsPerPageChange = useCallback((newLimit) => {
     console.log(`📊 [Assignor] Changing limit: ${pagination.recordsPerPage} -> ${newLimit}`);
-    
-    // ✅ Fetch with new limit, reset to page 1
     fetchStudies(searchFilters, 1, newLimit);
   }, [fetchStudies, searchFilters]);
 
   // Handlers
-const handleSearch = useCallback((searchParams) => {
-  console.log('🔍 [Assignor] NEW SEARCH:', searchParams);
-  setSearchFilters(searchParams);
-  
-  // ✅ Save filters (excluding live search term)
-  try {
-    const toSave = { ...searchParams };
-    delete toSave.search;
-    localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
-  } catch (e) {}
-  
-  fetchStudies(searchParams, 1, pagination.recordsPerPage);
-  fetchCategoryValues(searchParams);
-}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
+  const handleSearch = useCallback((searchParams) => {
+    console.log('🔍 [Assignor] NEW SEARCH:', searchParams);
+    
+    const cleanedParams = { ...searchParams };
+    if (!cleanedParams.search || cleanedParams.search.trim() === '') {
+      delete cleanedParams.search;
+    }
+    
+    setSearchFilters(cleanedParams);
+    
+    try {
+      const toSave = { ...cleanedParams };
+      delete toSave.search;
+      localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
+    } catch (e) {}
+    
+    fetchStudies(cleanedParams, 1, pagination.recordsPerPage);
+    fetchCategoryValues(cleanedParams);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
 
-const handleFilterChange = useCallback((filters) => {
-  console.log('🔍 [Assignor] FILTER CHANGE:', filters);
-  setSearchFilters(filters);
+  const handleFilterChange = useCallback((filters) => {
+    console.log('🔍 [Assignor] FILTER CHANGE:', filters);
+    
+    const cleanedFilters = { ...filters };
+    if (!cleanedFilters.search || cleanedFilters.search.trim() === '') {
+      delete cleanedFilters.search;
+    }
+    
+    setSearchFilters(cleanedFilters);
+    
+    try {
+      const toSave = { ...cleanedFilters };
+      delete toSave.search;
+      localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
+    } catch (e) {}
+    
+    fetchStudies(cleanedFilters, 1, pagination.recordsPerPage);
+    fetchCategoryValues(cleanedFilters);
+  }, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
   
-  // ✅ Save filters (excluding live search term)
-  try {
-    const toSave = { ...filters };
-    delete toSave.search;
-    localStorage.setItem('assignerDashboardFilters', JSON.stringify(toSave));
-  } catch (e) {}
-  
-  fetchStudies(filters, 1, pagination.recordsPerPage);
-  fetchCategoryValues(filters);
-}, [fetchStudies, fetchCategoryValues, pagination.recordsPerPage]);
-  
-  // ✅ SIMPLIFIED: View change
   const handleViewChange = useCallback((view) => {
     console.log(`🔄 [Assignor] VIEW CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
@@ -336,6 +337,7 @@ const handleFilterChange = useCallback((filters) => {
     );
   }, []);
 
+  // ✅ FIXED: Refresh function with proper dependencies
   const handleRefresh = useCallback(() => {
     console.log('🔄 [Assignor] Manual refresh');
     fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
@@ -373,7 +375,7 @@ const handleFilterChange = useCallback((filters) => {
     }
   }, [fetchStudies, searchFilters, fetchCategoryValues, pagination.currentPage, pagination.recordsPerPage]);
 
-    const handleUpdateStudyDetails = useCallback(async (formData) => {
+  const handleUpdateStudyDetails = useCallback(async (formData) => {
     try {
       console.log('🔄 Updating study details:', formData);
       
@@ -417,6 +419,14 @@ const handleFilterChange = useCallback((filters) => {
     setColumnConfig(defaultConfig);
   }, []);
 
+  const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
+    try {
+      await fetchStudies(searchFilters, pagination.currentPage, pagination.recordsPerPage);
+    } catch (error) {
+      console.error('Lock toggle failed:', error);
+    }
+  }, [fetchStudies, searchFilters, pagination.currentPage, pagination.recordsPerPage]);
+
   const additionalActions = [
     {
       label: 'Analytics',
@@ -441,7 +451,7 @@ const handleFilterChange = useCallback((filters) => {
     }
   ];
 
-  // ✅ UPDATED: CATEGORY TABS (same as admin dashboard)
+  // ✅ CATEGORY TABS (same as admin)
   const categoryTabs = [
     { key: 'all', label: 'All', count: categoryValues.all },
     { key: 'created', label: 'Created', count: categoryValues.created },
@@ -452,8 +462,7 @@ const handleFilterChange = useCallback((filters) => {
     { key: 'draft', label: 'Draft', count: categoryValues.draft },
     { key: 'verification_pending', label: 'Verify', count: categoryValues.verification_pending },
     { key: 'final', label: 'Final', count: categoryValues.final },
-        { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },  // ✅ NEW
-
+    { key: 'reverted', label: 'Reverted', count: categoryValues.reverted },
     { key: 'urgent', label: 'Urgent', count: categoryValues.urgent },
     { key: 'reprint_need', label: 'Reprint', count: categoryValues.reprint_need }
   ];
@@ -475,11 +484,13 @@ const handleFilterChange = useCallback((filters) => {
         loading={loading}
         totalStudies={categoryValues.all}
         currentCategory={currentView}
+        onRefresh={handleRefresh}
       />
 
       <div className="flex-1 min-h-0 p-0 px-0">
         <div className="bg-white rounded-lg shadow-sm border border-slate-200 h-full flex flex-col">
           
+          {/* ✅ COMPACT WORKLIST HEADER - MATCH ADMIN */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 bg-gradient-to-r from-slate-50 to-white">
             <div className="flex items-center space-x-3">
               <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
@@ -495,7 +506,7 @@ const handleFilterChange = useCallback((filters) => {
               )}
             </div>
 
-            {/* ✅ UPDATED: COMPACT MODERN CATEGORY TABS (same as admin) */}
+            {/* ✅ COMPACT MODERN CATEGORY TABS */}
             <div className="flex-1 mx-4 overflow-x-auto scrollbar-hide">
               <div className="flex items-center gap-1.5 min-w-max">
                 {categoryTabs.map((tab) => (
@@ -539,19 +550,20 @@ const handleFilterChange = useCallback((filters) => {
           <div className="flex-1 min-h-0">
             <UnifiedWorklistTable
               studies={studies}
-              loading={loading || columnsLoading} // ✅ wait for columns before rendering
+              loading={loading || columnsLoading}
               selectedStudies={selectedStudies}
               onSelectAll={handleSelectAll}
               onSelectStudy={handleSelectStudy}
               onPatienIdClick={(patientId, study) => console.log('Patient clicked:', patientId)}
               availableAssignees={availableAssignees}
               onAssignmentSubmit={handleAssignmentSubmit}
-               onUpdateStudyDetails={handleUpdateStudyDetails}
-              // userRole={currentUser?.role || 'assignor'}
+              onUpdateStudyDetails={handleUpdateStudyDetails}
+              onToggleStudyLock={handleToggleStudyLock}
               pagination={pagination}
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
-              // ✅ PASS RESOLVED COLUMNS
+              onRefreshStudies={handleRefresh}
+
               visibleColumns={visibleColumns}
               columnConfig={columnConfig} 
               userRole={currentUser?.primaryRole || currentUser?.role || 'assignor'}

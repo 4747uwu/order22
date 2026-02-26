@@ -297,9 +297,9 @@ export const UNIFIED_WORKLIST_COLUMNS = {
     category: 'actions',
     tables: ['assignor', 'radiologist', 'verifier', 'lab_staff', 'receptionist', 'billing'],
     alwaysVisible: true,
-    defaultWidth: 250,
-    minWidth: 300,
-    maxWidth: 500
+    defaultWidth: 150,
+    minWidth: 100,
+    maxWidth: 200
   }
 };
 

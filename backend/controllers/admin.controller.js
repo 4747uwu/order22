@@ -972,22 +972,17 @@ export const getCategoryValues = async (req, res) => {
             // pending tab TOTAL = created + history_created + assigned + doctor_opened_report
             doctor_opened_report: 'pending',
 
-            // case 'draft' → workflowStatus = 'report_drafted'
             report_drafted: 'draft',
 
-            // case 'verification-pending' → workflowStatus = 'verification_pending'
             verification_pending: 'verification_pending',
 
-            // case 'final' → workflowStatus = 'report_completed' or 'final_report_downloaded'
             report_completed: 'final',
             final_report_downloaded: 'final',
 
-            // case 'reverted' → { $in: ['study_reverted', 'report_rejected', 'revert_to_radiologist'] }
             study_reverted: 'reverted',
             report_rejected: 'reverted',
             revert_to_radiologist: 'reverted',
 
-            // case 'reprint-need' → workflowStatus = 'report_reprint_needed'
             report_reprint_needed: 'reprint_need',
         };
 
@@ -1284,6 +1279,236 @@ export const getOrganizationLabs = async (req, res) => {
     }
 };
 
+
+
+// Update the imports at the top - REMOVE AuditLog
+
+// import mongoose from 'mongoose';
+// import DicomStudy from '../models/dicomStudyModel.js';
+// import User from '../models/userModel.js';
+// import Lab from '../models/labModel.js';
+// import Organization from '../models/organisation.js';
+import StudyNotes from '../models/studyNotesModel.js';
+import Document from '../models/documentModal.js';
+// import { formatStudiesForWorklist } from '../utils/formatStudies.js';
+
+export const deleteStudy = async (req, res) => {
+    try {
+        const { studyId } = req.params;
+        const user = req.user;
+
+        // ✅ CRITICAL: Only super_admin can delete studies
+        if (user.role !== 'super_admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only super_admin can delete studies'
+            });
+        }
+
+        // ✅ Validate study ID
+        if (!mongoose.Types.ObjectId.isValid(studyId)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid study ID format'
+            });
+        }
+
+        // ✅ Find the study
+        const study = await DicomStudy.findById(studyId);
+        if (!study) {
+            return res.status(404).json({
+                success: false,
+                message: 'Study not found'
+            });
+        }
+
+        // ✅ Log deletion action
+        console.log(`🗑️ [DELETE] Study deleted by super_admin:`, {
+            studyId: study._id,
+            bharatPacsId: study.bharatPacsId,
+            deletedBy: user.fullName,
+            deletedAt: new Date(),
+            patientName: study.patientName || study.patientInfo?.patientName || 'Unknown'
+        });
+
+        // ✅ Delete associated documents/attachments from storage
+        if (study.attachments && study.attachments.length > 0) {
+            for (const attachment of study.attachments) {
+                try {
+                    // Find and delete document
+                    const doc = await Document.findById(attachment.documentId);
+                    if (doc && doc.wasabiKey) {
+                        try {
+                            // Delete from Wasabi S3
+                            const deleteCommand = new DeleteObjectCommand({
+                                Bucket: doc.wasabiBucket,
+                                Key: doc.wasabiKey
+                            });
+                            await wasabiS3Client.send(deleteCommand);
+                            console.log(`✅ [Wasabi] Deleted attachment: ${doc.wasabiKey}`);
+                        } catch (wasabiError) {
+                            console.warn(`⚠️ [Wasabi] Failed to delete from S3:`, wasabiError.message);
+                        }
+                    }
+                    // Delete document record from DB
+                    await Document.findByIdAndDelete(attachment.documentId);
+                } catch (docError) {
+                    console.warn(`⚠️ Failed to delete attachment:`, docError.message);
+                }
+            }
+            console.log(`✅ Deleted ${study.attachments.length} attachment(s)`);
+        }
+
+        // ✅ Delete associated study notes
+        if (study._id) {
+            try {
+                const result = await StudyNotes.deleteMany({ studyId: study._id });
+                console.log(`✅ Deleted ${result.deletedCount} study note(s)`);
+            } catch (notesError) {
+                console.warn(`⚠️ Failed to delete study notes:`, notesError.message);
+            }
+        }
+
+        // ✅ Delete the study from database
+        await DicomStudy.findByIdAndDelete(studyId);
+        console.log(`✅ [Database] Study deleted: ${study.bharatPacsId}`);
+
+        return res.json({
+            success: true,
+            message: 'Study deleted successfully',
+            data: {
+                deletedStudyId: studyId,
+                bharatPacsId: study.bharatPacsId,
+                patientName: study.patientName || study.patientInfo?.patientName || 'Unknown',
+                deletedAt: new Date()
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ [Delete Study] Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to delete study',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// ✅ SIMPLIFIED: Bulk delete - NO ORTHANC, NO AUDIT LOG
+export const bulkDeleteStudies = async (req, res) => {
+    try {
+        const { studyIds } = req.body;
+        const user = req.user;
+
+        // ✅ CRITICAL: Only super_admin can delete studies
+        if (user.role !== 'super_admin') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only super_admin can delete studies'
+            });
+        }
+
+        if (!Array.isArray(studyIds) || studyIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No study IDs provided'
+            });
+        }
+
+        const results = {
+            successful: [],
+            failed: [],
+            totalRequested: studyIds.length
+        };
+
+        console.log(`🗑️ [BULK DELETE] Starting bulk delete for ${studyIds.length} studies...`);
+
+        // ✅ Delete each study
+        for (const studyId of studyIds) {
+            try {
+                if (!mongoose.Types.ObjectId.isValid(studyId)) {
+                    results.failed.push({ studyId, reason: 'Invalid study ID format' });
+                    continue;
+                }
+
+                const study = await DicomStudy.findById(studyId);
+                if (!study) {
+                    results.failed.push({ studyId, reason: 'Study not found' });
+                    continue;
+                }
+
+                // Delete attachments
+                if (study.attachments && study.attachments.length > 0) {
+                    for (const attachment of study.attachments) {
+                        try {
+                            const doc = await Document.findById(attachment.documentId);
+                            if (doc && doc.wasabiKey) {
+                                try {
+                                    const deleteCommand = new DeleteObjectCommand({
+                                        Bucket: doc.wasabiBucket,
+                                        Key: doc.wasabiKey
+                                    });
+                                    await wasabiS3Client.send(deleteCommand);
+                                } catch (wasabiError) {
+                                    console.warn(`⚠️ [Wasabi] Failed to delete for ${studyId}`);
+                                }
+                            }
+                            await Document.findByIdAndDelete(attachment.documentId);
+                        } catch (docError) {
+                            console.warn(`⚠️ Failed to delete attachment for ${studyId}`);
+                        }
+                    }
+                }
+
+                // Delete study notes
+                try {
+                    await StudyNotes.deleteMany({ studyId: study._id });
+                } catch (notesError) {
+                    console.warn(`⚠️ Failed to delete notes for ${studyId}`);
+                }
+
+                // Delete the study from database
+                await DicomStudy.findByIdAndDelete(studyId);
+
+                results.successful.push({
+                    studyId,
+                    bharatPacsId: study.bharatPacsId,
+                    patientName: study.patientName || study.patientInfo?.patientName || 'Unknown'
+                });
+
+                console.log(`✅ Deleted: ${study.bharatPacsId}`);
+
+            } catch (error) {
+                results.failed.push({
+                    studyId,
+                    reason: error.message
+                });
+                console.error(`❌ Failed to delete ${studyId}:`, error.message);
+            }
+        }
+
+        const message = results.successful.length === studyIds.length
+            ? `✅ All ${results.successful.length} studies deleted successfully`
+            : `⚠️ ${results.successful.length}/${studyIds.length} studies deleted (${results.failed.length} failed)`;
+
+        console.log(`🗑️ [BULK DELETE] Complete:`, message);
+
+        return res.json({
+            success: results.successful.length > 0,
+            message,
+            data: results
+        });
+
+    } catch (error) {
+        console.error('❌ [Bulk Delete Studies] Error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to bulk delete studies',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
 export default {
     getValues,
     getCategoryValues,
@@ -1293,4 +1518,6 @@ export default {
     getCompletedStudies,
     getAllStudiesForAdmin,
     getOrganizationLabs,
+    deleteStudy,
+    bulkDeleteStudies
 };

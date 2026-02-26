@@ -446,7 +446,11 @@ const LAB_STATUS_CATEGORIES = {
     // COMPLETED: Final states only
     completed: [
         'report_completed',         // ✅ ADD
-        'final_report_downloaded',  // ✅ ADD
+        'final_report_downloaded',
+        'reprint_requested',
+        'report_reprint_needed'
+        
+        // ✅ ADD
     ]
 };
 

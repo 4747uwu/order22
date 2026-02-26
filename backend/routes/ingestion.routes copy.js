@@ -185,9 +185,12 @@ function processDicomPersonName(dicomNameField) {
   };
 }
 
-// 🔧 ENHANCED: Fix DICOM date parsing
+// 🔧 ENHANCED: Fix DICOM date parsing with better fallbacks
 function formatDicomDateToISO(dicomDate) {
-  if (!dicomDate || typeof dicomDate !== 'string') return null;
+  if (!dicomDate || typeof dicomDate !== 'string') {
+    console.warn(`⚠️ Invalid DICOM date provided:`, dicomDate, typeof dicomDate);
+    return new Date(); // Return current date as fallback
+  }
   
   // Handle different DICOM date formats
   let cleanDate = dicomDate.trim();
@@ -205,24 +208,45 @@ function formatDicomDateToISO(dicomDate) {
       const dayNum = parseInt(day);
       
       if (yearNum >= 1900 && yearNum <= 2100 && monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
-        return new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+        const dateObj = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+        console.log(`✅ Parsed DICOM date ${dicomDate} to ISO: ${dateObj.toISOString()}`);
+        return dateObj;
+      } else {
+        console.warn(`⚠️ Invalid date components - Y:${yearNum} M:${monthNum} D:${dayNum}`);
+        return new Date();
       }
     } catch (error) {
-      console.warn('Error parsing DICOM date:', dicomDate, error);
+      console.warn('⚠️ Error parsing DICOM date:', dicomDate, error.message);
+      return new Date();
     }
   }
   
-  // Handle other formats or return current date as fallback
+  // Handle other ISO-like formats (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}/.test(cleanDate)) {
+    try {
+      const parsed = new Date(cleanDate);
+      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+        console.log(`✅ Parsed ISO format date ${cleanDate} to: ${parsed.toISOString()}`);
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('⚠️ Error parsing ISO date:', cleanDate, error.message);
+    }
+  }
+  
+  // Try generic Date parsing as last resort
   try {
     const parsed = new Date(cleanDate);
-    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
+      console.log(`✅ Parsed generic date ${cleanDate} to: ${parsed.toISOString()}`);
       return parsed;
     }
   } catch (error) {
-    console.warn('Error parsing date:', dicomDate, error);
+    console.warn('⚠️ Error in generic date parsing:', cleanDate, error.message);
   }
   
-  // Return current date as fallback
+  // Final fallback - return current date
+  console.warn(`⚠️ Could not parse date "${cleanDate}" - using current date as fallback`);
   return new Date();
 }
 
@@ -483,6 +507,7 @@ async function findOrCreatePatientFromTags(tags, organization) {
       patientNameRaw: nameInfo.formattedForDisplay,
       firstName: nameInfo.firstName,
       lastName: nameInfo.lastName,
+      ageString: tags.PatientAge || 'N/A',  
       computed: {
         fullName: nameInfo.formattedForDisplay,
         namePrefix: nameInfo.namePrefix,
@@ -742,7 +767,7 @@ async function processStableStudy(job) {
         
         const rawTags = metadataResponse.data;
         
-        // 🔧 OPTIMIZED: Extract all necessary tags in one pass
+        // Extract all necessary tags in one pass
         tags = {};
         for (const [tagKey, tagData] of Object.entries(rawTags)) {
           if (tagData && typeof tagData === 'object' && tagData.Value !== undefined) {
@@ -752,28 +777,37 @@ async function processStableStudy(job) {
           }
         }
         
-        // Map common DICOM fields
+        // ✅ FIX: Map ALL common DICOM fields including StudyDate and StudyDescription
         tags.PatientName = rawTags["0010,0010"]?.Value || tags.PatientName;
         tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
         tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
         tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
-        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription;
-        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;
-        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;
-        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;
-        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;
-        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName;
+        tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge;
         
-        // 🔧 CRITICAL: Extract private tags for organization and lab identification  
-        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null; // Lab identifier
-        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null; // Lab identifier
-        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null; // Organization identifier
-        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null; // Organization identifier
+        // 🔧 THESE WERE MISSING IN YOUR CURRENT ingestion.routes.js:
+        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;        // ✅ ADD THIS
+        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;        // ✅ ADD THIS
+        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription; // ✅ ADD THIS
+        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;   // ✅ ADD THIS
+        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;   // ✅ ADD THIS
+        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName; // ✅ ADD THIS
+        tags.Modality = rawTags["0008,0060"]?.Value || tags.Modality;          // ✅ ADD THIS
         
-        console.log(`[StableStudy] ✅ Got tags from single instance:`, {
-          PatientName: tags.PatientName,
-          PatientID: tags.PatientID,
-          StudyDescription: tags.StudyDescription,
+        // Extract private tags for organization and lab identification
+        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null;
+        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null;
+        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null;
+        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null;
+        
+        console.log(`[StableStudy] ✅ Extracted DICOM tags:`, {
+          PatientName: tags.PatientName || 'NOT_FOUND',
+          PatientID: tags.PatientID || 'NOT_FOUND',
+          StudyDate: tags.StudyDate || 'NOT_FOUND',      // Will now show actual date
+          StudyTime: tags.StudyTime || 'NOT_FOUND',
+          StudyDescription: tags.StudyDescription || 'NOT_FOUND',
+          AccessionNumber: tags.AccessionNumber || 'NOT_FOUND',
+          InstitutionName: tags.InstitutionName || 'NOT_FOUND',
+          Modality: tags.Modality || 'NOT_FOUND',
           LabTags: {
             "0013,0010": tags["0013,0010"],
             "0015,0010": tags["0015,0010"]
@@ -787,7 +821,7 @@ async function processStableStudy(job) {
       } catch (metadataError) {
         console.warn(`[StableStudy] ⚠️ Could not get instance metadata:`, metadataError.message);
         
-        // 🔧 FALLBACK: Try simplified-tags if /tags fails
+        // Fallback: Try simplified-tags
         try {
           const simplifiedUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/simplified-tags`;
           const simplifiedResponse = await axios.get(simplifiedUrl, {
@@ -797,6 +831,7 @@ async function processStableStudy(job) {
           
           tags = { ...simplifiedResponse.data };
           console.log(`[StableStudy] ✅ Got simplified metadata as fallback`);
+          console.log(`[StableStudy] 📋 Simplified tags keys:`, Object.keys(tags));
         } catch (simplifiedError) {
           console.warn(`[StableStudy] ⚠️ Simplified tags also failed:`, simplifiedError.message);
         }
@@ -891,19 +926,24 @@ async function processStableStudy(job) {
     
     job.progress = 75;
     
-    // Extract all study information from tags
-    const studyDate = formatDicomDateToISO(tags.StudyDate);
+    // Extract all study information from tags with better fallbacks
+    const studyDate = tags.StudyDate 
+      ? formatDicomDateToISO(tags.StudyDate)
+      : new Date(); // 🔧 Direct fallback to current date
+    
     const studyDescription = tags.StudyDescription || 'No Description';
     const accessionNumber = tags.AccessionNumber || `ACC_${Date.now()}`;
     const referringPhysicianName = tags.ReferringPhysicianName || '';
     const institutionName = tags.InstitutionName || '';
     
     console.log(`[StableStudy] 📊 Study Details:`, {
-      date: studyDate,
+      studyDate: studyDate ? studyDate.toISOString() : 'INVALID',
+      studyTime: tags.StudyTime || 'NOT_FOUND',
       description: studyDescription,
       accessionNumber: accessionNumber,
       physician: referringPhysicianName,
-      institution: institutionName
+      institution: institutionName,
+      dicomStudyDateRaw: tags.StudyDate || 'NOT_FOUND'
     });
     
     job.progress = 80;
@@ -912,34 +952,32 @@ async function processStableStudy(job) {
     const studyData = {
       organization: organizationRecord._id,
       organizationIdentifier: organizationRecord.identifier,
-      
       studyInstanceUID: studyInstanceUID,
-      orthancStudyID: orthancStudyId,
-      
+      orthancStudyID: orthancStudyId,   // ✅ FIX: was orthancStudyId (lowercase d)
       accessionNumber: accessionNumber,
       patient: patientRecord._id,
       patientId: patientRecord.patientID,
       sourceLab: labRecord._id,
       labLocation: labLocation,
+      seriesCount: allSeries.length,
+      instanceCount: totalInstances,
+      seriesImages: `${allSeries.length}/${totalInstances}`,
       
-      studyDate: studyDate,
-      studyTime: tags.StudyTime || '',
-      modalitiesInStudy: Array.from(modalitiesSet),
-      examDescription: studyDescription,  // ✅ CHANGED from studyDescription to examDescription
+      // ✅ FIX: Correct field names matching DicomStudy model
+      studyDate: studyDate,                              // ✅ studyDate
+      studyTime: tags.StudyTime || '',                   // ✅ studyTime
+      examDescription: studyDescription,                 // ✅ examDescription (NOT StudyDescription)
+      modalitiesInStudy: Array.from(modalitiesSet),      // ✅ modalitiesInStudy
       institutionName: institutionName,
-      workflowStatus: totalInstances > 0 ? 'new_study_received' : 'new_metadata_only',
-      
-      seriesCount: allSeries.length,  // ✅ ADDED
-      instanceCount: totalInstances,  // ✅ ADDED
-      seriesImages: `${allSeries.length}/${totalInstances}`,  // ✅ ADDED
+      workflowStatus: 'new_study_received',
       
       patientInfo: {
         patientID: patientRecord.patientID,
         patientName: patientRecord.patientNameRaw,
+        age: tags.PatientAge || patientRecord.age || 'N/A',
         gender: patientRecord.gender || '',
         dateOfBirth: tags.PatientBirthDate || ''
       },
-      
       referringPhysicianName: referringPhysicianName,
       physicians: {
         referring: {
@@ -955,45 +993,26 @@ async function processStableStudy(job) {
           institution: tags.RequestingService || ''
         }
       },
-      
       technologist: {
         name: tags.OperatorName || tags.PerformingPhysicianName || '',
         mobile: '',
         comments: '',
         reasonToSend: tags.ReasonForStudy || tags.RequestedProcedureDescription || ''
       },
-      
       studyPriority: tags.StudyPriorityID || 'SELECT',
       caseType: tags.RequestPriority || 'routine',
-      
       equipment: {
         manufacturer: tags.Manufacturer || '',
         model: tags.ManufacturerModelName || '',
         stationName: tags.StationName || '',
         softwareVersion: tags.SoftwareVersions || ''
       },
-      
       protocolName: tags.ProtocolName || '',
       bodyPartExamined: tags.BodyPartExamined || '',
       contrastBolusAgent: tags.ContrastBolusAgent || '',
-      contrastBolusRoute: tags.ContrastBolusRoute || '',
       acquisitionDate: tags.AcquisitionDate || '',
       acquisitionTime: tags.AcquisitionTime || '',
       studyComments: tags.StudyComments || '',
-      additionalPatientHistory: tags.AdditionalPatientHistory || '',
-      
-      customLabInfo: {
-        organizationId: organizationRecord._id,
-        organizationIdentifier: organizationRecord.identifier,
-        organizationName: organizationRecord.name,
-        labId: labRecord._id,
-        labIdentifier: labRecord.identifier,
-        labName: labRecord.name,
-        labIdSource: (tags["0013,0010"] || tags["0015,0010"]) ? 'dicom_lab_tags' : 'default_unknown_lab',
-        orgIdSource: (tags["0021,0010"] || tags["0043,0010"]) ? 'dicom_org_tags' : 'default_test_org',
-        detectionMethod: 'separated_tag_lookup'
-      },
-      
       storageInfo: {
         type: 'orthanc',
         orthancStudyId: orthancStudyId,
@@ -1001,36 +1020,64 @@ async function processStableStudy(job) {
         receivedAt: new Date(),
         isStableStudy: true,
         instancesFound: totalInstances,
-        processingMethod: totalInstances > 0 ? 'optimized_with_instances' : 'metadata_only',
-        debugInfo: {
-          apiCallsUsed: 3,
-          studyInfoUsed: true,
-          seriesApiUsed: true,
-          singleInstanceTagsUsed: true,
-          modalitiesExtracted: Array.from(modalitiesSet),
-          organizationTagsFound: {
-            "0021,0010": tags["0021,0010"] || null,
-            "0043,0010": tags["0043,0010"] || null
-          },
-          labTagsFound: {
-            "0013,0010": tags["0013,0010"] || null,
-            "0015,0010": tags["0015,0010"] || null
-          }
-        }
       }
     };
-    
-    // ✅ CHANGED: Remove the conditional logic and always create or update
+
     let dicomStudyDoc = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
-    
+
     if (dicomStudyDoc) {
-      console.log(`[StableStudy] 📝 Updating existing study with UID: ${studyInstanceUID}`);
-      Object.assign(dicomStudyDoc, studyData);
+      console.log(`[StableStudy] 📝 Updating existing study - PRESERVING org/lab/location`);
+
+      const preserveOnUpdate = {
+        organization:           dicomStudyDoc.organization,
+        organizationIdentifier: dicomStudyDoc.organizationIdentifier,
+        sourceLab:              dicomStudyDoc.sourceLab,
+        labLocation:            dicomStudyDoc.labLocation,
+        bharatPacsId:           dicomStudyDoc.bharatPacsId,
+        patient:                dicomStudyDoc.patient,
+        patientId:              dicomStudyDoc.patientId,
+        workflowStatus:         dicomStudyDoc.workflowStatus, // ✅ Never overwrite
+      };
+
+      const allowedUpdates = {
+        seriesCount:            studyData.seriesCount,
+        instanceCount:          studyData.instanceCount,
+        seriesImages:           studyData.seriesImages,
+        orthancStudyID:         studyData.orthancStudyID,   // ✅ ADD THIS - was missing entirely!
+        modalitiesInStudy:      studyData.modalitiesInStudy,
+        examDescription:        studyData.examDescription,
+        studyDate:              studyData.studyDate,
+        studyTime:              studyData.studyTime,
+        accessionNumber:        studyData.accessionNumber,
+        referringPhysicianName: studyData.referringPhysicianName,
+        physicians:             studyData.physicians,
+        storageInfo:            studyData.storageInfo,
+        patientInfo:            studyData.patientInfo,
+        institutionName:        studyData.institutionName,
+      };
+
+      Object.assign(dicomStudyDoc, allowedUpdates, preserveOnUpdate);
+
       dicomStudyDoc.statusHistory.push({
-        status: studyData.workflowStatus,
+        status: dicomStudyDoc.workflowStatus,
         changedAt: new Date(),
-        note: `Study updated: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
+        note: `Re-notification: ${allSeries.length} series, ${totalInstances} instances. Date: ${studyDate.toISOString()}`
       });
+
+      console.log(`[StableStudy] 🔒 Preserved:`, {
+        org:      preserveOnUpdate.organizationIdentifier,
+        lab:      preserveOnUpdate.sourceLab,
+        location: preserveOnUpdate.labLocation,
+        bpId:     preserveOnUpdate.bharatPacsId,
+      });
+
+      // ✅ LOG what is being saved
+      console.log(`[StableStudy] 💾 Saving:`, {
+        examDescription: allowedUpdates.examDescription,
+        studyDate:       allowedUpdates.studyDate?.toISOString(),
+        modalitiesInStudy: allowedUpdates.modalitiesInStudy
+      });
+
     } else {
       console.log(`[StableStudy] 🆕 Creating new study with UID: ${studyInstanceUID}`);
       dicomStudyDoc = new DicomStudy({
@@ -1042,7 +1089,7 @@ async function processStableStudy(job) {
         }]
       });
     }
-    
+
     await dicomStudyDoc.save();
     console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
     

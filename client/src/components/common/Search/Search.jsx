@@ -645,15 +645,21 @@ const Search = ({
                     )}
 
                     {/* ✅ UPDATED: Larger Manual Refresh Button */}
+                                        {/* ✅ UPDATED: Full Refresh Button with text */}
                     <button
                         onClick={handleRefreshClick}
                         disabled={loading}
-                        className={`p-2 text-${themeColors.textSecondary} hover:text-${themeColors.text} hover:bg-${themeColors.primaryLight} rounded-lg transition-all disabled:opacity-50 border border-transparent hover:border-${themeColors.border} ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border transition-all disabled:opacity-50 ${
                             loading ? 'cursor-wait' : 'cursor-pointer'
+                        } ${
+                            isGreenTheme
+                                ? 'bg-teal-600 text-white border-teal-600 hover:bg-teal-700'
+                                : 'bg-gray-900 text-white border-gray-900 hover:bg-gray-700'
                         }`}
                         title="Manual refresh"
                     >
-                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                        <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+                        <span className="hidden sm:inline">Refresh</span>
                     </button>
                 </div>                
             </div>

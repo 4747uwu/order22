@@ -18,6 +18,8 @@ import PrintModal from '../../PrintModal';
 import sessionManager from '../../../services/sessionManager';
 import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 import useWebSocket from '../../../hooks/useWebSocket';
+import MultiAssignModal from '../../assigner/MultiAssignModal';
+
 
 
 const ShareModal = ({ study, isOpen, onClose }) => {
@@ -381,11 +383,11 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   return (
-    // ✅ ULTRA COMPACT: Reduced modal max-width, shaved off outer padding
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-2">
-      <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-900 flex flex-col">
+    // ✅ UPDATED: Subtle blur background instead of black overlay
+    <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-[10000] p-2">
+      <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-200 flex flex-col">
 
-        {/* ✅ ULTRA COMPACT HEADER: Smaller padding, smaller text */}
+        {/* ✅ HEADER: Smaller padding, smaller text */}
         <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
             <h2 className="text-xs sm:text-sm font-bold uppercase truncate max-w-[200px] sm:max-w-md">{study?.patientName || 'Edit Study'}</h2>
@@ -398,7 +400,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
           </button>
         </div>
 
-        {/* ✅ ULTRA COMPACT FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
+        {/* ✅ FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
         <form onSubmit={handleSubmit} className="p-3 overflow-y-auto flex-1">
           
           {/* PRIORITY */}
@@ -510,11 +512,13 @@ const UnifiedStudyRow = ({
     columnConfig = null,
     getColumnWidth, // ✅ NEW PROP
         setPrintModal,  // ✅ ADD THIS PROP
+        onRefreshStudies, // ✅ ADD THIS PROP
 
 }) => {
     const navigate = useNavigate();
-    console.log(study)
+    // console.log(study)
 
+    const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
         const hasActiveViewers = activeViewers.length > 0;
 
 
@@ -656,6 +660,63 @@ const handleDirectPrint = useCallback(async (study) => {
         toast.error('Failed to load reports for printing', { id: 'print-load' });
     }
 }, [setPrintModal]); // ✅ ADD setPrintModal as dependency
+
+
+// ✅ FIXED: Handle direct print as DOCX - DOWNLOAD ONLY (no print dialog)
+const handleDirectPrintDOCX = useCallback(async (study) => {
+    toast.loading('Fetching reports...', { id: 'print-docx-load' });
+    try {
+        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+        if (!response.data.success || !response.data.data?.reports?.length) {
+            toast.error('No finalized reports found', { id: 'print-docx-load' });
+            return;
+        }
+
+        const { reports, totalReports } = response.data.data;
+        toast.dismiss('print-docx-load');
+
+        // ✅ Download each DOCX sequentially
+        for (let i = 0; i < reports.length; i++) {
+            const reportMeta = reports[i];
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+            toast.loading(`Downloading DOCX ${i + 1} of ${totalReports}...`, { id: `docx-dl-${i}` });
+
+            try {
+                const docxResponse = await api.get(
+                    `/reports/reports/${reportMeta.reportId}/download/docx`,
+                    { responseType: 'blob', timeout: 60000 }
+                );
+                
+                const blob = new Blob([docxResponse.data], { 
+                    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}_of_${totalReports}.docx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+
+                toast.success(`✅ DOCX ${i + 1} of ${totalReports} downloaded!`, { id: `docx-dl-${i}`, duration: 2000 });
+            } catch (err) {
+                console.error(`❌ Failed to download DOCX report ${i + 1}:`, err);
+                toast.error(`❌ DOCX ${i + 1} failed`, { id: `docx-dl-${i}`, duration: 3000 });
+            }
+        }
+
+        if (totalReports > 1) {
+            toast.success(`🎉 All ${totalReports} DOCX reports downloaded!`, { id: 'docx-dl-done', duration: 3000 });
+        }
+
+    } catch (error) {
+        console.error('❌ [Download DOCX] Error:', error);
+        toast.error('Failed to download DOCX files', { id: 'print-docx-load' });
+    }
+}, []);
 
 
         const handleDirectDownloadPDF = useCallback(async (study) => {
@@ -915,7 +976,7 @@ const handleDirectPrint = useCallback(async (study) => {
         <tr className={rowClasses}>
     {/* 1. SELECTION CHECKBOX */}
     {isColumnVisible('selection') && (
-        <td className="px-2 py-3 text-center align-top" style={{ width: `${getColumnWidth('selection')}px` }}>
+        <td className="px-2 py-3 text-center align-center" style={{ width: `${getColumnWidth('selection')}px` }}>
             <input
                 type="checkbox"
                 checked={isSelected}
@@ -927,7 +988,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 2. BHARAT PACS ID */}
     {isColumnVisible('bharatPacsId') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('bharatPacsId')}px` }}>
             <div className="flex items-start justify-center gap-1.5">
                 <span className="text-xs font-mono font-semibold text-slate-700 whitespace-normal break-all leading-snug text-left" title={study.bharatPacsId}>
                     {study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id?.substring(0, 10)}
@@ -962,7 +1023,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 3. ORGANIZATION */}
     {(userRoles.includes('super_admin') || userRole === 'super_admin') && isColumnVisible('organization') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('organization')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('organization')}px` }}>
             <div className="text-xs text-slate-600 whitespace-normal break-words leading-tight" title={study.organizationName}>
                 {study.organizationName || '-'}
             </div>
@@ -971,14 +1032,14 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 4. CENTER NAME */}
     {isColumnVisible('centerName') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('centerName')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('centerName')}px` }}>
            <div className="text-[10px] sm:text-xs font-bold text-center text-slate-900 whitespace-normal break-words leading-tight" title={study.centerName}>{study.centerName || '-'}</div>
         </td>
     )}
 
     {/* 5. LOCATION */}
     {isColumnVisible('location') && (
-        <td className="px-2 py-3.5 border-r border-b border-slate-200 align-top"
+        <td className="px-2 py-3.5 border-r border-b border-slate-200 align-center"
             style={{ width: `${getColumnWidth('location')}px` }}>
             <div className="text-xs text-slate-600 text-center whitespace-normal break-words leading-tight">
                 {study?.location || study?.labLocation || '-'}
@@ -988,7 +1049,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 6. TIMELINE */}
     {isColumnVisible('timeline') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('timeline')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('timeline')}px` }}>
             <button
                 onClick={() => onShowTimeline?.(study)}
                 className="p-2 hover:bg-gray-200 rounded-lg transition-all hover:scale-110"
@@ -1044,7 +1105,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 8. AGE/SEX */}
     {isColumnVisible('ageGender') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('ageGender')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('ageGender')}px` }}>
             <div className="text-xs font-medium text-slate-700 whitespace-normal break-words leading-tight">
                 {study.ageGender !== 'N/A' ? study.ageGender :
                     study.patientAge && study.patientSex ?
@@ -1057,7 +1118,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 9. MODALITY */}
     {isColumnVisible('modality') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('modality')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('modality')}px` }}>
             <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-bold shadow-sm whitespace-normal break-words leading-tight ${isUrgent ? 'bg-rose-200 text-rose-700 border border-rose-200' : 'bg-gray-200 text-gray-900 border border-gray-300'}`}>
                 {study.modality || '-'}
             </span>
@@ -1066,7 +1127,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 10. VIEW ONLY */}
     {isColumnVisible('viewOnly') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
             <button
                 onClick={handleViewOnlyClick}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto"
@@ -1078,8 +1139,8 @@ const handleDirectPrint = useCallback(async (study) => {
     )}
 
     {/* 11. REPORTING */}
-    {isColumnVisible('reporting') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('reporting')}px` }}>
+    {/* {isColumnVisible('reporting') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('reporting')}px` }}>
             <button
                 onClick={handleOHIFReporting}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto"
@@ -1090,11 +1151,43 @@ const handleDirectPrint = useCallback(async (study) => {
                 </div>
             </button>
         </td>
+    )} */}
+
+
+    {/* // ✅ In UnifiedStudyRow component, update the reporting button: */}
+
+{/* 11. REPORTING */}
+    {isColumnVisible('reporting') && (
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('reporting')}px` }}>
+            <button
+                onClick={handleOHIFReporting}
+                // ✅ FIXED: Check both workflowStatus AND assignment info
+                disabled={
+                    study.workflowStatus === 'new_study_received' || 
+                    !study.isAssigned || 
+                    !study.radiologist
+                }
+                className={`p-2 rounded-lg transition-all group mx-auto ${
+                    study.workflowStatus === 'new_study_received' || !study.isAssigned
+                        ? 'opacity-40 cursor-not-allowed hover:scale-100'
+                        : 'hover:bg-gray-100 hover:scale-110'
+                }`}
+                title={
+                    study.workflowStatus === 'new_study_received' 
+                        ? 'Available after study is received' 
+                        : !study.isAssigned
+                        ? 'Available after assignment'
+                        : 'Open OHIF + Reporting'
+                }
+            >
+                <Monitor className="w-4 h-4 text-emerald-600" />
+            </button>
+        </td>
     )}
 
     {/* 12. SERIES/IMAGES */}
     {isColumnVisible('studySeriesImages') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
             <div className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight mb-1">{study.studyDescription || 'N/A'}</div>
             <div className="text-xs font-medium text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
         </td>
@@ -1111,7 +1204,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 14. REFERRAL DOCTOR */}
     {isColumnVisible('referralDoctor') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('referralDoctor')}px` }}>
             <div className="text-xs text-slate-700 whitespace-normal break-words leading-tight" title={study.referralNumber || study.referringPhysician}>
                 {study.referralNumber || study.referringPhysician || '-'}
             </div>
@@ -1120,7 +1213,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 15. CLINICAL HISTORY */}
     {isColumnVisible('clinicalHistory') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('clinicalHistory')}px` }}>
             <div className="text-[10px] sm:text-[11px] font-bold text-slate-700 whitespace-normal break-words leading-relaxed uppercase truncate max-h-12" title={study.clinicalHistory}>{study.clinicalHistory || '-'}</div>
 
             <div className="flex items-center flex-wrap gap-2 mt-3">
@@ -1166,7 +1259,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 16. STUDY DATE/TIME */}
     {isColumnVisible('studyDateTime') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
             <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.studyDate)}</div>
             <div className="text-[10px] text-slate-500 whitespace-nowrap mt-0.5">{formatTime(study.studyTime) || '-'}</div>
         </td>
@@ -1174,7 +1267,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 17. UPLOAD DATE/TIME */}
     {isColumnVisible('uploadDateTime') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
             <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">
                 {formatDate(study.uploadDate || study.createdAt)}
             </div>
@@ -1186,7 +1279,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 18. ASSIGNED RADIOLOGIST */}
     {isColumnVisible('assignedRadiologist') && userRoles.includes('assignor') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
             <div className="relative">
                 <input
                     ref={assignInputRef}
@@ -1221,7 +1314,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* ASSIGNED RADIOLOGIST (read-only for non-assignor roles) */}
     {isColumnVisible('assignedRadiologist') && !userRoles.includes('assignor') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
             <div className="text-xs text-slate-700 whitespace-normal break-words leading-tight">
                 {typeof study.radiologist === 'string'
                     ? study.radiologist
@@ -1232,7 +1325,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 19. LOCK/UNLOCK TOGGLE */}
     {isColumnVisible('studyLock') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('studyLock')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('studyLock')}px` }}>
             {canToggleLock ? (
                 <button
                     onClick={handleLockToggle}
@@ -1262,7 +1355,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 20. STATUS */}
     {isColumnVisible('status') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('status')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('status')}px` }}>
             <div className="flex flex-col items-center gap-1.5">
                 <span className={`inline-block px-2.5 py-1 rounded-md text-[10px] font-medium shadow-sm whitespace-normal break-words leading-tight ${getStatusColor(study.workflowStatus)}`}>
                     {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
@@ -1305,6 +1398,15 @@ const handleDirectPrint = useCallback(async (study) => {
                             <Printer className="w-3.5 h-3.5 text-purple-600" />
                         </button>
 
+                        <button 
+                                                onClick={() => handleDirectPrintDOCX(study)} 
+                                                className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                                                title="Print as DOCX"
+                                            >
+                                                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                                            </button>
+                        
+
                         {/* ✅ PDF Download Button — directly downloads PDF */}
                         <button 
                             onClick={() => handleDirectDownloadPDF(study)} 
@@ -1338,7 +1440,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 22. REJECTION REASON */}
     {isColumnVisible('rejectionReason') && (
-        <td className="px-3 py-3.5 border-r border-slate-200 align-top" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
+        <td className="px-3 py-3.5 border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
             {isRejected ? (
                 <div className="flex items-start gap-1.5">
                     <XCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
@@ -1357,7 +1459,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 23. VERIFIED BY */}
     {isColumnVisible('assignedVerifier') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
+        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
             <div className="text-xs text-slate-700 whitespace-normal break-words leading-tight">
                 {typeof study.verifier === 'string'
                     ? study.verifier
@@ -1368,7 +1470,7 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 24. VERIFIED DATE/TIME */}
     {isColumnVisible('verifiedDateTime') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
             <div className="text-[11px] font-medium text-slate-800 whitespace-nowrap">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
             <div className="text-[10px] text-slate-500 whitespace-nowrap mt-0.5">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
         </td>
@@ -1376,114 +1478,42 @@ const handleDirectPrint = useCallback(async (study) => {
 
     {/* 25. ACTIONS */}
     {isColumnVisible('actions') && (
-        <td className="px-3 py-3.5 text-center border-slate-300 border-b-1 align-top" style={{ width: `${getColumnWidth('actions')}px` }}>
-            <div className="flex flex-wrap items-center justify-center gap-1.5">
-
-                {/* ASSIGNOR ACTIONS */}
-                {userRoles.includes('assignor') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-slate-200 align-middle" style={{ width: `${getColumnWidth('actions')}px` }}>
+            {/* ✅ COMPACT & RESPONSIVE: Download + Share only (except super_admin) */}
+            <div className="flex flex-wrap items-center justify-center gap-1 max-w-[100px] mx-auto">
+                
+                {/* ✅ Hide ALL actions for super_admin */}
+                {!userAccountRoles.includes('super_admin') && (
                     <>
-                        <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="Download Options">
-                            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-                        </button>
-<button 
-                      onClick={() => setShareModal(true)} 
-                      className="p-1 hover:bg-sky-50 rounded" 
-                      title="Share Study (Secure Link)"
-                    >
-                      <Share2 className="w-3.5 h-3.5 text-sky-600" />
-                    </button>
-
-                        <button onClick={() => onViewReport?.(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="View Report">
-                            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-                        </button>
-                    </>
-                )}
-
-                {/* RADIOLOGIST ACTIONS */}
-                {userRoles.includes('radiologist') && !userRoles.includes('assignor') && (
-                    <>
-                        <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="Download Options">
-                            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-                        </button>
-
-                        <button onClick={handleOHIFReporting} className="p-1.5 hover:bg-emerald-50 rounded-lg transition-all group hover:scale-110" title="OHIF + Reporting">
-                            <Monitor className="w-4 h-4 text-emerald-600 group-hover:text-emerald-700" />
-                        </button>
-
-                        <button onClick={() => onViewReport?.(study)} className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="View Report">
-                            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-                        </button>
-                    </>
-                )}
-
-                 {/* ✅ ADD: LAB STAFF ACTIONS */}
-                {userRoles.includes('lab_staff') && 
-                 !userRoles.includes('admin') && 
-                 !userRoles.includes('assignor') && 
-                 !userRoles.includes('radiologist') && 
-                 !userRoles.includes('verifier') && (
-                    <>
-                        {/* Download Study */}
+                        {/* Download Button */}
                         <button 
                             ref={downloadButtonRef} 
                             onClick={handleDownloadClick} 
-                            className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" 
-                            title="Download Study"
+                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                            title="Download Options"
                         >
-                            <Download className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
                         </button>
 
-                        {/* View Report */}
+                        {/* Share Button */}
                         <button 
-                            onClick={() => onViewReport?.(study)} 
-                            className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" 
-                            title="View/Download Report"
+                            onClick={() => setShareModal(true)} 
+                            className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                            title="Share Study (Secure Link)"
                         >
-                            <FileText className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
+                            <Share2 className="w-3.5 h-3.5 text-sky-600" />
                         </button>
                     </>
                 )}
 
-                {/* VERIFIER ACTIONS */}
-                
-{(userRoles.includes('verifier') || userRoles.includes('assignor')) && (
-    <>
-        <button className="p-1.5 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110" title="View Report" onClick={() => onViewReport?.(study)}>
-            <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-        </button>
-
-        <button className="p-1.5 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110" title="DICOM Viewer" onClick={() => { const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`; window.open(ohifUrl, '_blank'); }}>
-            <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-        </button>
-
-        {['report_finalized', 'report_drafted', 'verification_pending'].includes(study.workflowStatus) && study.workflowStatus !== 'report_verified' && study.workflowStatus !== 'report_rejected' ? (
-            <button 
-                className="px-2 py-1 text-[10px] font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm whitespace-nowrap" 
-                title="Open OHIF + Reporting for Verification" 
-                onClick={handleOHIFReporting}
-            >
-                Verify
-            </button>
-        ) : null}
-
-        {(study.workflowStatus === 'report_completed' || study.workflowStatus === 'final_report_downloaded') && (
-            <div className="p-1 text-green-600" title="Verified">
-                <CheckCircle className="w-3.5 h-3.5 fill-current" />
-            </div>
-        )}
-
-        {/* ✅ REJECTED STATUS - Show X if rejected */}
-        {study.workflowStatus === 'report_rejected' && (
-            <div className="p-1 text-red-600" title="Rejected">
-                <XCircle className="w-3.5 h-3.5 fill-current" />
-            </div>
-        )}
-    </>
-)}
-
+                {/* Message for super_admin */}
+                {userAccountRoles.includes('super_admin') && (
+                    <div className="text-[8px] text-slate-400">-</div>
+                )}
             </div>
         </td>
     )}
+    
 
 
       {showDownloadOptions && (
@@ -1630,6 +1660,7 @@ const UnifiedWorklistTable = ({
     },
     onPageChange,
     onRecordsPerPageChange,
+    onRefreshStudies,
     visibleColumns = [],
     columnConfig = null,
     userRole = 'assignor',
@@ -1888,6 +1919,27 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
       });
     }, []);
 
+        const handleCloseDocuments = useCallback(() => {
+        setDocumentsModal({ show: false, studyId: null, studyMeta: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
+    // ✅ UPDATED: Refresh on close
+    const handleCloseStudyNotes = useCallback(() => {
+        setStudyNotes({ show: false, studyId: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
+
+    const [multiAssignModal, setMultiAssignModal] = useState({ show: false });
+
+    const handleMultiAssignSuccess = useCallback(() => {
+        setMultiAssignModal({ show: false });
+        selectedStudies.forEach(id => onSelectStudy?.(id));
+        window.dispatchEvent(new CustomEvent('studies-updated'));
+        onRefreshStudies?.();
+    }, [selectedStudies, onSelectStudy, onRefreshStudies]);
+
     const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
         try {
             const response = await api.post(`/admin/toggle-study-lock/${studyId}`, { shouldLock });
@@ -1936,6 +1988,35 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
 
     return (
         <div className="w-full h-full flex flex-col bg-white rounded-xl shadow-lg border-2 border-gray-300">
+                 {selectedStudies.length > 0 && (
+            <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-blue-600 text-white text-[10px] sm:text-xs font-semibold border-b border-blue-700 flex-shrink-0 z-20">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                    <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-full bg-white text-blue-700 flex items-center justify-center text-[9px] sm:text-[11px] font-bold">
+                        {selectedStudies.length}
+                    </div>
+                    <span>{selectedStudies.length} selected</span>
+                </div>
+                <div className="h-3 sm:h-4 w-px bg-blue-400" />
+                {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor')) && (
+                    <button 
+                        onClick={() => setMultiAssignModal({ show: true })} 
+                        className="flex items-center gap-1 px-2 py-1 bg-white text-blue-700 rounded hover:bg-blue-50 transition-colors font-bold"
+                    >
+                        <UserPlus className="w-3 h-3" /> 
+                        <span className="hidden sm:inline">Multi-Assign</span>
+                        <span className="sm:hidden">Assign</span>
+                    </button>
+                )}
+                <div className="ml-auto">
+                    <button 
+                        onClick={() => selectedStudies.forEach(id => onSelectStudy?.(id))} 
+                        className="text-blue-200 hover:text-white transition-colors text-xs"
+                    >
+                        Clear
+                    </button>
+                </div>
+            </div>
+        )}
             <div className="flex-1 overflow-x-auto overflow-y-auto">
                 <table
                     className="border-collapse"
@@ -2304,10 +2385,23 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
             )}
 
 
+             {multiAssignModal.show && (
+            <MultiAssignModal 
+                isOpen={multiAssignModal.show} 
+                onClose={() => setMultiAssignModal({ show: false })} 
+                selectedStudies={studies.filter(s => selectedStudies.includes(s._id))} 
+                availableAssignees={availableAssignees} 
+                onSuccess={handleMultiAssignSuccess} 
+            />
+        )}
+
+
 
             {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
             {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
-            {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
+            {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show}
+            onClose={handleCloseStudyNotes}  // ✅ CHANGED
+             />}
             {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
             {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
             {documentsModal.show && (
@@ -2315,7 +2409,7 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
                     studyId={documentsModal.studyId}
                     studyMeta={documentsModal.studyMeta}
                     isOpen={documentsModal.show}
-                    onClose={() => setDocumentsModal({ show: false, studyId: null, studyMeta: null })}
+                    onClose={handleCloseDocuments}  
                   />
                 
                 )}

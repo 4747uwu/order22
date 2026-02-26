@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users, X, Link, Shield, Hash } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Trash2, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users, X, Link, Shield, Hash } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -22,6 +22,7 @@ import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 import sessionManager from '../../../services/sessionManager.jsx';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
 import { useStudyShare } from '../../../hooks/useStudyShare';
+import DeleteStudyModal from '../../superadmin/DeleteModal.jsx';
 
 // ✅ UTILITY FUNCTIONS
 
@@ -271,7 +272,6 @@ const getPriorityTag = (study) => {
     default: return null;
   }
 };
-
 const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     patientName: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
@@ -316,11 +316,11 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
   if (!isOpen) return null;
 
   return (
-    // ✅ ULTRA COMPACT: Reduced modal max-width, shaved off outer padding
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-2">
-      <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-900 flex flex-col">
+    // ✅ UPDATED: Subtle blur background instead of black overlay
+    <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-[10000] p-2">
+      <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-200 flex flex-col">
 
-        {/* ✅ ULTRA COMPACT HEADER: Smaller padding, smaller text */}
+        {/* ✅ HEADER: Smaller padding, smaller text */}
         <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
             <h2 className="text-xs sm:text-sm font-bold uppercase truncate max-w-[200px] sm:max-w-md">{study?.patientName || 'Edit Study'}</h2>
@@ -333,7 +333,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
           </button>
         </div>
 
-        {/* ✅ ULTRA COMPACT FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
+        {/* ✅ FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
         <form onSubmit={handleSubmit} className="p-3 overflow-y-auto flex-1">
           
           {/* PRIORITY */}
@@ -423,10 +423,19 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
 };
 
 const StudyRow = ({ 
-  study, activeViewers = [], index, selectedStudies, availableAssignees, onSelectStudy, onPatienIdClick, onAssignDoctor, onShowDetailedView, onViewReport, onShowStudyNotes, onViewStudy, onEditPatient, onAssignmentSubmit, onShowTimeline, onToggleLock, onShowDocuments, onShowRevertModal, setPrintModal, onDirectPrint, userRole, userRoles = [], getColumnWidth, isColumnVisible = () => true,
+  study, activeViewers = [], index, selectedStudies, availableAssignees, onSelectStudy, onPatienIdClick, onAssignDoctor, onShowDetailedView, onViewReport, onShowStudyNotes, onViewStudy, onEditPatient, onAssignmentSubmit, onShowTimeline, onToggleLock, onShowDocuments, onShowRevertModal, setPrintModal, onDirectPrint, 
+  userRole,
+  onRefreshStudies,
+   userRoles = [],
+    getColumnWidth, isColumnVisible = () => true,
+      onShowDeleteModal,  // ✅ ADD THIS PROP
+
 }) => {
   const navigate = useNavigate();
   // console.log('Rendering StudyRow for study:', study);
+
+  //  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+    
   
   const assignInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
@@ -459,6 +468,8 @@ const StudyRow = ({
   const rejectionReason = study.reportInfo?.verificationInfo?.rejectionReason || '-';
 
   const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
+  const isSuperAdmin = userAccountRoles.includes('super_admin');
+
   const [elapsedTime, setElapsedTime] = useState(null);
   const assignedDoctor = study.assignedDoctors?.[0] || study.assignment?.[0];
   const isAssignedStatus = assignedDoctor?.status === 'assigned';
@@ -547,6 +558,19 @@ const StudyRow = ({
     await onAssignmentSubmit(assignmentData);
     handleCloseAssignmentModal();
   };
+
+
+    const handleCloseDocuments = useCallback(() => {
+        setDocumentsModal({ show: false, studyId: null, studyMeta: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
+    // ✅ UPDATED: Refresh on close
+    const handleCloseStudyNotes = useCallback(() => {
+        setStudyNotes({ show: false, studyId: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
 
   // ✅ UNIFIED: Get report then download as PDF (same pattern as DOCX)
 // const handleDirectPrint = useCallback(async (study) => {
@@ -862,6 +886,63 @@ const StudyRow = ({
 
 
 
+const handleDirectPrintDOCX = useCallback(async (study) => {
+    toast.loading('Fetching reports...', { id: 'print-docx-load' });
+    try {
+        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+
+        if (!response.data.success || !response.data.data?.reports?.length) {
+            toast.error('No finalized reports found', { id: 'print-docx-load' });
+            return;
+        }
+
+        const { reports, totalReports } = response.data.data;
+        toast.dismiss('print-docx-load');
+
+        // ✅ Download each DOCX sequentially
+        for (let i = 0; i < reports.length; i++) {
+            const reportMeta = reports[i];
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+            toast.loading(`Downloading DOCX ${i + 1} of ${totalReports}...`, { id: `docx-dl-${i}` });
+
+            try {
+                const docxResponse = await api.get(
+                    `/reports/reports/${reportMeta.reportId}/download/docx`,
+                    { responseType: 'blob', timeout: 60000 }
+                );
+                
+                const blob = new Blob([docxResponse.data], { 
+                    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}_of_${totalReports}.docx`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+
+                toast.success(`✅ DOCX ${i + 1} of ${totalReports} downloaded!`, { id: `docx-dl-${i}`, duration: 2000 });
+            } catch (err) {
+                console.error(`❌ Failed to download DOCX report ${i + 1}:`, err);
+                toast.error(`❌ DOCX ${i + 1} failed`, { id: `docx-dl-${i}`, duration: 3000 });
+            }
+        }
+
+        if (totalReports > 1) {
+            toast.success(`🎉 All ${totalReports} DOCX reports downloaded!`, { id: 'docx-dl-done', duration: 3000 });
+        }
+
+    } catch (error) {
+        console.error('❌ [Download DOCX] Error:', error);
+        toast.error('Failed to download DOCX files', { id: 'print-docx-load' });
+    }
+}, []);
+
+
+
   const handleLockToggle = async (e) => {
     e.stopPropagation();
     if (!canToggleLock) return toast.error('You do not have permission to lock/unlock studies');
@@ -1006,11 +1087,53 @@ const StudyRow = ({
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
         </button>
     </td>
-    <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('ohif&reporting')}px` }}>
-        <button onClick={handleOHIFReporting} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto" title="Reporting">
-            <Monitor className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 group-hover:text-emerald-700" />
+
+
+    {/* {isColumnVisible('reporting') && (
+    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('reporting')}px` }}>
+        <button
+            onClick={handleOHIFReporting}
+            disabled={study.workflowStatus === 'new_study_received'}  // ✅ ADD THIS
+            className={`p-2 rounded-lg transition-all group mx-auto ${
+                study.workflowStatus === 'new_study_received'
+                    ? 'opacity-40 cursor-not-allowed hover:scale-100'
+                    : 'hover:bg-gray-100 hover:scale-110'
+            }`}
+            title={study.workflowStatus === 'new_study_received' ? 'Available after assignment' : 'Open OHIF + Reporting'}
+        >
+            <Monitor className="w-4 h-4 text-emerald-600" />
         </button>
     </td>
+)} */}
+
+
+      {isColumnVisible('reporting') && (
+              <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('reporting')}px` }}>
+                  <button
+                      onClick={handleOHIFReporting}
+                      // ✅ FIXED: Check both workflowStatus AND assignment info
+                      disabled={
+                          study.workflowStatus === 'new_study_received' || 
+                          !study.isAssigned || 
+                          !study.radiologist
+                      }
+                      className={`p-2 rounded-lg transition-all group mx-auto ${
+                          study.workflowStatus === 'new_study_received' || !study.isAssigned
+                              ? 'opacity-40 cursor-not-allowed hover:scale-100'
+                              : 'hover:bg-gray-100 hover:scale-110'
+                      }`}
+                      title={
+                          study.workflowStatus === 'new_study_received' 
+                              ? 'Available after study is received' 
+                              : !study.isAssigned
+                              ? 'Available after assignment'
+                              : 'Open OHIF + Reporting'
+                      }
+                  >
+                      <Monitor className="w-4 h-4 text-emerald-600" />
+                  </button>
+              </td>
+          )}
 
     {/* 10. SERIES/IMAGES */}
     {isColumnVisible('seriesCount') && (
@@ -1125,6 +1248,14 @@ const StudyRow = ({
                             <Printer className="w-3.5 h-3.5 text-purple-600" />
                         </button>
 
+                        <button 
+                        onClick={() => handleDirectPrintDOCX(study)} 
+                        className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                        title="Print as DOCX"
+                    >
+                        <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    </button>
+
                         {/* ✅ Direct PDF Download */}
                         <button 
                             onClick={() => handleDirectDownloadPDF(study)} 
@@ -1179,81 +1310,53 @@ const StudyRow = ({
         </td>
     )}
 
-    {/* 22. ACTIONS */}
+    
+    
+
+
     {isColumnVisible('actions') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-slate-200 align-middle" style={{ width: `${getColumnWidth('actions')}px` }}>
-            {/* ✅ COMPACT & RESPONSIVE: Wrap actions in a tighter flex container */}
+            {/* ✅ COMPACT & RESPONSIVE: Download + Share only (except super_admin) */}
             <div className="flex flex-wrap items-center justify-center gap-1 max-w-[100px] mx-auto">
-                {(userAccountRoles.includes('admin') || userAccountRoles.includes('assignor')) && (
-                <>
-                    <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1 hover:bg-blue-50 rounded" title="Download Options"><Download className="w-3.5 h-3.5 text-blue-600" /></button>
-                    <button onClick={handleOHIFReporting} className="p-1 hover:bg-emerald-50 rounded" title="OHIF + Reporting"><Monitor className="w-3.5 h-3.5 text-emerald-600" /></button>
-                    <button onClick={() => onViewReport?.(study)} className="p-1 hover:bg-purple-50 rounded" title="View Report"><FileText className="w-3.5 h-3.5 text-purple-600" /></button>
-                    
-                    <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto" title="View Images Only">
-            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
-        </button>
-        
-                     <button 
-                      onClick={() => setShareModal(true)} 
-                      className="p-1 hover:bg-sky-50 rounded" 
-                      title="Share Study (Secure Link)"
-                    >
-                      <Share2 className="w-3.5 h-3.5 text-sky-600" />
-                    </button>
+                
+                {/* ✅ Hide ALL actions for super_admin */}
+                {!userAccountRoles.includes('super_admin') && (
+                    <>
+                        {/* Download Button */}
+                        <button 
+                            ref={downloadButtonRef} 
+                            onClick={handleDownloadClick} 
+                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                            title="Download Options"
+                        >
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
+                        </button>
 
-                  
-{userAccountRoles.includes('admin') && (
-    <>
-        {(['report_finalized','report_drafted','verification_pending'].includes(study.workflowStatus) && !['report_verified','report_rejected'].includes(study.workflowStatus)) && (
-            <button
-                className="px-1.5 py-0.5 text-[8px] sm:text-[9px] font-semibold bg-green-600 text-white rounded hover:bg-green-700"
-                title="Verify"
-                onClick={() => window.open(`/online-reporting/${study._id}?openOHIF=true&verifierMode=true&action=verify`, '_blank')}
-            >
-                Verify
-            </button>
-        )}
-
-        {(['report_completed','final_report_downloaded','report_verified'].includes(study.workflowStatus)) && (
-            <CheckCircle className="w-3 h-3 text-green-600" />
-        )}
-
-        {study.workflowStatus === 'report_rejected' && <XCircle className="w-3 h-3 text-red-600" />}
-    </>
-)}
-
-                </>
+                        {/* Share Button */}
+                        <button 
+                            onClick={() => setShareModal(true)} 
+                            className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                            title="Share Study (Secure Link)"
+                        >
+                            <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                        </button>
+                    </>
                 )}
 
-                {(userAccountRoles.includes('admin')) && ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed'].includes(study.workflowStatus) && (
-                <button onClick={() => onShowRevertModal(study)} className="flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-medium text-rose-700 bg-rose-50 border border-rose-200 rounded w-full justify-center mt-0.5" title="Revert to Radiologist">
-                    <RotateCcw className="w-2.5 h-2.5" /> <span>Revert</span>
-                </button>
-                )}
+                {isSuperAdmin && (
+                            <button 
+                                onClick={() => onShowDeleteModal?.(study)}
+                                className="p-1 hover:bg-red-50 rounded transition-all hover:scale-110" 
+                                title="Delete Study (Super Admin Only)"
+                            >
+                                <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                            </button>
+                        )}
 
-                {userAccountRoles.includes('radiologist') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-                <>
-                    <button onClick={handleOHIFReporting} className="p-1 hover:bg-emerald-50 rounded"><Monitor className="w-3.5 h-3.5 text-emerald-600" /></button>
-                    <button onClick={() => onViewReport?.(study)} className="p-1 hover:bg-purple-50 rounded"><FileText className="w-3.5 h-3.5 text-purple-600" /></button>
-                </>
+                {/* Message for super_admin */}
+                {userAccountRoles.includes('super_admin') && (
+                    <div className="text-[8px] text-slate-400">-</div>
                 )}
-
-                {userAccountRoles.includes('verifier') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-                <>
-                    <button className="p-1 hover:bg-blue-50 rounded" onClick={() => onViewReport?.(study)}><FileText className="w-3.5 h-3.5 text-blue-600" /></button>
-                    <button className="p-1 hover:bg-purple-50 rounded" onClick={() => window.open(`/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`, '_blank')}><Eye className="w-3.5 h-3.5 text-purple-600" /></button>
-                    <button className="px-1.5 py-0.5 text-[8px] font-semibold bg-green-600 text-white rounded" onClick={handleOHIFReporting}>Verify</button>
-                </>
-                )}
-
-                {userAccountRoles.includes('lab_staff') && !userAccountRoles.includes('admin') && !userAccountRoles.includes('assignor') && (
-                <>
-                    <button ref={downloadButtonRef} onClick={handleDownloadClick} className="p-1 hover:bg-blue-50 rounded"><Download className="w-3.5 h-3.5 text-blue-600" /></button>
-                    <button onClick={() => onViewReport?.(study)} className="p-1 hover:bg-purple-50 rounded"><FileText className="w-3.5 h-3.5 text-purple-600" /></button>
-                    <button onClick={() => window.open(`/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`, '_blank')} className="p-1 hover:bg-indigo-50 rounded"><Eye className="w-3.5 h-3.5 text-indigo-600" /></button>
-                </>
-                )} 
             </div>
         </td>
     )}
@@ -1314,7 +1417,7 @@ const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, display
 };
 
 const WorklistTable = ({ 
-  studies = [], loading = false, selectedStudies = [], onSelectAll, onSelectStudy, onPatienIdClick, onAssignDoctor, availableAssignees = { radiologists: [], verifiers: [] }, onAssignmentSubmit, onUpdateStudyDetails, userRole = 'viewer', userRoles = [], onToggleStudyLock, pagination = { currentPage: 1, totalPages: 1, totalRecords: 0, recordsPerPage: 50, hasNextPage: false, hasPrevPage: false }, onPageChange, onRecordsPerPageChange, headerColor, columnConfig = null
+  studies = [], loading = false, selectedStudies = [], onSelectAll, onSelectStudy, onPatienIdClick, onAssignDoctor, availableAssignees = { radiologists: [], verifiers: [] }, onAssignmentSubmit, onUpdateStudyDetails, userRole = 'viewer', userRoles = [],onRefreshStudies, onToggleStudyLock, pagination = { currentPage: 1, totalPages: 1, totalRecords: 0, recordsPerPage: 50, hasNextPage: false, hasPrevPage: false }, onPageChange, onRecordsPerPageChange, headerColor, columnConfig = null
 }) => {
    const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
@@ -1381,6 +1484,31 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
         break;
     }
   }, [lastMessage]);
+
+  //Delete modal and stuff
+
+  const [deleteModal, setDeleteModal] = useState({ show: false, studies: [] });
+
+    
+    const handleShowDeleteModal = useCallback((study) => {
+        setDeleteModal({ show: true, studies: [study] });
+    }, []);
+
+    // ✅ ADD this handler for bulk delete
+    const handleBulkDelete = useCallback(() => {
+        if (selectedStudies.length === 0) {
+            toast.error('No studies selected');
+            return;
+        }
+        const studiesToDelete = studies.filter(s => selectedStudies.includes(s._id));
+        setDeleteModal({ show: true, studies: studiesToDelete });
+    }, [selectedStudies, studies]);
+
+     const handleDeleteSuccess = useCallback(() => {
+        setDeleteModal({ show: false, studies: [] });
+        selectedStudies.forEach(id => onSelectStudy?.(id));
+        onRefreshStudies?.();
+    }, [onRefreshStudies, selectedStudies, onSelectStudy]);
 
   const handleShowTimeline = useCallback((study) => setTimelineModal({ show: true, studyId: study._id, studyData: study }), []);
   const handleShowDetailedView = useCallback((studyId) => setDetailedView({ show: true, studyId }), []);
@@ -1473,6 +1601,17 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
       }
   }, []);
 
+    const handleCloseDocuments = useCallback(() => {
+        setDocumentsModal({ show: false, studyId: null, studyMeta: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
+    // ✅ UPDATED: Refresh on close
+    const handleCloseStudyNotes = useCallback(() => {
+        setStudyNotes({ show: false, studyId: null });
+        onRefreshStudies?.();  // ✅ Trigger refresh
+    }, [onRefreshStudies]);
+
 
   
   const handleToggleStudyLock = useCallback(async (studyId, shouldLock) => {
@@ -1500,6 +1639,17 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
               <Users className="w-3 h-3" /> <span className="hidden sm:inline">Multi-Assign</span><span className="sm:hidden">Assign</span>
             </button>
           )}
+
+          {userAccountRoles.includes('super_admin') && (
+                        <button 
+                            onClick={handleBulkDelete}
+                            className="flex items-center gap-1 px-2 py-1 bg-red-700 text-white rounded hover:bg-red-800 transition-colors font-bold"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                            Delete {selectedStudies.length}
+                        </button>
+                    )}
+
           <div className="ml-auto">
             <button onClick={() => selectedStudies.forEach(id => onSelectStudy?.(id))} className="text-blue-200 hover:text-white transition-colors">Clear</button>
           </div>
@@ -1544,7 +1694,7 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
           </thead>
           <tbody>
             {sortStudiesByPriority(studies).map((study, index) => (
-              <StudyRow key={study._id} study={study} activeViewers={activeViweres[study._id] || []} index={index} selectedStudies={selectedStudies} availableAssignees={availableAssignees} onSelectStudy={onSelectStudy} onPatienIdClick={onPatienIdClick} onAssignDoctor={onAssignDoctor} onShowDetailedView={handleShowDetailedView} onViewReport={handleViewReport} onShowStudyNotes={handleShowStudyNotes} onViewStudy={handleViewStudy} onEditPatient={handleEditPatient} onAssignmentSubmit={onAssignmentSubmit} onShowTimeline={handleShowTimeline} onToggleLock={handleToggleStudyLock} onShowDocuments={handleShowDocuments} onShowRevertModal={handleShowRevertModal} setPrintModal={setPrintModal} userRole={userRole} userRoles={userAccountRoles} getColumnWidth={getColumnWidth} isColumnVisible={isColumnVisible}  onDirectPrint={handleDirectPrint}  />
+              <StudyRow key={study._id} study={study} activeViewers={activeViweres[study._id] || []} index={index} selectedStudies={selectedStudies} availableAssignees={availableAssignees} onSelectStudy={onSelectStudy} onPatienIdClick={onPatienIdClick} onAssignDoctor={onAssignDoctor} onShowDetailedView={handleShowDetailedView} onViewReport={handleViewReport} onShowStudyNotes={handleShowStudyNotes} onViewStudy={handleViewStudy} onEditPatient={handleEditPatient} onAssignmentSubmit={onAssignmentSubmit} onShowTimeline={handleShowTimeline} onToggleLock={handleToggleStudyLock} onShowDocuments={handleShowDocuments} onShowRevertModal={handleShowRevertModal} setPrintModal={setPrintModal} userRole={userRole} userRoles={userAccountRoles} getColumnWidth={getColumnWidth} isColumnVisible={isColumnVisible} onShowDeleteModal={handleShowDeleteModal}  onDirectPrint={handleDirectPrint}  />
             ))}
           </tbody>
         </table>
@@ -1552,13 +1702,29 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
 
       {studies.length > 0 && <TableFooter pagination={pagination} onPageChange={onPageChange} onRecordsPerPageChange={onRecordsPerPageChange} displayedRecords={studies.length} loading={loading} />}
 
+      {deleteModal.show && (
+                <DeleteStudyModal
+                    isOpen={deleteModal.show}
+                    onClose={() => setDeleteModal({ show: false, studies: [] })}
+                    studies={deleteModal.studies}
+                    onSuccess={handleDeleteSuccess}
+                            // setSelectedStudies={setSelectedStudies}  // ✅ ADD THIS LINE
+
+                />
+            )}
+
       {multiAssignModal.show && <MultiAssignModal isOpen={multiAssignModal.show} onClose={() => setMultiAssignModal({ show: false })} selectedStudies={studies.filter(s => selectedStudies.includes(s._id))} availableAssignees={availableAssignees} onSuccess={handleMultiAssignSuccess} />}
       {detailedView.show && <StudyDetailedView studyId={detailedView.studyId} onClose={() => setDetailedView({ show: false, studyId: null })} />}
       {reportModal.show && <ReportModal isOpen={reportModal.show} studyId={reportModal.studyId} studyData={reportModal.studyData} onShowPrintModal={handleDirectPrint} onClose={() => setReportModal({ show: false, studyId: null, studyData: null })} />}
-      {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={() => setStudyNotes({ show: false, studyId: null })} />}
+      {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show} onClose={handleCloseStudyNotes}  // ✅ CHANGED
+ />}
       {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
       {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
-      {documentsModal.show && <StudyDocumentsManager studyId={documentsModal.studyId} studyMeta={documentsModal.studyMeta} isOpen={documentsModal.show} onClose={() => setDocumentsModal({ show: false, studyId: null, studyMeta: null })} />}
+
+      {documentsModal.show && <StudyDocumentsManager studyId={documentsModal.studyId} studyMeta={documentsModal.studyMeta} isOpen={documentsModal.show} 
+      onClose={handleCloseDocuments} />}
+
+
       {revertModal.show && <RevertModal isOpen={revertModal.show} study={revertModal.study} onClose={() => setRevertModal({ show: false, study: null })} onSuccess={handleRevertSuccess} />}
       {/* {printModal.show && <PrintModal report={printModal.report} onClose={handleClosePrintModal} />} */}
 

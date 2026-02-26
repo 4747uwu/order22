@@ -476,6 +476,12 @@ useEffect(() => {
     setColumnConfig(defaultConfig);
   }, []);
 
+  
+const handleRefreshStudies = useCallback(() => {
+    // Re-fetch studies from API
+    fetchStudies();  // Your existing fetch function
+}, []);
+
   const handleUpdateStudyDetails = useCallback(async (formData) => {
     try {
       console.log('🔄 Updating study details:', formData);
@@ -738,6 +744,8 @@ useEffect(() => {
               onPageChange={handlePageChange}
               onRecordsPerPageChange={handleRecordsPerPageChange}
               theme="admin"
+               onRefreshStudies={handleRefresh}  // ✅ PASS THIS
+
               headerColor={headerColor} // ✅ NEW PROP
             />
           </div>
