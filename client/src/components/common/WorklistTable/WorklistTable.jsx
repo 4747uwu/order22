@@ -1332,6 +1332,24 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
                             <Download className="w-3.5 h-3.5 text-blue-600" />
                         </button>
 
+                        {study.workflowStatus === 'verification_pending' && (
+                            <button
+                                className="px-1.5 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700 transition-colors shadow-sm"
+                                title="Open Reporting for Verification"
+                                onClick={() => {
+                                    // ✅ Force verifier mode regardless of user role
+                                    const queryParams = new URLSearchParams({
+                                        openOHIF: 'true',
+                                        verifierMode: 'true',
+                                        action: 'verify'
+                                    });
+                                    window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+                                }}
+                            >
+                                Verify
+                            </button>
+                        )}
+
                         {/* Share Button */}
                         <button 
                             onClick={() => setShareModal(true)} 

@@ -1389,48 +1389,109 @@ const UnifiedStudyRow = ({
                         )}
 
                         {/* VERIFIER ACTIONS - View Report, DICOM Viewer, Verify */}
-                        {userRoles.includes('verifier') && !userRoles.includes('assignor') && (
-                            <>
-                                <button
-                                    className="p-2 hover:bg-blue-50 rounded-lg transition-all group hover:scale-110"
-                                    title="View Report"
-                                    onClick={() => onViewReport?.(study)}
-                                >
-                                    <FileText className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
-                                </button>
+                        // ...existing code...
 
-                                <button
-                                    className="p-2 hover:bg-purple-50 rounded-lg transition-all group hover:scale-110"
-                                    title="DICOM Viewer"
-                                    onClick={() => {
-                                        const ohifUrl = `/ohif/viewer?StudyInstanceUIDs=${study.studyInstanceUID || study._id}`;
-                                        window.open(ohifUrl, '_blank');
-                                    }}
-                                >
-                                    <Eye className="w-4 h-4 text-purple-600 group-hover:text-purple-700" />
-                                </button>
+    {/* 25. ACTIONS */}
+    {isColumnVisible('actions') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-slate-200 align-middle" style={{ width: `${getColumnWidth('actions')}px` }}>
+            <div className="flex flex-wrap items-center justify-center gap-1 max-w-[100px] mx-auto">
+                
+                {/* ✅ Hide ALL actions for super_admin */}
+                {userAccountRoles.includes('super_admin') && (
+                    <div className="text-[8px] text-slate-400">-</div>
+                )}
 
-                                <button
-                                    className="px-2.5 py-1.5 text-xs font-semibold bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors shadow-sm"
-                                    title="Open OHIF + Reporting for Verification"
-                                    onClick={handleOHIFReporting}
-                                >
-                                    Verify
-                                </button>
+                {/* ✅ VERIFIER ACTIONS */}
+                {userAccountRoles.includes('verifier') && !userAccountRoles.includes('assignor') && (
+                    <>
+                        <button
+                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110"
+                            title="View Report"
+                            onClick={() => onViewReport?.(study)}
+                        >
+                            <FileText className="w-3.5 h-3.5 text-blue-600" />
+                        </button>
 
-                                {study.workflowStatus === 'report_verified' && (
-                                    <div className="p-1 text-green-600" title="Verified">
-                                        <CheckCircle className="w-4 h-4 fill-current" />
-                                    </div>
-                                )}
+                        <button
+                            className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110"
+                            title="DICOM Viewer"
+                            onClick={() => {
+                                const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(study.studyInstanceUID || study._id)}`;
+                                window.open(ohifUrl, '_blank');
+                            }}
+                        >
+                            <Eye className="w-3.5 h-3.5 text-purple-600" />
+                        </button>
 
-                                {study.workflowStatus === 'report_rejected' && (
-                                    <div className="p-1 text-red-600" title="Rejected">
-                                        <XCircle className="w-4 h-4 fill-current" />
-                                    </div>
-                                )}
-                            </>
+                        <button
+                            className="px-1.5 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700 transition-colors shadow-sm"
+                            title="Open OHIF + Reporting for Verification"
+                            onClick={handleOHIFReporting}
+                        >
+                            Verify
+                        </button>
+
+                        {study.workflowStatus === 'report_completed' && (
+                            <div className="p-1 text-green-600" title="Verified">
+                                <CheckCircle className="w-3.5 h-3.5 fill-current" />
+                            </div>
                         )}
+
+                        {study.workflowStatus === 'report_rejected' && (
+                            <div className="p-1 text-red-600" title="Rejected">
+                                <XCircle className="w-3.5 h-3.5 fill-current" />
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {/* ✅ NON-SUPER_ADMIN, NON-VERIFIER: Download + Share */}
+                {!userAccountRoles.includes('super_admin') && !userAccountRoles.includes('verifier') && (
+                    <>
+                        <button 
+                            ref={downloadButtonRef} 
+                            onClick={handleDownloadClick} 
+                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                            title="Download Options"
+                        >
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
+                        </button>
+
+                        <button 
+                            onClick={() => setShareModal(true)} 
+                            className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                            title="Share Study (Secure Link)"
+                        >
+                            <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                        </button>
+                    </>
+                )}
+
+                {/* ✅ VERIFIER also gets Download + Share */}
+                {userAccountRoles.includes('verifier') && (
+                    <>
+                        <button 
+                            ref={downloadButtonRef} 
+                            onClick={handleDownloadClick} 
+                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                            title="Download Options"
+                        >
+                            <Download className="w-3.5 h-3.5 text-blue-600" />
+                        </button>
+
+                        <button 
+                            onClick={() => setShareModal(true)} 
+                            className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                            title="Share Study (Secure Link)"
+                        >
+                            <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                        </button>
+                    </>
+                )}
+            </div>
+        </td>
+    )}
+
 
                         {/* FALLBACK ACTION - View Report only */}
                         {!userRoles.includes('assignor') && !userRoles.includes('radiologist') && !userRoles.includes('verifier') && (

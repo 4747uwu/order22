@@ -3,7 +3,9 @@ import DicomStudy from '../models/dicomStudyModel.js';
 import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
 import Organization from '../models/organisation.js';
-import { formatStudiesForWorklist } from '../utils/formatStudies.js';
+import StudyNotes from '../models/studyNotesModel.js';
+import Document from '../models/documentModal.js';
+// import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 
@@ -16,6 +18,7 @@ const WORKFLOW_STATUS_MAP = {
         'report_finalized', 'report_drafted', 'report_uploaded',
         'report_downloaded_radiologist', 'report_downloaded', 'report_verified',
         'report_rejected',
+        'verification_pending', // ✅ ADD THIS
     ],
     completed: ['final_report_downloaded', 'archived'],
 };
@@ -734,7 +737,7 @@ export const getValues = async (req, res) => {
             pending: [
                 'new_study_received', 'pending_assignment', 'assigned_to_doctor',
                 'doctor_opened_report', 'report_in_progress',
-                'report_downloaded_radiologist', 'report_downloaded',
+                'report_downloaded_radiologist', 'report_downloaded', 'verification_pending',
             ],
             inprogress: ['report_finalized', 'report_drafted', 'report_uploaded', 'report_verified'],
             completed:  ['final_report_downloaded'],
@@ -974,7 +977,7 @@ export const getCategoryValues = async (req, res) => {
 
             report_drafted: 'draft',
 
-            verification_pending: 'verification_pending',
+             verification_pending: 'verification_pending',
 
             report_completed: 'final',
             final_report_downloaded: 'final',
@@ -1019,7 +1022,13 @@ export const getCategoryValues = async (req, res) => {
             DicomStudy.countDocuments({
                 ...queryFilters,
                 workflowStatus: { 
-                    $in: ['new_study_received', 'history_created', 'assigned_to_doctor', 'doctor_opened_report'] 
+                    $in: [
+                        'new_study_received', 
+                        'history_created', 
+                        'assigned_to_doctor', 
+                        'doctor_opened_report',
+                        'verification_pending', // ✅ ADD THIS
+                    ] 
                 },
             }),
         ]);
@@ -1124,9 +1133,17 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
 
             case 'pending':
-                // ✅ PENDING: new_study_received + history_created + assigned_to_doctor
-                queryFilters.workflowStatus = { $in: ['new_study_received', 'history_created', 'assigned_to_doctor', 'doctor_opened_report'] };
-                console.log('📋 [PENDING] Filtering: new_study_received, history_created, assigned_to_doctor');
+                // ✅ PENDING: includes verification_pending
+                queryFilters.workflowStatus = { 
+                    $in: [
+                        'new_study_received', 
+                        'history_created', 
+                        'assigned_to_doctor', 
+                        'doctor_opened_report',
+                        'verification_pending', // ✅ ADD THIS
+                    ] 
+                };
+                console.log('📋 [PENDING] Filtering: new_study_received, history_created, assigned_to_doctor, doctor_opened_report, verification_pending');
                 break;
 
             case 'draft':
@@ -1288,8 +1305,8 @@ export const getOrganizationLabs = async (req, res) => {
 // import User from '../models/userModel.js';
 // import Lab from '../models/labModel.js';
 // import Organization from '../models/organisation.js';
-import StudyNotes from '../models/studyNotesModel.js';
-import Document from '../models/documentModal.js';
+// import StudyNotes from '../models/studyNotesModel.js';
+// import Document from '../models/documentModal.js';
 // import { formatStudiesForWorklist } from '../utils/formatStudies.js';
 
 export const deleteStudy = async (req, res) => {

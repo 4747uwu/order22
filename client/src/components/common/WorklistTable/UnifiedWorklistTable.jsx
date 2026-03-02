@@ -1477,42 +1477,105 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
     )}
 
     {/* 25. ACTIONS */}
-    {isColumnVisible('actions') && (
-        <td className="px-1.5 py-2 sm:px-2 text-center border-slate-200 align-middle" style={{ width: `${getColumnWidth('actions')}px` }}>
-            {/* ✅ COMPACT & RESPONSIVE: Download + Share only (except super_admin) */}
-            <div className="flex flex-wrap items-center justify-center gap-1 max-w-[100px] mx-auto">
-                
-                {/* ✅ Hide ALL actions for super_admin */}
-                {!userAccountRoles.includes('super_admin') && (
-                    <>
-                        {/* Download Button */}
-                        <button 
-                            ref={downloadButtonRef} 
-                            onClick={handleDownloadClick} 
-                            className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
-                            title="Download Options"
-                        >
-                            <Download className="w-3.5 h-3.5 text-blue-600" />
-                        </button>
-
-                        {/* Share Button */}
-                        <button 
-                            onClick={() => setShareModal(true)} 
-                            className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
-                            title="Share Study (Secure Link)"
-                        >
-                            <Share2 className="w-3.5 h-3.5 text-sky-600" />
-                        </button>
-                    </>
-                )}
-
-                {/* Message for super_admin */}
-                {userAccountRoles.includes('super_admin') && (
-                    <div className="text-[8px] text-slate-400">-</div>
-                )}
-            </div>
-        </td>
-    )}
+     {isColumnVisible('actions') && (
+            <td className="px-1.5 py-2 sm:px-2 text-center border-slate-200 align-middle" style={{ width: `${getColumnWidth('actions')}px` }}>
+                <div className="flex flex-wrap items-center justify-center gap-1 max-w-[100px] mx-auto">
+                    
+                    {/* ✅ Hide ALL actions for super_admin */}
+                    {userAccountRoles.includes('super_admin') && (
+                        <div className="text-[8px] text-slate-400">-</div>
+                    )}
+    
+                    {/* ✅ VERIFIER ACTIONS */}
+                    {userAccountRoles.includes('verifier') && (
+                        <>
+                            <button
+                                className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110"
+                                title="View Report"
+                                onClick={() => onViewReport?.(study)}
+                            >
+                                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                            </button>
+    
+                            <button
+                                className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110"
+                                title="DICOM Viewer"
+                                onClick={() => {
+                                    const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(study.studyInstanceUID || study._id)}`;
+                                    window.open(ohifUrl, '_blank');
+                                }}
+                            >
+                                <Eye className="w-3.5 h-3.5 text-purple-600" />
+                            </button>
+    
+                            <button
+                                className="px-1.5 py-1 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-700 transition-colors shadow-sm"
+                                title="Open OHIF + Reporting for Verification"
+                                onClick={handleOHIFReporting}
+                            >
+                                Verify
+                            </button>
+    
+                            {study.workflowStatus === 'report_completed' && (
+                                <div className="p-1 text-green-600" title="Verified">
+                                    <CheckCircle className="w-3.5 h-3.5 fill-current" />
+                                </div>
+                            )}
+    
+                            {study.workflowStatus === 'report_rejected' && (
+                                <div className="p-1 text-red-600" title="Rejected">
+                                    <XCircle className="w-3.5 h-3.5 fill-current" />
+                                </div>
+                            )}
+                        </>
+                    )}
+    
+                    {/* ✅ NON-SUPER_ADMIN, NON-VERIFIER: Download + Share */}
+                    {!userAccountRoles.includes('super_admin') && !userAccountRoles.includes('verifier') && (
+                        <>
+                            <button 
+                                ref={downloadButtonRef} 
+                                onClick={handleDownloadClick} 
+                                className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                                title="Download Options"
+                            >
+                                <Download className="w-3.5 h-3.5 text-blue-600" />
+                            </button>
+    
+                            <button 
+                                onClick={() => setShareModal(true)} 
+                                className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                                title="Share Study (Secure Link)"
+                            >
+                                <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                            </button>
+                        </>
+                    )}
+    
+                    {/* ✅ VERIFIER also gets Download + Share */}
+                    {userAccountRoles.includes('verifier') && (
+                        <>
+                            <button 
+                                ref={downloadButtonRef} 
+                                onClick={handleDownloadClick} 
+                                className="p-1 hover:bg-blue-50 rounded transition-all hover:scale-110" 
+                                title="Download Options"
+                            >
+                                <Download className="w-3.5 h-3.5 text-blue-600" />
+                            </button>
+    
+                            <button 
+                                onClick={() => setShareModal(true)} 
+                                className="p-1 hover:bg-sky-50 rounded transition-all hover:scale-110" 
+                                title="Share Study (Secure Link)"
+                            >
+                                <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                            </button>
+                        </>
+                    )}
+                </div>
+            </td>
+        )}
     
 
 
