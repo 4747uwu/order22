@@ -13,6 +13,7 @@ router.get('/studies', verifierController.getAllStudiesForVerifier);
 router.get('/studies/inprogress', verifierController.getInProgressStudies);
 router.get('/studies/verified', verifierController.getVerifiedStudies);
 router.get('/studies/rejected', verifierController.getRejectedStudies);
+router.get('/studies/pending', verifierController.getPendingStudies);
 
 // ✅ NEW: Report verification endpoint
 router.get('/studies/:studyId/report', verifierController.getReportForVerification);

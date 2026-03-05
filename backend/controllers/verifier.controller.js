@@ -217,11 +217,10 @@ export const getValues = async (req, res) => {
 
         // ✅ SIMPLIFIED: Only 2 status categories for counting
         const statusCategories = {
-            // ✅ VERIFIED: report_completed + final_report_downloaded
-            verified: ['report_completed', 'final_report_downloaded'],
-            // ✅ REVERTED: report_rejected + revert_to_radiologist
-            rejected: ['report_rejected', 'revert_to_radiologist'],
-        };
+    pending: ['verification_pending', 'verification_in_progress'],
+    verified: ['report_completed', 'final_report_downloaded'],
+    rejected: ['report_rejected', 'revert_to_radiologist'],
+};
 
         const pipeline = [
             { $match: queryFilters },
@@ -246,16 +245,19 @@ export const getValues = async (req, res) => {
         const totalFiltered = totalFilteredResult.status === 'fulfilled' ? totalFilteredResult.value : 0;
 
         // ✅ SIMPLIFIED: Calculate only verified and rejected
-        let verified = 0;
-        let rejected = 0;
+        let pending = 0;
+let verified = 0;
+let rejected = 0;
 
         statusCounts.forEach(({ _id: status, count }) => {
-            if (statusCategories.verified.includes(status)) {
-                verified += count;
-            } else if (statusCategories.rejected.includes(status)) {
-                rejected += count;
-            }
-        });
+    if (statusCategories.pending.includes(status)) {
+        pending += count;
+    } else if (statusCategories.verified.includes(status)) {
+        verified += count;
+    } else if (statusCategories.rejected.includes(status)) {
+        rejected += count;
+    }
+});
 
         const processingTime = Date.now() - startTime;
         console.log(`🎯 Verifier dashboard values fetched in ${processingTime}ms`);
@@ -263,6 +265,7 @@ export const getValues = async (req, res) => {
         const response = {
             success: true,
             total: totalFiltered,
+            pending,
             verified,
             rejected,
             performance: {
@@ -842,7 +845,7 @@ export const getPendingStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const pendingStatuses = ['report_finalized', 'report_drafted'];
+const pendingStatuses = ['verification_pending', 'verification_in_progress'];
         const queryFilters = buildVerifierBaseQuery(req, pendingStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);

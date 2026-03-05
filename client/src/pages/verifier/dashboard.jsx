@@ -45,6 +45,7 @@ const VerifierDashboard = () => {
   // ✅ SIMPLIFIED: Only 3 status categories
   const [apiValues, setApiValues] = useState({
     total: 0,
+    pending: 0,
     verified: 0,
     rejected: 0
   });
@@ -54,6 +55,7 @@ const VerifierDashboard = () => {
   // ✅ SIMPLIFIED: Only 3 tab counts
   const tabCounts = useMemo(() => ({
     all: apiValues.total,
+    pending: apiValues.pending,
     verified: apiValues.verified,
     rejected: apiValues.rejected
   }), [apiValues]);
@@ -139,6 +141,7 @@ const VerifierDashboard = () => {
   // ✅ SIMPLIFIED: API endpoints for only 3 categories
   const getApiEndpoint = useCallback(() => {
     switch (currentView) {
+      case 'pending': return '/verifier/studies/pending';
       case 'verified': return '/verifier/studies/verified';
       case 'rejected': return '/verifier/studies/rejected';
       default: return '/verifier/studies';
@@ -210,6 +213,8 @@ const VerifierDashboard = () => {
       if (response.data.success) {
         setApiValues({
           total: response.data.total || 0,
+            pending: response.data.pending || 0,  // ADD
+
           verified: response.data.verified || 0,
           rejected: response.data.rejected || 0
         });
@@ -449,6 +454,7 @@ const VerifierDashboard = () => {
               <div className="flex items-center gap-1.5 min-w-max">
                 {[
                   { key: 'all', label: 'All Reports', count: tabCounts.all, icon: FileText },
+                  { key: 'pending', label: 'Pending', count: tabCounts.pending, icon: Shield },
                   { key: 'verified', label: 'Verified', count: tabCounts.verified, icon: CheckCircle },
                   { key: 'rejected', label: 'Rejected', count: tabCounts.rejected, icon: XCircle }
                 ].map((tab) => {

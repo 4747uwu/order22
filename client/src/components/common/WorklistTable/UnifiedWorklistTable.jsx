@@ -1025,8 +1025,9 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
         try {
             // ✅ Get current user and check roles
             const currentUser = sessionManager.getCurrentUser();
-            const accountRoles = currentUser?.accountRoles || [currentUser?.role];
-
+const accountRoles = (currentUser?.accountRoles?.length > 0)
+    ? currentUser.accountRoles
+    : [currentUser?.role];
             // ✅ Check if user is radiologist (only radiologists can lock/bypass)
             const isRadiologist = accountRoles.includes('radiologist');
 
@@ -1112,8 +1113,10 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
 
             // ✅ Only show lock errors for non-radiologists
             const currentUser = sessionManager.getCurrentUser();
-            const accountRoles = currentUser?.accountRoles || [currentUser?.role];
-            const isRadiologist = accountRoles.includes('radiologist');
+const accountRoles = (currentUser?.accountRoles?.length > 0)
+    ? currentUser.accountRoles
+    : [currentUser?.role];
+                const isRadiologist = accountRoles.includes('radiologist');
 
             if (error.response?.status === 423 && !isRadiologist) {
                 // Study is locked and user is NOT a radiologist
