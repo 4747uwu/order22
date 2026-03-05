@@ -377,7 +377,7 @@ const DicomStudySchema = new mongoose.Schema({
     // ✅ ENHANCED: Print tracking with detailed history
        printHistory: [{
         printedAt: { type: Date, default: Date.now },
-        printedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+        printedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
         printedByName: String,
         printType: { type: String, enum: ['original', 'reprint', 'copy', 'draft', 'pdf_download', 'docx_download'], default: 'original' },
         printMethod: { type: String, enum: ['pdf_download', 'docx_download', 'physical_print', 'email', 'fax'], default: 'pdf_download' },

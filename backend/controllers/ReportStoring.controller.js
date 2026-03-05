@@ -139,9 +139,7 @@ export const storeDraftReport = async (req, res) => {
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
                 .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = reports.length > 1
-                ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                : `${patientNameForFilename}_final_${Date.now()}.docx`;
+            const fileName = `${patientNameForFilename}_draft_${Date.now()}.docx`;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
