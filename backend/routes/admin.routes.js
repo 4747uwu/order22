@@ -61,6 +61,8 @@ import {
     
 } from '../controllers/adminUserManagement.controller.js';
 
+import { updateUserRoleConfig } from '../controllers/userManagement.controller.js';
+
 
 //filter data 
 import { getRadiologistsForFilter, getLabsForFilter } from '../controllers/filterOptions.controller.js';
@@ -154,6 +156,11 @@ router.post('/studies/:studyId/resolve-revert', protect, resolveRevert);
 router.get('/labss', protect, getAllLabsForManagement);
 router.get('/labs/:labId', protect, getLabDetails);
 router.put('/labs/:labId', protect, updateLabDetails);
+
+//management route for the role config and the update of the user
+
+router.put('/manage-users/:userId/role-config', protect, updateUserRoleConfig);
+
 
 
 

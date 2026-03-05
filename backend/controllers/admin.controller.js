@@ -360,7 +360,7 @@ const buildStudyAggregationPipeline = (queryFilters, skip, limit) => {
                             attachments: 1,
                             createdAt: 1, updatedAt: 1, reportDate: 1,
                             referringPhysicianName: 1, notesCount: 1,
-                            clinicalHistory: 1,
+                            clinicalHistory: 1, statusHistory: 1, printHistory: 1, followUp: 1, lastDownload: 1
                         },
                     },
 

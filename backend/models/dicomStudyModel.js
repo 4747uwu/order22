@@ -375,12 +375,12 @@ const DicomStudySchema = new mongoose.Schema({
     },
 
     // ✅ ENHANCED: Print tracking with detailed history
-    printHistory: [{
+       printHistory: [{
         printedAt: { type: Date, default: Date.now },
         printedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
         printedByName: String,
-        printType: { type: String, enum: ['original', 'reprint', 'copy', 'draft'], default: 'original' },
-        printMethod: { type: String, enum: ['pdf_download', 'physical_print', 'email', 'fax'], default: 'pdf_download' },
+        printType: { type: String, enum: ['original', 'reprint', 'copy', 'draft', 'pdf_download', 'docx_download'], default: 'original' },
+        printMethod: { type: String, enum: ['pdf_download', 'docx_download', 'physical_print', 'email', 'fax'], default: 'pdf_download' },
         reportVersion: Number,
         reportStatus: { type: String, enum: ['draft', 'finalized', 'verified'] },
         copies: { type: Number, default: 1 },
@@ -389,6 +389,14 @@ const DicomStudySchema = new mongoose.Schema({
         bharatPacsId: String, watermark: String,
         ipAddress: String, userAgent: String
     }],
+
+    lastDownload: {
+        downloadedAt: { type: Date },
+        downloadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        downloadedByName: { type: String },
+        downloadType: { type: String, enum: ['pdf', 'docx', 'print'] },
+        reportId: { type: mongoose.Schema.Types.ObjectId, ref: 'Report' },
+    },
 
     technologist: {
         name: { type: String, trim: true },
@@ -715,6 +723,24 @@ const DicomStudySchema = new mongoose.Schema({
     modifiedTime: { type: String },
     reportDate: { type: Date },     // ❌ REMOVED inline index
     reportTime: { type: String },
+
+    followUp: {
+        isFollowUp: { type: Boolean, default: false },
+        markedAt: { type: Date },
+        markedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        markedByName: { type: String },
+        reason: { type: String, trim: true, maxlength: 500 },
+        followUpDate: { type: Date }, // optional: when should follow-up happen
+        resolvedAt: { type: Date },
+        resolvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        history: [{
+            action: { type: String, enum: ['marked', 'resolved', 'updated'] },
+            performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+            performedByName: String,
+            performedAt: { type: Date, default: Date.now },
+            reason: String
+        }]
+    },
     
     calculatedTAT: {
         studyToUploadTAT: { type: Number, default: null },       // ❌ REMOVED inline index

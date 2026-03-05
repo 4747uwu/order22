@@ -14,8 +14,7 @@ export const storeDraftReport = async (req, res) => {
             htmlContent,
             templateId,
             templateInfo,
-            capturedImages = [],
-            existingReportId  // ✅ CRITICAL: Accept existingReportId from frontend
+            capturedImages = [] // ✅ NEW: Accept captured images
         } = req.body;
 
         console.log(req.body)
@@ -96,25 +95,10 @@ export const storeDraftReport = async (req, res) => {
             // ✅ DETERMINE DOCTOR ID AND NAME - Use assigned doctor if admin
             const { doctorId, doctorName } = await determineDoctorForReport(currentUser, study, session);
 
-            // ✅ FIX: Priority order for finding existing report:
-            // 1. Use existingReportId if provided (auto-save/manual save after first save)
-            // 2. Find by studyId + doctorId (first save)
-            let existingReport = null;
-            
-            if (existingReportId && mongoose.Types.ObjectId.isValid(existingReportId)) {
-                existingReport = await Report.findById(existingReportId).session(session);
-                console.log('🔍 [Draft Store] Using existingReportId:', existingReportId, '→ found:', !!existingReport);
-            }
-            
-            if (!existingReport) {
-                // ✅ Find ONE existing draft for this study+doctor (not multiple)
-                existingReport = await Report.findOne({
-                    dicomStudy: studyId,
-                    doctorId: doctorId,
-                    reportStatus: { $in: ['draft', 'report_drafted'] } // Only find drafts, not finalized
-                }).sort({ createdAt: -1 }).session(session);
-                console.log('🔍 [Draft Store] Fallback search → found:', !!existingReport, existingReport?._id);
-            }
+            let existingReport = await Report.findOne({
+                dicomStudy: studyId,
+                doctorId: doctorId  // ✅ Use the determined doctorId
+            }).sort({ createdAt: -1 }).session(session);
 
             const now = new Date();
 
@@ -372,16 +356,6 @@ export const storeFinalizedReport = async (req, res) => {
             // ✅ DETERMINE DOCTOR ID AND NAME - Use assigned doctor if admin
             const { doctorId, doctorName } = await determineDoctorForReport(currentUser, study, session);
 
-            // ✅ NEW: Check if study was previously downloaded — if so, this is a reprint
-            const wasPreviouslyDownloaded = study.statusHistory?.some(
-                s => s.status === 'final_report_downloaded'
-            );
-
-            if (wasPreviouslyDownloaded) {
-                study.reprintNeeded = true;
-                console.log('🖨️ [Finalize Store] Study was previously downloaded — setting reprintNeeded = true');
-            }
-
             let existingReport = await Report.findOne({
                 dicomStudy: studyId,
                 doctorId: doctorId
@@ -431,7 +405,7 @@ export const storeFinalizedReport = async (req, res) => {
                 // ✅ FIXED: If admin, createdBy should be the doctor, not the admin
                 createdBy: currentUser.role === 'admin' || currentUser.role === 'super_admin' 
                     ? doctorId  // Use doctor's ID
-                    : currentUser._id,  // Use current user's ID
+                    : existingReport?.createdBy || currentUser._id,
                 doctorId: doctorId,            // ✅ Use assigned doctor ID
                 reportContent: {
                     htmlContent: reportContent,
@@ -495,42 +469,20 @@ export const storeFinalizedReport = async (req, res) => {
             const requiresVerification = study.sourceLab?.settings?.requireReportVerification || doctorInfo?.requireReportVerification;
 
             if (requiresVerification) {
-                // ✅ Goes to verification — verifier.controller.js handles reprintNeeded logic
-                // when verifier APPROVES: if reprintNeeded=true → report_reprint_needed
-                //                        if reprintNeeded=false → report_completed
                 study.workflowStatus = 'verification_pending';
                 study.currentCategory = 'VERIFICATION_PENDING';
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.sentForVerificationAt = now;
                 study.reportInfo.finalizedAt = now;
                 study.reportInfo.reporterName = doctorName;
-
-                console.log(`📋 [Finalize Store] Sent for verification | reprintNeeded=${study.reprintNeeded}`);
-
             } else {
-                // ✅ NO verification needed — handle reprint directly here
-                if (wasPreviouslyDownloaded) {
-                    // ✅ Was downloaded before + no verifier = straight to reprint_needed
-                    study.workflowStatus = 'report_reprint_needed';
-                    study.currentCategory = 'REPRINT_NEED';
-                    if (!study.reportInfo) study.reportInfo = {};
-                    study.reportInfo.finalizedAt = now;
-                    study.reportInfo.reporterName = doctorName;
-                    study.reportInfo.completedWithoutVerification = true;
-
-                    console.log('🖨️ [Finalize Store] No verifier + previously downloaded → report_reprint_needed');
-                } else {
-                    // ✅ Normal first-time completion
-                    study.workflowStatus = 'report_completed';
-                    study.currentCategory = 'COMPLETED';
-                    if (!study.reportInfo) study.reportInfo = {};
-                    study.reportInfo.completedAt = now;
-                    study.reportInfo.finalizedAt = now;
-                    study.reportInfo.reporterName = doctorName;
-                    study.reportInfo.completedWithoutVerification = true;
-
-                    console.log('✅ [Finalize Store] First-time completion → report_completed');
-                }
+                study.workflowStatus = 'report_completed';
+                study.currentCategory = 'COMPLETED';
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.completedAt = now;
+                study.reportInfo.finalizedAt = now;
+                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.completedWithoutVerification = true;
             }
 
             if (!study.statusHistory) study.statusHistory = [];
@@ -538,18 +490,17 @@ export const storeFinalizedReport = async (req, res) => {
                 status: study.workflowStatus,
                 changedAt: now,
                 changedBy: currentUser._id,
-                note: `Report finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : wasPreviouslyDownloaded ? ' - reprint needed' : ' - completed'}`
+                note: `Report finalized for ${doctorName}${requiresVerification ? ' - sent for verification' : ' - completed'}`
             });
 
             await study.save({ session });
             await session.commitTransaction();
 
+            // ✅ FIX: Use savedReport (singular) not savedReports (plural)
             res.status(200).json({
                 success: true,
-                message: requiresVerification
-                    ? 'Report sent for verification successfully'
-                    : wasPreviouslyDownloaded
-                    ? 'Report marked for reprint'
+                message: requiresVerification 
+                    ? 'Report sent for verification successfully' 
                     : 'Report finalized successfully',
                 data: {
                     reportId: savedReport._id,
@@ -560,16 +511,14 @@ export const storeFinalizedReport = async (req, res) => {
                     reportStatus: savedReport.reportStatus,
                     studyWorkflowStatus: study.workflowStatus,
                     requiresVerification: requiresVerification,
-                    isReprint: wasPreviouslyDownloaded,
-                    nextStep: requiresVerification
-                        ? 'Report sent to verifier for approval'
-                        : wasPreviouslyDownloaded
-                        ? 'Report marked for reprint — will be processed'
+                    nextStep: requiresVerification 
+                        ? 'Report sent to verifier for approval' 
                         : 'Report completed and ready for download'
                 }
             });
 
         } catch (error) {
+            // ✅ FIX: Only abort if transaction hasn't been committed yet
             if (session.inTransaction()) {
                 await session.abortTransaction();
             }
@@ -664,62 +613,50 @@ export const storeMultipleReports = async (req, res) => {
                 identifier: currentUser.organizationIdentifier
             }).session(session);
 
+            // ✅ Get doctor info
             const { doctorId, doctorName } = await determineDoctorForReport(currentUser, study, session);
 
-            // ✅ NEW: Same reprint check for multi-report
-            const wasPreviouslyDownloaded = study.statusHistory?.some(
-                s => s.status === 'final_report_downloaded'
-            );
-
-            if (wasPreviouslyDownloaded) {
-                study.reprintNeeded = true;
-                console.log('🖨️ [Multi-Report] Study was previously downloaded — setting reprintNeeded = true');
+            // ✅ If overwrite, delete existing reports
+            if (overwrite) {
+                await Report.deleteMany(
+                    { dicomStudy: studyId, doctorId: doctorId },
+                    { session }
+                );
+                console.log('🗑️ [Multi-Report] Deleted existing reports for overwrite');
             }
 
-            let existingReport = await Report.findOne({
-                dicomStudy: studyId,
-                doctorId: doctorId
-            }).sort({ createdAt: -1 }).session(session);
-
+            const savedReports = [];
             const now = new Date();
 
-            const patientInfo = {
-                fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
-                patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
-                age: placeholders?.['--agegender--']?.split(' / ')[0] || 
-                     study.patientInfo?.age || 
-                     study.patient?.age || 'N/A',
-                gender: study.patient?.gender || 
-                       study.patientInfo?.gender || 
-                       placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
-                dateOfBirth: study.patient?.dateOfBirth,
-                clinicalHistory: study.clinicalHistory?.clinicalHistory || 
-                               study.patient?.clinicalHistory || 'N/A'
-            };
-
-            const referringPhysicianData = placeholders?.['--referredby--'] || 
-                                          study.referringPhysician || 
-                                          study.referringPhysicianName || 
-                                          'N/A';
-            const referringPhysicianName = typeof referringPhysicianData === 'string' 
-                ? referringPhysicianData
-                : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
-                ? referringPhysicianData.name
-                : 'N/A';
-
-            // ✅ FILENAME: Use doctor name (not admin)
-            const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
-                .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = reports.length > 1
-                ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                : `${patientNameForFilename}_final_${Date.now()}.docx`;
-
-            const savedReports = [];
+            // Store each report
             for (let i = 0; i < reports.length; i++) {
                 const reportData = reports[i];
                 const reportNumber = i + 1;
 
                 console.log(`📄 [Multi-Report] Processing report ${reportNumber}/${reports.length}`);
+
+                const patientInfo = {
+                    fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                    patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                    age: reportData.placeholders?.['--agegender--']?.split(' / ')[0] || 
+                         study.patientInfo?.age || 'N/A',
+                    gender: study.patient?.gender || reportData.placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
+                    dateOfBirth: study.patient?.dateOfBirth,
+                    clinicalHistory: study.clinicalHistory?.clinicalHistory || 'N/A'
+                };
+
+                const referringPhysicianData = reportData.placeholders?.['--referredby--'] || 
+                                              study.referringPhysician || 'N/A';
+                const referringPhysicianName = typeof referringPhysicianData === 'string' 
+                    ? referringPhysicianData
+                    : referringPhysicianData?.name || 'N/A';
+
+                // ✅ Filename includes report number if multiple
+                const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
+                    .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+                const fileName = reports.length > 1
+                    ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                    : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
                 const newReport = new Report({
                     reportId: `RPT_${studyId}_${reportNumber}_${Date.now()}`,
@@ -796,8 +733,10 @@ export const storeMultipleReports = async (req, res) => {
                 });
             }
 
+            // ✅ Update study with all reports
             await updateStudyReportStatus(study, savedReports[savedReports.length - 1], session);
 
+            // ✅ FIXED: Follow same verification workflow as storeFinalizedReport
             const doctorInfo = await mongoose.model('Doctor').findOne({ userAccount: doctorId }).select('requireReportVerification').session(session);
             const requiresVerification = study.sourceLab?.settings?.requireReportVerification || doctorInfo?.requireReportVerification;
 
@@ -811,14 +750,8 @@ export const storeMultipleReports = async (req, res) => {
                 study.reportInfo.multipleReports = savedReports.length > 1;
                 study.reportInfo.reportCount = savedReports.length;
             } else {
-                // ✅ NEW: Reprint check for no-verification path
-                if (wasPreviouslyDownloaded) {
-                    study.workflowStatus = 'report_reprint_needed';
-                    study.currentCategory = 'REPRINT_NEED';
-                } else {
-                    study.workflowStatus = 'report_completed';
-                    study.currentCategory = 'COMPLETED';
-                }
+                study.workflowStatus = 'report_completed';
+                study.currentCategory = 'COMPLETED';
                 if (!study.reportInfo) study.reportInfo = {};
                 study.reportInfo.completedAt = now;
                 study.reportInfo.finalizedAt = now;
@@ -833,7 +766,7 @@ export const storeMultipleReports = async (req, res) => {
                 status: study.workflowStatus,
                 changedAt: now,
                 changedBy: currentUser._id,
-                note: `${savedReports.length} report(s) finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : wasPreviouslyDownloaded ? ' - reprint needed' : ' - completed'}`
+                note: `${savedReports.length} report(s) finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : ' - completed'}`
             });
 
             await study.save({ session });
@@ -853,9 +786,7 @@ export const storeMultipleReports = async (req, res) => {
                     totalReports: savedReports.length,
                     studyWorkflowStatus: study.workflowStatus,
                     requiresVerification: requiresVerification,
-                    nextStep: requiresVerification 
-                        ? 'Reports sent to verifier for approval' 
-                        : 'Reports completed and ready for download'
+                    nextStep: requiresVerification ? 'Reports sent to verifier for approval' : 'Reports completed and ready for download'
                 }
             });
 

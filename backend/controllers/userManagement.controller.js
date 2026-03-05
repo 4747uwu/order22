@@ -474,44 +474,116 @@ export const updateUserRoleConfig = async (req, res) => {
         const { userId } = req.params;
         const { roleConfig } = req.body;
 
-        // Validate ObjectId
         if (!mongoose.Types.ObjectId.isValid(userId)) {
-            return res.status(400).json({
-                success: false,
-                message: 'Invalid user ID'
-            });
+            return res.status(400).json({ success: false, message: 'Invalid user ID' });
         }
 
-        // Validate user exists and belongs to same organization
         let query = { _id: userId };
-        
-        // Non-super admins can only modify users in their organization
         if (req.user.role !== 'super_admin') {
             query.organizationIdentifier = req.user.organizationIdentifier;
         }
 
         const user = await User.findOne(query);
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
+        const canModify = ['super_admin', 'admin'].includes(req.user.role) ||
+            user.hierarchy.createdBy?.toString() === req.user._id.toString();
+        if (!canModify) return res.status(403).json({ success: false, message: 'Permission denied' });
+
+        // ✅ TRACK what was removed
+        const prevAssignedRadiologists = user.roleConfig?.assignedRadiologists?.map(String) || [];
+        const prevAssignedLabs = user.roleConfig?.assignedLabs?.map(String) || [];
+        const newAssignedRadiologists = (roleConfig.assignedRadiologists || []).map(String);
+        const newAssignedLabs = (roleConfig.assignedLabs || []).map(String);
+        const newLabAccessMode = roleConfig.labAccessMode || 'all';
+
+        // ✅ Find removed radiologists
+        const removedRadiologists = prevAssignedRadiologists.filter(id => !newAssignedRadiologists.includes(id));
+
+        // ✅ Find removed labs
+        const removedLabs = prevAssignedLabs.filter(id => !newAssignedLabs.includes(id));
+
+        // ✅ If labAccessMode changed from 'selected' to 'all'/'none' — all previously selected labs are "removed"
+        const labModeRemovedAll = 
+            user.roleConfig?.labAccessMode === 'selected' && 
+            newLabAccessMode !== 'selected' && 
+            prevAssignedLabs.length > 0;
+
+        const effectivelyRemovedLabs = labModeRemovedAll ? prevAssignedLabs : removedLabs;
+
+        // ✅ AUTO-DISABLE verification for removed radiologists
+        if (removedRadiologists.length > 0) {
+            const Doctor = (await import('../models/doctorModel.js')).default;
+            
+            for (const radUserId of removedRadiologists) {
+                // Check if any OTHER verifier still covers this radiologist
+                const otherVerifierCovering = await User.findOne({
+                    _id: { $ne: userId },
+                    role: 'verifier',
+                    organizationIdentifier: req.user.organizationIdentifier,
+                    'roleConfig.assignedRadiologists': radUserId,
+                    isActive: true
+                });
+
+                if (!otherVerifierCovering) {
+                    // No other verifier covers this radiologist → disable verification
+                    const doctor = await Doctor.findOne({
+                        userAccount: radUserId,
+                        organizationIdentifier: req.user.organizationIdentifier
+                    });
+
+                    if (doctor && doctor.requireReportVerification) {
+                        doctor.requireReportVerification = false;
+                        doctor.verificationDisabledAt = new Date();
+                        doctor.verificationDisabledBy = req.user._id;
+                        doctor.verificationDisabledReason = 'Verifier unassigned';
+                        await doctor.save();
+
+                        console.log(`⚠️ [Auto-Disable] Verification disabled for doctor (userId: ${radUserId}) — no verifier assigned`);
+                    }
+                }
+            }
         }
 
-        // Check if current user can modify this user
-        const canModify = ['super_admin', 'admin'].includes(req.user.role) || 
-                         user.hierarchy.createdBy?.toString() === req.user._id.toString();
+        // ✅ AUTO-DISABLE verification for removed labs
+        if (effectivelyRemovedLabs.length > 0) {
+            const Lab = (await import('../models/labModel.js')).default;
 
-        if (!canModify) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to modify this user'
-            });
+            for (const labId of effectivelyRemovedLabs) {
+                // Check if any OTHER verifier still covers this lab
+                const otherVerifierCovering = await User.findOne({
+                    _id: { $ne: userId },
+                    role: 'verifier',
+                    organizationIdentifier: req.user.organizationIdentifier,
+                    $or: [
+                        { 'roleConfig.labAccessMode': { $in: ['all'] } },
+                        { 'roleConfig.assignedLabs': labId }
+                    ],
+                    isActive: true
+                });
+
+                if (!otherVerifierCovering) {
+                    const lab = await Lab.findOne({
+                        _id: labId,
+                        organizationIdentifier: req.user.organizationIdentifier
+                    });
+
+                    if (lab && lab.settings?.requireReportVerification) {
+                        if (!lab.settings) lab.settings = {};
+                        lab.settings.requireReportVerification = false;
+                        lab.settings.verificationDisabledAt = new Date();
+                        lab.settings.verificationDisabledBy = req.user._id;
+                        lab.settings.verificationDisabledReason = 'Verifier lab access removed';
+                        await lab.save();
+
+                        console.log(`⚠️ [Auto-Disable] Verification disabled for lab (${labId}) — no verifier assigned`);
+                    }
+                }
+            }
         }
 
-        // Update role configuration
-        user.roleConfig = { ...user.roleConfig, ...roleConfig };
+        // ✅ Save updated roleConfig
+        user.roleConfig = { ...user.roleConfig.toObject?.() || user.roleConfig, ...roleConfig };
         await user.save();
 
         const updatedUser = await User.findById(userId)
@@ -519,20 +591,18 @@ export const updateUserRoleConfig = async (req, res) => {
             .populate('organization', 'name displayName identifier')
             .select('-password');
 
-        console.log('✅ User role config updated:', { userId, role: user.role });
+        console.log('✅ User role config updated with auto-verification sync:', { userId, role: user.role });
 
         res.json({
             success: true,
             message: 'User role configuration updated successfully',
-            data: updatedUser
+            data: updatedUser,
+            autoDisabledCount: removedRadiologists.length + effectivelyRemovedLabs.length
         });
 
     } catch (error) {
         console.error('❌ Update user role config error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Failed to update user configuration'
-        });
+        res.status(500).json({ success: false, message: 'Failed to update user configuration' });
     }
 };
 

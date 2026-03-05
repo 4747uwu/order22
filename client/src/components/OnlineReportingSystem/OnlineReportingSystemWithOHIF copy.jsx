@@ -1,58 +1,147 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import api from '../../services/api';
-import { toast } from 'react-toastify';
+import toast, { Toaster } from 'react-hot-toast';
 import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
-import { CheckCircle, XCircle, Edit, Camera } from 'lucide-react';
+import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2 } from 'lucide-react';
+import useWebSocket from '../../hooks/useWebSocket';
+import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
+  const { sendMessage, readyState } = useWebSocket();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const location = useLocation();
-  const [capturedImages, setCapturedImages] = useState([]);
-  
-  
-  // ✅ NEW: Get studyInstanceUID from location state if available
+  const { getDashboardRoute } = useAuth(); // ✅ ADD this
+
+  const [isReportOpen, setIsReportOpen] = useState(false);
+
   const passedStudy = location.state?.study;
   const passedStudyInstanceUID = passedStudy?.studyInstanceUID || passedStudy?.studyInstanceUIDs || null;
-  
-  // ✅ DEFINE ALL STATE VARIABLES FIRST (before any usage)
+
   const [loading, setLoading] = useState(true);
   const [studyData, setStudyData] = useState(null);
   const [patientData, setPatientData] = useState(null);
   const [templates, setTemplates] = useState({});
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [reportData, setReportData] = useState({});
-  const [reportContent, setReportContent] = useState('');
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const isFinalizedRef = useRef(false); // ✅ ADD: tracks finalization state across closures
   const [exportFormat, setExportFormat] = useState('docx');
+
+  // ✅ ADD: Auto-save state
+  const [autoSaveStatus, setAutoSaveStatus] = useState('idle'); // 'idle' | 'saving' | 'saved' | 'error'
+  const [lastAutoSaved, setLastAutoSaved] = useState(null);
+  const autoSaveIntervalRef = useRef(null);
+  const autoSaveStatusTimerRef = useRef(null);
+
   const [ohifViewerUrl, setOhifViewerUrl] = useState('');
   const [downloadOptions, setDownloadOptions] = useState(null);
-  
-  // ✅ NEW: Verifier-specific states
   const [verifying, setVerifying] = useState(false);
   const [rejecting, setRejecting] = useState(false);
-  
-  // ✅ UPDATED: Width percentage dropdown instead of drag/drop
-  const [leftPanelWidth, setLeftPanelWidth] = useState(60); // Percentage
+  const [leftPanelWidth, setLeftPanelWidth] = useState(50);
 
-  // ✅ FIXED: Get current user and check accountRoles
+  // ✅ MULTI-REPORT STATE — replaces single reportContent
+  const [reports, setReports] = useState([{ id: 1, content: '', capturedImages: [], template: null }]);
+  const [activeReportIndex, setActiveReportIndex] = useState(0);
+  const [showReportDropdown, setShowReportDropdown] = useState(false);
+  const reportDropdownRef = useRef(null);
+
+  // ✅ Helpers to get/set current report data
+  const activeReport = reports[activeReportIndex] || reports[0];
+  const reportContent = activeReport.content;
+  const capturedImages = activeReport.capturedImages;
+
+  const setReportContent = (content) => {
+    setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, content } : r));
+  };
+
+  const setCapturedImages = (images) => {
+    setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, capturedImages: typeof images === 'function' ? images(r.capturedImages) : images } : r));
+  };
+
+
+  //  const [saving, setSaving] = useState(false);
+  // const [finalizing, setFinalizing] = useState(false);
+  // const [exportFormat, setExportFormat] = useState('docx');
+
+  // // ✅ ADD: Auto-save state
+  // const [autoSaveStatus, setAutoSaveStatus] = useState('idle');
+  // const [lastAutoSaved, setLastAutoSaved] = useState(null);
+  // const autoSaveIntervalRef = useRef(null);
+  // const autoSaveStatusTimerRef = useRef(null);
+
+// ...existing code...
+
+
+  // ✅ Add new report
+  const handleAddReport = () => {
+    const newReport = { id: Date.now(), content: '', capturedImages: [], template: null };
+    setReports(prev => [...prev, newReport]);
+    setActiveReportIndex(reports.length);
+    setIsReportOpen(true);
+    setShowReportDropdown(false);
+    toast.success(`Report ${reports.length + 1} added`, { icon: '➕' });
+  };
+
+  // ✅ Remove report
+  const handleRemoveReport = (index) => {
+    if (reports.length === 1) { toast.error('Must have at least one report'); return; }
+    setReports(prev => prev.filter((_, i) => i !== index));
+    setActiveReportIndex(Math.max(0, index === activeReportIndex ? index - 1 : activeReportIndex > index ? activeReportIndex - 1 : activeReportIndex));
+    setShowReportDropdown(false);
+    toast.success(`Report ${index + 1} removed`);
+  };
+
+  // ✅ Switch report
+  const handleSwitchReport = (index) => {
+    if (index >= 0 && index < reports.length) {
+      setActiveReportIndex(index);
+      setShowReportDropdown(false);
+      toast.success(`Switched to Report ${index + 1}`, { duration: 1000 });
+    }
+  };
+
+  // ✅ Keyboard shortcuts: Alt+N = add, Alt+1-9 = switch, Alt+R = toggle dropdown
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.altKey && e.key.toLowerCase() === 'n') { e.preventDefault(); handleAddReport(); }
+      if (e.altKey && e.key.toLowerCase() === 'r') { e.preventDefault(); setShowReportDropdown(prev => !prev); }
+      if (e.altKey && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        const idx = parseInt(e.key) - 1;
+        if (idx < reports.length) handleSwitchReport(idx);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [reports.length, activeReportIndex]);
+
+  // ✅ Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (reportDropdownRef.current && !reportDropdownRef.current.contains(e.target)) {
+        setShowReportDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const currentUser = sessionManager.getCurrentUser();
   const userRoles = currentUser?.accountRoles || [currentUser?.role];
   const hasRole = (role) => userRoles.includes(role);
 
-  // ✅ CHECK IF VERIFIER MODE (after state declarations)
-  const isVerifierMode = searchParams.get('verifierMode') === 'true' || 
-                         searchParams.get('verifier') === 'true' ||
-                         searchParams.get('action') === 'verify' ||
-                         hasRole('verifier');
+  const isVerifierMode = searchParams.get('verifierMode') === 'true' ||
+    searchParams.get('verifier') === 'true' ||
+    searchParams.get('action') === 'verify' ||
+    hasRole('verifier');
 
-  // ✅ Width percentage options
   const widthOptions = [
     { value: 30, label: '30% / 70%' },
     { value: 40, label: '40% / 60%' },
@@ -62,992 +151,517 @@ const OnlineReportingSystemWithOHIF = () => {
     { value: 80, label: '80% / 20%' }
   ];
 
-  // 🔍 DEBUG: Log all state changes
-  useEffect(() => {
-    console.log('📊 [State Update] studyData:', studyData);
-  }, [studyData]);
+  const hasSentStudyOpened = useRef(false);
+  const sendAttemptTimeout = useRef(null);
+  const initialDelayTimeout = useRef(null);
 
   useEffect(() => {
-    console.log('📊 [State Update] patientData:', patientData);
-  }, [patientData]);
+    if (!studyId) {
+      hasSentStudyOpened.current = false;
+      if (sendAttemptTimeout.current) clearTimeout(sendAttemptTimeout.current);
+      if (initialDelayTimeout.current) clearTimeout(initialDelayTimeout.current);
+      return;
+    }
+    const attemptSend = () => {
+      if (readyState === WebSocket.OPEN && !hasSentStudyOpened.current) {
+        sendMessage({ type: 'study_opened', studyId, mode: 'reporting' });
+        hasSentStudyOpened.current = true;
+      } else if (readyState !== WebSocket.OPEN && !hasSentStudyOpened.current) {
+        sendAttemptTimeout.current = setTimeout(attemptSend, 1000);
+      }
+    };
+    initialDelayTimeout.current = setTimeout(attemptSend, 4000);
+    return () => {
+      if (sendAttemptTimeout.current) clearTimeout(sendAttemptTimeout.current);
+      if (initialDelayTimeout.current) clearTimeout(initialDelayTimeout.current);
+      if (hasSentStudyOpened.current && readyState === WebSocket.OPEN) {
+        sendMessage({ type: 'study_closed', studyId });
+        hasSentStudyOpened.current = false;
+      }
+    };
+  }, [studyId, readyState, sendMessage]);
 
   useEffect(() => {
-    console.log('📊 [State Update] reportContent length:', reportContent?.length || 0);
-  }, [reportContent]);
-
-  // Re-initialize when studyId changes
-  useEffect(() => {
-    console.log('🔄 [Effect] studyId changed:', studyId);
     if (studyId) {
-      console.log('🔄 [Effect] Resetting all state and loading new study data');
-      // Reset all state when switching studies
       setStudyData(null);
       setPatientData(null);
       setSelectedTemplate(null);
       setReportData({});
-      setReportContent('');
+      setReports([{ id: 1, content: '', capturedImages: [], template: null }]);
+      setActiveReportIndex(0);
       setSaving(false);
       setFinalizing(false);
       setVerifying(false);
       setRejecting(false);
       setExportFormat('docx');
-      setOhifViewerUrl(''); // ✅ Reset OHIF URL
-      
-      // Load new study data
+      setOhifViewerUrl('');
+      setIsReportOpen(false);
       initializeReportingSystem();
     }
   }, [studyId]);
 
+
+
+  
+
   const initializeReportingSystem = async () => {
-    console.log('🚀 [Initialize] Starting reporting system initialization for studyId:', studyId);
     setLoading(true);
-    
     try {
       const currentUser = sessionManager.getCurrentUser();
-      console.log('👤 [Initialize] Current user:', currentUser);
-      
-      if (!currentUser) {
-        console.error('❌ [Initialize] No current user found');
-        toast.error('Authentication required.');
-        navigate('/login');
-        return;
-      }
-      
-      console.log('📧 [Initialize] User email:', currentUser.email);
-      console.log('👤 [Initialize] User role:', currentUser.role);
-      
-      // ✅ FIXED: Check for URL parameters to determine endpoint
+      if (!currentUser) { toast.error('Authentication required.'); navigate('/login'); return; }
+
       const urlParams = new URLSearchParams(window.location.search);
       const reportIdParam = urlParams.get('reportId');
       const actionParam = urlParams.get('action');
-      
-      // 🔧 KEEP: Using the existing endpoints as requested
-      const studyInfoEndpoint = `/documents/study/${studyId}/reporting-info`;
-      const templatesEndpoint = '/html-templates/reporting';
-      
-      // ✅ UPDATED: Use different endpoint for specific report editing
+
       let existingReportEndpoint = `/reports/studies/${studyId}/edit-report`;
       if (reportIdParam && actionParam === 'edit') {
         existingReportEndpoint = `/reports/studies/${studyId}/edit-report?reportId=${reportIdParam}`;
-        console.log('📝 [Initialize] Loading specific report for editing:', reportIdParam);
       }
-      
-      console.log('📡 [API] Calling endpoints:');
-      console.log('  - Study Info:', studyInfoEndpoint);
-      console.log('  - Templates:', templatesEndpoint);
-      console.log('  - Existing Report:', existingReportEndpoint);
-      
-      const [studyInfoResponse, templatesResponse, existingReportResponse] = await Promise.allSettled([
-        api.get(studyInfoEndpoint),
-        api.get(templatesEndpoint),
-        api.get(existingReportEndpoint)
+
+      const [studyInfoResponse, templatesResponse, existingReportResponse, allReportsResponse] = await Promise.allSettled([
+        api.get(`/documents/study/${studyId}/reporting-info`),
+        api.get('/html-templates/reporting'),
+        api.get(existingReportEndpoint),
+        api.get(`/reports/studies/${studyId}/all-reports`) // ✅ NEW: fetch all reports
       ]);
 
-      // Process study info
       if (studyInfoResponse.status === 'fulfilled' && studyInfoResponse.value.data.success) {
         const data = studyInfoResponse.value.data.data;
-        console.log('🔍 Loaded study data:', data);
-        
         const studyInfo = data.studyInfo || {};
         const patientInfo = data.patientInfo || {};
         const allStudies = data.allStudies || [];
-        
-        const currentStudy = allStudies.find(study => study.studyId === studyId) || studyInfo;
-        
-        const orthancStudyID = currentStudy.orthancStudyID || 
-                              currentStudy.studyId || 
-                              studyInfo.studyId ||
-                              null;
-      
-        // ✅ PRIORITY: Use passed studyInstanceUID first, then fetch from API
-        const studyInstanceUID = passedStudyInstanceUID ||
-                              currentStudy.studyInstanceUID || 
-                              currentStudy.studyId || 
-                              studyInfo.studyInstanceUID ||
-                              studyInfo.studyId ||
-                              null;
-      
-        console.log('🔍 Extracted IDs:', {
-          orthancStudyID,
-          studyInstanceUID,
-          passedStudyInstanceUID,
-          originalStudyId: currentStudy.studyId || studyInfo.studyId
+        const currentStudy = allStudies.find(s => s.studyId === studyId) || studyInfo;
+
+        const orthancStudyID = currentStudy.orthancStudyID || currentStudy.studyId || studyInfo.studyId || null;
+        const studyInstanceUID = passedStudyInstanceUID || currentStudy.studyInstanceUID || currentStudy.studyId || studyInfo.studyInstanceUID || studyInfo.studyId || null;
+
+        if (studyInstanceUID) {
+          const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
+          let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
+          if (studyUIDs) setOhifViewerUrl(`${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`);
+        }
+
+        setStudyData({ _id: studyId, ...currentStudy, ...studyInfo });
+        setPatientData({ ...patientInfo, fullName: patientInfo.fullName || patientInfo.patientName || 'Unknown Patient' });
+        setDownloadOptions({
+          downloadOptions: { hasR2CDN: data.downloadOptions?.hasR2CDN || false, zipStatus: data.downloadOptions?.zipStatus || 'not_started' },
+          orthancStudyID, studyInstanceUID
         });
 
-        // ✅ NEW: Build OHIF viewer URL
-        if (studyInstanceUID) {
-          // const OHIF_BASE = 'https://pacs.xcentic.com/viewer';
-          const OHIF_BASE = 'https://viewer.pacs.xcentic.com/viewer';
-          let studyUIDs = '';
-          
-          if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
-            studyUIDs = studyInstanceUID.join(',');
-          } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
-            studyUIDs = studyInstanceUID.trim();
-          } else if (orthancStudyID) {
-            studyUIDs = orthancStudyID;
-          }
-          
-          if (studyUIDs) {
-            const viewerUrl = `${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-            setOhifViewerUrl(viewerUrl);
-            console.log('✅ [OHIF] Built viewer URL:', viewerUrl);
-          } else {
-            console.warn('⚠️ [OHIF] No valid StudyInstanceUID to build viewer URL');
-          }
-        } else {
-          console.warn('⚠️ [OHIF] No studyInstanceUID available');
-        }
-        
-        setStudyData({
-          _id: studyId,
-          orthancStudyID: orthancStudyID,
-          studyInstanceUID: studyInstanceUID,
-          accessionNumber: currentStudy.accessionNumber || studyInfo.accessionNumber || 'N/A',
-          modality: currentStudy.modality || studyInfo.modality || 'N/A',
-          description: currentStudy.examDescription || studyInfo.examDescription || '',
-          studyDate: currentStudy.studyDate || studyInfo.studyDate || new Date().toISOString(),
-          workflowStatus: currentStudy.status || studyInfo.workflowStatus || studyInfo.status || 'assigned_to_doctor',
-          priority: currentStudy.priorityLevel || studyInfo.priorityLevel || 'NORMAL',
-          caseType: currentStudy.caseType || studyInfo.caseType,
-          seriesCount: currentStudy.seriesCount || studyInfo.seriesCount,
-          instanceCount: currentStudy.instanceCount || studyInfo.instanceCount,
-          sourceLab: currentStudy.sourceLab || studyInfo.sourceLab,
-          assignedDoctor: currentStudy.assignedDoctor || studyInfo.assignedDoctor,
-          referringPhysician: currentStudy.referringPhysician || studyInfo.referringPhysician,
-          createdAt: currentStudy.createdAt || studyInfo.createdAt,
-          studyId: currentStudy.studyId || studyInfo.studyId,
-          ...currentStudy,
-          ...studyInfo
-        });
-        
-        setPatientData({
-          patientId: patientInfo.patientId || patientInfo.patientID || 'N/A',
-          patientName: patientInfo.fullName || patientInfo.patientName || 'Unknown Patient',
-          fullName: patientInfo.fullName || patientInfo.patientName || 'Unknown Patient',
-          age: patientInfo.age || 'N/A',
-          gender: patientInfo.gender || 'N/A',
-          dateOfBirth: patientInfo.dateOfBirth || 'N/A',
-          clinicalHistory: typeof patientInfo.clinicalHistory === 'string' 
-            ? patientInfo.clinicalHistory
-            : patientInfo.clinicalHistory?.clinicalHistory || 
-              'No clinical history available',
-          ...patientInfo
-        });
-        
-        setDownloadOptions({
-          downloadOptions: {
-            hasR2CDN: data.downloadOptions?.hasR2CDN || false,
-            hasWasabiZip: data.downloadOptions?.hasWasabiZip || false,
-            hasR2Zip: data.downloadOptions?.hasR2Zip || false,
-            r2SizeMB: data.downloadOptions?.r2SizeMB || 0,
-            wasabiSizeMB: data.downloadOptions?.wasabiSizeMB || 0,
-            zipStatus: data.downloadOptions?.zipStatus || 'not_started'
-          },
-          orthancStudyID: orthancStudyID,
-          studyInstanceUID: studyInstanceUID
-        });
-        
-        const referringPhysicians = data.referringPhysicians || {};
-        const currentReferring = referringPhysicians.current || {};
-        
+        const currentReferring = (data.referringPhysicians || {}).current || {};
         setReportData({
-          referringPhysician: currentReferring.name || 
-                             currentStudy.referringPhysician || 
-                             studyInfo.physicians?.referring?.name || 
-                             studyInfo.referringPhysician ||
-                             'N/A',
-           clinicalHistory: (() => {
-            const clinicalHist = patientInfo.clinicalHistory || data.clinicalHistory;
-            
-            // If it's already a string, use it
-            if (typeof clinicalHist === 'string') {
-              return clinicalHist;
-            }
-            
-            // If it's an object, extract the actual clinical history text
-            if (typeof clinicalHist === 'object' && clinicalHist !== null) {
-              return clinicalHist.clinicalHistory || 
-                     clinicalHist.previousInjury || 
-                     clinicalHist.previousSurgery || 
-                     'No clinical history available';
-            }
-            
+          referringPhysician: currentReferring.name || currentStudy.referringPhysician || studyInfo.referringPhysician || 'N/A',
+          clinicalHistory: (() => {
+            const h = patientInfo.clinicalHistory || data.clinicalHistory;
+            if (typeof h === 'string') return h;
+            if (typeof h === 'object' && h) return h.clinicalHistory || h.previousInjury || h.previousSurgery || 'No clinical history available';
             return 'No clinical history available';
           })()
         });
+        // toast.success(`Loaded study: ${currentStudy.accessionNumber || studyId}`);
+      }
 
-        toast.success(`Loaded study: ${currentStudy.accessionNumber || studyInfo.accessionNumber || studyId}`);
-      } else {
-        console.error('❌ [Study] Failed to load study data');
-        toast.error("Failed to load study data.");
-      }
-      
-      // Process templates (existing logic - keep unchanged)
       if (templatesResponse.status === 'fulfilled' && templatesResponse.value.data.success) {
-        const templateData = templatesResponse.value.data.data.templates;
-        console.log('✅ [Templates] Setting templates:', {
-          templateCount: Object.keys(templateData).length,
-          templateCategories: Object.keys(templateData)
-        });
-        setTemplates(templateData);
-      } else {
-        console.error('❌ [Templates] Failed to load templates');
+        setTemplates(templatesResponse.value.data.data.templates);
       }
-      
-      // ✅ ENHANCED: Process existing report if available (handles both specific and latest)
+
+      // ✅ NEW: Load ALL existing reports if study has multiple
+      if (allReportsResponse.status === 'fulfilled' && allReportsResponse.value.data.success) {
+        const allReports = allReportsResponse.value.data.data.reports || [];
+
+        if (allReports.length > 1) {
+          // ✅ Multiple reports - load all into state
+          const loadedReports = allReports.map((r, i) => ({
+            id: r._id || `existing-${i}`,
+            content: r.reportContent?.htmlContent || '',
+            capturedImages: r.reportContent?.capturedImages || [],
+            template: r.reportContent?.templateInfo || null,
+            existingReportId: r._id,
+            reportStatus: r.reportStatus,
+            reportType: r.reportType
+          }));
+          setReports(loadedReports);
+          setActiveReportIndex(0);
+          setIsReportOpen(true);
+          toast.success(`📝 Loaded ${allReports.length} existing reports`);
+
+          // Load template for first report
+          if (allReports[0]?.reportContent?.templateInfo?.templateId) {
+            try {
+              const tr = await api.get(`/html-templates/${allReports[0].reportContent.templateInfo.templateId}`);
+              if (tr.data.success) setSelectedTemplate(tr.data.data);
+            } catch (e) {}
+          }
+
+          setReportData(prev => ({ ...prev, existingReport: { id: allReports[0]._id, reportType: allReports[0].reportType, reportStatus: allReports[0].reportStatus } }));
+          return; // ✅ Skip single report loading below
+        }
+      }
+
+      // ✅ Fallback: single report loading (original logic)
       if (existingReportResponse.status === 'fulfilled' && existingReportResponse.value.data.success) {
         const existingReport = existingReportResponse.value.data.data.report;
-        const source = existingReportResponse.value.data.source;
-        
-        console.log('📝 [Existing Report] Found existing report:', {
-          reportId: existingReport._id,
-          reportType: existingReport.reportType,
-          reportStatus: existingReport.reportStatus,
-          contentLength: existingReport.reportContent?.htmlContent?.length || 0,
-          hasTemplate: !!existingReport.templateInfo?.templateId,
-          source: source,
-          isSpecificEdit: reportIdParam && actionParam === 'edit'
-        });
-
-        // Load the existing report content
         if (existingReport.reportContent?.htmlContent) {
-          console.log('📝 [Existing Report] Loading existing content into editor');
-          setReportContent(existingReport.reportContent.htmlContent);
-          
-          // Show notification about loaded report
-          if (reportIdParam && actionParam === 'edit') {
-            toast.success(
-              `📝 Loaded specific report for editing: ${existingReport.reportType} (${existingReport.reportStatus})`,
-              { duration: 5000, icon: '✏️' }
-            );
-          } else {
-            const reportTypeText = existingReport.reportStatus === 'draft' ? 'draft' : 'existing';
-            toast.success(
-              `📝 Loaded ${reportTypeText} report (${new Date(existingReport.updatedAt).toLocaleDateString()})`,
-              { duration: 5000, icon: '📄' }
-            );
-          }
+          setReports([{ id: existingReport._id || 1, content: existingReport.reportContent.htmlContent, capturedImages: existingReport.reportContent?.capturedImages || [], template: null, existingReportId: existingReport._id }]);
+          // toast.success('📝 Loaded existing report');
+          setIsReportOpen(true);
         }
-
-        // If report was created with a template, try to load that template
         if (existingReport.reportContent?.templateInfo?.templateId) {
-          console.log('📄 [Existing Report] Report has template, attempting to load:', existingReport.reportContent.templateInfo.templateId);
-          
           try {
-            const templateResponse = await api.get(`/html-templates/${existingReport.reportContent.templateInfo.templateId}`);
-            
-            if (templateResponse.data.success) {
-              const template = templateResponse.data.data;
-              console.log('✅ [Existing Report] Template loaded for existing report:', template.title);
-              setSelectedTemplate(template);
-              
-              toast.success(`Template "${template.title}" loaded from existing report`, {
-                duration: 3000,
-                icon: '📋'
-              });
-            }
-          } catch (templateError) {
-            console.warn('⚠️ [Existing Report] Could not load template from existing report:', templateError);
-            // Don't fail the whole process if template loading fails
-          }
+            const tr = await api.get(`/html-templates/${existingReport.reportContent.templateInfo.templateId}`);
+            if (tr.data.success) setSelectedTemplate(tr.data.data);
+          } catch (e) {}
         }
-
-        // Store the existing report information for potential updates
-        setReportData(prev => ({
-          ...prev,
-          existingReport: {
-            id: existingReport._id,
-            reportId: existingReport.reportId,
-            reportType: existingReport.reportType,
-            reportStatus: existingReport.reportStatus,
-            createdAt: existingReport.createdAt,
-            updatedAt: existingReport.updatedAt
-          }
-        }));
-
-      } else if (existingReportResponse.status === 'fulfilled' && existingReportResponse.value.status === 404) {
-        console.log('📝 [Existing Report] No existing report found - starting fresh');
-        setReportContent(''); // Reset content for new report
-      } else {
-        console.warn('⚠️ [Existing Report] Could not check for existing reports:', existingReportResponse.reason?.message);
-        setReportContent(''); // Reset content if there's an error
+        setReportData(prev => ({ ...prev, existingReport: { id: existingReport._id, reportId: existingReport.reportId, reportType: existingReport.reportType, reportStatus: existingReport.reportStatus } }));
       }
-
     } catch (error) {
-      console.error('❌ [Initialize] API Error:', error);
-      
-      if (error.response?.status === 404) {
-        console.error('❌ [Initialize] 404 Error - Study not found:', studyId);
-        toast.error(`Study ${studyId} not found or access denied.`);
-        setTimeout(() => navigate('/doctor/dashboard'), 2000);
-      } else if (error.response?.status === 401) {
-        console.error('❌ [Initialize] 401 Error - Authentication expired');
-        toast.error('Authentication expired. Please log in again.');
-        navigate('/login');
-      } else {
-        console.error('❌ [Initialize] Unknown error:', error.message);
-        toast.error(`Failed to load study: ${error.message || 'Unknown error'}`);
-      }
+      if (error.response?.status === 404) { toast.error(`Study not found.`); setTimeout(() => navigate('/doctor/dashboard'), 2000); }
+      else if (error.response?.status === 401) { toast.error('Authentication expired.'); navigate('/login'); }
+      else toast.error(`Failed to load study: ${error.message || 'Unknown error'}`);
     } finally {
-      console.log('🏁 [Initialize] Initialization complete, setting loading to false');
       setLoading(false);
     }
   };
 
-
-  // ✅ NEW: Handle OHIF Image Capture
   const handleAttachOhifImage = () => {
-    console.log('📸 [Capture] Requesting screenshot from OHIF...');
-    const iframe = document.getElementById('ohif-viewer-iframe'); // We will add this ID below
-    
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*');
-      toast.info('Capturing image from viewer...', { icon: '📸' });
-    } else {
-      toast.error('OHIF Viewer not ready');
-    }
+    const iframe = document.getElementById('ohif-viewer-iframe');
+    if (iframe?.contentWindow) { iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*'); toast.loading('📸 Capturing...', { duration: 2000 }); }
+    else toast.error('❌ OHIF Viewer not ready');
   };
 
-  // ✅ NEW: Listen for the Image returning from OHIF
   useEffect(() => {
     const handleOhifMessage = (event) => {
-      // Security check: Ensure message has data
-      if (!event.data) return;
-
-      if (event.data.action === 'OHIF_IMAGE_CAPTURED') {
-        console.log('📸 [Capture] Received image data from OHIF');
-        const { image, viewportId, metadata } = event.data;
-
-        // ✅ Store image data in state ONLY (do NOT insert into HTML)
-        const imageObj = {
-          imageData: image,
-          viewportId: viewportId || 'viewport-1',
-          capturedAt: new Date().toISOString(),
-          imageMetadata: {
-            format: 'png',
-            ...metadata
-          },
-          displayOrder: capturedImages.length
-        };
-
-        setCapturedImages(prev => [...prev, imageObj]);
-        
-        // ✅ Show success message without inserting into HTML
-        toast.success(`Image captured from ${viewportId}! (${capturedImages.length + 1} images stored)`);
-        
-        console.log('✅ [Capture] Image stored in capturedImages array:', {
-          viewportId,
-          totalImages: capturedImages.length + 1,
-          imageSize: image.length
-        });
-      }
+      if (!event.data || event.data.action !== 'OHIF_IMAGE_CAPTURED') return;
+      const { image, viewportId, metadata } = event.data;
+      setCapturedImages(prev => {
+        const newImages = [...prev, { imageData: image, viewportId: viewportId || 'viewport-1', capturedAt: new Date().toISOString(), imageMetadata: { format: 'png', ...metadata }, displayOrder: prev.length }];
+        toast.success(`📸 Image captured! ${newImages.length} ready`);
+        return newImages;
+      });
     };
-
     window.addEventListener('message', handleOhifMessage);
     return () => window.removeEventListener('message', handleOhifMessage);
-  }, [capturedImages]); // ✅ Add capturedImages as dependency
+  }, [activeReportIndex]);
 
-
- const handleTemplateSelect = async (template) => {
-  if (!template) return;
-  
-  try {
-    console.log('📄 [Template] Loading template:', template.title);
-
-    // Get the full template data
-    const response = await api.get(`/html-templates/${template._id}`);
-    
-    if (!response.data?.success) {
-      throw new Error(response.data?.message || 'Failed to load template');
-    }
-
-    const templateData = response.data.data;
-    console.log('✅ [Template] Template loaded successfully');
-
-    // Prepare placeholders for replacement
-    const placeholders = {
-      '--name--': patientData?.fullName || patientData?.patientName || '[Patient Name]',
-      '--patientid--': patientData?.patientId || '[Patient ID]',
-      '--accessionno--': studyData?.accessionNumber || '[Accession Number]',
-      '--age--': patientData?.age || '[Age]',
-      '--gender--': patientData?.gender || '[Gender]',
-      '--agegender--': `${patientData?.age || '[Age]'} / ${patientData?.gender || '[Gender]'}`,
-      '--referredby--': typeof reportData?.referringPhysician === 'string' 
-        ? reportData.referringPhysician
-        : studyData?.referringPhysician || '[Referring Physician]',
-      '--reporteddate--': studyData?.studyDate 
-        ? new Date(studyData.studyDate).toLocaleDateString() 
-        : new Date().toLocaleDateString(),
-      '--studydate--': studyData?.studyDate 
-        ? new Date(studyData.studyDate).toLocaleDateString() 
-        : '[Study Date]',
-      '--modality--': studyData?.modality || '[Modality]',
-      '--clinicalhistory--': reportData?.clinicalHistory || patientData?.clinicalHistory || '[Clinical History]'
-    };
-
-    // Replace placeholders in template content
-    let processedContent = templateData.htmlContent || '';
-    Object.entries(placeholders).forEach(([placeholder, value]) => {
-      const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-      processedContent = processedContent.replace(regex, value);
-    });
-
-    // ✅ CLEAN TEMPLATE: Remove container-level styling that creates box-in-box effect
-    processedContent = cleanTemplateHTML(processedContent);
-
-    // Set the template and content
-    setSelectedTemplate(templateData);
-    setReportContent(processedContent);
-
-    // Record template usage (non-blocking)
+  const handleTemplateSelect = async (template) => {
+    if (!template) return;
     try {
-      await api.post(`/html-templates/${template._id}/record-usage`);
-    } catch (usageError) {
-      console.warn('Could not record template usage:', usageError);
-    }
+      const response = await api.get(`/html-templates/${template._id}`);
+      if (!response.data?.success) throw new Error('Failed to load template');
+      const templateData = response.data.data;
 
-    const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
-    toast.success(`${templateType} template "${template.title}" applied successfully!`);
-    
-  } catch (error) {
-    console.error('❌ [Template] Error loading template:', error);
-    toast.error(`Failed to load template: ${error.message}`);
-  }
-};
-
-// ✅ NEW FUNCTION: Clean template HTML to remove container-level styling
-const cleanTemplateHTML = (html) => {
-  if (!html) return '';
-  
-  // Create a temporary div to parse HTML
-  const temp = document.createElement('div');
-  temp.innerHTML = html;
-  
-  // Remove inline styles that create box effects from outer containers
-  const removeBoxStyles = (element) => {
-    // Only process div and section elements that might be containers
-    if (element.tagName === 'DIV' || element.tagName === 'SECTION') {
-      const style = element.style;
-      
-      // Remove box-shadow
-      if (style.boxShadow) {
-        style.boxShadow = '';
-      }
-      
-      // Remove background colors/images (but keep backgrounds on tables)
-      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH') {
-        if (style.background || style.backgroundColor || style.backgroundImage) {
-          style.background = '';
-          style.backgroundColor = '';
-          style.backgroundImage = '';
-        }
-      }
-      
-      // Remove borders from outer containers (keep borders on tables, th, td)
-      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH' && 
-          !element.classList.contains('patient-info-table') && 
-          !element.classList.contains('page-header-table')) {
-        if (style.border || style.borderTop || style.borderBottom || style.borderLeft || style.borderRight) {
-          style.border = '';
-          style.borderTop = '';
-          style.borderBottom = '';
-          style.borderLeft = '';
-          style.borderRight = '';
-        }
-      }
-      
-      // Remove excessive padding from outer containers (keep table padding)
-      if (element.tagName !== 'TABLE' && element.tagName !== 'TD' && element.tagName !== 'TH') {
-        const padding = parseInt(style.padding || 0);
-        if (padding > 20) {
-          style.padding = '';
-        }
-      }
-      
-      // Remove excessive margin
-      const margin = parseInt(style.margin || 0);
-      if (margin > 20) {
-        style.margin = '';
-      }
-    }
-    
-    // Recursively process children
-    Array.from(element.children).forEach(child => removeBoxStyles(child));
-  };
-  
-  // Process all children
-  removeBoxStyles(temp);
-  
-  return temp.innerHTML;
-};
-
-  const handleSaveDraft = async () => {
-    console.log('💾 [Draft] Starting draft save');
-    console.log('🔍 [Draft] Report content length:', reportContent?.trim()?.length || 0);
-    console.log('🔍 [Draft] Captured images count:', capturedImages.length);
-    console.log('🔍 [Draft] Has existing report:', !!reportData.existingReport);
-    
-    if (!reportContent.trim()) {
-      console.error('❌ [Draft] Cannot save empty draft');
-      toast.error('Cannot save an empty draft.');
-      return;
-    }
-    
-    setSaving(true);
-    
-    try {
-      const currentUser = sessionManager.getCurrentUser();
-      console.log('👤 [Draft] Current user for draft:', currentUser);
-      
-      const templateName = `${currentUser.email.split('@')[0]}_draft_${Date.now()}.docx`;
-      
-      // ✅ FIX: Ensure referringPhysician is always a string
-      const referringPhysicianName = typeof reportData?.referringPhysician === 'string' 
-        ? reportData.referringPhysician
-        : typeof reportData?.referringPhysician === 'object' && reportData.referringPhysician?.name
-        ? reportData.referringPhysician.name
-        : studyData?.referringPhysician || 'N/A';
-      
       const placeholders = {
-        '--name--': patientData?.fullName || '',
-        '--patientid--': patientData?.patientId || '',
-        '--accessionno--': studyData?.accessionNumber || '',
-        '--agegender--': `${patientData?.age || ''} / ${patientData?.gender || ''}`,
-        '--referredby--': referringPhysicianName,
-        '--reporteddate--': studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : new Date().toLocaleDateString(),
-        '--Content--': reportContent
+        '--name--': patientData?.fullName || '[Patient Name]',
+        '--patientid--': patientData?.patientId || '[Patient ID]',
+        '--accessionno--': studyData?.accessionNumber || '[Accession Number]',
+        '--age--': patientData?.age || '[Age]',
+        '--gender--': patientData?.gender || '[Gender]',
+        '--agegender--': `${patientData?.age || '[Age]'} / ${patientData?.gender || '[Gender]'}`,
+        '--referredby--': reportData?.referringPhysician || '[Referring Physician]',
+        '--reporteddate--': new Date().toLocaleDateString(),
+        '--studydate--': studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : '[Study Date]',
+        '--modality--': studyData?.modality || '[Modality]',
+        '--clinicalhistory--': reportData?.clinicalHistory || '[Clinical History]'
       };
 
-      console.log('🔍 [Draft] Placeholders prepared:', {
-        studyId,
-        templateName,
-        placeholdersCount: Object.keys(placeholders).length,
-        referringPhysician: referringPhysicianName,
-        referringPhysicianType: typeof referringPhysicianName,
-        isUpdate: !!reportData.existingReport,
-        capturedImagesCount: capturedImages.length // ✅ NEW
+      let processedContent = templateData.htmlContent || '';
+      Object.entries(placeholders).forEach(([k, v]) => {
+        processedContent = processedContent.replace(new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), v);
       });
 
-      const endpoint = `/reports/studies/${studyId}/store-draft`;
-      console.log('📡 [Draft] Calling report storage endpoint:', endpoint);
-      
-      const response = await api.post(endpoint, {
-        templateName,
-        placeholders,
+      processedContent = cleanTemplateHTML(processedContent);
+      setSelectedTemplate(templateData);
+      setReportContent(processedContent);
+      setIsReportOpen(true);
+      try { await api.post(`/html-templates/${template._id}/record-usage`); } catch (e) {}
+      toast.success(`Template "${template.title}" applied to Report ${activeReportIndex + 1}!`);
+    } catch (error) { toast.error(`Failed to load template: ${error.message}`); }
+  };
+
+  const cleanTemplateHTML = (html) => {
+    if (!html) return '';
+    const temp = document.createElement('div');
+    temp.innerHTML = html;
+    const removeBoxStyles = (el) => {
+      if (el.tagName === 'DIV' || el.tagName === 'SECTION') {
+        const s = el.style;
+        if (s.boxShadow) s.boxShadow = '';
+        if (el.tagName !== 'TABLE' && el.tagName !== 'TD' && el.tagName !== 'TH') {
+          if (s.background || s.backgroundColor) { s.background = ''; s.backgroundColor = ''; s.backgroundImage = ''; }
+        }
+        if (el.tagName !== 'TABLE' && !el.classList.contains('patient-info-table')) {
+          if (s.border || s.borderTop) { s.border = ''; s.borderTop = ''; s.borderBottom = ''; s.borderLeft = ''; s.borderRight = ''; }
+        }
+        if (el.tagName !== 'TABLE' && parseInt(s.padding || 0) > 20) s.padding = '';
+        if (parseInt(s.margin || 0) > 20) s.margin = '';
+      }
+      Array.from(el.children).forEach(removeBoxStyles);
+    };
+    removeBoxStyles(temp);
+    return temp.innerHTML;
+  };
+
+  // ✅ Build placeholders (shared helper)
+  const buildPlaceholders = (content) => ({
+    '--name--': patientData?.fullName || '',
+    '--patientid--': patientData?.patientId || '',
+    '--accessionno--': studyData?.accessionNumber || '',
+    '--agegender--': `${patientData?.age || ''} / ${patientData?.gender || ''}`,
+    '--referredby--': reportData?.referringPhysician || 'N/A',
+    '--reporteddate--': new Date().toLocaleDateString(),
+    '--Content--': content
+  });
+
+  const handleSaveDraft = async () => {
+    if (!reportContent.trim()) { toast.error('Cannot save an empty draft.'); return; }
+    setSaving(true);
+    try {
+      const currentUser = sessionManager.getCurrentUser();
+      const isMulti = reports.length > 1;
+
+      // ✅ MULTI: use store-multiple, SINGLE: use store-draft
+      if (isMulti) {
+        const emptyReports = reports.filter(r => !r.content.trim());
+        if (emptyReports.length > 0) { toast.error(`Report(s) ${emptyReports.map((_, i) => reports.findIndex(r => r === emptyReports[i]) + 1).join(', ')} are empty`); return; }
+
+        const response = await api.post(`/reports/studies/${studyId}/store-multiple`, {
+          reports: reports.map(r => ({
+            htmlContent: r.content,
+            placeholders: buildPlaceholders(r.content),
+            capturedImages: r.capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
+            templateInfo: r.template ? { templateId: r.template._id, templateName: r.template.title } : {},
+            format: 'docx', reportType: 'draft', reportStatus: 'draft'
+          }))
+        });
+        if (response.data.success) toast.success(`${reports.length} drafts saved!`, { icon: '📝' });
+        else throw new Error(response.data.message);
+      } else {
+        const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
+          templateName: `${currentUser.email.split('@')[0]}_draft_${Date.now()}.docx`,
+          placeholders: buildPlaceholders(reportContent),
+          htmlContent: reportContent,
+          templateId: selectedTemplate?._id,
+          templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
+          capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
+          existingReportId: reportData.existingReport?.id || null
+        });
+        if (response.data.success) {
+          if (!reportData.existingReport) setReportData(prev => ({ ...prev, existingReport: { id: response.data.data.reportId, reportType: 'draft', reportStatus: 'draft' } }));
+          toast.success('Draft saved!', { icon: '📝' });
+        } else throw new Error(response.data.message);
+      }
+    } catch (error) { toast.error(`Failed to save draft: ${error.message}`); } finally { setSaving(false); }
+  };
+
+  const handleFinalizeReport = async () => {
+    if (!reportContent.trim()) { toast.error('Please enter report content.'); return; }
+    const isMulti = reports.length > 1;
+
+    if (isMulti) {
+      const emptyReports = reports.filter(r => !r.content.trim());
+      if (emptyReports.length > 0) { toast.error(`Reports ${emptyReports.map((_, i) => reports.findIndex(r => r === emptyReports[i]) + 1).join(', ')} are empty`); return; }
+    }
+
+    if (!window.confirm(`Finalize ${isMulti ? reports.length + ' reports' : 'this report'} as ${exportFormat.toUpperCase()}?`)) return;
+    
+    // ✅ FIX: Stop auto-save BEFORE setting finalizing state
+    if (autoSaveIntervalRef.current) {
+      clearInterval(autoSaveIntervalRef.current);
+      autoSaveIntervalRef.current = null;
+      console.log('⏹️ [AutoSave] Stopped before finalization');
+    }
+    isFinalizedRef.current = true; // ✅ Block any in-flight auto-save from writing after finalize
+
+    setFinalizing(true);
+    try {
+      const currentUser = sessionManager.getCurrentUser();
+
+      if (isMulti) {
+        // ✅ MULTI endpoint
+        const response = await api.post(`/reports/studies/${studyId}/store-multiple`, {
+          reports: reports.map(r => ({
+            htmlContent: r.content,
+            placeholders: buildPlaceholders(r.content),
+            capturedImages: r.capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
+            templateInfo: r.template ? { templateId: r.template._id, templateName: r.template.title } : {},
+            format: exportFormat, reportType: 'finalized', reportStatus: 'finalized'
+          }))
+        });
+        if (response.data.success) {
+          toast.success(`${reports.length} reports finalized!`, { icon: '🎉' });
+          setTimeout(() => handleBackToWorklist(), 3000);
+        } else throw new Error(response.data.message);
+      } else {
+        // ✅ SINGLE endpoint
+        const response = await api.post(`/reports/studies/${studyId}/store-finalized`, {
+          templateName: `${currentUser.email.split('@')[0]}_final_${Date.now()}.${exportFormat}`,
+          placeholders: buildPlaceholders(reportContent),
+          htmlContent: reportContent,
+          format: exportFormat,
+          templateId: selectedTemplate?._id,
+          templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
+          capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id }))
+        });
+         if (response.data.success) {
+            toast.success(`Report finalized as ${exportFormat.toUpperCase()}! Closing...`, { icon: '🎉' });
+            setTimeout(() => window.close(), 2500); // ✅ close tab
+          } else throw new Error(response.data.message);
+      }
+    } catch (error) { 
+      toast.error(`Failed to finalize: ${error.message}`); 
+      isFinalizedRef.current = false; // ✅ Reset on failure so auto-save can resume
+    } finally { 
+      setFinalizing(false); 
+    }
+  };
+
+  const handleUpdateReport = async () => {
+    if (!reportContent.trim()) { toast.error('Cannot update an empty report.'); return; }
+    setSaving(true);
+    try {
+      const response = await api.post(`/verifier/studies/${studyId}/update-report`, {
         htmlContent: reportContent,
+        verificationNotes: 'Report updated during verification',
         templateId: selectedTemplate?._id,
-        templateInfo: selectedTemplate ? {
-          templateId: selectedTemplate._id,
-          templateName: selectedTemplate.title,
-          templateCategory: selectedTemplate.category,
-          templateTitle: selectedTemplate.title
-        } : null,
-        // ✅ NEW: Include captured images
-        capturedImages: capturedImages.map(img => ({
-          ...img,
-          capturedBy: currentUser._id
-        })),
-        // ✅ NEW: Include existing report info for updates
-        existingReportId: reportData.existingReport?.id || null
+        templateInfo: selectedTemplate
+          ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+          : null,
+        maintainFinalizedStatus: true
       });
+      if (response.data.success) toast.success('Report updated!', { icon: '✏️' });
+      else throw new Error(response.data.message);
+    } catch (error) { toast.error(`Failed to update: ${error.message}`); } finally { setSaving(false); }
+  };
 
-      console.log('📡 [Draft] Report storage response:', {
-        status: response.status,
-        success: response.data?.success,
-        data: response.data
+  const handleVerifyReport = async () => {
+    if (!reportContent.trim()) { toast.error('Report content is required for verification.'); return; }
+    if (!window.confirm('Verify this report?')) return;
+    setVerifying(true);
+    try {
+      const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: true, verificationNotes: 'Verified via OHIF', corrections: [], verificationTimeMinutes: 0 });
+    if (response.data.success) { 
+        toast.success('Report verified! Closing tab...', { icon: '✅' }); 
+        setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
+      } else throw new Error(response.data.message);
+    } catch (error) { toast.error(`Failed to verify: ${error.message}`); } finally { setVerifying(false); }
+  };
+
+  const handleRejectReport = async () => {
+    const reason = prompt('Reason To Revert:');
+    if (!reason?.trim()) { toast.error('Revert reason is required.'); return; }
+    if (!window.confirm('Revert this report?')) return;
+    setRejecting(true);
+    try {
+      const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: false, verificationNotes: reason, rejectionReason: reason, corrections: [], verificationTimeMinutes: 0 });
+      if (response.data.success) { 
+        toast.success('Report Reverted! Closing tab...', { icon: '❌' }); 
+        setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
+      }       else throw new Error(response.data.message);
+    } catch (error) { toast.error(`Failed to Revert: ${error.message}`); } finally { setRejecting(false); }
+  };
+
+  const handleBackToWorklist = () => {
+    const route = getDashboardRoute(); // ✅ uses currentUser.role from authContext
+    console.log(`🔙 [Back] Role: ${currentUser?.role} → Redirecting to: ${route}`);
+    navigate(route);
+  };
+
+
+  
+  // ✅ ADD: Auto-save handler — must be defined BEFORE the useEffect that uses it
+  const handleAutoSave = useCallback(async () => {
+    const currentContent = reports[activeReportIndex]?.content || '';
+    const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
+
+    // ✅ FIX: Block auto-save if already finalized or currently finalizing
+    if (!textContent || saving || finalizing || isVerifierMode || isFinalizedRef.current) {
+      console.log('⏭️ [AutoSave] Skipped — empty content, already saving, or finalized');
+      return;
+    }
+
+    setAutoSaveStatus('saving');
+    try {
+      const currentUser = sessionManager.getCurrentUser();
+
+      const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
+        templateName: `${currentUser.email.split('@')[0]}_autosave_${Date.now()}.docx`,
+        placeholders: buildPlaceholders(currentContent),
+        htmlContent: currentContent,
+        templateId: selectedTemplate?._id,
+        templateInfo: selectedTemplate
+          ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+          : null,
+        capturedImages: (reports[activeReportIndex]?.capturedImages || []).map(img => ({ ...img, capturedBy: currentUser._id })),
+        existingReportId: reportData.existingReport?.id || null,  // ✅ UPDATE same report each time
+        reportStatus: 'report_drafted',
+        isAutoSave: true
       });
 
       if (response.data.success) {
-        console.log('✅ [Draft] Draft saved successfully:', {
-          reportId: response.data.data.reportId,
-          filename: response.data.data.filename,
-          wasUpdate: !!reportData.existingReport
-        });
-        
-        // ✅ UPDATE: Store the report info for future updates
-        if (!reportData.existingReport) {
+        // ✅ Store reportId so next auto-save UPDATEs instead of INSERTs
+        if (!reportData.existingReport?.id && response.data.data?.reportId) {
           setReportData(prev => ({
             ...prev,
             existingReport: {
               id: response.data.data.reportId,
               reportType: 'draft',
-              reportStatus: 'draft',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
+              reportStatus: 'report_drafted'
             }
           }));
         }
-        
-        const actionText = reportData.existingReport ? 'updated' : 'saved';
-        toast.success(`Draft ${actionText} successfully!`, {
-          duration: 4000,
-          icon: '📝'  
-        });
-        
+        setAutoSaveStatus('saved');
+        setLastAutoSaved(new Date());
+        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString());
       } else {
-        console.error('❌ [Draft] Draft save failed:', response.data);
-        throw new Error(response.data.message || 'Failed to save draft');
+        setAutoSaveStatus('error');
+        console.warn('⚠️ [AutoSave] Server returned failure:', response.data.message);
       }
-
     } catch (error) {
-      console.error('❌ [Draft] Error saving draft:', error);
-      
-      if (error.response?.status === 404) {
-        console.error('❌ [Draft] 404 - Study not found');
-        toast.error('Study not found. Please refresh and try again.');
-      } else if (error.response?.status === 401) {
-        console.error('❌ [Draft] 401 - Authentication expired');
-        toast.error('Authentication expired. Please log in again.');
-        navigate('/login');
-      } else if (error.response?.status === 400) {
-        console.error('❌ [Draft] 400 - Invalid data');
-        toast.error('Invalid data provided. Please check your report content.');
-      } else if (error.response?.status === 500) {
-        console.error('❌ [Draft] 500 - Server error');
-        toast.error('Server error while saving draft. Please try again.');
-      } else {
-        console.error('❌ [Draft] Unknown error');
-        toast.error(`Failed to save draft: ${error.message || 'Unknown error'}`);
-      }
+      console.error('❌ [AutoSave] Failed:', error);
+      setAutoSaveStatus('error');
     } finally {
-      console.log('🏁 [Draft] Draft save process complete');
-      setSaving(false);
+      // ✅ Reset status back to idle after 3s
+      if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
+      autoSaveStatusTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 3000);
     }
-  };
+  }, [reports, activeReportIndex, saving, finalizing, isVerifierMode, studyId, selectedTemplate, reportData, buildPlaceholders]);
 
-  const handleUpdateReport = async () => {
-    console.log('📝 [Verifier Update] Starting report update');
-    console.log('🔍 [Verifier Update] Report content length:', reportContent?.trim()?.length || 0);
-    console.log('🔍 [Verifier Update] Has existing report:', !!reportData.existingReport);
-    
-    if (!reportContent.trim()) {
-      console.error('❌ [Verifier Update] Cannot update empty report');
-      toast.error('Cannot update an empty report.');
-      return;
-    }
-    
-    setSaving(true);
-    
-    try {
-      const currentUser = sessionManager.getCurrentUser();
-      console.log('👤 [Verifier Update] Current user for update:', currentUser);
-      
-      // ✅ NEW: Use verifier-specific update endpoint
-      const endpoint = `/verifier/studies/${studyId}/update-report`;
-      console.log('📡 [Verifier Update] Calling verifier update endpoint:', endpoint);
-      
-      const updatePayload = {
-        htmlContent: reportContent,
-        verificationNotes: 'Report updated during verification process',
-        templateId: selectedTemplate?._id,
-        templateInfo: selectedTemplate ? {
-          templateId: selectedTemplate._id,
-          templateName: selectedTemplate.title,
-          templateCategory: selectedTemplate.category,
-          templateTitle: selectedTemplate.title
-        } : null,
-        // ✅ IMPORTANT: Keep as finalized for verifier workflow
-        maintainFinalizedStatus: true
-      };
-      
-      const response = await api.post(endpoint, updatePayload);
-
-      console.log('📡 [Verifier Update] Update response:', {
-        status: response.status,
-        success: response.data?.success,
-        data: response.data
-      });
-
-      if (response.data.success) {
-        console.log('✅ [Verifier Update] Report updated successfully');
-        
-        toast.success('Report updated successfully!', {
-          duration: 4000,
-          icon: '✏️'  
-        });
-        
-      } else {
-        console.error('❌ [Verifier Update] Update failed:', response.data);
-        throw new Error(response.data.message || 'Failed to update report');
-      }
-
-    } catch (error) {
-      console.error('❌ [Verifier Update] Error updating report:', error);
-      
-      if (error.response?.status === 404) {
-        toast.error('Report not found. Please refresh and try again.');
-      } else if (error.response?.status === 401) {
-        toast.error('Authentication expired. Please log in again.');
-        navigate('/login');
-      } else if (error.response?.status === 403) {
-        toast.error('Access denied. Verifier permissions required.');
-      } else {
-        toast.error(`Failed to update report: ${error.message || 'Unknown error'}`);
-      }
-    } finally {
-      console.log('🏁 [Verifier Update] Update process complete');
-      setSaving(false);
-    }
-  };
-
-  const handleFinalizeReport = async () => {
-    console.log('🏁 [Finalize] Starting report finalization');
-    console.log('🔍 [Finalize] Captured images count:', capturedImages.length);
-    
-    if (!reportContent.trim()) {
-      toast.error('Please enter report content to finalize.');
-      return;
+  // ✅ ADD: Start/stop auto-save interval when report panel opens/closes
+  useEffect(() => {
+    // Clear any existing interval first
+    if (autoSaveIntervalRef.current) {
+      clearInterval(autoSaveIntervalRef.current);
+      autoSaveIntervalRef.current = null;
     }
 
-    const confirmed = window.confirm(
-      `Are you sure you want to finalize this report as ${exportFormat.toUpperCase()}? Once finalized, it cannot be edited.`
-    );
-    
-    if (!confirmed) return;
-
-    setFinalizing(true);
-    
-    try {
-      const currentUser = sessionManager.getCurrentUser();
-      const templateName = `${currentUser.email.split('@')[0]}_final_${Date.now()}.${exportFormat}`;
-      
-      // ✅ FIX: Ensure referringPhysician is always a string (same as draft)
-      const referringPhysicianName = typeof reportData?.referringPhysician === 'string' 
-        ? reportData.referringPhysician
-        : typeof reportData?.referringPhysician === 'object' && reportData.referringPhysician?.name
-        ? reportData.referringPhysician.name
-        : studyData?.referringPhysician || 'N/A';
-      
-      const placeholders = {
-        '--name--': patientData?.fullName || '',
-        '--patientid--': patientData?.patientId || '',
-        '--accessionno--': studyData?.accessionNumber || '',
-        '--agegender--': `${patientData?.age || ''} / ${patientData?.gender || ''}`,
-        '--referredby--': referringPhysicianName, // ✅ FIX: Always send as string
-        '--reporteddate--': studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : new Date().toLocaleDateString(),
-        '--Content--': reportContent
-      };
-
-      console.log('🔍 [Finalize] Placeholders prepared:', {
-        studyId,
-        templateName,
-        placeholdersCount: Object.keys(placeholders).length,
-        referringPhysician: referringPhysicianName,
-        referringPhysicianType: typeof referringPhysicianName,
-        format: exportFormat
-      });
-
-      // ✅ SIMPLIFIED: Only store the finalized report, no generation step
-      const storeEndpoint = `/reports/studies/${studyId}/store-finalized`;
-      console.log('📡 [Finalize] Calling finalize storage endpoint:', storeEndpoint);
-      
-      const response = await api.post(storeEndpoint, {
-        templateName,
-        placeholders,
-        htmlContent: reportContent,
-        format: exportFormat,
-        templateId: selectedTemplate?._id,
-        templateInfo: selectedTemplate ? {
-          templateId: selectedTemplate._id,
-          templateName: selectedTemplate.title,
-          templateCategory: selectedTemplate.category,
-          templateTitle: selectedTemplate.title
-        } : null,
-        // ✅ NEW: Include captured images
-        capturedImages: capturedImages.map(img => ({
-          ...img,
-          capturedBy: currentUser._id
-        }))
-      });
-
-      console.log('📡 [Finalize] Finalize storage response:', {
-        status: response.status,
-        success: response.data?.success,
-        data: response.data
-      });
-
-      if (response.data.success) {
-        console.log('✅ [Finalize] Report finalized and stored successfully');
-        toast.success(`Report finalized as ${exportFormat.toUpperCase()} successfully!`, {
-          duration: 4000,
-          icon: '🎉'
-        });
-        
-        // Navigate back to dashboard
-        const currentUser = sessionManager.getCurrentUser();
-        if (currentUser?.role === 'doctor_account') {
-          setTimeout(() => navigate('/doctor/dashboard'), 3000);
-        } else if (currentUser?.role === 'verifier') {
-          setTimeout(() => navigate('/verifier/dashboard'), 3000);
-        } else {
-          setTimeout(() => navigate('/admin/dashboard'), 3000);
-        }
-      } else {
-        throw new Error(response.data.message || 'Failed to finalize report');
-      }
-
-    } catch (error) {
-      console.error('❌ [Finalize] Error finalizing report:', error);
-      
-      if (error.response?.status === 404) {
-        console.error('❌ [Finalize] 404 - Study not found');
-        toast.error('Study not found. Please refresh and try again.');
-      } else if (error.response?.status === 401) {
-        console.error('❌ [Finalize] 401 - Authentication expired');
-        toast.error('Authentication expired. Please log in again.');
-        navigate('/login');
-      } else if (error.response?.status === 400) {
-        console.error('❌ [Finalize] 400 - Invalid data');
-        toast.error('Invalid data provided. Please check your report content.');
-      } else if (error.response?.status === 500) {
-        console.error('❌ [Finalize] 500 - Server error');
-        toast.error('Server error while finalizing report. Please try again.');
-      } else {
-        console.error('❌ [Finalize] Unknown error');
-        toast.error(`Failed to finalize report: ${error.message || 'Unknown error'}`);
-      }
-    } finally {
-      setFinalizing(false);
-    }
-  };
-
-  // ✅ NEW: Verifier-specific functions
-  const handleVerifyReport = async () => {
-    console.log('✅ [Verify] Starting report verification');
-    
-    if (!reportContent.trim()) {
-      toast.error('Report content is required for verification.');
-      return;
-    }
-
-    const confirmed = window.confirm('Are you sure you want to verify this report? This action cannot be undone.');
-    if (!confirmed) return;
-
-    setVerifying(true);
-    
-    try {
-      const response = await api.post(`/verifier/studies/${studyId}/verify`, {
-        approved: true,
-        verificationNotes: 'Report verified through OHIF + Reporting interface',
-        corrections: [],
-        verificationTimeMinutes: 0 // Calculate if needed
-      });
-
-      if (response.data.success) {
-        toast.success('Report verified successfully!', {
-          duration: 4000,
-          icon: '✅'
-        });
-        
-        // Navigate back to verifier dashboard
-        setTimeout(() => navigate('/verifier/dashboard'), 2000);
-      } else {
-        throw new Error(response.data.message || 'Failed to verify report');
-      }
-
-    } catch (error) {
-      console.error('❌ [Verify] Error verifying report:', error);
-      toast.error(`Failed to verify report: ${error.message}`);
-    } finally {
-      setVerifying(false);
-    }
-  };
-
-  const handleRejectReport = async () => {
-    console.log('❌ [Reject] Starting report rejection');
-    
-    const rejectionReason = prompt('Please provide a reason for rejecting this report:');
-    if (!rejectionReason || !rejectionReason.trim()) {
-      toast.error('Rejection reason is required.');
-      return;
-    }
-
-    const confirmed = window.confirm('Are you sure you want to reject this report?');
-    if (!confirmed) return;
-
-    setRejecting(true);
-    
-    try {
-      const response = await api.post(`/verifier/studies/${studyId}/verify`, {
-        approved: false,
-        verificationNotes: rejectionReason,
-        rejectionReason: rejectionReason,
-        corrections: [],
-        verificationTimeMinutes: 0 // Calculate if needed
-      });
-
-      if (response.data.success) {
-        toast.success('Report rejected successfully!', {
-          duration: 4000,
-          icon: '❌'
-        });
-        
-        // Navigate back to verifier dashboard
-        setTimeout(() => navigate('/verifier/dashboard'), 2000);
-      } else {
-        throw new Error(response.data.message || 'Failed to reject report');
-      }
-
-    } catch (error) {
-      console.error('❌ [Reject] Error rejecting report:', error);
-      toast.error(`Failed to reject report: ${error.message}`);
-    } finally {
-      setRejecting(false);
-    }
-  };
-
-   const handleBackToWorklist = () => {
-    console.log('🔙 [Navigation] Back to worklist clicked');
-    const currentUser = sessionManager.getCurrentUser();
-    const userRoles = currentUser?.accountRoles || [currentUser?.role];
-    const hasRole = (role) => userRoles.includes(role);
-    
-    console.log('👤 [Navigation] Current user roles for navigation:', userRoles);
-    
-    // ✅ FIXED: Check accountRoles array instead of just role
-    if (isVerifierMode || hasRole('verifier')) {
-      console.log('🔍 [Navigation] Navigating to verifier dashboard');
-      navigate('/verifier/dashboard');
-    } else if (hasRole('assignor')) {
-      console.log('📋 [Navigation] Navigating to assignor dashboard');
-      navigate('/assignor/dashboard');
-    } else if (hasRole('radiologist') || hasRole('doctor_account')) {
-      console.log('🩺 [Navigation] Navigating to doctor dashboard');
-      navigate('/doctor/dashboard');
-    } else if (hasRole('admin')) {
-      console.log('👑 [Navigation] Navigating to admin dashboard');
-      navigate('/admin/dashboard');
-    } else if (hasRole('lab_staff')) {
-      console.log('🧪 [Navigation] Navigating to lab dashboard');
-      navigate('/lab/dashboard');
+    if (isReportOpen && !isVerifierMode) {
+      console.log('⏱️ [AutoSave] Starting auto-save interval (every 10s)');
+      autoSaveIntervalRef.current = setInterval(handleAutoSave, 10000);
     } else {
-      console.log('❓ [Navigation] Unknown role, navigating to login');
-      navigate('/login');
+      console.log('⏹️ [AutoSave] Auto-save stopped');
     }
-  };
-  // Final debug log
-  console.log('📊 [Debug] Current component state:', {
-    studyId,
-    loading,
-    // isVerifierMode,
-    // isVerificationMode,
-    studyData: studyData ? 'loaded' : 'null',
-    patientData: patientData ? 'loaded' : 'null',
-    downloadOptions: downloadOptions ? 'loaded' : 'null',
-    templatesCount: Object.keys(templates).length,
-    selectedTemplate: selectedTemplate ? selectedTemplate.title : 'none',
-    reportContentLength: reportContent?.length || 0,
-    saving,
-    finalizing,
-    verifying,
-    rejecting
-  });
+
+    // Cleanup on unmount or dependency change
+    return () => {
+      if (autoSaveIntervalRef.current) {
+        clearInterval(autoSaveIntervalRef.current);
+        autoSaveIntervalRef.current = null;
+      }
+    };
+  }, [isReportOpen, isVerifierMode, handleAutoSave]); // ✅ handleAutoSave in deps so it uses fresh state
+
+  // ✅ ADD: Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveIntervalRef.current) clearInterval(autoSaveIntervalRef.current);
+      if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
+    };
+  }, []);
 
   if (loading) {
-    console.log('⏳ [Render] Showing loading screen');
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
+      <div className="h-screen w-full bg-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-6 w-6 border-2 border-black border-t-transparent mx-auto mb-3"></div>
           <p className="text-gray-600 text-xs">Loading study {studyId}...</p>
@@ -1056,395 +670,348 @@ const cleanTemplateHTML = (html) => {
     );
   }
 
-  console.log('🎨 [Render] Rendering OHIF + Report Editor component');
-
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      
-      {/* ✅ UPDATED: Top Control Bar with Verifier Controls */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm">
+    <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
+
+      {/* ✅ Single Toaster - bottom-left */}
+      <Toaster
+        position="bottom-left"
+        toastOptions={{
+          duration: 3000,
+          style: {
+            fontSize: '12px',
+            maxWidth: '320px',
+            padding: '8px 12px',
+            borderRadius: '6px'
+          },
+          success: {
+            duration: 2500,
+            style: { background: '#10b981', color: '#fff' }
+          },
+          error: {
+            duration: 3000,
+            style: { background: '#ef4444', color: '#fff' }
+          },
+          loading: {
+            style: { background: '#3b82f6', color: '#fff' }
+          }
+        }}
+      />
+
+      {/* Top Control Bar */}
+      <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div className="px-3 py-2">
           <div className="flex items-center justify-between gap-4">
-            
-            {/* Left Section - Study Info */}
+
+            {/* Left — Study Info */}
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2">
                 <div className="p-1 bg-gray-600 rounded">
                   <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                   </svg>
                 </div>
                 <div className="text-xs">
-                  <span className="font-medium text-gray-900">
-                    {patientData?.fullName || 'Loading...'}
-                  </span>
-                  <span className="text-gray-500 ml-2">
-                    {studyData?.accessionNumber || studyId?.substring(0, 8) + '...' || ''}
-                  </span>
-                  {/* ✅ NEW: Verifier Mode Indicator */}
-                  {isVerifierMode && (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800 rounded">
-                      VERIFIER MODE
-                    </span>
-                  )}
+                  <div className="flex flex-row gap-4">
+                    <div className="flex items-center gap-4">
+                      <span className="font-medium text-gray-900 truncate uppercase" title={patientData?.fullName || ''}>
+                        {(patientData?.fullName || 'Loading...').toString().toUpperCase()}
+                      </span>
+                      <span className="text-gray-500 text-[11px] uppercase">
+                        {(studyData?.accessionNumber || (studyId ? `${String(studyId).substring(0, 8)}...` : '')).toString().toUpperCase()}
+                      </span>
+                      <span className="text-[11px] text-gray-600 ml-2 uppercase">
+                        <strong>AGE:</strong> {(patientData?.age || studyData?.patientAge || 'N/A').toString().toUpperCase()}
+                        {(patientData?.gender || studyData?.patientSex) ? ` / ${(patientData?.gender || studyData?.patientSex).toString().toUpperCase()}` : ''}
+                      </span>
+                    </div>
+                    <div className="text-[12px] text-gray-700 truncate max-w-xs" title={reportData?.clinicalHistory || ''}>
+                      <span className="font-medium text-gray-600 mr-1 uppercase">CLINICAL HISTORY:</span>
+                      <span className="font-normal uppercase">{(reportData?.clinicalHistory || 'No clinical history').toString().toUpperCase()}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              
-              {/* Study Details */}
               <div className="flex items-center space-x-3 text-xs text-gray-600">
                 <span>{studyData?.modality || 'N/A'}</span>
                 <span>•</span>
                 <span>{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : 'N/A'}</span>
-                <span>•</span>
-                <span
-                  className="max-w-[28ch] truncate text-gray-700"
-                  title={reportData?.clinicalHistory || patientData?.clinicalHistory || 'No clinical history'}
-                >
-                  {(() => {
-                    const hist = reportData?.clinicalHistory || patientData?.clinicalHistory || '';
-                    if (!hist) return 'No clinical history';
-                    return hist.length > 80 ? hist.substring(0, 80) + '…' : hist;
-                  })()}
-                </span>
-                <span>•</span>
-                <span className="text-green-600">{reportContent?.length || 0} chars</span>
               </div>
             </div>
 
-            {/* ✅ UPDATED: Center Section - Template Dropdowns OR Verifier Controls */}
+            {/* Center — Controls */}
             <div className="flex items-center space-x-3">
-            
-              {!isVerifierMode ? (
-                // Normal Template Dropdowns for non-verifiers
+              {!isReportOpen && (
+                <button onClick={() => setIsReportOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition-all font-medium text-sm animate-pulse">
+                  <FileText className="w-4 h-4" />
+                  {isVerifierMode ? 'Start Verification' : 'Report Now'}
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              )}
+
+              {isReportOpen && (
                 <>
-                  <div className="flex items-center space-x-2">
-                    <DoctorTemplateDropdown 
-                      onTemplateSelect={handleTemplateSelect}
-                      selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null}
-                    />
-                    <AllTemplateDropdown 
-                      onTemplateSelect={handleTemplateSelect}
-                      selectedTemplate={selectedTemplate}
-                    />
-                  </div>
-
-                  <div className="h-6 w-px bg-gray-300"></div>
-
-                  <button
-                    onClick={handleAttachOhifImage}
-                    className="flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
-                    title="Capture active viewport to report"
-                  >
-                    <Camera className="w-3 h-3" />
-                    <span>Capture</span>
+                  {!isVerifierMode ? (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <DoctorTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null} />
+                        <AllTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate} />
+                      </div>
+                      <div className="h-6 w-px bg-gray-300"></div>
+                      <button
+                        onClick={handleAttachOhifImage}
+                        className="relative flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                        title="Capture active viewport"
+                      >
+                        <Camera className="w-3 h-3" />
+                        <span>Capture</span>
+                        {capturedImages.length > 0 && (
+                          <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold text-white bg-green-500 rounded-full border border-white">
+                            {capturedImages.length}
+                          </span>
+                        )}
+                      </button>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs font-medium text-gray-700">Layout:</label>
+                        <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+                          {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs font-medium text-gray-700">Format:</label>
+                        <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value)} className="px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+                          <option value="docx">DOCX</option>
+                          <option value="pdf">PDF</option>
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-xs font-medium text-purple-700">Layout:</label>
+                        <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-1.5 py-0.5 text-xs border border-purple-200 rounded bg-white">
+                          {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="h-6 w-px bg-purple-300"></div>
+                      <div className="flex items-center space-x-1">
+                        <button onClick={handleUpdateReport} disabled={saving || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Updating...' : 'Update'}</button>
+                        <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Reverting...' : 'Revert'}</button>
+                        <button onClick={handleVerifyReport} disabled={verifying || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded disabled:opacity-50">{verifying ? 'Verifying...' : 'Verify'}</button>
+                      </div>
+                    </>
+                  )}
+                  <button onClick={() => setIsReportOpen(false)} className="p-1 text-gray-500 hover:text-gray-700 border border-gray-300 rounded ml-2" title="Hide Report Panel">
+                    <ChevronRight className="w-4 h-4" />
                   </button>
-                  
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs font-medium text-gray-700">Layout:</label>
-                    <select
-                      value={leftPanelWidth}
-                      onChange={(e) => {
-                        const newWidth = parseInt(e.target.value);
-                        console.log('📏 [UI] Layout width changed:', `${newWidth}% / ${100 - newWidth}%`);
-                        setLeftPanelWidth(newWidth);
-                      }}
-                      className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
-                    >
-                      {widthOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs font-medium text-gray-700">Format:</label>
-                    <select
-                      value={exportFormat}
-                      onChange={(e) => {
-                        console.log('📄 [UI] Export format changed:', e.target.value);
-                        setExportFormat(e.target.value);
-                      }}
-                      className="px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-green-400 bg-white"
-                    >
-                      <option value="docx">DOCX</option>
-                      <option value="pdf">PDF</option>
-                    </select>
-                  </div>
-                </>
-              ) : (
-                // ✅ NEW: Ultra-Compact Verifier Controls
-                <>
-                  <div className="flex items-center space-x-2">
-                    <label className="text-xs font-medium text-purple-700">Layout:</label>
-                    <select
-                      value={leftPanelWidth}
-                      onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))}
-                      className="px-1.5 py-0.5 text-xs border border-purple-200 rounded focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
-                    >
-                      {widthOptions.map(option => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="h-6 w-px bg-purple-300"></div>
-
-                  {/* ✅ NEW: Ultra-Compact Verifier Action Buttons */}
-                  <div className="flex items-center space-x-1">
-                  
-                    {/* Update Report */}
-                    <button
-                      onClick={() => {
-                        console.log('📝 [Verifier] Update report clicked');
-                        handleUpdateReport(); // ✅ Use new verifier-specific function
-                      }}
-                      disabled={saving || !reportContent.trim()}
-                      className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      title="Update Report"
-                    >
-                      {saving ? (
-                        <div className="flex items-center space-x-1">
-                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                          <span>Updating</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-1">
-                          <Edit className="w-3 h-3" />
-                          <span>Update</span>
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Reject Report */}
-                    <button
-                      onClick={() => {
-                        console.log('❌ [Verifier] Reject report clicked');
-                        handleRejectReport();
-                      }}
-                      disabled={rejecting}
-                      className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      title="Reject Report"
-                    >
-                      {rejecting ? (
-                        <div className="flex items-center space-x-1">
-                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                          <span>Rejecting</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-1">
-                          <XCircle className="w-3 h-3" />
-                          <span>Reject</span>
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Verify Report */}
-                    <button
-                      onClick={() => {
-                        console.log('✅ [Verifier] Verify report clicked');
-                        handleVerifyReport();
-                      }}
-                      disabled={verifying || !reportContent.trim()}
-                      className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      title="Verify Report"
-                    >
-                      {verifying ? (
-                        <div className="flex items-center space-x-1">
-                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                          <span>Verifying</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-1">
-                          <CheckCircle className="w-3 h-3" />
-                          <span>Verify</span>
-                        </div>
-                      )}
-                    </button>
-                  </div>
                 </>
               )}
             </div>
 
-            {/* Right Section - Action Buttons */}
-            <div className="flex items-center space-x-2">
-            
-              {!isVerifierMode && (
+            {/* Right — Actions + REPORT SWITCHER */}
+            <div className="flex items-center space-x-1.5">
+
+              {/* ✅ ADD: Auto-save status indicator */}
+              {isReportOpen && !isVerifierMode && (
+                <div className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-medium transition-all ${
+                  autoSaveStatus === 'saving' ? 'border-blue-200 bg-blue-50' :
+                  autoSaveStatus === 'saved'  ? 'border-green-200 bg-green-50' :
+                  autoSaveStatus === 'error'  ? 'border-red-200 bg-red-50' :
+                  'border-gray-200 bg-gray-50'
+                }`}>
+                  {autoSaveStatus === 'saving' && (
+                    <><div className="animate-spin rounded-full h-2 w-2 border border-blue-500 border-t-transparent" /><span className="text-blue-600">Saving...</span></>
+                  )}
+                  {autoSaveStatus === 'saved' && (
+                    <><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-green-600">Saved {lastAutoSaved?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></>
+                  )}
+                  {autoSaveStatus === 'error' && (
+                    <><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-red-600">Save failed</span></>
+                  )}
+                  {autoSaveStatus === 'idle' && (
+                    <><div className="w-2 h-2 rounded-full bg-gray-300" /><span className="text-gray-400">Auto-save on</span></>
+                  )}
+                </div>
+              )}
+
+              {/* ✅ Save, Finalize buttons */}
+              {(isReportOpen && !isVerifierMode) && (
                 <>
-                  <button
-                    onClick={() => {
-                      console.log('💾 [UI] Save draft button clicked');
-                      handleSaveDraft();
-                    }}
-                    disabled={saving || !reportContent.trim()}
-                    className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  <button 
+                    onClick={handleSaveDraft} 
+                    disabled={saving || !reportContent.trim()} 
+                    className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 whitespace-nowrap"
                   >
                     {saving ? (
                       <span className="flex items-center gap-1">
                         <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
-                        Saving...
+                        <span className="hidden sm:inline">Saving...</span>
                       </span>
-                    ) : (
-                      'Save Draft'
-                    )}
+                    ) : 'Save'}
                   </button>
-                  
-                  <button
-                    onClick={() => {
-                      console.log('🏁 [UI] Finalize report button clicked');
-                      handleFinalizeReport();
-                    }}
-                    disabled={finalizing || !reportContent.trim()}
-                    className="px-3 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  <button 
+                    onClick={handleFinalizeReport} 
+                    disabled={finalizing || !reportContent.trim()} 
+                    className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
                   >
                     {finalizing ? (
                       <span className="flex items-center gap-1">
                         <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                        Finalizing...
+                        <span className="hidden sm:inline">Finalizing...</span>
                       </span>
-                    ) : (
-                      `Finalize as ${exportFormat.toUpperCase()}`
-                    )}
+                    ) : `Final${reports.length > 1 ? ` (${reports.length})` : ''}`}
                   </button>
                 </>
               )}
 
-              <button
-                onClick={() => {
-                  console.log('🔙 [UI] Back to dashboard button clicked');
-                  handleBackToWorklist();
-                }}
-                className="px-3 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+              {/* ✅ REPORT SWITCHER DROPDOWN — always visible for doctors */}
+              {!isVerifierMode && (
+                <div className="relative" ref={reportDropdownRef}>
+                  <button
+                    onClick={() => setShowReportDropdown(prev => !prev)}
+                    className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
+                      reports.length > 1
+                        ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    }`}
+                    title="Alt+R: Toggle | Alt+1-9: Switch | Alt+N: Add"
+                  >
+                    <Layers className="w-3 h-3" />
+                    <span className="hidden sm:inline">{activeReportIndex + 1}/{reports.length}</span>
+                    <span
+                      className="ml-0.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 flex-shrink-0"
+                      onClick={(e) => { e.stopPropagation(); handleAddReport(); }}
+                      title="Add report (Alt+N)"
+                    >
+                      <Plus className="w-2.5 h-2.5" />
+                    </span>
+                  </button>
+
+                  {showReportDropdown && (
+                    <div className="absolute top-full right-0 mt-1 w-52 bg-white border border-gray-200 rounded-lg shadow-xl z-50">
+                      {/* Header */}
+                      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 bg-gray-50 rounded-t-lg">
+                        <span className="text-[11px] font-bold text-gray-700 uppercase">Reports</span>
+                        <button
+                          onClick={handleAddReport}
+                          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded hover:bg-blue-700"
+                          title="Alt+N"
+                        >
+                          <Plus className="w-3 h-3" /> Add
+                        </button>
+                      </div>
+
+                      {/* Report List */}
+                      <div className="max-h-48 overflow-y-auto">
+                        {reports.map((report, index) => (
+                          <div
+                            key={report.id}
+                            className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0 ${
+                              index === activeReportIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => handleSwitchReport(index)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${
+                                index === activeReportIndex ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                              }`}>
+                                {index + 1}
+                              </span>
+                              <div>
+                                <div className={`text-[11px] font-medium ${index === activeReportIndex ? 'text-blue-700' : 'text-gray-700'}`}>
+                                  Report {index + 1}
+                                  {report.reportStatus && (
+                                    <span className={`ml-1 text-[9px] px-1 rounded ${report.reportStatus === 'finalized' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                      {report.reportStatus}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[9px] text-gray-400">
+                                  {report.content.trim() ? `${report.content.replace(/<[^>]*>/g, '').substring(0, 20)}...` : 'Empty'}
+                                  {report.capturedImages.length > 0 && ` • ${report.capturedImages.length} img`}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              {index === activeReportIndex && <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>}
+                              {reports.length > 1 && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleRemoveReport(index); }}
+                                  className="p-0.5 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"
+                                  title="Remove"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Shortcuts hint */}
+                      <div className="px-3 py-1.5 border-t border-gray-100 bg-gray-50 rounded-b-lg flex gap-3">
+                        <span className="text-[9px] text-gray-500"><kbd className="bg-white border border-gray-300 rounded px-1">Alt+R</kbd> toggle</span>
+                        <span className="text-[9px] text-gray-500"><kbd className="bg-white border border-gray-300 rounded px-1">Alt+1-9</kbd> switch</span>
+                        <span className="text-[9px] text-gray-500"><kbd className="bg-white border border-gray-300 rounded px-1">Alt+N</kbd> add</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button 
+                onClick={handleBackToWorklist} 
+                className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 whitespace-nowrap"
               >
-                {isVerifierMode ? 'Back to Verifier' : 'Back to Dashboard'}
+                {isVerifierMode ? 'Back' : 'Back'}
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ NEW: Verifier Mode Status Bar */}
-      {isVerifierMode && (
-        <div className="flex-shrink-0 bg-purple-50 border-b border-purple-200 px-3 py-1">
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center space-x-3 text-purple-700">
-              <span className="font-medium">🔍 Verification Mode Active</span>
-              <span>•</span>
-              <span>Patient: {patientData?.fullName || 'Loading...'}</span>
-              <span>•</span>
-              <span>Study: {studyData?.accessionNumber || 'Loading...'}</span>
-            </div>
-            <div className="flex items-center space-x-2 text-purple-600">
-              <span>Report Status: {studyData?.workflowStatus || 'Unknown'}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex">
-        
-        {/* LEFT PANEL - OHIF Viewer */}
-        <div 
-          className="bg-black border-r border-gray-200 flex flex-col"
-          style={{ width: `${leftPanelWidth}%` }}
-        >
-          <div className="flex-1">
+      {/* Main Content */}
+      <div className="flex-1 flex min-h-0">
+        {/* LEFT — OHIF */}
+        <div className="bg-black border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out h-full" style={{ width: isReportOpen ? `${leftPanelWidth}%` : '100%' }}>
+          <div className="flex-1 h-full w-full">
             {ohifViewerUrl ? (
-              <iframe
-                id="ohif-viewer-iframe"  // 👈 ADD THIS ID
-                src={ohifViewerUrl}
-                className="w-full h-full border-0"
-                title="OHIF DICOM Viewer"
-                allow="cross-origin-isolated" // Recommended for shared array buffer
-                onLoad={() => console.log('👁️ [OHIF] OHIF viewer loaded successfully')}
-                onError={() => console.error('❌ [OHIF] OHIF viewer failed to load')}
-              />
+              <iframe id="ohif-viewer-iframe" src={ohifViewerUrl} className="w-full h-full border-0" title="OHIF DICOM Viewer" allow="cross-origin-isolated" />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
                   <p className="text-sm">Loading OHIF viewer...</p>
-                  <p className="text-xs text-gray-400 mt-2">Waiting for StudyInstanceUID...</p>
                 </div>
               </div>
             )}
           </div>
         </div>
 
-        {/* RIGHT PANEL - Report Editor */}
-        <div 
-          className="bg-white flex flex-col"
-          style={{ width: `${100 - leftPanelWidth}%` }}
+        {/* RIGHT — Report Editor */}
+        <div
+          className="bg-white flex flex-col transition-all duration-300 ease-in-out h-full"
+          style={{ width: isReportOpen ? `${100 - leftPanelWidth}%` : '0%', opacity: isReportOpen ? 1 : 0, overflow: 'hidden' }}
         >
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 h-full overflow-hidden flex flex-col">
+            {/* ✅ Key forces ReportEditor to re-render with new state when switching reports */}
             <ReportEditor
+              key={`report-${activeReport.id}`}
               content={reportContent}
-              onChange={(content) => {
-                console.log('✏️ [Editor] Content changed, new length:', content?.length || 0);
-                setReportContent(content);
-              }}
+              onChange={setReportContent}
             />
           </div>
         </div>
       </div>
 
-      {/* ✅ NEW: Selected Template Indicator */}
-      {selectedTemplate && (
+      {/* Template Indicator */}
+      {selectedTemplate && isReportOpen && (
         <div className="fixed bottom-4 right-4 z-40 bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-xs">
           <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0 mr-2">
-              <p className="text-sm font-medium text-gray-900 truncate">
-                📋 {selectedTemplate.title}
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                {selectedTemplate.templateScope === 'global' ? 'Global Template' : 'Personal Template'}
-              </p>
-            </div>
-            <button
-              onClick={() => setSelectedTemplate(null)}
-              className="p-1 hover:bg-gray-100 rounded"
-            >
-              <svg className="w-3 h-3 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
+            <p className="text-sm font-medium text-gray-900 truncate mr-2">📋 {selectedTemplate.title}</p>
+            <button onClick={() => setSelectedTemplate(null)} className="p-1 hover:bg-gray-100 rounded">
+              <XCircle className="w-4 h-4 text-gray-400" />
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ COMPACT: Show existing report notification */}
-      {reportData.existingReport && (
-        <div className="fixed top-16 right-2 z-50 bg-blue-50 border-l-4 border-blue-400 p-2 rounded-lg shadow-lg max-w-xs">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-4 w-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-2">
-              <p className="text-xs text-blue-700">
-                <strong>Existing {reportData.existingReport.reportStatus} report loaded</strong>
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                {new Date(reportData.existingReport.updatedAt).toLocaleDateString()}
-              </p>
-            </div>
-            <div className="ml-auto pl-2">
-              <div className="-mx-1.5 -my-1.5">
-                <button
-                  onClick={() => setReportData(prev => ({ ...prev, existingReport: null }))}
-                  className="inline-flex bg-blue-50 rounded-md p-1 text-blue-500 hover:bg-blue-100"
-                >
-                  <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                  </svg>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}

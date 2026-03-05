@@ -29,6 +29,8 @@ const CreateLab = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [createStaffAccount, setCreateStaffAccount] = useState(true);
     const [showColumnSelector, setShowColumnSelector] = useState(false);
+    const [availableVerifiers, setAvailableVerifiers] = useState([]);
+    const [selectedVerifiers, setSelectedVerifiers] = useState([]);
     
     // Form data
     const [formData, setFormData] = useState({
@@ -209,6 +211,20 @@ const CreateLab = () => {
                     toast.success(`Lab "${lab.name}" (ID: ${lab.identifier}) created successfully!`);
                 }
                 
+                // ✅ NEW: Bind selected verifiers to this lab
+                if (selectedVerifiers.length > 0 && lab._id) {
+                    await Promise.allSettled(
+                        selectedVerifiers.map(verifierId =>
+                            api.put(`/admin/manage-users/${verifierId}/role-config`, {
+                                roleConfig: {
+                                    labAccessMode: 'selected',
+                                    assignedLabs: [lab._id]
+                                }
+                            })
+                        )
+                    );
+                }
+
                 navigate('/admin/dashboard');
             }
         } catch (error) {
@@ -508,6 +524,49 @@ const CreateLab = () => {
                                     />
                                     <label className="text-sm text-slate-700">Require report verification</label>
                                 </div>
+
+                                {/* ✅ NEW: Verifier picker for lab */}
+                                {formData.settings.requireReportVerification && (
+                                    <div className="mt-3 bg-teal-50 border border-teal-200 rounded-lg p-4">
+                                        <label className="block text-sm font-semibold text-teal-900 mb-2">
+                                            Assign Verifier(s) to this Lab
+                                            <span className="ml-1 text-xs font-normal text-teal-500">(optional — can be done later)</span>
+                                        </label>
+
+                                        {availableVerifiers.length === 0 ? (
+                                            <div className="text-center py-3 text-sm text-slate-500 border border-dashed border-teal-300 rounded-lg">
+                                                No verifiers in organization yet
+                                            </div>
+                                        ) : (
+                                            <div className="border border-teal-200 rounded-lg divide-y max-h-36 overflow-y-auto bg-white">
+                                                {availableVerifiers.map(v => (
+                                                    <label key={v._id} className="flex items-center gap-3 px-3 py-2 hover:bg-teal-50 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedVerifiers.includes(v._id)}
+                                                            onChange={() => setSelectedVerifiers(prev =>
+                                                                prev.includes(v._id)
+                                                                    ? prev.filter(id => id !== v._id)
+                                                                    : [...prev, v._id]
+                                                            )}
+                                                            className="w-4 h-4 text-teal-600 rounded"
+                                                        />
+                                                        <div>
+                                                            <div className="text-sm font-medium text-slate-800">{v.fullName}</div>
+                                                            <div className="text-xs text-slate-400">{v.email}</div>
+                                                        </div>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        {selectedVerifiers.length > 0 && (
+                                            <p className="text-xs text-teal-700 mt-2">
+                                                ✅ {selectedVerifiers.length} verifier(s) will be linked to this lab
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 

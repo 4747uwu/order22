@@ -284,7 +284,7 @@ const OnlineReportingSystemWithOHIF = () => {
           setReports(loadedReports);
           setActiveReportIndex(0);
           setIsReportOpen(true);
-          toast.success(`📝 Loaded ${allReports.length} existing reports`);
+          // toast.success(`📝 Loaded ${allReports.length} existing reports`);
 
           // Load template for first report
           if (allReports[0]?.reportContent?.templateInfo?.templateId) {
@@ -420,7 +420,6 @@ const OnlineReportingSystemWithOHIF = () => {
       const currentUser = sessionManager.getCurrentUser();
       const isMulti = reports.length > 1;
 
-      // ✅ MULTI: use store-multiple, SINGLE: use store-draft
       if (isMulti) {
         const emptyReports = reports.filter(r => !r.content.trim());
         if (emptyReports.length > 0) { toast.error(`Report(s) ${emptyReports.map((_, i) => reports.findIndex(r => r === emptyReports[i]) + 1).join(', ')} are empty`); return; }
@@ -437,6 +436,9 @@ const OnlineReportingSystemWithOHIF = () => {
         if (response.data.success) toast.success(`${reports.length} drafts saved!`, { icon: '📝' });
         else throw new Error(response.data.message);
       } else {
+        // ✅ FIX: Use existingReportId from the active report OR reportData
+        const existingId = reports[activeReportIndex]?.existingReportId || reportData.existingReport?.id || null;
+        
         const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
           templateName: `${currentUser.email.split('@')[0]}_draft_${Date.now()}.docx`,
           placeholders: buildPlaceholders(reportContent),
@@ -444,10 +446,19 @@ const OnlineReportingSystemWithOHIF = () => {
           templateId: selectedTemplate?._id,
           templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
           capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
-          existingReportId: reportData.existingReport?.id || null
+          existingReportId: existingId  // ✅ Always pass existing ID
         });
         if (response.data.success) {
-          if (!reportData.existingReport) setReportData(prev => ({ ...prev, existingReport: { id: response.data.data.reportId, reportType: 'draft', reportStatus: 'draft' } }));
+          const returnedReportId = response.data.data?.reportId;
+          if (returnedReportId) {
+            // ✅ Store on both the report and reportData
+            setReports(prev => prev.map((r, i) => 
+              i === activeReportIndex ? { ...r, existingReportId: returnedReportId } : r
+            ));
+            if (!existingId) {
+              setReportData(prev => ({ ...prev, existingReport: { id: returnedReportId, reportType: 'draft', reportStatus: 'draft' } }));
+            }
+          }
           toast.success('Draft saved!', { icon: '📝' });
         } else throw new Error(response.data.message);
       }
@@ -500,13 +511,15 @@ const OnlineReportingSystemWithOHIF = () => {
           htmlContent: reportContent,
           format: exportFormat,
           templateId: selectedTemplate?._id,
-          templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
+          templateInfo: selectedTemplate
+            ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+            : null,
           capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id }))
         });
-        if (response.data.success) {
-          toast.success(`Report finalized as ${exportFormat.toUpperCase()}!`, { icon: '🎉' });
-          setTimeout(() => handleBackToWorklist(), 3000);
-        } else throw new Error(response.data.message);
+         if (response.data.success) {
+            toast.success(`Report finalized as ${exportFormat.toUpperCase()}! Closing...`, { icon: '🎉' });
+            setTimeout(() => window.close(), 2500); // ✅ close tab
+          } else throw new Error(response.data.message);
       }
     } catch (error) { 
       toast.error(`Failed to finalize: ${error.message}`); 
@@ -540,8 +553,10 @@ const OnlineReportingSystemWithOHIF = () => {
     setVerifying(true);
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: true, verificationNotes: 'Verified via OHIF', corrections: [], verificationTimeMinutes: 0 });
-      if (response.data.success) { toast.success('Report verified!', { icon: '✅' }); setTimeout(() => navigate('/verifier/dashboard'), 2000); }
-      else throw new Error(response.data.message);
+    if (response.data.success) { 
+        toast.success('Report verified! Closing tab...', { icon: '✅' }); 
+        setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
+      } else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to verify: ${error.message}`); } finally { setVerifying(false); }
   };
 
@@ -552,8 +567,10 @@ const OnlineReportingSystemWithOHIF = () => {
     setRejecting(true);
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: false, verificationNotes: reason, rejectionReason: reason, corrections: [], verificationTimeMinutes: 0 });
-      if (response.data.success) { toast.success('Report Reverted!', { icon: '❌' }); setTimeout(() => navigate('/verifier/dashboard'), 2000); }
-      else throw new Error(response.data.message);
+      if (response.data.success) { 
+        toast.success('Report Reverted! Closing tab...', { icon: '❌' }); 
+        setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
+      }       else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to Revert: ${error.message}`); } finally { setRejecting(false); }
   };
 
@@ -570,7 +587,6 @@ const OnlineReportingSystemWithOHIF = () => {
     const currentContent = reports[activeReportIndex]?.content || '';
     const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
 
-    // ✅ FIX: Block auto-save if already finalized or currently finalizing
     if (!textContent || saving || finalizing || isVerifierMode || isFinalizedRef.current) {
       console.log('⏭️ [AutoSave] Skipped — empty content, already saving, or finalized');
       return;
@@ -579,6 +595,9 @@ const OnlineReportingSystemWithOHIF = () => {
     setAutoSaveStatus('saving');
     try {
       const currentUser = sessionManager.getCurrentUser();
+
+      // ✅ FIX: Check BOTH reportData.existingReport AND the active report's own existingReportId
+      const existingId = reports[activeReportIndex]?.existingReportId || reportData.existingReport?.id || null;
 
       const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
         templateName: `${currentUser.email.split('@')[0]}_autosave_${Date.now()}.docx`,
@@ -589,26 +608,37 @@ const OnlineReportingSystemWithOHIF = () => {
           ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
           : null,
         capturedImages: (reports[activeReportIndex]?.capturedImages || []).map(img => ({ ...img, capturedBy: currentUser._id })),
-        existingReportId: reportData.existingReport?.id || null,  // ✅ UPDATE same report each time
+        existingReportId: existingId,  // ✅ Always send the correct ID
         reportStatus: 'report_drafted',
         isAutoSave: true
       });
 
       if (response.data.success) {
-        // ✅ Store reportId so next auto-save UPDATEs instead of INSERTs
-        if (!reportData.existingReport?.id && response.data.data?.reportId) {
-          setReportData(prev => ({
-            ...prev,
-            existingReport: {
-              id: response.data.data.reportId,
-              reportType: 'draft',
-              reportStatus: 'report_drafted'
-            }
-          }));
+        const returnedReportId = response.data.data?.reportId;
+        
+        if (returnedReportId) {
+          // ✅ FIX: Save reportId BOTH in active report state AND in reportData
+          setReports(prev => prev.map((r, i) => 
+            i === activeReportIndex 
+              ? { ...r, existingReportId: returnedReportId }  // ✅ Store on the report itself
+              : r
+          ));
+          
+          if (!existingId) {
+            setReportData(prev => ({
+              ...prev,
+              existingReport: {
+                id: returnedReportId,
+                reportType: 'draft',
+                reportStatus: 'report_drafted'
+              }
+            }));
+          }
         }
+        
         setAutoSaveStatus('saved');
         setLastAutoSaved(new Date());
-        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString());
+        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString(), '| reportId:', returnedReportId);
       } else {
         setAutoSaveStatus('error');
         console.warn('⚠️ [AutoSave] Server returned failure:', response.data.message);
@@ -617,7 +647,6 @@ const OnlineReportingSystemWithOHIF = () => {
       console.error('❌ [AutoSave] Failed:', error);
       setAutoSaveStatus('error');
     } finally {
-      // ✅ Reset status back to idle after 3s
       if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
       autoSaveStatusTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 3000);
     }

@@ -187,9 +187,9 @@ const Navbar = ({
               {/* ✅ ADD: Bharat PACS Logo */}
               <div className="flex items-center space-x-2.5">
                 <img 
-                  src="/bharat.png" 
+                  src="/logo.png" 
                   alt="Bharat PACS" 
-                  className="h-8 w-8 object-contain"
+                  className="h-12 w-12 object-contain"
                 />
                 <div className="hidden md:block">
                   <div className="flex items-center space-x-2">

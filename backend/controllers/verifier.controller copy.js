@@ -12,38 +12,85 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
         throw new Error('Access denied: Verifier role required');
     }
 
+    // ✅ BASE: org + workflow statuses
     const queryFilters = {
-        // ✅ UPDATED: More flexible organization filtering
-        $or: [
-            { organizationIdentifier: user.organizationIdentifier },
-            { organizationIdentifier: { $exists: false } },
-            { organizationIdentifier: null }
-        ],
-        // ✅ UPDATED: Only show finalized reports and verification statuses
-        workflowStatus: { 
-            $in: [
-                'report_finalized',  // ✅ Main status for verifiers
-                'verification_in_progress',
-                'report_verified',
-                'report_rejected'
-                // ✅ REMOVED: 'report_drafted' - verifiers shouldn't see drafts
-            ] 
-        }
+        organizationIdentifier: user.organizationIdentifier
     };
 
-    // If user has organization identifier, prioritize their org studies
-    if (user.organizationIdentifier) {
-        console.log('🔍 [Verifier Query] Filtering for organization:', user.organizationIdentifier);
-    } else {
-        console.log('🔍 [Verifier Query] No organization restriction for user');
-    }
+    // ✅ DETERMINE VERIFIABLE STATUSES based on verification requirements
+    let verifiableStatuses = [
+        'verification_pending',
+        'verification_in_progress',
+        // 'report_completed',
+        'final_report_downloaded',
+        'report_rejected',
+        'revert_to_radiologist'
+    ];
 
-    // ✅ WORKFLOW STATUS: Apply status filter if provided
+    // ✅ CRITICAL: Include report_completed ONLY if verification was required
+    // This is determined by checking:
+    // 1. Doctor's requireReportVerification flag
+    // 2. Lab's requireReportVerification setting
+    // 3. Study's explicit requiresVerification flag
+    
+    // For now, always include it and let the query filter below handle it
+    verifiableStatuses.push('report_completed');
+
+    // ✅ WORKFLOW STATUS OVERRIDE
     if (workflowStatuses && workflowStatuses.length > 0) {
-        queryFilters.workflowStatus = workflowStatuses.length === 1 ? workflowStatuses[0] : { $in: workflowStatuses };
+        queryFilters.workflowStatus = workflowStatuses.length === 1 
+            ? workflowStatuses[0] 
+            : { $in: workflowStatuses };
+    } else {
+        queryFilters.workflowStatus = { $in: verifiableStatuses };
     }
 
-    // Rest of the existing filter logic...
+    // ✅ FILTER BY ASSIGNED LABS (lab binding)
+    const assignedLabs = user.roleConfig?.assignedLabs || [];
+    const labAccessMode = user.roleConfig?.labAccessMode || 'all';
+
+    let labFilter = null;
+    
+    if (labAccessMode === 'selected' && assignedLabs.length > 0) {
+        labFilter = { sourceLab: { $in: assignedLabs } };
+        console.log(`🏥 [Verifier] Restricted to ${assignedLabs.length} lab(s):`, assignedLabs);
+    } else if (labAccessMode === 'none') {
+        labFilter = { sourceLab: { $in: [] } };
+        console.log('🚫 [Verifier] Lab access mode = none');
+    } else {
+        labFilter = null;
+        console.log('🏥 [Verifier] Lab access mode = all');
+    }
+
+    // ✅ FILTER BY ASSIGNED RADIOLOGISTS (doctor binding)
+    const assignedRadiologists = user.roleConfig?.assignedRadiologists || [];
+    
+    let radiologistFilter = null;
+    if (assignedRadiologists.length > 0) {
+        radiologistFilter = { 'assignment.assignedTo': { $in: assignedRadiologists } };
+        console.log(`🔒 [Verifier] Restricted to ${assignedRadiologists.length} radiologist(s):`, assignedRadiologists);
+    } else {
+        console.log('🔓 [Verifier] No radiologist restriction - seeing all org studies');
+    }
+
+    // ✅ CRITICAL: COMBINE FILTERS WITH $OR LOGIC
+    if (radiologistFilter && labFilter) {
+        queryFilters.$or = [
+            radiologistFilter,
+            labFilter
+        ];
+        console.log('🔀 [Verifier Filter] Using $OR: study matches if assigned to bound radiologist OR from bound lab');
+    } else if (radiologistFilter) {
+        Object.assign(queryFilters, radiologistFilter);
+        console.log('🔍 [Verifier Filter] Using radiologist filter only');
+    } else if (labFilter) {
+        Object.assign(queryFilters, labFilter);
+        console.log('🔍 [Verifier Filter] Using lab filter only');
+    } else {
+        console.log('🔓 [Verifier Filter] No radiologist or lab restrictions');
+    }
+
+    // ✅ DATE FILTERING
     const { filterStartDate, filterEndDate } = buildDateFilter(req);
     if (filterStartDate || filterEndDate) {
         const dateField = req.query.dateType === 'StudyDate' ? 'studyDate' : 'createdAt';
@@ -52,36 +99,48 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
         if (filterEndDate) queryFilters[dateField].$lte = filterEndDate;
     }
 
+    // ✅ SEARCH - no regex on clinicalHistory
     if (req.query.search) {
-        queryFilters.$or = [
-            { accessionNumber: { $regex: req.query.search, $options: 'i' } },
-            { studyInstanceUID: { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientName': { $regex: req.query.search, $options: 'i' } },
-            { 'patientInfo.patientID': { $regex: req.query.search, $options: 'i' } }
-        ];
+        const searchTerm = req.query.search.trim();
+        const looksLikeId = /^[a-zA-Z0-9\-_.]+$/.test(searchTerm) && searchTerm.length <= 30;
+
+        if (looksLikeId) {
+            queryFilters.$or = [
+                { bharatPacsId: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { accessionNumber: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { 'patientInfo.patientID': { $regex: `^${searchTerm}`, $options: 'i' } }
+            ];
+        } else {
+            queryFilters.$text = { $search: searchTerm };
+        }
     }
 
+    // ✅ MODALITY - single field, hits index
     if (req.query.modality && req.query.modality !== 'all') {
-        queryFilters.$or = [
-            { modality: req.query.modality },
-            { modalitiesInStudy: req.query.modality }
-        ];
+        queryFilters.modality = req.query.modality;
     }
 
+    // ✅ LAB override from query (admin viewing specific lab)
     if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
-        queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
+        if (labAccessMode === 'all' || assignedLabs.map(l => l.toString()).includes(req.query.labId)) {
+            queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
+        }
     }
 
-    if (req.query.priority && req.query.priority !== 'all') {
-        queryFilters['assignment.priority'] = req.query.priority;
-    }
-
+    // ✅ SPECIFIC RADIOLOGIST filter from query (override)
     if (req.query.radiologist && req.query.radiologist !== 'all' && mongoose.Types.ObjectId.isValid(req.query.radiologist)) {
-        queryFilters['assignment.assignedTo'] = new mongoose.Types.ObjectId(req.query.radiologist);
+        const requestedRadId = new mongoose.Types.ObjectId(req.query.radiologist);
+        if (assignedRadiologists.length === 0 || assignedRadiologists.map(r => r.toString()).includes(req.query.radiologist)) {
+            queryFilters['assignment.assignedTo'] = requestedRadId;
+        }
     }
 
-    console.log('🔍 [Verifier Query] Built query filters:', JSON.stringify(queryFilters, null, 2));
+    // ✅ PRIORITY filter
+    if (req.query.priority && req.query.priority !== 'all') {
+        queryFilters.priority = req.query.priority;
+    }
 
+    console.log('🔍 [Verifier Query] Final filters:', JSON.stringify(queryFilters, null, 2));
     return queryFilters;
 };
 
@@ -91,13 +150,30 @@ const executeStudyQuery = async (queryFilters, limit) => {
         const totalStudies = await DicomStudy.countDocuments(queryFilters);
         
         const studies = await DicomStudy.find(queryFilters)
-            .populate('assignment.assignedTo', 'fullName email role specialization')
-            .populate('assignment.assignedBy', 'fullName email role')
-            // ✅ FIXED: Properly populate verification info
-            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role specialization')
-            // ✅ NEW: Populate modern reports and their creators
+            .populate('organization', 'name identifier contactEmail contactPhone address')
+            .populate('patient', 'patientID patientNameRaw firstName lastName age gender dateOfBirth contactNumber')
+            .populate('sourceLab', 'name labName identifier location contactPerson contactNumber')
+            
+            // ✅ CRITICAL: Assignment information with firstName/lastName for fallback
+            .populate('assignment.assignedTo', 'fullName firstName lastName email role specialization organizationIdentifier')
+            .populate('assignment.assignedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: Report and verification info
+            .populate('reportInfo.verificationInfo.verifiedBy', 'fullName firstName lastName email role specialization')
             .populate('reportInfo.modernReports.reportId', 'doctorId createdBy workflowInfo')
-            .populate('sourceLab', 'name identifier location contactPerson')
+            .populate('currentReportStatus.lastReportedBy', 'fullName firstName lastName email role')
+            
+            // ✅ CRITICAL: CategoryTracking populations (THIS WAS MISSING!)
+            .populate('categoryTracking.created.uploadedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.historyCreated.createdBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedTo', 'fullName firstName lastName email role')
+            .populate('categoryTracking.assigned.assignedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.final.finalizedBy', 'fullName firstName lastName email role')
+            .populate('categoryTracking.urgent.markedUrgentBy', 'fullName firstName lastName email role')
+            
+            // ✅ Study lock info
+            .populate('studyLock.lockedBy', 'fullName firstName lastName email role')
+            
             .sort({ 
                 'reportInfo.finalizedAt': -1, 
                 'reportInfo.verificationInfo.verifiedAt': -1,
@@ -106,96 +182,20 @@ const executeStudyQuery = async (queryFilters, limit) => {
             .limit(limit)
             .lean();
 
-        // ✅ ENHANCED: Second populate for nested report references
-        const populatedStudies = [];
-        
-        for (const study of studies) {
-            // Try to get additional report creator info if needed
-            if (study.reportInfo?.modernReports?.length > 0) {
-                const reportId = study.reportInfo.modernReports[0].reportId;
-                if (reportId) {
-                    const Report = mongoose.model('Report');
-                    const reportDetails = await Report.findById(reportId)
-                        .populate('doctorId', 'fullName email role specialization')
-                        .populate('createdBy', 'fullName email role specialization')
-                        .lean();
-                    
-                    if (reportDetails) {
-                        // Add populated report creator info to study
-                        study._reportCreator = reportDetails.doctorId || reportDetails.createdBy;
-                    }
-                }
-            }
-            
-            populatedStudies.push(study);
+        // ✅ DEBUG: Log first study's assignment info
+        if (studies.length > 0) {
+            console.log('🔍 [VERIFIER] FIRST STUDY ASSIGNMENT INFO:', {
+                bharatPacsId: studies[0].bharatPacsId,
+                assignmentAssignedTo: studies[0].assignment?.[0]?.assignedTo?.fullName || 'NOT POPULATED',
+                categoryTrackingAssignedTo: studies[0].categoryTracking?.assigned?.assignedTo?.fullName || 'NOT POPULATED',
+                currentReportedBy: studies[0].currentReportStatus?.lastReportedBy?.fullName || 'NOT POPULATED'
+            });
         }
 
-        return { studies: populatedStudies, totalStudies };
+        return { studies, totalStudies };
         
     } catch (error) {
         console.error('❌ Error in executeStudyQuery:', error);
-        
-        // ✅ FALLBACK: If complex populate fails, try simpler version
-        if (error.message.includes('strictPopulate') || error.message.includes('Cannot populate')) {
-            console.log('⚠️ Falling back to simpler query without complex population');
-            
-            const studies = await DicomStudy.find(queryFilters)
-                .populate('assignment.assignedTo', 'fullName email role specialization')
-                .populate('assignment.assignedBy', 'fullName email role')
-                .populate('sourceLab', 'name identifier location contactPerson')
-                .sort({ 
-                    'reportInfo.finalizedAt': -1, 
-                    createdAt: -1 
-                })
-                .limit(limit)
-                .lean();
-
-            // ✅ MANUAL POPULATION: Manually populate verification info
-            const enhancedStudies = [];
-            const User = mongoose.model('User');
-            
-            for (const study of studies) {
-                // Manually populate verifiedBy if it exists
-                if (study.reportInfo?.verificationInfo?.verifiedBy) {
-                    try {
-                        const verifier = await User.findById(study.reportInfo.verificationInfo.verifiedBy)
-                            .select('fullName email role specialization')
-                            .lean();
-                        
-                        if (verifier) {
-                            study.reportInfo.verificationInfo.verifiedBy = verifier;
-                        }
-                    } catch (err) {
-                        console.warn('⚠️ Failed to populate verifiedBy:', err.message);
-                    }
-                }
-                
-                // Try to get report creator info
-                if (study.reportInfo?.modernReports?.length > 0) {
-                    try {
-                        const reportId = study.reportInfo.modernReports[0].reportId;
-                        if (reportId) {
-                            const Report = mongoose.model('Report');
-                            const reportDetails = await Report.findById(reportId)
-                                .populate('doctorId', 'fullName email role specialization')
-                                .populate('createdBy', 'fullName email role specialization')
-                                .lean();
-                            
-                            if (reportDetails) {
-                                study._reportCreator = reportDetails.doctorId || reportDetails.createdBy;
-                            }
-                        }
-                    } catch (err) {
-                        console.warn('⚠️ Failed to get report creator:', err.message);
-                    }
-                }
-                
-                enhancedStudies.push(study);
-            }
-
-            return { studies: enhancedStudies, totalStudies };
-        }
-        
         throw error;
     }
 };
@@ -217,8 +217,10 @@ export const getValues = async (req, res) => {
 
         // ✅ SIMPLIFIED: Only 2 status categories for counting
         const statusCategories = {
-            verified: ['report_verified'],
-            rejected: ['report_rejected']
+            // ✅ VERIFIED: report_completed + final_report_downloaded
+            verified: ['report_completed', 'final_report_downloaded'],
+            // ✅ REVERTED: report_rejected + revert_to_radiologist
+            rejected: ['report_rejected', 'revert_to_radiologist'],
         };
 
         const pipeline = [
@@ -303,11 +305,12 @@ export const getVerifiedStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const verifiedStatuses = ['report_verified'];
+        // ✅ FIX: verifyReport sets workflowStatus = 'report_completed' when approved
+        // NOT 'report_verified' — that was the bug
+        const verifiedStatuses = ['report_completed', 'final_report_downloaded'];
         const queryFilters = buildVerifierBaseQuery(req, verifiedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
@@ -319,7 +322,7 @@ export const getVerifiedStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -329,7 +332,7 @@ export const getVerifiedStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -354,11 +357,12 @@ export const getRejectedStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const rejectedStatuses = ['report_rejected'];
+        // ✅ FIX: verifyReport sets workflowStatus = 'report_rejected' when rejected
+        // AND revertInfo.isReverted = true — so also include revert_to_radiologist
+        const rejectedStatuses = ['report_rejected', 'revert_to_radiologist'];  // ✅
         const queryFilters = buildVerifierBaseQuery(req, rejectedStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
-
         const processingTime = Date.now() - startTime;
 
         return res.status(200).json({
@@ -370,7 +374,7 @@ export const getRejectedStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -380,7 +384,7 @@ export const getRejectedStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -394,7 +398,7 @@ export const getRejectedStudies = async (req, res) => {
     }
 };
 
-// ✅ UPDATED: Enhanced verify report with proper workflow transitions
+// ✅ UPDATED: Enhanced verify report - updates BOTH DicomStudy AND Report model
 export const verifyReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -403,12 +407,22 @@ export const verifyReport = async (req, res) => {
             corrections = [], 
             approved, 
             rejectionReason,
-            verificationTimeMinutes 
+            verificationTimeMinutes,
+            isRevert = false,   // ✅ NEW: true when called from RevertModal (final_report_downloaded state)
         } = req.body;
         const user = req.user;
+        console.log(`🔍 [Verify Report] User ${user.fullName} (${user.role}) is verifying study ${studyId} with approved=${approved}`);
 
-        // if (!user || user.role !== 'verifier' || user?.accountRoles?.includes('verifier' ) == false) {
-        //     return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
+        // ✅ MULTI-ROLE: Check if user has verifier role in accountRoles
+        const userRoles = user?.accountRoles || [user?.role];
+        const hasVerifierRole = userRoles.includes('verifier');
+        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
+
+        // if (!hasVerifierRole && !hasAdminRole) {
+        //     return res.status(403).json({ 
+        //         success: false, 
+        //         message: 'Access denied: Verifier, Admin, or Assignor role required' 
+        //     });
         // }
 
         if (!mongoose.Types.ObjectId.isValid(studyId)) {
@@ -425,36 +439,63 @@ export const verifyReport = async (req, res) => {
                 return res.status(404).json({ success: false, message: 'Study not found' });
             }
 
-            // ✅ VERIFY ACCESS: Check if verifier can access this study
-            const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
-                user.roleConfig.assignedRadiologists.some(radiologistId => 
-                    study.assignment?.some(assignment => 
-                        assignment.assignedTo?.toString() === radiologistId.toString()
-                    )
-                );
+            // ✅ ADMIN BYPASS: Skip access checks for admin/assignor roles
+            // if (!hasAdminRole) {
+            //     // ✅ VERIFY ACCESS: Check if verifier can access this study
+            //     const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
+            //         user.roleConfig.assignedRadiologists.some(radiologistId => 
+            //             study.assignment?.some(assignment => 
+            //                 assignment.assignedTo?.toString() === radiologistId.toString()
+            //             )
+            //         );
 
-            if (!hasAccess) {
-                await session.abortTransaction();
-                return res.status(403).json({ 
-                    success: false, 
-                    message: 'Access denied: Study not assigned to your radiologists' 
-                });
+            //     if (!hasAccess) {
+            //         await session.abortTransaction();
+            //         return res.status(403).json({ 
+            //             success: false, 
+            //             message: 'Access denied: Study not assigned to your radiologists' 
+            //         });
+            //     }
+            // }
+
+            // ✅ ADMIN BYPASS: Skip workflow state check for admin/assignor roles
+            if (!hasAdminRole) {
+                // ✅ UPDATED: Accept more statuses for verification
+                const verifiableStatuses = [
+                    'verification_pending',
+                    'report_finalized', 
+                    'report_completed',
+                    
+                    'verification_in_progress'
+                ];
+                
+                if (!verifiableStatuses.includes(study.workflowStatus)) {
+                    await session.abortTransaction();
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Study is not in a state that can be verified. Current status: ${study.workflowStatus}. Expected one of: ${verifiableStatuses.join(', ')}` 
+                    });
+                }
+            } else {
+                console.log(`✅ ADMIN BYPASS: User ${user.fullName} (${userRoles.join(', ')}) bypassing workflow state check`);
             }
 
-            // ✅ VERIFY STUDY STATE: Must be in correct state for verification
-            if (!['report_finalized', 'report_drafted', 'verification_in_progress'].includes(study.workflowStatus)) {
-                await session.abortTransaction();
-                return res.status(400).json({ 
-                    success: false, 
-                    message: 'Study is not in a state that can be verified' 
-                });
-            }
-
-            // ✅ BUILD UPDATE: Prepare verification update
             const now = new Date();
-            const updateData = {
-                workflowStatus: approved ? 'report_verified' : 'report_rejected',
-                currentCategory: approved ? 'report_verified' : 'report_rejected',
+            
+            // ✅ STEP 1: Update DicomStudy
+            // ✅ SIMPLIFIED: Check if study needs reprint when approved
+            const needsReprint = study.reprintNeeded === true;
+            const studyUpdateData = {
+                // ✅ NEW LOGIC:
+                // - If approved && reprintNeeded → report_reprint_needed
+                // - If approved && !reprintNeeded → report_completed
+                // - If rejected → report_rejected
+                workflowStatus: approved 
+                    ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                    : 'report_rejected',
+                currentCategory: approved 
+                    ? (needsReprint ? 'REPRINT_NEED' : 'COMPLETED')
+                    : 'REVERTED',
                 'reportInfo.verificationInfo.verifiedBy': user._id,
                 'reportInfo.verificationInfo.verifiedAt': now,
                 'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
@@ -462,62 +503,185 @@ export const verifyReport = async (req, res) => {
                 'reportInfo.verificationInfo.verificationTimeMinutes': verificationTimeMinutes || 0
             };
 
-            // ✅ HANDLE REJECTION: Add rejection details
+            // ✅ CLEAR reprintNeeded flag after processing approval
+            if (approved && needsReprint) {
+                studyUpdateData.reprintNeeded = false;
+                console.log(`✅ [Verify] Study was marked for reprint, setting status to report_reprint_needed and clearing flag`);
+            }
+
+            // ✅ CHANGED: Only set reprintNeeded=true when isRevert=true (called from RevertModal
+            //             on a final_report_downloaded study), NOT on every rejection
             if (!approved) {
-                updateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
+                studyUpdateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
                 if (corrections && corrections.length > 0) {
-                    updateData['reportInfo.verificationInfo.corrections'] = corrections.map(correction => ({
-                        ...correction,
-                        correctedAt: now
-                    }));
+                    studyUpdateData['reportInfo.verificationInfo.corrections'] = corrections;
+                }
+
+                if (isRevert) {
+                    // ✅ RevertModal: study was downloaded → radiologist must re-do → needs reprint
+                    studyUpdateData.reprintNeeded = true;
+                    console.log('🔄 [Verify Revert] isRevert=true → setting reprintNeeded=true');
+                } else {
+                    // ✅ Normal verifier rejection: do NOT touch reprintNeeded
+                    // reprintNeeded stays false — radiologist re-finalizes → goes back to verification
+                    console.log('🔄 [Verify Reject] Normal rejection — reprintNeeded NOT set');
                 }
             }
 
-            // ✅ ADD HISTORY: Track verification action
             const historyEntry = {
-                action: approved ? 'verified' : 'rejected',
+                action: approved 
+                    ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                    : 'rejected',
                 performedBy: user._id,
                 performedAt: now,
                 notes: verificationNotes || rejectionReason || ''
             };
 
-            updateData.$push = {
+            studyUpdateData.$push = {
                 'reportInfo.verificationInfo.verificationHistory': historyEntry,
                 'statusHistory': {
-                    status: approved ? 'report_verified' : 'report_rejected',
+                    status: approved 
+                        ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                        : 'report_rejected',
                     changedAt: now,
                     changedBy: user._id,
-                    note: `Report ${approved ? 'verified' : 'rejected'} by ${user.fullName}`
+                    note: `Report ${approved ? (needsReprint ? 'verified - reprint needed' : 'completed') : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`
                 }
             };
 
-            // ✅ UPDATE STUDY
+            // ✅ UPDATE revertInfo when rejecting
+            if (!approved) {
+                // Initialize revertInfo if needed
+                if (!study.revertInfo) {
+                    study.revertInfo = {
+                        revertHistory: [],
+                        isReverted: false,
+                        revertCount: 0
+                    };
+                }
+                
+                const revertRecord = {
+                    revertedAt: now,
+                    revertedBy: user._id,
+                    revertedByName: user.fullName,
+                    revertedByRole: userRoles.join(', '),
+                    previousStatus: study.workflowStatus,
+                    reason: rejectionReason || 'Report rejected during verification',
+                    notes: verificationNotes || '',
+                    resolved: false
+                };
+                
+                // Add to revert history
+                studyUpdateData.$push['revertInfo.revertHistory'] = revertRecord;
+                
+                // Set current revert and flags
+                studyUpdateData['revertInfo.currentRevert'] = revertRecord;
+                studyUpdateData['revertInfo.isReverted'] = true;
+                studyUpdateData.$inc = { 'revertInfo.revertCount': 1 };
+                
+                console.log('🔄 [Verify Reject] Adding revertInfo for rejected study:', {
+                    revertedBy: user.fullName,
+                    reason: rejectionReason?.substring(0, 100),
+                    newCount: (study.revertInfo?.revertCount || 0) + 1
+                });
+            }
+
             const updatedStudy = await DicomStudy.findByIdAndUpdate(
                 studyId, 
-                updateData, 
+                studyUpdateData, 
                 { session, new: true }
             ).populate('reportInfo.verificationInfo.verifiedBy', 'fullName email role');
 
-            // ✅ UPDATE VERIFIER STATS
-            try {
-                const verifierProfile = await Verifier.findOne({ 
-                    userAccount: user._id 
-                }).session(session);
+            console.log('✅ [Verify] Study updated:', {
+                workflowStatus: updatedStudy.workflowStatus,
+                currentCategory: updatedStudy.currentCategory,
+                reprintNeeded: updatedStudy.reprintNeeded,
+                isReverted: updatedStudy.revertInfo?.isReverted,
+                revertCount: updatedStudy.revertInfo?.revertCount
+            });
 
-                if (verifierProfile) {
-                    await verifierProfile.updateVerificationStats({
-                        verificationTimeMinutes: verificationTimeMinutes || 0,
-                        approved
-                    });
+            // ✅ STEP 2: Update Report model with verification info
+            const Report = mongoose.model('Report');
+            const report = await Report.findOne({
+                dicomStudy: studyId,
+                reportStatus: { $in: ['finalized', 'draft'] }
+            }).session(session);
+
+            if (report) {
+                console.log('📋 [Verify] Updating Report model with verification info:', report._id);
+                
+                // Update report verification info
+                if (!report.verificationInfo) {
+                    report.verificationInfo = {};
                 }
-            } catch (statsError) {
-                console.warn('⚠️ Failed to update verifier stats:', statsError);
-                // Don't fail the main transaction for stats update
+                
+                report.verificationInfo.verifiedBy = user._id;
+                report.verificationInfo.verifiedAt = now;
+                report.verificationInfo.verificationStatus = approved ? 'verified' : 'rejected';
+                report.verificationInfo.verificationNotes = verificationNotes || '';
+                
+                if (!approved) {
+                    report.verificationInfo.rejectionReason = rejectionReason || '';
+                    if (corrections && corrections.length > 0) {
+                        report.verificationInfo.corrections = corrections;
+                    }
+                }
+                
+                // Update report status if verified
+                if (approved) {
+                    report.reportStatus = 'verified';
+                }
+                
+                // Add to verification history
+                if (!report.verificationInfo.verificationHistory) {
+                    report.verificationInfo.verificationHistory = [];
+                }
+                report.verificationInfo.verificationHistory.push(historyEntry);
+                
+                // Update workflow info
+                if (!report.workflowInfo.statusHistory) {
+                    report.workflowInfo.statusHistory = [];
+                }
+                report.workflowInfo.statusHistory.push({
+                    status: approved ? 'verified' : 'rejected',
+                    changedAt: now,
+                    changedBy: user._id,
+                    notes: verificationNotes || rejectionReason || '',
+                    userRole: user.role
+                });
+                
+                await report.save({ session });
+                console.log('✅ [Verify] Report model updated with verification info');
+            } else {
+                console.warn('⚠️ [Verify] No Report document found for study:', studyId);
+            }
+
+            // ✅ STEP 3: Update verifier stats
+            if (hasVerifierRole) {
+                try {
+                    const VerifierModel = mongoose.model('Verifier');
+                    await VerifierModel.findOneAndUpdate(
+                        { userAccount: user._id },
+                        { 
+                            $inc: { 
+                                'verificationStats.totalReportsVerified': 1,
+                                'verificationStats.reportsVerifiedToday': 1,
+                                'verificationStats.reportsVerifiedThisMonth': 1
+                            },
+                            $set: {
+                                'verificationStats.lastVerificationAt': now
+                            }
+                        },
+                        { upsert: false, session }
+                    );
+                } catch (statsError) {
+                    console.log('⚠️ Could not update verifier stats:', statsError.message);
+                }
             }
 
             await session.commitTransaction();
 
-            console.log(`✅ VERIFICATION: Study ${studyId} ${approved ? 'verified' : 'rejected'} by ${user.fullName}`);
+            console.log(`✅ VERIFICATION: Study ${studyId} ${approved ? 'verified' : 'rejected'} by ${user.fullName} (${userRoles.join(', ')})`);
 
             res.status(200).json({
                 success: true,
@@ -527,10 +691,13 @@ export const verifyReport = async (req, res) => {
                     workflowStatus: approved ? 'report_verified' : 'report_rejected',
                     verificationStatus: approved ? 'verified' : 'rejected',
                     verifiedBy: user.fullName,
+                    verifiedByRoles: userRoles,
                     verifiedAt: now,
                     verificationNotes,
                     corrections: !approved ? corrections : undefined,
-                    rejectionReason: !approved ? rejectionReason : undefined
+                    rejectionReason: !approved ? rejectionReason : undefined,
+                    adminBypass: hasAdminRole,
+                    reportModelUpdated: !!report
                 }
             });
 
@@ -581,7 +748,7 @@ export const startVerification = async (req, res) => {
         const now = new Date();
         const updateData = {
             workflowStatus: 'verification_in_progress',
-            currentCategory: 'verification_in_progress',
+            currentCategory: 'VERIFICATION_PENDING',
             $push: {
                 'reportInfo.verificationInfo.verificationHistory': {
                     action: 'verification_started',
@@ -701,7 +868,7 @@ export const getPendingStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -711,7 +878,7 @@ export const getPendingStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -752,7 +919,7 @@ export const getInProgressStudies = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -762,7 +929,7 @@ export const getInProgressStudies = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 
@@ -787,8 +954,16 @@ export const getAllStudiesForVerifier = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        // Get all verification-related statuses
-        const queryFilters = buildVerifierBaseQuery(req);
+        const allStatuses = [
+            'verification_pending',
+            'verification_in_progress',
+            'report_completed',
+            'final_report_downloaded',
+            'report_rejected',
+            'revert_to_radiologist'
+        ];  // ✅
+
+        const queryFilters = buildVerifierBaseQuery(req, allStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);
 
@@ -803,7 +978,7 @@ export const getAllStudiesForVerifier = async (req, res) => {
                 currentPage: 1,
                 totalPages: Math.ceil(totalStudies / limit),
                 totalRecords: totalStudies,
-                limit: limit,
+                limit,
                 hasNextPage: totalStudies > limit,
                 hasPrevPage: false
             },
@@ -813,7 +988,7 @@ export const getAllStudiesForVerifier = async (req, res) => {
                 organizationFilter: user.organizationIdentifier,
                 userRole: user.role,
                 assignedRadiologists: user.roleConfig?.assignedRadiologists,
-                processingTime: processingTime
+                processingTime
             }
         });
 

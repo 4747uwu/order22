@@ -21,12 +21,37 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
     const capturedImages = report.reportContent?.capturedImages || [];
     const imageCount = capturedImages.length;
 
-    let templateName = 'MyReport.docx';
-    if (imageCount > 0 && imageCount <= 5) templateName = `MyReport${imageCount}.docx`;
-    else if (imageCount > 5) templateName = 'MyReport5.docx';
-
     // Lab branding
     const labBranding = report.dicomStudy?.sourceLab?.reportBranding || null;
+
+    // ✅ DETERMINE TEMPLATE NAME based on header/footer availability
+    let hasHeaderFooter = false;
+    if (labBranding) {
+        const hasHeader = labBranding.showHeader !== false && labBranding.headerImage?.url;
+        const hasFooter = labBranding.showFooter !== false && labBranding.footerImage?.url;
+        hasHeaderFooter = hasHeader || hasFooter;
+    }
+
+    let templateName = 'MyReport.docx';
+    
+    if (!hasHeaderFooter) {
+        // ✅ No header/footer: use MyReportNoHeader template with image count increment
+        templateName = 'MyReportNoHeader.docx';
+        if (imageCount > 0 && imageCount <= 5) {
+            templateName = `MyReportNoHeader${imageCount}.docx`;
+        } else if (imageCount > 5) {
+            templateName = 'MyReportNoHeader5.docx';
+        }
+        console.log(`📄 Using NoHeader template (no branding): ${templateName}`);
+    } else {
+        // ✅ Has header/footer: use standard MyReport template with image count increment
+        if (imageCount > 0 && imageCount <= 5) {
+            templateName = `MyReport${imageCount}.docx`;
+        } else if (imageCount > 5) {
+            templateName = 'MyReport5.docx';
+        }
+        console.log(`📄 Using standard template (with branding): ${templateName}`);
+    }
 
     // Doctor data
     let doctorData = null;
@@ -67,7 +92,9 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
     }
 
     const images = {};
-    if (labBranding) {
+    
+    // ✅ Only add header/footer images if they exist
+    if (labBranding && hasHeaderFooter) {
         if (labBranding.showHeader !== false && labBranding.headerImage?.url) {
             images['HeaderPlaceholder'] = {
                 data: labBranding.headerImage.url.replace(/^data:image\/\w+;base64,/, ''),
@@ -97,6 +124,8 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
             width: null, height: null
         };
     });
+
+    console.log(`🎨 [Template Selection] Lab: ${report.dicomStudy?.sourceLab?.name || 'Unknown'}, HasBranding: ${hasHeaderFooter}, ImageCount: ${imageCount}, Template: ${templateName}`);
 
     return {
         templateName,
@@ -190,7 +219,18 @@ class ReportDownloadController {
                 })
                 .populate('doctorId', 'fullName email');
 
-            if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+            if (!report) {
+                return res.status(404).json({ success: false, message: 'Report not found' });
+            }
+
+            // ✅ GUARD: Only allow verified reports to be downloaded
+            if (report.reportStatus !== 'verified') {
+                console.warn(`⚠️ [Download DOCX] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
+                return res.status(403).json({
+                    success: false,
+                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                });
+            }
 
             const payload = await buildDocxPayload(report, 'docx');
 
@@ -214,7 +254,7 @@ class ReportDownloadController {
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
             res.send(Buffer.from(docxResponse.data));
-            console.log(`✅ [Download DOCX] Sent: ${fileName}`);
+            console.log(`✅ [Download DOCX] Sent verified report: ${fileName}`);
 
         } catch (error) {
             console.error('❌ [Download DOCX] Error:', error.message);
@@ -223,7 +263,7 @@ class ReportDownloadController {
     }
 
     // ============================================================
-    // ✅ FIXED: Download single report as PDF (by reportId only)
+    // ✅ Download single report as PDF — VERIFIED ONLY
     // ============================================================
     static async downloadReportAsPDF(req, res) {
         console.log('📥 [Download PDF] Starting...');
@@ -244,7 +284,18 @@ class ReportDownloadController {
                 })
                 .populate('doctorId', 'fullName email');
 
-            if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+            if (!report) {
+                return res.status(404).json({ success: false, message: 'Report not found' });
+            }
+
+            // ✅ GUARD: Only allow verified reports to be downloaded
+            if (report.reportStatus !== 'verified') {
+                console.warn(`⚠️ [Download PDF] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
+                return res.status(403).json({
+                    success: false,
+                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                });
+            }
 
             const payload = await buildDocxPayload(report, 'pdf');
 
@@ -261,7 +312,7 @@ class ReportDownloadController {
             report.downloadInfo.downloadHistory.push({
                 downloadedBy: req.user?._id,
                 downloadedAt: new Date(),
-                downloadType: 'final',  // ✅ Use 'final' enum value
+                downloadType: 'final',
                 ipAddress: req.ip
             });
             await report.save();
@@ -280,17 +331,19 @@ class ReportDownloadController {
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
             res.send(Buffer.from(pdfResponse.data));
-            console.log(`✅ [Download PDF] Sent: ${fileName}`);
+            console.log(`✅ [Download PDF] Sent verified report: ${fileName}`);
 
         } catch (error) {
             console.error('❌ [Download PDF] Error:', error.message);
-            if (error.code === 'ECONNREFUSED') return res.status(503).json({ success: false, message: 'PDF Service unavailable' });
+            if (error.code === 'ECONNREFUSED') {
+                return res.status(503).json({ success: false, message: 'PDF Service unavailable' });
+            }
             res.status(500).json({ success: false, message: 'Failed to download PDF', error: error.message });
         }
     }
 
     // ============================================================
-    // ✅ FIXED: Print single report as PDF (by reportId only)
+    // ✅ Print — VERIFIED ONLY
     // ============================================================
     static async printReportAsPDF(req, res) {
         console.log('🖨️ [Print] Starting...');
@@ -311,13 +364,16 @@ class ReportDownloadController {
                 })
                 .populate('doctorId', 'fullName email');
 
-            if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+            if (!report) {
+                return res.status(404).json({ success: false, message: 'Report not found' });
+            }
 
-            const printableStatuses = ['finalized', 'verified', 'approved'];
-            if (!printableStatuses.includes(report.reportStatus)) {
+            // ✅ GUARD: Only allow verified reports to be printed
+            if (report.reportStatus !== 'verified') {
+                console.warn(`⚠️ [Print] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
                 return res.status(403).json({
                     success: false,
-                    message: `Report not ready for printing. Status: ${report.reportStatus}`
+                    message: `Only verified reports can be printed. This report is currently '${report.reportStatus}'.`
                 });
             }
 

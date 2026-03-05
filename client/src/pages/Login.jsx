@@ -218,9 +218,9 @@ const LoginPage = () => {
           {/* Glass Effect Card behind logo for pop */}
           <div className="bg-white/30 backdrop-blur-md border border-white/50 rounded-[3rem] p-12 shadow-[0_8px_32px_rgba(0,0,0,0.05)] mb-8 transform hover:scale-105 transition-transform duration-500 ease-out">
             <img 
-              src="/bharat.png" 
+              src="/bharatHalf.png" 
               alt="Bharat PACS Logo" 
-              className="w-64 h-64 lg:w-80 lg:h-80 object-contain drop-shadow-xl"
+              className="w-96 h-96 lg:w-96 lg:h-96 object-contain drop-shadow-xl"
             />
           </div>
 

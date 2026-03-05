@@ -19,7 +19,7 @@ router.get('/hierarchy', protect, getUserHierarchy);
 
 // ✅ ROLE MANAGEMENT ROUTES
 router.get('/available-roles', protect, getAvailableRoles);
-router.put('/users/:userId/role-config', protect, updateUserRoleConfig);
+router.put('/:userId/role-config', protect, updateUserRoleConfig);
 
 // ✅ ADDITIONAL UTILITY ROUTES
 router.get('/users/by-role/:role', protect, getUsersByRole);

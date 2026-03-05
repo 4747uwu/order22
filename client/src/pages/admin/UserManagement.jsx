@@ -2,30 +2,37 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
-import { 
-    Download, 
-    Search, 
-    UserPlus, 
-    Edit, 
-    Trash2, 
-    Eye, 
-    EyeOff, 
-    UserCheck, 
-    UserX, 
-    Settings, 
-    X, 
+
+import {
+    Download,
+    Search,
+    UserPlus,
+    Edit,
+    Trash2,
+    Eye,
+    EyeOff,
+    UserCheck,
+    UserX,
+    Settings,
+    X,
     Building2,
     Check,
-    Package,      // ✅ NEW: For compression icon
-    Lock,         // ✅ NEW: For API key icon
-    CheckCircle,  // ✅ NEW: For success states
-    AlertCircle,  // ✅ NEW: For warnings
-    Loader        // ✅ NEW: For loading states
+    Package,
+    Lock,
+    CheckCircle,
+    AlertCircle,
+    Loader,
+    User,
+    Shield,
+    Columns3,
+    Link2,
+    ChevronRight
 } from 'lucide-react';
 import ColumnSelector from '../../components/common/ColumnSelector';
 import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+
 
 const UserManagement = ({ isEmbedded = false }) => {
     const navigate = useNavigate();
@@ -39,24 +46,31 @@ const UserManagement = ({ isEmbedded = false }) => {
     const [deleteModal, setDeleteModal] = useState({ show: false, user: null });
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
-    
+
     // ✅ NEW: Edit Modal State
     const [editModal, setEditModal] = useState({
         show: false,
         user: null,
         loading: false
     });
-    
+
     // ✅ NEW: Edit Form State
     const [editForm, setEditForm] = useState({
         fullName: '',
         email: '',
         password: '',
         visibleColumns: [],
-        requireReportVerification: false
+        requireReportVerification: false,
+        assignedRadiologists: [],
+        assignedLabs: [],
+        labAccessMode: 'all',
     });
 
-    // ✅ NEW: Compression Modal State
+    // ✅ NEW: Available radiologists and labs for verifier assignment
+    const [availableRadiologists, setAvailableRadiologists] = useState([]);
+    const [availableLabs, setAvailableLabs] = useState([]);
+
+
     const [compressionModal, setCompressionModal] = useState({
         show: false,
         loading: false,
@@ -128,44 +142,86 @@ const UserManagement = ({ isEmbedded = false }) => {
         }));
     };
 
-    // ✅ OPEN EDIT MODAL
+    // ✅ UPDATED: OPEN EDIT MODAL
     const handleOpenEditModal = async (user) => {
-        setEditModal({ show: true, user, loading: true }); // ✅ keep this one
-        
+        setEditModal({ show: true, user, loading: true });
+
         let requireVerification = false;
-        
+        let assignedRadiologists = [];
+        let assignedLabs = [];
+        let labAccessMode = 'all';
+
         try {
+            // ✅ Fetch available labs for BOTH assignor and verifier
+            if (user.role === 'assignor' || user.role === 'verifier') {
+                const labsRes = await api.get('/admin/admin-crud/labs');
+                setAvailableLabs(labsRes.data.data || []);
+            }
+
             if (user.role === 'radiologist' && user._id) {
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
-                const doctorProfile = doctors.find(doc => doc.userAccount?._id === user._id);
-                
+                const doctorProfile = doctors.find(doc => 
+                    doc.userAccount?._id === user._id || 
+                    doc.userAccount?._id?.toString() === user._id?.toString()
+                );
                 if (doctorProfile) {
                     requireVerification = doctorProfile.requireReportVerification || false;
                 }
             } else if (user.role === 'lab_staff' && user.lab) {
                 const response = await api.get(`/admin/admin-crud/labs`);
                 const labs = response.data.data;
-                const labProfile = labs.find(lab => lab._id === user.lab);
-                
+                const labProfile = labs.find(lab => 
+                    lab._id === user.lab || lab._id?.toString() === user.lab?.toString()
+                );
                 if (labProfile) {
                     requireVerification = labProfile.settings?.requireReportVerification || false;
                 }
             }
+
+            // ✅ ASSIGNOR: Load lab assignments from roleConfig
+            if (user.role === 'assignor') {
+                labAccessMode = user.roleConfig?.labAccessMode || 'all';
+                assignedLabs = (user.roleConfig?.assignedLabs || []).map(
+                    id => (typeof id === 'object' ? id._id || id : id).toString()
+                );
+            }
+
+            // ✅ VERIFIER: Load both lab + radiologist assignments
+            if (user.role === 'verifier') {
+                labAccessMode = user.roleConfig?.labAccessMode || 'all';
+                assignedLabs = (user.roleConfig?.assignedLabs || []).map(
+                    id => (typeof id === 'object' ? id._id || id : id).toString()
+                );
+                assignedRadiologists = (user.roleConfig?.assignedRadiologists || []).map(
+                    id => (typeof id === 'object' ? id._id || id : id).toString()
+                );
+
+                // ✅ FIX: correct endpoint for fetching radiologists
+                const radRes = await api.get('/admin/manage-users', {
+                    params: { role: 'radiologist' }
+                });
+                const allUsers = radRes.data.data?.users || radRes.data.data || [];
+                setAvailableRadiologists(allUsers.filter(u => u.role === 'radiologist'));
+            }
+
         } catch (error) {
-            console.error('Error fetching verification settings:', error);
-            toast.error('Failed to load verification settings');
+            console.error('Error fetching edit data:', error);
+            toast.error('Failed to load user settings');
         }
-        
+
         setEditForm({
             fullName: user.fullName || '',
             email: user.email || '',
             password: '',
             visibleColumns: user.visibleColumns || [],
-            requireReportVerification: requireVerification
+            requireReportVerification: requireVerification,
+            assignedRadiologists,
+            assignedLabs,
+            labAccessMode,
         });
-        
-        setEditModal(prev => ({ ...prev, loading: false })); // ✅ only update loading
+
+        setEditModal(prev => ({ ...prev, loading: false }));
     };
 
     // ✅ CLOSE EDIT MODAL
@@ -176,7 +232,10 @@ const UserManagement = ({ isEmbedded = false }) => {
             email: '',
             password: '',
             visibleColumns: [],
-            requireReportVerification: false
+            requireReportVerification: false,
+            assignedRadiologists: [],
+            assignedLabs: [],
+            labAccessMode: 'all',
         });
     };
 
@@ -184,7 +243,7 @@ const UserManagement = ({ isEmbedded = false }) => {
     const handleSaveUser = async () => {
         try {
             setEditModal(prev => ({ ...prev, loading: true }));
-            
+
             const updateData = {
                 fullName: editForm.fullName,
                 visibleColumns: editForm.visibleColumns,
@@ -198,15 +257,41 @@ const UserManagement = ({ isEmbedded = false }) => {
                 const response = await api.get(`/admin/admin-crud/doctors`);
                 const doctors = response.data.data;
                 const doctorProfile = doctors.find(doc => doc.userAccount?._id === editModal.user._id);
-                
                 if (doctorProfile) {
                     await api.put(`/admin/admin-crud/doctors/${doctorProfile._id}`, {
                         requireReportVerification: editForm.requireReportVerification
                     });
                 }
-            } else if (editModal.user.role === 'lab_staff' && editModal.user.lab) {
+            }
+
+            if (editModal.user.role === 'lab_staff' && editModal.user.lab) {
                 await api.put(`/admin/admin-crud/labs/${editModal.user.lab}`, {
                     'settings.requireReportVerification': editForm.requireReportVerification
+                });
+            }
+
+            // ✅ ASSIGNOR: Save lab assignments
+            if (editModal.user.role === 'assignor') {
+                await api.put(`/admin/manage-users/${editModal.user._id}/role-config`, {
+                    roleConfig: {
+                        labAccessMode: editForm.labAccessMode,
+                        assignedLabs: editForm.labAccessMode === 'selected'
+                            ? editForm.assignedLabs
+                            : [],
+                    }
+                });
+            }
+
+            // ✅ VERIFIER: Save lab + radiologist assignments
+            if (editModal.user.role === 'verifier') {
+                await api.put(`/admin/manage-users/${editModal.user._id}/role-config`, {
+                    roleConfig: {
+                        labAccessMode: editForm.labAccessMode,
+                        assignedLabs: editForm.labAccessMode === 'selected'
+                            ? editForm.assignedLabs
+                            : [],
+                        assignedRadiologists: editForm.assignedRadiologists,
+                    }
                 });
             }
 
@@ -215,7 +300,7 @@ const UserManagement = ({ isEmbedded = false }) => {
             toast.success('User updated successfully!');
             handleCloseEditModal();
             fetchOrganizationUsers();
-            
+
         } catch (error) {
             console.error('Error updating user:', error);
             toast.error(error.response?.data?.message || 'Failed to update user');
@@ -237,6 +322,28 @@ const UserManagement = ({ isEmbedded = false }) => {
     const handleSelectAllColumns = (columns) => {
         const allColumnIds = columns.map(col => col.id);
         setEditForm({ ...editForm, visibleColumns: allColumnIds });
+    };
+
+    // ✅ HANDLE VERIFIER LAB TOGGLE
+    const handleToggleVerifierLab = (labId) => {
+        const idStr = labId.toString();
+        setEditForm(prev => ({
+            ...prev,
+            assignedLabs: prev.assignedLabs.includes(idStr)
+                ? prev.assignedLabs.filter(id => id !== idStr)
+                : [...prev.assignedLabs, idStr]
+        }));
+    };
+
+    // ✅ HANDLE VERIFIER RADIOLOGIST TOGGLE
+    const handleToggleVerifierRadiologist = (radId) => {
+        const idStr = radId.toString();
+        setEditForm(prev => ({
+            ...prev,
+            assignedRadiologists: prev.assignedRadiologists.includes(idStr)
+                ? prev.assignedRadiologists.filter(id => id !== idStr)
+                : [...prev.assignedRadiologists, idStr]
+        }));
     };
 
     const handleToggleUserStatus = async (userId, currentStatus) => {
@@ -292,14 +399,14 @@ const UserManagement = ({ isEmbedded = false }) => {
     const handleOpenCompressionModal = async () => {
         try {
             setCompressionModal(prev => ({ ...prev, show: true, loading: true }));
-            
+
             // ✅ FIX: Extract organization ID properly
-            const orgId = typeof currentUser.organization === 'object' 
-                ? currentUser.organization._id || currentUser.organization 
+            const orgId = typeof currentUser.organization === 'object'
+                ? currentUser.organization._id || currentUser.organization
                 : currentUser.organization;
-            
+
             console.log('🔍 Fetching labs for organization:', orgId);
-            
+
             // Fetch all labs with compression status
             // ✅ FIX: Remove apiKey from initial fetch (only needed for toggle operations)
             const response = await api.get('/compression/status-all', {
@@ -307,7 +414,7 @@ const UserManagement = ({ isEmbedded = false }) => {
                     organizationId: orgId
                 }
             });
-            
+
             if (response.data.success) {
                 setCompressionModal(prev => ({
                     ...prev,
@@ -359,7 +466,7 @@ const UserManagement = ({ isEmbedded = false }) => {
     // ✅ NEW: GET FILTERED LABS
     const getFilteredLabs = () => {
         if (!compressionModal.searchTerm) return compressionModal.labs;
-        
+
         return compressionModal.labs.filter(lab =>
             lab.labName?.toLowerCase().includes(compressionModal.searchTerm.toLowerCase()) ||
             lab.labIdentifier?.toLowerCase().includes(compressionModal.searchTerm.toLowerCase())
@@ -422,7 +529,7 @@ const UserManagement = ({ isEmbedded = false }) => {
         <div className={isEmbedded ? '' : 'min-h-screen bg-gray-50'}>
             {/* ✅ Only show Navbar when NOT embedded */}
             {!isEmbedded && <Navbar title="User Management" />}
-            
+
             <div className={isEmbedded ? 'px-4 py-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
                 {/* Header Section */}
                 <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -520,11 +627,10 @@ const UserManagement = ({ isEmbedded = false }) => {
                                     <td className="px-6 py-4">
                                         <button
                                             onClick={() => handleToggleUserStatus(user._id, user.isActive)}
-                                            className={`flex items-center space-x-2 px-3 py-1 rounded-full ${
-                                                user.isActive 
-                                                    ? 'bg-green-100 text-green-800 hover:bg-green-200' 
-                                                    : 'bg-red-100 text-red-800 hover:bg-red-200'
-                                            }`}
+                                            className={`flex items-center space-x-2 px-3 py-1 rounded-full ${user.isActive
+                                                ? 'bg-green-100 text-green-800 hover:bg-green-200'
+                                                : 'bg-red-100 text-red-800 hover:bg-red-200'
+                                                }`}
                                         >
                                             {user.isActive ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
                                             <span className="text-xs font-medium">
@@ -614,8 +720,8 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                 <div>
                                                     <div className="font-medium text-gray-900">Compression Action</div>
                                                     <div className="text-sm text-gray-600">
-                                                        {compressionModal.enableCompression 
-                                                            ? 'Enable compression for selected labs' 
+                                                        {compressionModal.enableCompression
+                                                            ? 'Enable compression for selected labs'
                                                             : 'Disable compression for selected labs'}
                                                     </div>
                                                 </div>
@@ -623,18 +729,16 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                     <input
                                                         type="checkbox"
                                                         checked={compressionModal.enableCompression}
-                                                        onChange={(e) => setCompressionModal(prev => ({ 
-                                                            ...prev, 
-                                                            enableCompression: e.target.checked 
+                                                        onChange={(e) => setCompressionModal(prev => ({
+                                                            ...prev,
+                                                            enableCompression: e.target.checked
                                                         }))}
                                                         className="sr-only"
                                                     />
-                                                    <div className={`block w-14 h-8 rounded-full transition ${
-                                                        compressionModal.enableCompression ? 'bg-purple-500' : 'bg-gray-300'
-                                                    }`}></div>
-                                                    <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${
-                                                        compressionModal.enableCompression ? 'transform translate-x-6' : ''
-                                                    }`}></div>
+                                                    <div className={`block w-14 h-8 rounded-full transition ${compressionModal.enableCompression ? 'bg-purple-500' : 'bg-gray-300'
+                                                        }`}></div>
+                                                    <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${compressionModal.enableCompression ? 'transform translate-x-6' : ''
+                                                        }`}></div>
                                                 </div>
                                             </label>
                                         </div>
@@ -647,9 +751,9 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                     type="text"
                                                     placeholder="Search labs..."
                                                     value={compressionModal.searchTerm}
-                                                    onChange={(e) => setCompressionModal(prev => ({ 
-                                                        ...prev, 
-                                                        searchTerm: e.target.value 
+                                                    onChange={(e) => setCompressionModal(prev => ({
+                                                        ...prev,
+                                                        searchTerm: e.target.value
                                                     }))}
                                                     className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                                 />
@@ -658,8 +762,8 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                 onClick={handleSelectAllLabs}
                                                 className="px-4 py-2 border border-purple-300 text-purple-600 rounded-lg hover:bg-purple-50"
                                             >
-                                                {compressionModal.selectedLabs.length === getFilteredLabs().length 
-                                                    ? 'Deselect All' 
+                                                {compressionModal.selectedLabs.length === getFilteredLabs().length
+                                                    ? 'Deselect All'
                                                     : 'Select All'}
                                             </button>
                                         </div>
@@ -699,11 +803,10 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                             </div>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                                                                lab.compressionEnabled 
-                                                                    ? 'bg-green-100 text-green-800' 
-                                                                    : 'bg-gray-100 text-gray-800'
-                                                            }`}>
+                                                            <span className={`px-2 py-1 text-xs font-medium rounded-full ${lab.compressionEnabled
+                                                                ? 'bg-green-100 text-green-800'
+                                                                : 'bg-gray-100 text-gray-800'
+                                                                }`}>
                                                                 {lab.compressionEnabled ? 'Enabled' : 'Disabled'}
                                                             </span>
                                                         </div>
@@ -727,17 +830,17 @@ const UserManagement = ({ isEmbedded = false }) => {
                                                     type={compressionModal.showApiKey ? "text" : "password"}
                                                     placeholder="Enter API Key..."
                                                     value={compressionModal.apiKey}
-                                                    onChange={(e) => setCompressionModal(prev => ({ 
-                                                        ...prev, 
-                                                        apiKey: e.target.value 
+                                                    onChange={(e) => setCompressionModal(prev => ({
+                                                        ...prev,
+                                                        apiKey: e.target.value
                                                     }))}
                                                     className="w-full pl-10 pr-12 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
                                                 />
                                                 <button
                                                     type="button"
-                                                    onClick={() => setCompressionModal(prev => ({ 
-                                                        ...prev, 
-                                                        showApiKey: !prev.showApiKey 
+                                                    onClick={() => setCompressionModal(prev => ({
+                                                        ...prev,
+                                                        showApiKey: !prev.showApiKey
                                                     }))}
                                                     className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                                                 >
@@ -780,124 +883,416 @@ const UserManagement = ({ isEmbedded = false }) => {
                     </div>
                 )}
 
-                {/* Edit User Modal */}
+                {/* Edit User Modal — Full-width adaptive layout */}
                 {editModal.show && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-lg max-w-3xl w-full max-h-[90vh] flex flex-col">
-                            {/* Modal Header */}
-                            <div className="flex justify-between items-center p-6 border-b border-gray-200 sticky top-0 bg-white z-10">
-                                <div>
-                                    <h3 className="text-xl font-semibold text-gray-900">Edit User</h3>
-                                    <p className="text-sm text-gray-500">{editModal.user?.email}</p>
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-2">
+                        <div className="bg-white rounded-xl w-full max-w-[97vw] 2xl:max-w-[1680px] max-h-[96vh] flex flex-col shadow-2xl border border-gray-200/60">
+
+                            {/* ─── HEADER ─── */}
+                            <div className="flex items-center justify-between px-6 py-2.5 border-b border-gray-100 bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-500 to-teal-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">
+                                        {editModal.user?.fullName?.charAt(0)?.toUpperCase() || 'U'}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <h3 className="text-base font-semibold text-gray-900">Edit User</h3>
+                                            <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${getRoleColor(editModal.user?.role)}`}>
+                                                {roleOptions.find(r => r.value === editModal.user?.role)?.label || editModal.user?.role}
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500">{editModal.user?.email}</p>
+                                    </div>
                                 </div>
                                 <button
                                     onClick={handleCloseEditModal}
                                     disabled={editModal.loading}
-                                    className="text-gray-400 hover:text-gray-600"
+                                    className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
                                 >
-                                    <X className="w-6 h-6" />
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
 
-                            {/* Modal Body */}
-                            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                                {/* Basic Info */}
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                                        <input
-                                            type="text"
-                                            value={editForm.fullName}
-                                            onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                        <input
-                                            type="email"
-                                            value={editForm.email}
-                                            onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            New Password (leave blank to keep current)
-                                        </label>
-                                        <input
-                                            type="password"
-                                            value={editForm.password}
-                                            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                                            placeholder="••••••••"
-                                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                                        />
-                                    </div>
-                                </div>
+                            {/* ─── BODY ─── */}
+                            <div className="flex-1 overflow-hidden">
+                                <div className={`grid h-full ${
+                                    editModal.user?.role === 'verifier' ? 'grid-cols-1 lg:grid-cols-12' :
+                                    editModal.user?.role === 'assignor' ? 'grid-cols-1 lg:grid-cols-12' :
+                                    'grid-cols-1 lg:grid-cols-10'
+                                }`}>
 
-                                {/* Visible Columns */}
-                                <div>
-                                    <h4 className="text-sm font-medium text-gray-900 mb-4">
-                                        Visible Columns ({editForm.visibleColumns.length} selected)
-                                    </h4>
-                                    <div className="border border-gray-200 rounded-lg p-4 max-h-64 overflow-y-auto">
-                                        <ColumnSelector
-                                            selectedColumns={editForm.visibleColumns}
-                                            onColumnToggle={handleColumnToggle}
-                                            onSelectAll={handleSelectAllColumns}
-                                            onClearAll={() => setEditForm({ ...editForm, visibleColumns: [] })}
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Verification Toggle (for radiologist and lab_staff) */}
-                                {(editModal.user?.role === 'radiologist' || editModal.user?.role === 'lab_staff') && (
-                                    <div>
-                                        <h4 className="text-sm font-medium text-gray-900 mb-4">Report Verification</h4>
-                                        <label className="flex items-center justify-between p-4 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                                    {/* ══════ COLUMN 1: User Details ══════ */}
+                                    <div className={`${
+                                        editModal.user?.role === 'verifier' ? 'lg:col-span-3' : 
+                                        editModal.user?.role === 'assignor' ? 'lg:col-span-3' : 'lg:col-span-3'
+                                    } px-5 py-4 overflow-y-auto border-r border-gray-100`}>
+                                        <div className="flex items-center gap-1.5 mb-3">
+                                            <User className="w-3.5 h-3.5 text-teal-600" />
+                                            <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">User Details</h4>
+                                        </div>
+                                        <div className="space-y-2.5">
                                             <div>
-                                                <div className="font-medium text-gray-900">Require Report Verification</div>
-                                                <div className="text-sm text-gray-500">
-                                                    All finalized reports must be verified before completion
-                                                </div>
-                                            </div>
-                                            <div className="relative">
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">Full Name</label>
                                                 <input
-                                                    type="checkbox"
-                                                    checked={editForm.requireReportVerification}
-                                                    onChange={(e) => setEditForm({ ...editForm, requireReportVerification: e.target.checked })}
-                                                    className="sr-only"
+                                                    type="text"
+                                                    value={editForm.fullName}
+                                                    onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-shadow"
                                                 />
-                                                <div className={`block w-14 h-8 rounded-full transition ${editForm.requireReportVerification ? 'bg-teal-500' : 'bg-gray-300'}`}></div>
-                                                <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${editForm.requireReportVerification ? 'transform translate-x-6' : ''}`}></div>
                                             </div>
-                                        </label>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">Email</label>
+                                                <input
+                                                    type="email"
+                                                    value={editForm.email}
+                                                    readOnly
+                                                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-500 cursor-not-allowed"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                                    New Password
+                                                    <span className="ml-1 text-[10px] font-normal text-gray-400">(leave blank to keep)</span>
+                                                </label>
+                                                <input
+                                                    type="password"
+                                                    value={editForm.password}
+                                                    onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                                                    placeholder="••••••••"
+                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-shadow"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/* Report Verification (radiologist / lab_staff only) */}
+                                        {(editModal.user?.role === 'radiologist' || editModal.user?.role === 'lab_staff') && (
+                                            <div className="mt-4">
+                                                <div className="flex items-center gap-1.5 mb-2">
+                                                    <Shield className="w-3.5 h-3.5 text-teal-600" />
+                                                    <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Verification</h4>
+                                                </div>
+                                                <label className="flex items-center justify-between p-2.5 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                                    <div className="pr-3">
+                                                        <div className="text-xs font-medium text-gray-900">Require Verification</div>
+                                                        <div className="text-[10px] text-gray-500 mt-0.5">Reports must be verified before completion</div>
+                                                    </div>
+                                                    <div className="relative flex-shrink-0">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editForm.requireReportVerification}
+                                                            onChange={(e) => setEditForm({ ...editForm, requireReportVerification: e.target.checked })}
+                                                            className="sr-only"
+                                                        />
+                                                        <div className={`block w-10 h-5 rounded-full transition ${editForm.requireReportVerification ? 'bg-teal-500' : 'bg-gray-300'}`}></div>
+                                                        <div className={`absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${editForm.requireReportVerification ? 'transform translate-x-5' : ''}`}></div>
+                                                    </div>
+                                                </label>
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+
+                                    {/* ══════ COLUMN 2: ASSIGNOR Lab Assignment ══════ */}
+                                    {editModal.user?.role === 'assignor' && (
+                                        <div className="lg:col-span-4 px-5 py-4 overflow-y-auto border-r border-gray-100">
+                                            <div className="flex items-center gap-1.5 mb-3">
+                                                <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                                                <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Lab Access Assignment</h4>
+                                            </div>
+
+                                            {editModal.loading ? (
+                                                <div className="flex justify-center py-8">
+                                                    <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {/* Lab Access Mode */}
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-700 mb-1.5">Access Mode</label>
+                                                        <div className="grid grid-cols-3 gap-1.5">
+                                                            {[
+                                                                { value: 'all', icon: '🌐', label: 'All Labs' },
+                                                                { value: 'selected', icon: '✅', label: 'Selected' },
+                                                                { value: 'none', icon: '🚫', label: 'None' },
+                                                            ].map(opt => (
+                                                                <button
+                                                                    key={opt.value}
+                                                                    type="button"
+                                                                    onClick={() => setEditForm(prev => ({ ...prev, labAccessMode: opt.value }))}
+                                                                    className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold transition-all text-center ${
+                                                                        editForm.labAccessMode === opt.value
+                                                                            ? 'border-teal-500 bg-teal-50 text-teal-700 shadow-sm'
+                                                                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                                                                    }`}
+                                                                >
+                                                                    {opt.icon} {opt.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Current mode summary */}
+                                                    <div className={`rounded-lg px-3 py-2 text-[11px] border ${
+                                                        editForm.labAccessMode === 'all' ? 'bg-green-50 border-green-200 text-green-800' :
+                                                        editForm.labAccessMode === 'none' ? 'bg-red-50 border-red-200 text-red-800' :
+                                                        'bg-teal-50 border-teal-200 text-teal-800'
+                                                    }`}>
+                                                        {editForm.labAccessMode === 'all' && '🌐 This assignor can see studies from ALL labs'}
+                                                        {editForm.labAccessMode === 'none' && '🚫 This assignor has NO lab access'}
+                                                        {editForm.labAccessMode === 'selected' && (
+                                                            <span>✅ Assigned to <strong>{editForm.assignedLabs.length} lab(s)</strong>
+                                                            {editForm.assignedLabs.length === 0 && <span className="text-amber-600 ml-1">⚠️ Select at least one lab below</span>}
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Lab checklist — shown only for 'selected' mode */}
+                                                    {editForm.labAccessMode === 'selected' && (
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1.5">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <label className="text-xs font-medium text-gray-700">Select Labs</label>
+                                                                    <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded-full font-semibold">
+                                                                        {editForm.assignedLabs.length} selected
+                                                                    </span>
+                                                                </div>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setEditForm(prev => ({
+                                                                            ...prev,
+                                                                            assignedLabs: availableLabs.map(l => (l._id || l.id).toString())
+                                                                        }))}
+                                                                        className="text-[10px] text-teal-600 hover:underline font-medium"
+                                                                    >
+                                                                        All
+                                                                    </button>
+                                                                    <span className="text-gray-300">|</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setEditForm(prev => ({ ...prev, assignedLabs: [] }))}
+                                                                        className="text-[10px] text-red-500 hover:underline font-medium"
+                                                                    >
+                                                                        Clear
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-[45vh] overflow-y-auto">
+                                                                {availableLabs.length === 0 ? (
+                                                                    <div className="p-4 text-xs text-gray-400 text-center">No labs found in organization</div>
+                                                                ) : availableLabs.map(lab => {
+                                                                    const labId = (lab._id || lab.id).toString();
+                                                                    const isChecked = editForm.assignedLabs.includes(labId);
+                                                                    return (
+                                                                        <label key={labId} className={`flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors ${isChecked ? 'bg-teal-50' : 'hover:bg-gray-50'}`}>
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={isChecked}
+                                                                                onChange={() => handleToggleVerifierLab(labId)}
+                                                                                className="w-3.5 h-3.5 text-teal-600 border-gray-300 rounded"
+                                                                            />
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="text-xs font-medium text-gray-800 truncate">{lab.name}</div>
+                                                                                <div className="text-[10px] text-gray-400">{lab.identifier}</div>
+                                                                            </div>
+                                                                            {isChecked && <Check className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ══════ COLUMN 2: Verifier Assignments (verifier only) ══════ */}
+                                    {editModal.user?.role === 'verifier' && (
+                                        <div className="lg:col-span-4 px-5 py-4 overflow-y-auto border-r border-gray-100">
+                                            <div className="flex items-center gap-1.5 mb-3">
+                                                <Link2 className="w-3.5 h-3.5 text-teal-600" />
+                                                <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Verifier Assignments</h4>
+                                            </div>
+
+                                            {editModal.loading ? (
+                                                <div className="flex justify-center py-8">
+                                                    <div className="w-5 h-5 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+                                                </div>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {/* Lab Access Mode */}
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-700 mb-1.5">Lab Access Mode</label>
+                                                        <div className="grid grid-cols-3 gap-1.5">
+                                                            {[
+                                                                { value: 'all', icon: '🌐', label: 'All Labs' },
+                                                                { value: 'selected', icon: '✅', label: 'Selected' },
+                                                                { value: 'none', icon: '🚫', label: 'None' },
+                                                            ].map(opt => (
+                                                                <button
+                                                                    key={opt.value}
+                                                                    type="button"
+                                                                    onClick={() => setEditForm(prev => ({ ...prev, labAccessMode: opt.value }))}
+                                                                    className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold transition-all text-center ${
+                                                                        editForm.labAccessMode === opt.value
+                                                                            ? 'border-teal-500 bg-teal-50 text-teal-700 shadow-sm'
+                                                                            : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                                                                    }`}
+                                                                >
+                                                                    {opt.icon} {opt.label}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Assigned Labs & Radiologists — side by side */}
+                                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                                        {/* Assigned Labs */}
+                                                        {editForm.labAccessMode === 'selected' && (
+                                                            <div className="flex flex-col">
+                                                                <div className="flex items-center gap-1.5 mb-1.5">
+                                                                    <Building2 className="w-3 h-3 text-teal-600" />
+                                                                    <label className="text-xs font-medium text-gray-700">Labs</label>
+                                                                    <span className="px-1.5 py-0.5 bg-teal-100 text-teal-700 text-[10px] rounded-full font-semibold">
+                                                                        {editForm.assignedLabs.length}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 flex-1 max-h-[45vh] overflow-y-auto">
+                                                                    {availableLabs.length === 0 ? (
+                                                                        <div className="p-4 text-xs text-gray-400 text-center">No labs found</div>
+                                                                    ) : availableLabs.map(lab => {
+                                                                        const labId = (lab._id || lab.id).toString();
+                                                                        const isChecked = editForm.assignedLabs.includes(labId);
+                                                                        return (
+                                                                            <label key={labId} className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors text-xs ${isChecked ? 'bg-teal-50' : 'hover:bg-gray-50'}`}>
+                                                                                <input
+                                                                                    type="checkbox"
+                                                                                    checked={isChecked}
+                                                                                    onChange={() => handleToggleVerifierLab(labId)}
+                                                                                    className="w-3.5 h-3.5 text-teal-600 border-gray-300 rounded"
+                                                                                />
+                                                                                <span className="text-xs font-medium text-gray-800 truncate flex-1">{lab.name}</span>
+                                                                                {isChecked && <Check className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />}
+                                                                            </label>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Assigned Radiologists */}
+                                                        <div className={`flex flex-col ${editForm.labAccessMode !== 'selected' ? 'xl:col-span-2' : ''}`}>
+                                                            <div className="flex items-center gap-1.5 mb-1.5">
+                                                                <UserCheck className="w-3 h-3 text-indigo-600" />
+                                                                <label className="text-xs font-medium text-gray-700">Radiologists</label>
+                                                                <span className="px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded-full font-semibold">
+                                                                    {editForm.assignedRadiologists.length}
+                                                                </span>
+                                                                <span className="text-[10px] text-gray-400">empty = all</span>
+                                                            </div>
+                                                            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 flex-1 max-h-[45vh] overflow-y-auto">
+                                                                {availableRadiologists.length === 0 ? (
+                                                                    <div className="p-4 text-xs text-gray-400 text-center">No radiologists found</div>
+                                                                ) : availableRadiologists.map(rad => {
+                                                                    const radId = (rad._id || rad.id).toString();
+                                                                    const isChecked = editForm.assignedRadiologists.includes(radId);
+                                                                    return (
+                                                                        <label key={radId} className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors ${isChecked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={isChecked}
+                                                                                onChange={() => handleToggleVerifierRadiologist(radId)}
+                                                                                className="w-3.5 h-3.5 text-indigo-600 border-gray-300 rounded"
+                                                                            />
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <div className="text-xs font-medium text-gray-800 truncate">{rad.fullName}</div>
+                                                                                <div className="text-[10px] text-gray-400 truncate">{rad.email}</div>
+                                                                            </div>
+                                                                            {isChecked && <Check className="w-3.5 h-3.5 text-indigo-600 flex-shrink-0" />}
+                                                                        </label>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Summary */}
+                                                    <div className={`rounded-lg p-2 text-[11px] border ${
+                                                        editForm.assignedRadiologists.length > 0 || editForm.labAccessMode !== 'all'
+                                                            ? 'bg-teal-50 border-teal-200 text-teal-800'
+                                                            : 'bg-gray-50 border-gray-200 text-gray-500'
+                                                    }`}>
+                                                        <strong>Summary:</strong>{' '}
+                                                        Handles{' '}
+                                                        <strong>
+                                                            {editForm.assignedRadiologists.length > 0
+                                                                ? `${editForm.assignedRadiologists.length} radiologist(s)`
+                                                                : 'all radiologists'}
+                                                        </strong>{' '}
+                                                        from{' '}
+                                                        <strong>
+                                                            {editForm.labAccessMode === 'all'
+                                                                ? 'all labs'
+                                                                : editForm.labAccessMode === 'none'
+                                                                    ? 'no labs'
+                                                                    : `${editForm.assignedLabs.length} lab(s)`}
+                                                        </strong>.
+                                                        {editForm.labAccessMode === 'none' && (
+                                                            <span className="ml-1 text-red-600 font-semibold">Verification disabled for unassigned labs.</span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* ══════ LAST COLUMN: Worklist Columns ══════ */}
+                                    <div className={`${
+                                        editModal.user?.role === 'verifier' ? 'lg:col-span-5' : 
+                                        editModal.user?.role === 'assignor' ? 'lg:col-span-5' : 
+                                        'lg:col-span-7'
+                                    } px-5 py-4 flex flex-col overflow-hidden`}>
+                                        <div className="flex items-center gap-1.5 mb-3">
+                                            <Columns3 className="w-3.5 h-3.5 text-teal-600" />
+                                            <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Worklist Columns</h4>
+                                            <span className="ml-auto text-[11px] text-gray-400 font-medium">
+                                                {editForm.visibleColumns.length} selected
+                                            </span>
+                                        </div>
+                                        <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50/30">
+                                            <ColumnSelector
+                                                selectedColumns={editForm.visibleColumns}
+                                                onColumnToggle={handleColumnToggle}
+                                                onSelectAll={handleSelectAllColumns}
+                                                onClearAll={() => setEditForm({ ...editForm, visibleColumns: [] })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
-                            {/* Modal Footer */}
-                            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 sticky bottom-0 bg-white">
+                            {/* ─── FOOTER ─── */}
+                            <div className="flex items-center justify-end gap-3 px-6 py-2.5 border-t border-gray-100 bg-gray-50/50 flex-shrink-0">
                                 <button
                                     onClick={handleCloseEditModal}
                                     disabled={editModal.loading}
-                                    className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+                                    className="px-4 py-1.5 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     onClick={handleSaveUser}
                                     disabled={editModal.loading}
-                                    className="px-4 py-2 bg-teal-500 text-white rounded-lg hover:bg-teal-600 disabled:opacity-50 flex items-center"
+                                    className="px-5 py-2 text-sm font-medium bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 flex items-center gap-2 shadow-sm"
                                 >
                                     {editModal.loading ? (
                                         <>
-                                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                            <Loader className="w-4 h-4 animate-spin" />
                                             Saving...
                                         </>
                                     ) : (
                                         <>
-                                            <Check className="w-4 h-4 mr-2" />
+                                            <Check className="w-4 h-4" />
                                             Save Changes
                                         </>
                                     )}

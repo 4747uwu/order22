@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2,Printer,X } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText,RotateCcw , Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2,Printer,X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -238,9 +238,16 @@ const PRIORITY_SORT_ORDER = {
   'EMERGENCY': 0,
   'PRIORITY':  1,
   'MLC':       2,
-  'NORMAL':    3,
-  'STAT':      4,
+  'STAT':      3,
+  'NORMAL':    4,
 };
+
+const COMPLETED_STATUSES = new Set([
+  'report_completed',
+  'final_report_downloaded',
+  'report_verified',
+  'archived',
+]);
 
 // ✅ ADD THIS BLOCK HERE ↓
 const CASE_PRIORITY_OPTIONS = [
@@ -293,7 +300,17 @@ const CASE_PRIORITY_OPTIONS = [
 
 const getPriorityWeight = (study) => {
   const p = (study.priority || study.assignment?.[0]?.priority || '').toUpperCase();
-  return PRIORITY_SORT_ORDER[p] ?? 3; // default to NORMAL weight
+  const baseWeight = PRIORITY_SORT_ORDER[p] ?? 4;
+
+  // ✅ Completed cases stay in their priority group but sink below active ones
+  // e.g. active EMERGENCY=0, completed EMERGENCY=5 (still above active NORMAL=4? no...)
+  // Active:    EMERGENCY=0, PRIORITY=1, MLC=2, STAT=3, NORMAL=4
+  // Completed: EMERGENCY=5, PRIORITY=6, MLC=7, STAT=8, NORMAL=9
+  if (COMPLETED_STATUSES.has(study.workflowStatus)) {
+    return baseWeight + Object.keys(PRIORITY_SORT_ORDER).length + 1; // offset by 5
+  }
+
+  return baseWeight;
 };
 
 const sortStudiesByPriority = (studies) => {
@@ -339,11 +356,22 @@ const getPriorityTag = (study, userRoles = [], userRole = '') => {
       return null;
   }
 };
-const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
+const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) => {
   const [formData, setFormData] = useState({
     patientName: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
   });
   const [loading, setLoading] = useState(false);
+
+  // ✅ CHANGED: Follow-up is now staged — not called immediately on toggle
+  const [followUpReason, setFollowUpReason] = useState('');
+  const [followUpDate, setFollowUpDate] = useState('');
+  const [isFollowUp, setIsFollowUp] = useState(false);           // current DB state
+  const [stagedFollowUp, setStagedFollowUp] = useState(false);   // what user toggled to (pending save)
+  const [followUpChanged, setFollowUpChanged] = useState(false); // did user change it?
+
+  const hasBeenCompleted = study?.statusHistory?.some(
+    s => s.status === 'final_report_downloaded' || s.status === 'report_completed' || s.status === 'report_verified'
+  );
 
   useEffect(() => {
     if (study && isOpen) {
@@ -352,47 +380,101 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
       const resolvedPriority = validValues.includes(rawPriority) ? rawPriority : 'NORMAL';
 
       setFormData({
-        patientName:       study.patientName || study.patientInfo?.patientName || '',
-        patientAge:        study.patientAge  || study.patientInfo?.age         || '',
-        patientGender:     study.patientSex  || study.patientInfo?.gender       || '',
-        studyName:         study.studyDescription || study.examDescription      || '',
-        referringPhysician:study.referralNumber   || study.referringPhysicianName || '',
-        accessionNumber:   study.accessionNumber  || '',
-        clinicalHistory:   study.clinicalHistory?.clinicalHistory || (typeof study.clinicalHistory === 'string' ? study.clinicalHistory : '') || '',
-        priority:          resolvedPriority,
+        patientName:        study.patientName || study.patientInfo?.patientName || '',
+        patientAge:         study.patientAge  || study.patientInfo?.age         || '',
+        patientGender:      study.patientSex  || study.patientInfo?.gender      || '',
+        studyName:          study.studyDescription || study.examDescription     || '',
+        referringPhysician: study.referralNumber   || study.referringPhysicianName || '',
+        accessionNumber:    study.accessionNumber  || '',
+        clinicalHistory:    study.clinicalHistory?.clinicalHistory || (typeof study.clinicalHistory === 'string' ? study.clinicalHistory : '') || '',
+        priority:           resolvedPriority,
       });
+
+      // ✅ Sync follow-up from study — both staged and current match on open
+      const currentFollowUp = study.followUp?.isFollowUp || false;
+      setIsFollowUp(currentFollowUp);
+      setStagedFollowUp(currentFollowUp);
+      setFollowUpChanged(false);
+      setFollowUpReason(study.followUp?.reason || '');
+      setFollowUpDate(
+        study.followUp?.followUpDate
+          ? new Date(study.followUp.followUpDate).toISOString().split('T')[0]
+          : ''
+      );
     }
   }, [study, isOpen]);
 
+  // ✅ CHANGED: Toggle only updates staged state, no API call yet
+  const handleFollowUpToggle = () => {
+    const newValue = !stagedFollowUp;
+    setStagedFollowUp(newValue);
+    setFollowUpChanged(newValue !== isFollowUp);
+    // Clear fields if toggling off
+    if (!newValue) {
+      setFollowUpReason('');
+      setFollowUpDate('');
+    }
+  };
+
+  // ✅ CHANGED: handleSubmit now handles follow-up API call + study details save together
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
+      // ── Step 1: Save study details ──────────────────────────────────────────
       await onSave({ studyId: study._id, ...formData });
+
+      // ── Step 2: Handle follow-up change if toggled ──────────────────────────
+      if (followUpChanged) {
+        if (stagedFollowUp) {
+          // Mark as follow-up
+          const response = await api.post(`/follow-up/studies/${study._id}/follow-up`, {
+            reason: followUpReason,
+            followUpDate: followUpDate || null,
+          });
+          if (!response.data.success) throw new Error(response.data.message || 'Failed to mark follow-up');
+          toast.success('Study marked as follow-up 🔁', { icon: '📋' });
+        } else {
+          // Resolve follow-up
+          const response = await api.delete(`/follow-up/studies/${study._id}/follow-up`, {
+            data: { notes: followUpReason },
+          });
+          if (!response.data.success) throw new Error(response.data.message || 'Failed to resolve follow-up');
+          toast.success('Follow-up removed ✅');
+        }
+      }
+
       toast.success('Study details updated successfully');
+
+      // ✅ NEW: Refresh worklist so follow-up tag appears/disappears immediately
+      onRefreshStudies?.();
       onClose();
+
     } catch (error) {
-      toast.error('Failed to update study details');
+      toast.error(error.message || 'Failed to save changes');
     } finally {
       setLoading(false);
     }
   };
 
   const selectedOption = CASE_PRIORITY_OPTIONS.find(o => o.value === formData.priority) || CASE_PRIORITY_OPTIONS[0];
+  const isStagedOn = stagedFollowUp;
 
   if (!isOpen) return null;
 
   return (
-    // ✅ UPDATED: Subtle blur background instead of black overlay
     <div className="fixed inset-0 bg-white/30 backdrop-blur-sm flex items-center justify-center z-[10000] p-2">
       <div className="bg-white rounded shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden border border-gray-200 flex flex-col">
 
-        {/* ✅ HEADER: Smaller padding, smaller text */}
         <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
           <div>
             <h2 className="text-xs sm:text-sm font-bold uppercase truncate max-w-[200px] sm:max-w-md">{study?.patientName || 'Edit Study'}</h2>
             <p className="text-[9px] text-gray-300 mt-0 uppercase leading-tight">
               BP ID: {study?.bharatPacsId} | MOD: {study?.modality}
+              {isStagedOn && <span className="ml-2 text-amber-400 font-bold">🔁 FOLLOW-UP</span>}
+              {followUpChanged && (
+                <span className="ml-1 text-yellow-300 font-normal">(unsaved)</span>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded transition-colors">
@@ -400,22 +482,23 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
           </button>
         </div>
 
-        {/* ✅ FORM: Tight margins (mb-3), tiny gaps (gap-1.5) */}
         <form onSubmit={handleSubmit} className="p-3 overflow-y-auto flex-1">
-          
+
           {/* PRIORITY */}
           <div className={`mb-3 p-2 rounded border ${selectedOption.border} ${selectedOption.bg} transition-all`}>
             <div className="flex justify-between items-end mb-1.5">
               <h3 className="text-[10px] font-bold text-gray-800 uppercase">Case Priority</h3>
               <span className={`text-[8px] ${selectedOption.text} font-medium`}>{selectedOption.desc}</span>
             </div>
-            
             <div className="grid grid-cols-5 gap-1.5">
               {CASE_PRIORITY_OPTIONS.map(opt => (
                 <button
-                  key={opt.value} type="button" onClick={() => setFormData(prev => ({ ...prev, priority: opt.value }))}
+                  key={opt.value} type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, priority: opt.value }))}
                   className={`p-1 rounded border text-center transition-all ${
-                    formData.priority === opt.value ? `${opt.border} ${opt.bg} ${opt.text} shadow-sm font-bold scale-[1.02]` : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                    formData.priority === opt.value
+                      ? `${opt.border} ${opt.bg} ${opt.text} shadow-sm font-bold scale-[1.02]`
+                      : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
                   }`}
                 >
                   <div className="text-[10px] leading-none mb-0.5">{opt.label.split(' ')[0]}</div>
@@ -424,6 +507,87 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
               ))}
             </div>
           </div>
+
+          {/* ✅ CHANGED: FOLLOW-UP SECTION — toggle is staged, saved on form submit */}
+          {hasBeenCompleted && (
+            <div className={`mb-3 p-2 rounded border transition-all ${
+              isStagedOn ? 'border-amber-400 bg-amber-50' : 'border-gray-200 bg-gray-50'
+            }`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-gray-800 uppercase">🔁 Follow-Up</span>
+                  {isStagedOn && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-200 text-amber-800 border border-amber-300">
+                      ACTIVE
+                    </span>
+                  )}
+                  {/* ✅ Unsaved change indicator */}
+                  {followUpChanged && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-bold bg-yellow-100 text-yellow-700 border border-yellow-300">
+                      ● Pending Save
+                    </span>
+                  )}
+                </div>
+
+                {/* ✅ CHANGED: Toggle switch instead of immediate API button */}
+                <button
+                  type="button"
+                  onClick={handleFollowUpToggle}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                    isStagedOn ? 'bg-amber-500' : 'bg-gray-300'
+                  }`}
+                  title={isStagedOn ? 'Toggle off follow-up (will apply on Save)' : 'Toggle on follow-up (will apply on Save)'}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                      isStagedOn ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {/* ✅ Fields only editable when toggling ON and not yet saved */}
+              {isStagedOn && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[8px] font-medium text-gray-600 mb-0.5 uppercase">Reason</label>
+                    <input
+                      type="text"
+                      value={followUpReason}
+                      onChange={(e) => setFollowUpReason(e.target.value)}
+                      placeholder="e.g. Post-op review..."
+                      className="w-full px-1.5 py-1 text-[9px] border border-gray-300 rounded focus:ring-1 focus:ring-amber-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[8px] font-medium text-gray-600 mb-0.5 uppercase">Follow-Up Date</label>
+                    <input
+                      type="date"
+                      value={followUpDate}
+                      onChange={(e) => setFollowUpDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      className="w-full px-1.5 py-1 text-[9px] border border-gray-300 rounded focus:ring-1 focus:ring-amber-400"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ Show existing follow-up info when already active and unchanged */}
+              {isFollowUp && !followUpChanged && study.followUp?.markedAt && (
+                <div className="mt-1.5 text-[8px] text-amber-700">
+                  Marked by <strong>{study.followUp.markedByName}</strong> on{' '}
+                  {new Date(study.followUp.markedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  {study.followUp.followUpDate && (
+                    <> · Due: <strong>{new Date(study.followUp.followUpDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</strong></>
+                  )}
+                </div>
+              )}
+
+              <p className="mt-1.5 text-[8px] text-gray-400">
+                💡 Toggle follow-up above — changes apply when you click <strong>SAVE</strong>.
+              </p>
+            </div>
+          )}
 
           {/* PATIENT INFO */}
           <div className="mb-3">
@@ -446,7 +610,6 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* STUDY INFO */}
           <div className="mb-3">
             <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">Study Info</h3>
             <div className="grid grid-cols-2 gap-2">
@@ -465,21 +628,29 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave }) => {
             </div>
           </div>
 
-          {/* CLINICAL HISTORY - Reduced to 2 rows */}
           <div className="mb-2">
             <h3 className="text-[10px] font-bold text-gray-800 mb-1 uppercase">Clinical History</h3>
-            <div>
-              <textarea value={formData.clinicalHistory} onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))} rows={2} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded resize-none uppercase" />
-            </div>
+            <textarea value={formData.clinicalHistory} onChange={(e) => setFormData(prev => ({ ...prev, clinicalHistory: e.target.value }))} rows={2} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded resize-none uppercase" />
           </div>
 
-          {/* FOOTER */}
           <div className="flex justify-between items-center pt-2 mt-2 border-t border-gray-200">
             <div className="text-[8px] text-gray-500 uppercase"><span className="text-red-500">*</span> REQ</div>
             <div className="flex gap-2">
               <button type="button" onClick={onClose} className="px-3 py-1 text-[10px] font-bold bg-gray-100 text-gray-700 rounded border border-gray-300 uppercase" disabled={loading}>CANCEL</button>
-              <button type="submit" className="px-3 py-1 text-[10px] font-bold text-white rounded bg-gray-900 border border-gray-900 uppercase flex items-center gap-1" disabled={loading}>
-                {loading ? 'SAVING...' : 'SAVE'}
+              <button
+                type="submit"
+                className={`px-3 py-1 text-[10px] font-bold text-white rounded border uppercase flex items-center gap-1 transition-colors ${
+                  followUpChanged
+                    ? 'bg-amber-600 border-amber-700 hover:bg-amber-700'  // amber when follow-up pending
+                    : 'bg-gray-900 border-gray-900 hover:bg-gray-700'
+                }`}
+                disabled={loading}
+              >
+                {loading
+                  ? 'SAVING...'
+                  : followUpChanged
+                  ? `SAVE + ${stagedFollowUp ? 'MARK FOLLOW-UP' : 'REMOVE FOLLOW-UP'}`
+                  : 'SAVE'}
               </button>
             </div>
           </div>
@@ -554,6 +725,27 @@ const UnifiedStudyRow = ({
 
     // ✅ Check if study is an Emergency Case
     // const isEmergencyCase = study?.priority === 'EMERGENCY CASE';
+
+      const assignedDoctor = study.assignedDoctors?.[0] || study.assignment?.[0] || null;
+    const isAssignedStatus = study.workflowStatus === 'assigned_to_doctor' || assignedDoctor?.status === 'assigned';
+    const isReportCompleted = ['report_drafted', 'report_finalized', 'verification_pending', 'report_verified', 'report_completed', 'final_report_downloaded'].includes(study.workflowStatus);
+    const assignedAt = assignedDoctor?.assignedAt;
+    const [elapsedTime, setElapsedTime] = useState(null);
+
+    useEffect(() => {
+        if (isAssignedStatus && assignedAt) {
+            const interval = setInterval(() => {
+                const diff = Math.floor((Date.now() - new Date(assignedAt).getTime()) / 1000);
+                const h = Math.floor(diff / 3600);
+                const m = Math.floor((diff % 3600) / 60);
+                const s = diff % 60;
+                if (h > 0) setElapsedTime(`${h}h ${m}m`);
+                else if (m > 0) setElapsedTime(`${m}m ${s}s`);
+                else setElapsedTime(`${s}s`);
+            }, 1000);
+            return () => clearInterval(interval);
+        }
+    }, [isAssignedStatus, assignedAt]);
 
     useEffect(() => {
         if (!inputFocused && !showAssignmentModal) {
@@ -1100,6 +1292,17 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
   </button>
 
   {getPriorityTag(study)}
+
+  {study.followUp?.isFollowUp && (
+            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold text-amber-700 bg-amber-50 border border-amber-300 mt-0.5">
+              🔁 Follow-Up
+              {study.followUp.followUpDate && (
+                <span className="text-amber-500 font-normal ml-1">
+                  {new Date(study.followUp.followUpDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}
+                </span>
+              )}
+            </span>
+          )}
 </td>
     )}
 
@@ -1279,37 +1482,30 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
 
     {/* 18. ASSIGNED RADIOLOGIST */}
     {isColumnVisible('assignedRadiologist') && userRoles.includes('assignor') && (
-        <td className="px-3 py-3.5 border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+          <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
             <div className="relative">
-                <input
-                    ref={assignInputRef}
-                    type="text"
-                    value={assignInputValue}
-                    onChange={(e) => setAssignInputValue(e.target.value)}
-                    onFocus={handleAssignInputFocus}
-                    onBlur={() => {
-                        setTimeout(() => {
-                            if (!showAssignmentModal) {
-                                setInputFocused(false);
-                                setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : '');
-                            }
-                        }, 200);
-                    }}
-                    placeholder={isLocked ? "🔒 Locked" : "Search radiologist..."}
-                    disabled={isLocked}
-                    className={`w-full px-2 py-1.5 text-xs border-2 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' :
-                            isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium shadow-sm' :
-                                'bg-white border-slate-200 hover:border-slate-300'
-                        }`}
-                />
-                {isAssigned && !inputFocused && !isLocked && (
-                    <div className="w-2 h-2 bg-gray-900 rounded-full absolute right-2.5 top-2.5 shadow-sm" />
-                )}
-                {isLocked && (
-                    <Lock className="w-3.5 h-3.5 text-rose-600 absolute right-2.5 top-2" />
-                )}
+                <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search..."} disabled={isLocked} className={`w-full px-1.5 py-1 text-[10px] sm:text-xs border rounded focus:ring-1 focus:ring-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium' : 'bg-white border-slate-200'}`} />
+                {isLocked && <Lock className="w-3 h-3 text-rose-600 absolute right-1.5 top-1.5" />}
             </div>
+
+            {/* ✅ Show assignedAt time under input */}
+            {isAssigned && assignedDoctor?.assignedAt && (
+                            <div className="mt-0.5 text-[8px] text-slate-500 whitespace-nowrap">
+                                🕐 {new Date(assignedDoctor.assignedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(assignedDoctor.assignedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                            </div>
+                        )}
+            
+                        {isAssigned && assignedDoctor && (
+                            <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
+                                {isAssignedStatus && !isReportCompleted && elapsedTime ? (
+                                    <div className="flex items-center gap-1 px-1 py-0.5 bg-amber-50 border border-amber-200 rounded text-[8px] sm:text-[9px] font-mono font-bold text-amber-700">
+                                        <Clock className="w-2.5 h-2.5 animate-pulse" /> {elapsedTime}
+                                    </div>
+                                ) : null}
+                            </div>
+                        )}
         </td>
+
     )}
 
     {/* ASSIGNED RADIOLOGIST (read-only for non-assignor roles) */}
@@ -1320,6 +1516,22 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
                     ? study.radiologist
                     : study.radiologist?.fullName || study.radiologist?.email || study.assignedTo?.name || '-'}
             </div>
+
+            {isAssigned && assignedDoctor?.assignedAt && (
+                <div className="mt-0.5 text-[8px] text-slate-500 whitespace-nowrap">
+                    🕐 {new Date(assignedDoctor.assignedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(assignedDoctor.assignedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </div>
+            )}
+
+            {isAssigned && assignedDoctor && (
+                <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
+                    {isAssignedStatus && !isReportCompleted && elapsedTime ? (
+                        <div className="flex items-center gap-1 px-1 py-0.5 bg-amber-50 border border-amber-200 rounded text-[8px] sm:text-[9px] font-mono font-bold text-amber-700">
+                            <Clock className="w-2.5 h-2.5 animate-pulse" /> {elapsedTime}
+                        </div>
+                    ) : null}
+                </div>
+            )}
         </td>
     )}
 
@@ -1347,6 +1559,20 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
                         <Lock className="w-4 h-4 text-rose-600" title={`Locked by ${study.studyLock?.lockedByName}`} />
                     ) : (
                         <Unlock className="w-4 h-4 text-slate-300" />
+                    )}
+                </div>
+            )}
+
+            {isLocked && (
+                <div className="mt-0.5 space-y-0.5">
+                    <div className="text-[8px] font-semibold text-rose-600 truncate max-w-[70px] mx-auto" title={study.studyLock?.lockedByName}>
+                        {study.studyLock?.lockedByName || study.lockedBy || '-'}
+                    </div>
+                    {(study.studyLock?.lockedAt || study.lockedAt) && (
+                        <div className="text-[7px] text-slate-500 whitespace-nowrap">
+                            {new Date(study.studyLock?.lockedAt || study.lockedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}{' '}
+                            {new Date(study.studyLock?.lockedAt || study.lockedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+                        </div>
                     )}
                 </div>
             )}
@@ -1438,24 +1664,67 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
         </td>
     )}
 
-    {/* 22. REJECTION REASON */}
-    {isColumnVisible('rejectionReason') && (
-        <td className="px-3 py-3.5 border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
-            {isRejected ? (
-                <div className="flex items-start gap-1.5">
-                    <XCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
-                    <div
-                        className="text-xs text-rose-700 leading-relaxed font-medium whitespace-normal break-words"
-                        title={rejectionReason}
-                    >
-                        {study.verificationNotes || rejectionReason}
-                    </div>
-                </div>
-            ) : (
-                <div className="text-xs text-slate-400 text-center">-</div>
-            )}
-        </td>
-    )}
+     {isColumnVisible('rejectionReason') && (
+            <td className="px-3 py-3.5 border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('rejectionReason')}px` }}>
+                {(() => {
+                    // ✅ Priority 1: Rejection reason from verifier
+                    if (isRejected && rejectionReason && rejectionReason !== '-') {
+                        return (
+                            <div className="flex items-start gap-1.5">
+                                <XCircle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0 mt-0.5" />
+                                <div className="text-xs text-rose-700 leading-relaxed font-medium whitespace-normal break-words" title={rejectionReason}>
+                                    {study.verificationNotes || rejectionReason}
+                                </div>
+                            </div>
+                        );
+                    }
+    
+                    // ✅ Priority 2: Revert info — ONLY if study is actively reverted
+                    const isActivelyReverted = study.revertInfo?.isReverted === true;
+                    const revert = isActivelyReverted
+                        ? (study.revertInfo?.currentRevert || study.revertInfo?.revertHistory?.[study.revertInfo.revertHistory.length - 1])
+                        : null;
+    
+                    if (isActivelyReverted && revert) {
+                        return (
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-1">
+                                    <RotateCcw className="w-3 h-3 text-orange-600 flex-shrink-0" />
+                                    <span className="text-[9px] font-bold text-orange-700 bg-orange-50 border border-orange-200 px-1.5 py-0.5 rounded">
+                                        REVERTED {study.revertInfo.revertCount > 1 ? `(×${study.revertInfo.revertCount})` : ''}
+                                    </span>
+                                    {revert.resolved && (
+                                        <span className="text-[9px] font-bold text-green-700 bg-green-50 border border-green-200 px-1.5 py-0.5 rounded">✓ Resolved</span>
+                                    )}
+                                </div>
+    
+                                {revert.reason && (
+                                    <div className="text-[10px] text-orange-800 font-medium leading-tight whitespace-normal break-words" title={revert.reason}>
+                                        "{revert.reason}"
+                                    </div>
+                                )}
+    
+                                <div className="text-[9px] text-slate-500 whitespace-nowrap">
+                                    by <span className="font-semibold text-slate-700">{revert.revertedByName}</span>
+                                    {revert.revertedAt && (
+                                        <> · {new Date(revert.revertedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(revert.revertedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}</>
+                                    )}
+                                </div>
+    
+                                {revert.notes && (
+                                    <div className="text-[9px] text-slate-500 italic whitespace-normal break-words">
+                                        Note: {revert.notes}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+    
+                    return <div className="text-xs text-slate-400 text-center">-</div>;
+                })()}
+            </td>
+        )}
+
 
     {/* 23. VERIFIED BY */}
     {isColumnVisible('assignedVerifier') && (
@@ -1551,6 +1820,16 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
                             </button>
                         </>
                     )}
+
+                     {study.workflowStatus === 'final_report_downloaded' && (
+                            <button
+                                onClick={() => onShowRevertModal?.(study)}
+                                className="p-1 hover:bg-rose-50 rounded transition-all hover:scale-110"
+                                title="Revert to Radiologist (report was downloaded)"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                            </button>
+                        )}
     
                     {/* ✅ VERIFIER also gets Download + Share */}
                     {userAccountRoles.includes('verifier') && (
@@ -2465,7 +2744,7 @@ const [printModal, setPrintModal] = useState({ show: false, report: null, report
             {studyNotes.show && <StudyNotesComponent studyId={studyNotes.studyId} isOpen={studyNotes.show}
             onClose={handleCloseStudyNotes}  // ✅ CHANGED
              />}
-            {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} />}
+            {patientEditModal.show && <PatientEditModal study={patientEditModal.study} isOpen={patientEditModal.show} onClose={() => setPatientEditModal({ show: false, study: null })} onSave={handleSavePatientEdit} onRefreshStudies={onRefreshStudies} />}
             {timelineModal.show && <TimelineModal isOpen={timelineModal.show} onClose={() => setTimelineModal({ show: false, studyId: null, studyData: null })} studyId={timelineModal.studyId} studyData={timelineModal.studyData} />}
             {documentsModal.show && (
                 <StudyDocumentsManager

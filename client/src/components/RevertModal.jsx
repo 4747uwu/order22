@@ -52,17 +52,14 @@ const RevertModal = ({ isOpen, onClose, study, onSuccess }) => {
         try {
             setSubmitting(true);
 
-            const response = await api.post(
-                `/verifier/studies/${study._id}/verify`,
+           const response = await api.post(
+                `/revert/studies/${study._id}`,
                 {
-                    approved: false,
-                    rejectionReason: revertReason.trim(), // Note: kept API payload key same so backend doesn't break
+                    revertReason:      revertReason.trim(),
                     verificationNotes: verificationNotes.trim(),
-                    corrections: corrections,
-                    verificationTimeMinutes: 0
                 }
             );
-
+            
             if (response.data.success) {
                 toast.success('Report reverted and sent back to radiologist(s)');
                 onSuccess?.();

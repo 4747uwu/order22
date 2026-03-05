@@ -217,7 +217,27 @@ const CreateDoctor = () => {
             const response = await api.post('/admin/admin-crud/doctors', payload);
 
             if (response.data.success) {
-                toast.success(`Doctor created! Login: ${formData.username}@bharatpacs.com`);
+                const newDoctorUserId = response.data.data?.user?._id;
+
+                // ✅ NEW: Bind selected verifiers to this doctor
+                if (selectedVerifiers.length > 0 && newDoctorUserId) {
+                    await Promise.allSettled(
+                        selectedVerifiers.map(verifierId =>
+                            api.put(`/admin/manage-users/${verifierId}/role-config`, {
+                                roleConfig: {
+                                    assignedRadiologists: [
+                                        // append to existing
+                                        newDoctorUserId
+                                    ]
+                                }
+                            })
+                        )
+                    );
+                    toast.success(`Doctor created and linked to ${selectedVerifiers.length} verifier(s)!`);
+                } else {
+                    toast.success(`Doctor created! Login: ${formData.username}@bharatpacs.com`);
+                }
+
                 navigate('/admin/dashboard');
             }
         } catch (error) {
@@ -238,6 +258,25 @@ const CreateDoctor = () => {
 
     const prevStep = () => {
         setCurrentStep(prev => Math.max(prev - 1, 1));
+    };
+
+    const [availableVerifiers, setAvailableVerifiers] = useState([]);
+    const [selectedVerifiers, setSelectedVerifiers] = useState([]);
+
+    // ✅ Fetch verifiers when verification is toggled ON
+    useEffect(() => {
+        if (formData.requireReportVerification && availableVerifiers.length === 0) {
+            fetchVerifiers();
+        }
+    }, [formData.requireReportVerification]);
+
+    const fetchVerifiers = async () => {
+        try {
+            const response = await api.get('/admin/user-management/role/verifier');
+            setAvailableVerifiers(response.data.data || []);
+        } catch (error) {
+            console.error('Error fetching verifiers:', error);
+        }
     };
 
     return (
@@ -528,6 +567,61 @@ const CreateDoctor = () => {
                                                 </div>
                                             </label>
                                         </div>
+
+                                        {/* ✅ NEW: Show verifier picker when verification is ON */}
+                                        {formData.requireReportVerification && (
+                                            <div className="md:col-span-2 mt-2">
+                                                <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+                                                    <div className="flex items-center gap-2 mb-3">
+                                                        <CheckCircle className="w-4 h-4 text-indigo-600" />
+                                                        <label className="text-sm font-semibold text-indigo-900">
+                                                            Assign Verifier(s) 
+                                                            <span className="ml-1 text-xs font-normal text-indigo-500">(optional — can be done later)</span>
+                                                        </label>
+                                                    </div>
+
+                                                    {availableVerifiers.length === 0 ? (
+                                                        <div className="text-center py-4 text-sm text-slate-500 border border-dashed border-indigo-300 rounded-lg">
+                                                            No verifiers found in organization.{' '}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => navigate('/admin/create-user')}
+                                                                className="text-indigo-600 underline"
+                                                            >
+                                                                Create one first
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="border border-indigo-200 rounded-lg divide-y divide-indigo-100 max-h-40 overflow-y-auto bg-white">
+                                                            {availableVerifiers.map(v => (
+                                                                <label key={v._id} className="flex items-center gap-3 px-3 py-2 hover:bg-indigo-50 cursor-pointer">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={selectedVerifiers.includes(v._id)}
+                                                                        onChange={() => setSelectedVerifiers(prev =>
+                                                                            prev.includes(v._id)
+                                                                                ? prev.filter(id => id !== v._id)
+                                                                                : [...prev, v._id]
+                                                                        )}
+                                                                        className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                                                                    />
+                                                                    <div>
+                                                                        <div className="text-sm font-medium text-slate-800">{v.fullName}</div>
+                                                                        <div className="text-xs text-slate-400">{v.email}</div>
+                                                                    </div>
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {selectedVerifiers.length > 0 && (
+                                                        <p className="text-xs text-indigo-700 mt-2">
+                                                            ✅ {selectedVerifiers.length} verifier(s) will be automatically linked to this doctor
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

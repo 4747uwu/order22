@@ -407,7 +407,7 @@ export const verifyReport = async (req, res) => {
             corrections = [], 
             approved, 
             rejectionReason,
-            verificationTimeMinutes 
+            verificationTimeMinutes,
         } = req.body;
         const user = req.user;
         console.log(`🔍 [Verify Report] User ${user.fullName} (${user.role}) is verifying study ${studyId} with approved=${approved}`);
@@ -439,23 +439,23 @@ export const verifyReport = async (req, res) => {
             }
 
             // ✅ ADMIN BYPASS: Skip access checks for admin/assignor roles
-            if (!hasAdminRole) {
-                // ✅ VERIFY ACCESS: Check if verifier can access this study
-                const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
-                    user.roleConfig.assignedRadiologists.some(radiologistId => 
-                        study.assignment?.some(assignment => 
-                            assignment.assignedTo?.toString() === radiologistId.toString()
-                        )
-                    );
+            // if (!hasAdminRole) {
+            //     // ✅ VERIFY ACCESS: Check if verifier can access this study
+            //     const hasAccess = !user.roleConfig?.assignedRadiologists?.length || 
+            //         user.roleConfig.assignedRadiologists.some(radiologistId => 
+            //             study.assignment?.some(assignment => 
+            //                 assignment.assignedTo?.toString() === radiologistId.toString()
+            //             )
+            //         );
 
-                if (!hasAccess) {
-                    await session.abortTransaction();
-                    return res.status(403).json({ 
-                        success: false, 
-                        message: 'Access denied: Study not assigned to your radiologists' 
-                    });
-                }
-            }
+            //     if (!hasAccess) {
+            //         await session.abortTransaction();
+            //         return res.status(403).json({ 
+            //             success: false, 
+            //             message: 'Access denied: Study not assigned to your radiologists' 
+            //         });
+            //     }
+            // }
 
             // ✅ ADMIN BYPASS: Skip workflow state check for admin/assignor roles
             if (!hasAdminRole) {
@@ -495,27 +495,27 @@ export const verifyReport = async (req, res) => {
                 currentCategory: approved 
                     ? (needsReprint ? 'REPRINT_NEED' : 'COMPLETED')
                     : 'REVERTED',
-                'reportInfo.verificationInfo.verifiedBy': user._id,
-                'reportInfo.verificationInfo.verifiedAt': now,
-                'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
-                'reportInfo.verificationInfo.verificationNotes': verificationNotes || '',
+                'reportInfo.verificationInfo.verifiedBy':            user._id,
+                'reportInfo.verificationInfo.verifiedAt':            now,
+                'reportInfo.verificationInfo.verificationStatus':    approved ? 'verified' : 'rejected',
+                'reportInfo.verificationInfo.verificationNotes':     verificationNotes || '',
                 'reportInfo.verificationInfo.verificationTimeMinutes': verificationTimeMinutes || 0
             };
 
-            // ✅ CLEAR reprintNeeded flag after processing approval
+            // ✅ CLEAR reprintNeeded when approving a reprint study
             if (approved && needsReprint) {
                 studyUpdateData.reprintNeeded = false;
-                console.log(`✅ [Verify] Study was marked for reprint, setting status to report_reprint_needed and clearing flag`);
+                console.log('✅ [Verify] reprintNeeded cleared → setting report_reprint_needed');
             }
 
-            // ✅ SET reprintNeeded when rejecting
+            // ✅ REJECTION: Never touch reprintNeeded here — that's revert.controller.js's job
             if (!approved) {
-                studyUpdateData.reprintNeeded = true;
                 studyUpdateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
-                if (corrections && corrections.length > 0) {
+                if (corrections?.length > 0) {
                     studyUpdateData['reportInfo.verificationInfo.corrections'] = corrections;
                 }
-                console.log('🔄 [Verify Reject] Setting reprintNeeded=true for rejected report');
+                // ✅ reprintNeeded is NOT set here — stays whatever it was
+                console.log('🔄 [Verify Reject] Normal verifier rejection — reprintNeeded NOT touched');
             }
 
             const historyEntry = {

@@ -169,6 +169,40 @@ export const formatStudyForWorklist = (rawStudy) => {
 
     const caseStatus = getCaseStatus(rawStudy);
 
+    const revertInfo = rawStudy.revertInfo
+      ? {
+          isReverted:    rawStudy.revertInfo.isReverted    || false,
+          revertCount:   rawStudy.revertInfo.revertCount   || 0,
+          revertHistory: (rawStudy.revertInfo.revertHistory || []).map(r => ({
+            _id:            r._id,
+            revertedAt:     r.revertedAt     || null,
+            revertedBy:     r.revertedBy     || null,
+            revertedByName: r.revertedByName || 'Unknown',
+            revertedByRole: r.revertedByRole || '',
+            previousStatus: r.previousStatus || '',
+            reason:         r.reason         || '',
+            notes:          r.notes          || '',
+            resolved:       r.resolved       || false,
+          })),
+          currentRevert: rawStudy.revertInfo.currentRevert
+            ? {
+                revertedAt:     rawStudy.revertInfo.currentRevert.revertedAt     || null,
+                revertedByName: rawStudy.revertInfo.currentRevert.revertedByName || 'Unknown',
+                revertedByRole: rawStudy.revertInfo.currentRevert.revertedByRole || '',
+                previousStatus: rawStudy.revertInfo.currentRevert.previousStatus || '',
+                reason:         rawStudy.revertInfo.currentRevert.reason         || '',
+                notes:          rawStudy.revertInfo.currentRevert.notes          || '',
+                resolved:       rawStudy.revertInfo.currentRevert.resolved       || false,
+              }
+            : null,
+        }
+      : {
+          isReverted:    false,
+          revertCount:   0,
+          revertHistory: [],
+          currentRevert: null,
+        };
+
     // ✅ STUDY LOCK INFO - UPPERCASE
     const isLocked = rawStudy.studyLock?.isLocked || false;
     const lockedBy = rawStudy.studyLock?.lockedByName?.toUpperCase() || null;
@@ -188,7 +222,44 @@ export const formatStudyForWorklist = (rawStudy) => {
 
     // ✅ PRINT HISTORY
     const printCount = rawStudy.printHistory?.length || 0;
-    const lastPrint = rawStudy.printHistory?.[rawStudy.printHistory.length - 1];
+    const lastPrint = rawStudy.printHistory?.length > 0
+        ? [...rawStudy.printHistory].sort((a, b) => new Date(b.printedAt) - new Date(a.printedAt))[0]
+        : null;
+
+    // ✅ NEW: Last download tracking
+    const lastDownload = rawStudy.lastDownload
+        ? {
+            downloadedAt:   rawStudy.lastDownload.downloadedAt   || null,
+            downloadedByName: rawStudy.lastDownload.downloadedByName || 'Unknown',
+            downloadType:   rawStudy.lastDownload.downloadType   || null,  // 'pdf' | 'docx' | 'print'
+            reportId:       rawStudy.lastDownload.reportId       || null,
+          }
+        : null;
+
+    // ✅ NEW: Follow-up info — pass through as-is from DB
+    const followUp = rawStudy.followUp
+      ? {
+          isFollowUp:     rawStudy.followUp.isFollowUp    || false,
+          markedAt:       rawStudy.followUp.markedAt       || null,
+          markedBy:       rawStudy.followUp.markedBy       || null,
+          markedByName:   rawStudy.followUp.markedByName   || null,
+          reason:         rawStudy.followUp.reason         || '',
+          followUpDate:   rawStudy.followUp.followUpDate   || null,
+          resolvedAt:     rawStudy.followUp.resolvedAt     || null,
+          resolvedBy:     rawStudy.followUp.resolvedBy     || null,
+          history:        rawStudy.followUp.history        || [],
+        }
+      : {
+          isFollowUp:   false,
+          markedAt:     null,
+          markedBy:     null,
+          markedByName: null,
+          reason:       '',
+          followUpDate: null,
+          resolvedAt:   null,
+          resolvedBy:   null,
+          history:      [],
+        };
 
     return {
       _id: rawStudy._id,
@@ -218,6 +289,10 @@ export const formatStudyForWorklist = (rawStudy) => {
       referralNumber,
       clinicalHistory, // Will be styled bold in component
       studyDescription: (rawStudy.studyDescription || rawStudy.examDescription || 'NO DESCRIPTION').toUpperCase(),
+
+      //revertinfo
+
+      revertInfo,
       
       // ✅ DATES & TIMES - UPPERCASE
       studyDate,
@@ -264,13 +339,18 @@ export const formatStudyForWorklist = (rawStudy) => {
       
       // ✅ PRINT INFO
       printCount,
-      lastPrintedAt: lastPrint?.printedAt,
-      lastPrintedBy: lastPrint?.printedByName?.toUpperCase(),
-      lastPrintType: lastPrint?.printType,
+      lastPrintedAt:   lastPrint?.printedAt,
+      lastPrintedBy:   lastPrint?.printedByName?.toUpperCase(),
+      lastPrintType:   lastPrint?.printType,
+      lastPrintMethod: lastPrint?.printMethod,
+
+      //statusHistory
+            statusHistory: rawStudy.statusHistory || [], // ✅ ADD THIS
+
       
-      // ✅ TECHNICAL
-      priority: (rawStudy.priority || rawStudy.studyPriority || 'NORMAL').toUpperCase(),
-      organizationIdentifier: rawStudy.organizationIdentifier,
+      // ✅ NEW: Follow-up data
+      followUp,
+      lastDownload,
       
       // ✅ CATEGORY TRACKING
       categoryTracking: {

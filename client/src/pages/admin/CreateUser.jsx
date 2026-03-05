@@ -1,52 +1,41 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
-import { 
-    ArrowLeft, 
-    UserPlus, 
-    Mail, 
-    Lock, 
-    User, 
+import {
+    ArrowLeft,
+    UserPlus,
+    User,
     Users,
     Shield,
     Settings,
     CheckCircle,
-    ChevronRight,
-    ChevronLeft,
+    CrownIcon,
     Save,
     Eye,
     EyeOff,
-    Sparkles,
     Crown,
     Zap,
-    Star,
-    CrownIcon,
     Columns,
     Building2,
-    Stethoscope,  // ✅ ADD THIS
-    Phone,        // ✅ ADD THIS
-    Award,        // ✅ ADD THIS
-    Upload,       // ✅ ADD THIS
-    Image,        // ✅ ADD THIS
-    X,            // ✅ ADD THIS
-    AlertCircle   // ✅ ADD THIS (if not already there)
+    Stethoscope,
+    Phone,
+    Award,
+    Upload,
+    X,
+    Search,
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
-
-// ✅ IMPORT NEW COMPONENTS
 import ColumnSelector from '../../components/common/ColumnSelector';
 import MultiAccountRoleSelector from '../../components/admin/MultiAccountRoleSelector';
 import LabSelector from '../../components/common/LabSelector';
 import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
-// import api from '../../services/api';
-import sessionManager from '../../services/sessionManager'; // ✅ ADD THIS
-// import toast from 'react-hot-toast';
+import sessionManager from '../../services/sessionManager';
 
 const CreateUser = () => {
     const navigate = useNavigate();
     const { currentUser } = useAuth();
-    
+
     // State management
     const [loading, setLoading] = useState(false);
     const [availableRoles, setAvailableRoles] = useState({});
@@ -54,33 +43,33 @@ const CreateUser = () => {
     const [showPassword, setShowPassword] = useState(false);
 
     // ✅ NEW: Signature image state for radiologist
-const fileInputRef = useRef(null);
-const [signatureImage, setSignatureImage] = useState(null);
-const [signaturePreview, setSignaturePreview] = useState(null);
-    
+    const fileInputRef = useRef(null);
+    const [signatureImage, setSignatureImage] = useState(null);
+    const [signaturePreview, setSignaturePreview] = useState(null);
+
     // Form data
     const [formData, setFormData] = useState({
-    fullName: '',
-    email: '',
-    password: '',
-    username: '',
-    role: '',
-    organizationType: 'teleradiology_company',
-    // ✅ NEW: Three feature fields
-    visibleColumns: [],
-    accountRoles: [],
-    primaryRole: '',
-    linkedLabs: [],
-    requireReportVerification: true,
-    // ✅ NEW: Radiologist-specific fields
-    specialization: '',
-    licenseNumber: '',
-    department: '',
-    qualifications: [],
-    yearsOfExperience: '',
-    contactPhoneOffice: ''
-});
-    
+        fullName: '',
+        email: '',
+        password: '',
+        username: '',
+        role: '',
+        organizationType: 'teleradiology_company',
+        // ✅ NEW: Three feature fields
+        visibleColumns: [],
+        accountRoles: [],
+        primaryRole: '',
+        linkedLabs: [],
+        requireReportVerification: true,
+        // ✅ NEW: Radiologist-specific fields
+        specialization: '',
+        licenseNumber: '',
+        department: '',
+        qualifications: [],
+        yearsOfExperience: '',
+        contactPhoneOffice: ''
+    });
+
     // Role-specific configuration
     const [roleConfig, setRoleConfig] = useState({
         linkedRadiologist: '',
@@ -99,6 +88,8 @@ const [signaturePreview, setSignaturePreview] = useState(null);
 
     // ✅ NEW: State for multi-role setup
     const [useMultiRole, setUseMultiRole] = useState(false);
+    const [radSearch, setRadSearch] = useState('');
+    const [labSearch, setLabSearch] = useState('');
 
     // Fetch available roles on component mount
     useEffect(() => {
@@ -124,32 +115,32 @@ const [signaturePreview, setSignaturePreview] = useState(null);
     const fetchAvailableRoles = async () => {
         try {
             setLoading(true);
-            
+
             // ✅ Fetch roles
-            const endpoint = currentUser?.role === 'admin' 
+            const endpoint = currentUser?.role === 'admin'
                 ? '/admin/user-management/available-roles'
                 : '/group/user-management/available-roles';
-                
+
             const response = await api.get(endpoint);
             console.log('Roles response:', response);
-            
+
             if (response.data.success) {
                 let rolesData = response.data.data;
-                
+
                 // ✅ NEW: Fetch labs for the organization using api service
                 try {
                     const labsResponse = await api.get('/admin/labs');
                     console.log('Labs response:', labsResponse);
-                    
+
                     if (labsResponse.data.success) {
                         // ✅ FIXED: Ensure rolesData is an object before adding labs
                         if (typeof rolesData !== 'object' || Array.isArray(rolesData)) {
                             rolesData = { roles: rolesData };
                         }
-                        
+
                         // ✅ Add labs to the rolesData object
                         rolesData.labs = labsResponse.data.data || [];
-                        
+
                         console.log('✅ Labs added to rolesData:', {
                             labsCount: rolesData.labs?.length || 0,
                             labs: rolesData.labs
@@ -164,9 +155,9 @@ const [signaturePreview, setSignaturePreview] = useState(null);
                         rolesData.labs = [];
                     }
                 }
-                
+
                 setAvailableRoles(rolesData);
-                
+
                 console.log('✅ Available roles and labs set:', {
                     rolesDataStructure: Object.keys(rolesData),
                     hasLabs: 'labs' in rolesData,
@@ -176,9 +167,9 @@ const [signaturePreview, setSignaturePreview] = useState(null);
             }
         } catch (error) {
             console.error('❌ Error fetching available roles:', error);
-            
+
             // ✅ FALLBACK: If API fails, provide default roles based on user type
-            const defaultRoles = currentUser?.role === 'admin' 
+            const defaultRoles = currentUser?.role === 'admin'
                 ? {
                     labs: [], // ✅ Include empty labs array in fallback
                     group_id: {
@@ -253,7 +244,7 @@ const [signaturePreview, setSignaturePreview] = useState(null);
                         description: 'View workload, TAT, revenue, pending/completed cases - read-only access'
                     }
                 };
-                
+
             setAvailableRoles(defaultRoles);
             toast.error('Failed to fetch available roles - using defaults');
         } finally {
@@ -263,10 +254,10 @@ const [signaturePreview, setSignaturePreview] = useState(null);
 
     const fetchUsers = async () => {
         try {
-            const endpoint = currentUser?.role === 'admin' 
+            const endpoint = currentUser?.role === 'admin'
                 ? '/admin/user-management/users'
                 : '/group/user-management/users';
-                
+
             const response = await api.get(endpoint);
             if (response.data.success) {
                 setUsers(response.data.data.users || response.data.data);
@@ -291,7 +282,7 @@ const [signaturePreview, setSignaturePreview] = useState(null);
             .toLowerCase()
             .replace(/[^a-z0-9._-]/g, '')  // Remove invalid characters
             .replace(/\s+/g, '');           // Remove spaces
-        
+
         setFormData(prev => ({
             ...prev,
             email: value
@@ -371,77 +362,77 @@ const [signaturePreview, setSignaturePreview] = useState(null);
     };
 
     // ✅ NEW: Handle qualifications array for radiologist
-const handleQualificationChange = (index, value) => {
-    const newQualifications = [...formData.qualifications];
-    newQualifications[index] = value;
-    setFormData(prev => ({
-        ...prev,
-        qualifications: newQualifications
-    }));
-};
-
-const addQualification = () => {
-    setFormData(prev => ({
-        ...prev,
-        qualifications: [...prev.qualifications, '']
-    }));
-};
-
-const removeQualification = (index) => {
-    setFormData(prev => ({
-        ...prev,
-        qualifications: prev.qualifications.filter((_, i) => i !== index)
-    }));
-};
-
-// ✅ NEW: Signature handling for radiologist
-const handleSignatureUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-
-    if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image size must be less than 5MB');
-        return;
-    }
-
-    if (!file.type.startsWith('image/')) {
-        toast.error('Please upload an image file');
-        return;
-    }
-
-    setSignatureImage(file);
-    
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        setSignaturePreview(reader.result);
+    const handleQualificationChange = (index, value) => {
+        const newQualifications = [...formData.qualifications];
+        newQualifications[index] = value;
+        setFormData(prev => ({
+            ...prev,
+            qualifications: newQualifications
+        }));
     };
-    reader.readAsDataURL(file);
-};
 
-const removeSignature = () => {
-    setSignatureImage(null);
-    setSignaturePreview(null);
-    if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-    }
-};
+    const addQualification = () => {
+        setFormData(prev => ({
+            ...prev,
+            qualifications: [...prev.qualifications, '']
+        }));
+    };
 
-const convertImageToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
+    const removeQualification = (index) => {
+        setFormData(prev => ({
+            ...prev,
+            qualifications: prev.qualifications.filter((_, i) => i !== index)
+        }));
+    };
+
+    // ✅ NEW: Signature handling for radiologist
+    const handleSignatureUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.size > 5 * 1024 * 1024) {
+            toast.error('Image size must be less than 5MB');
+            return;
+        }
+
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please upload an image file');
+            return;
+        }
+
+        setSignatureImage(file);
+
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
+        reader.onloadend = () => {
+            setSignaturePreview(reader.result);
+        };
         reader.readAsDataURL(file);
-    });
-};
+    };
 
-// ✅ NEW: Check if radiologist role is selected
-const isRadiologistSelected = () => {
-    if (useMultiRole) {
-        return formData.accountRoles.includes('radiologist');
-    }
-    return formData.role === 'radiologist';
-};
+    const removeSignature = () => {
+        setSignatureImage(null);
+        setSignaturePreview(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const convertImageToBase64 = (file) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // ✅ NEW: Check if radiologist role is selected
+    const isRadiologistSelected = () => {
+        if (useMultiRole) {
+            return formData.accountRoles.includes('radiologist');
+        }
+        return formData.role === 'radiologist';
+    };
 
     // Get role-specific configuration component
     const getRoleSpecificConfig = () => {
@@ -450,34 +441,24 @@ const isRadiologistSelected = () => {
         switch (formData.role) {
             case 'group_id':
                 return (
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center space-x-2">
-                            <Crown className="w-4 h-4 text-purple-600" />
-                            <span>Group ID Configuration</span>
-                        </h4>
-                        <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                            <div className="flex items-start space-x-3">
-                                <Crown className="w-5 h-5 text-purple-600 mt-0.5" />
+                    <div className="space-y-2.5">
+                        <div className="bg-purple-50 border border-purple-100 rounded-lg p-2.5">
+                            <div className="flex items-start gap-2">
+                                <Crown className="w-3.5 h-3.5 text-purple-600 mt-0.5 flex-shrink-0" />
                                 <div>
-                                    <h5 className="text-sm font-medium text-purple-900 mb-1">
-                                        Role Creator Privileges
-                                    </h5>
-                                    <p className="text-xs text-purple-700">
-                                        This user will be able to create and manage other user roles including Assignor, 
-                                        Radiologist, Verifier, Physician, Receptionist, Billing, Typist, and Dashboard Viewer.
+                                    <div className="text-xs font-medium text-purple-900">Role Creator Privileges</div>
+                                    <p className="text-[10px] text-purple-700 mt-0.5 leading-relaxed">
+                                        Can create/manage Assignor, Radiologist, Verifier, Physician, Receptionist, Billing, Typist, Dashboard Viewer.
                                     </p>
                                 </div>
                             </div>
                         </div>
-                        
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Organization Type
-                            </label>
+                            <label className="block text-xs font-medium text-gray-700 mb-1">Organization Type</label>
                             <select
                                 value={formData.organizationType}
                                 onChange={(e) => handleInputChange({ target: { name: 'organizationType', value: e.target.value } })}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                             >
                                 <option value="teleradiology_company">Teleradiology Company</option>
                                 <option value="diagnostic_center">Diagnostic Center</option>
@@ -490,109 +471,106 @@ const isRadiologistSelected = () => {
 
             case 'typist':
                 return (
-                    <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-3">Typist Configuration</h4>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Link to Radiologist *
-                            </label>
-                            <select
-                                value={roleConfig.linkedRadiologist}
-                                onChange={(e) => handleRoleConfigChange('linkedRadiologist', e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                required
-                            >
-                                <option value="">Select Radiologist</option>
-                                {users
-                                    .filter(user => user.role === 'radiologist')
-                                    .map(user => (
-                                        <option key={user._id} value={user._id}>
-                                            {user.fullName} ({user.email})
-                                        </option>
-                                    ))}
-                            </select>
-                        </div>
+                    <div className="space-y-2">
+                        <label className="block text-xs font-medium text-gray-700 mb-1">Link to Radiologist <span className="text-red-500">*</span></label>
+                        <select
+                            value={roleConfig.linkedRadiologist}
+                            onChange={(e) => handleRoleConfigChange('linkedRadiologist', e.target.value)}
+                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                            required
+                        >
+                            <option value="">Select Radiologist</option>
+                            {users
+                                .filter(user => user.role === 'radiologist')
+                                .map(user => (
+                                    <option key={user._id} value={user._id}>
+                                        {user.fullName} ({user.email})
+                                    </option>
+                                ))}
+                        </select>
                     </div>
                 );
 
             case 'verifier':
                 return (
-                    <div className="space-y-6">
-                        <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                            <CheckCircle className="w-4 h-4 text-indigo-600" />
-                            Verifier Configuration
-                        </h4>
-
-                        {/* ── ASSIGNED RADIOLOGISTS ── */}
+                    <div className="space-y-3">
+                        {/* ── BIND TO RADIOLOGISTS ── */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                            <label className="block text-xs font-medium text-gray-700 mb-1">
                                 Bind to Radiologists
-                                <span className="ml-2 text-xs text-gray-400 font-normal">
-                                    (leave empty = sees ALL radiologists' studies)
-                                </span>
+                                <span className="ml-1 text-[10px] text-gray-400 font-normal">(empty = all)</span>
                             </label>
 
                             {users.filter(u => u.role === 'radiologist').length === 0 ? (
-                                <div className="p-4 border border-dashed border-gray-200 rounded-lg text-center text-sm text-gray-400">
-                                    No radiologists found in this organization
+                                <div className="p-2.5 border border-dashed border-gray-200 rounded-lg text-center text-xs text-gray-400">
+                                    No radiologists found
                                 </div>
                             ) : (
-                                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-48 overflow-y-auto">
-                                    {users.filter(u => u.role === 'radiologist').map(u => {
-                                        const isChecked = (roleConfig.assignedRadiologists || []).includes(u._id);
-                                        return (
-                                            <label
-                                                key={u._id}
-                                                className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
-                                                    isChecked ? 'bg-indigo-50' : 'hover:bg-gray-50'
-                                                }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isChecked}
-                                                    onChange={(e) => {
-                                                        const current = roleConfig.assignedRadiologists || [];
-                                                        handleRoleConfigChange(
-                                                            'assignedRadiologists',
-                                                            e.target.checked
-                                                                ? [...current, u._id]
-                                                                : current.filter(id => id !== u._id)
-                                                        );
-                                                    }}
-                                                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                />
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-gray-800 truncate">{u.fullName}</p>
-                                                    <p className="text-xs text-gray-400 truncate">{u.email}</p>
-                                                </div>
-                                                {isChecked && <CheckCircle className="w-4 h-4 text-indigo-500 flex-shrink-0" />}
-                                            </label>
-                                        );
-                                    })}
-                                </div>
+                                <>
+                                    <div className="relative mb-1">
+                                        <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="Search radiologists..."
+                                            value={radSearch}
+                                            onChange={(e) => setRadSearch(e.target.value)}
+                                            className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                        />
+                                    </div>
+                                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-36 overflow-y-auto">
+                                        {users.filter(u => u.role === 'radiologist').filter(u => {
+                                            if (!radSearch) return true;
+                                            const s = radSearch.toLowerCase();
+                                            return u.fullName?.toLowerCase().includes(s) || u.email?.toLowerCase().includes(s);
+                                        }).map(u => {
+                                            const isChecked = (roleConfig.assignedRadiologists || []).includes(u._id);
+                                            return (
+                                                <label
+                                                    key={u._id}
+                                                    className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors ${isChecked ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isChecked}
+                                                        onChange={(e) => {
+                                                            const current = roleConfig.assignedRadiologists || [];
+                                                            handleRoleConfigChange(
+                                                                'assignedRadiologists',
+                                                                e.target.checked
+                                                                    ? [...current, u._id]
+                                                                    : current.filter(id => id !== u._id)
+                                                            );
+                                                        }}
+                                                        className="w-3.5 h-3.5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                                    />
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-xs font-medium text-gray-800 truncate">{u.fullName}</p>
+                                                        <p className="text-[10px] text-gray-400 truncate">{u.email}</p>
+                                                    </div>
+                                                    {isChecked && <CheckCircle className="w-3 h-3 text-indigo-500 flex-shrink-0" />}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+                                </>
                             )}
 
                             {(roleConfig.assignedRadiologists || []).length > 0 && (
-                                <p className="text-xs text-indigo-600 mt-1.5 flex items-center gap-1">
-                                    <CheckCircle className="w-3.5 h-3.5" />
-                                    Bound to {roleConfig.assignedRadiologists.length} radiologist(s) — only their studies will appear
+                                <p className="text-[10px] text-indigo-600 mt-1 flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" />
+                                    Bound to {roleConfig.assignedRadiologists.length} radiologist(s)
                                 </p>
                             )}
                         </div>
 
                         {/* ── LAB ACCESS MODE ── */}
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Lab Access Mode
-                                <span className="ml-2 text-xs text-gray-400 font-normal">
-                                    (controls which lab studies are visible)
-                                </span>
-                            </label>
-                            <div className="grid grid-cols-3 gap-2">
+                            <label className="block text-xs font-medium text-gray-700 mb-1.5">Lab Access Mode</label>
+                            <div className="grid grid-cols-3 gap-1.5">
                                 {[
-                                    { value: 'all',      label: 'All Labs',      desc: 'See all org labs',    color: 'green' },
-                                    { value: 'selected', label: 'Selected Labs', desc: 'Only specific labs',  color: 'blue'  },
-                                    { value: 'none',     label: 'No Lab Access', desc: 'Block all lab access', color: 'red'  }
+                                    { value: 'all', icon: '🌐', label: 'All Labs' },
+                                    { value: 'selected', icon: '✅', label: 'Selected' },
+                                    { value: 'none', icon: '🚫', label: 'None' },
                                 ].map(opt => {
                                     const isActive = (roleConfig.labAccessMode || 'all') === opt.value;
                                     return (
@@ -601,116 +579,100 @@ const isRadiologistSelected = () => {
                                             type="button"
                                             onClick={() => {
                                                 handleRoleConfigChange('labAccessMode', opt.value);
-                                                // Clear assigned labs when not in 'selected' mode
                                                 if (opt.value !== 'selected') {
                                                     handleRoleConfigChange('assignedLabs', []);
                                                 }
                                             }}
-                                            className={`p-3 rounded-lg border-2 text-left transition-all ${
-                                                isActive
-                                                    ? opt.value === 'green' ? 'border-green-500 bg-green-50'
-                                                    : opt.value === 'red'   ? 'border-red-500 bg-red-50'
-                                                    : 'border-blue-500 bg-blue-50'
-                                                    : 'border-gray-200 hover:border-gray-300 bg-white'
-                                            }`}
+                                            className={`py-1.5 px-2 rounded-lg border text-[11px] font-semibold transition-all text-center ${isActive
+                                                ? 'border-teal-500 bg-teal-50 text-teal-700 shadow-sm'
+                                                : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
+                                                }`}
                                         >
-                                            <p className={`text-xs font-bold ${
-                                                isActive
-                                                    ? opt.value === 'none' ? 'text-red-700'
-                                                    : opt.value === 'selected' ? 'text-blue-700'
-                                                    : 'text-green-700'
-                                                    : 'text-gray-700'
-                                            }`}>
-                                                {opt.label}
-                                            </p>
-                                            <p className="text-[10px] text-gray-400 mt-0.5">{opt.desc}</p>
+                                            {opt.icon} {opt.label}
                                         </button>
                                     );
                                 })}
                             </div>
                         </div>
 
-                        {/* ── SELECT SPECIFIC LABS (only when mode = 'selected') ── */}
+                        {/* ── SELECT SPECIFIC LABS ── */}
                         {(roleConfig.labAccessMode || 'all') === 'selected' && (
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                    Select Labs
-                                    <span className="ml-2 text-xs text-gray-400 font-normal">
-                                        (verifier will only see studies from these labs)
-                                    </span>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">
+                                    Select Labs <span className="text-[10px] text-gray-400 font-normal">(visible studies)</span>
                                 </label>
 
                                 {(availableRoles.labs || []).length === 0 ? (
-                                    <div className="p-4 border border-dashed border-gray-200 rounded-lg text-center text-sm text-gray-400">
+                                    <div className="p-2.5 border border-dashed border-gray-200 rounded-lg text-center text-xs text-gray-400">
                                         No labs found — create labs first
                                     </div>
                                 ) : (
-                                    <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
-                                        {(availableRoles.labs || []).map(lab => {
-                                            const isChecked = (roleConfig.assignedLabs || []).includes(lab._id);
-                                            return (
-                                                <label
-                                                    key={lab._id}
-                                                    className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors ${
-                                                        isChecked ? 'bg-blue-50' : 'hover:bg-gray-50'
-                                                    }`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isChecked}
-                                                        onChange={(e) => {
-                                                            const current = roleConfig.assignedLabs || [];
-                                                            handleRoleConfigChange(
-                                                                'assignedLabs',
-                                                                e.target.checked
-                                                                    ? [...current, lab._id]
-                                                                    : current.filter(id => id !== lab._id)
-                                                            );
-                                                        }}
-                                                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                                    />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-sm font-medium text-gray-800 truncate">
-                                                            {lab.name}
-                                                        </p>
-                                                        <p className="text-xs text-gray-400 truncate">
-                                                            {lab.identifier} {lab.address?.city ? `• ${lab.address.city}` : ''}
-                                                        </p>
-                                                    </div>
-                                                    {isChecked && <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />}
-                                                </label>
-                                            );
-                                        })}
-                                    </div>
+                                    <>
+                                        <div className="relative mb-1">
+                                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                                            <input
+                                                type="text"
+                                                placeholder="Search labs..."
+                                                value={labSearch}
+                                                onChange={(e) => setLabSearch(e.target.value)}
+                                                className="w-full pl-7 pr-2 py-1 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-500"
+                                            />
+                                        </div>
+                                        <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-32 overflow-y-auto">
+                                            {(availableRoles.labs || []).filter(lab => {
+                                                if (!labSearch) return true;
+                                                const s = labSearch.toLowerCase();
+                                                return lab.name?.toLowerCase().includes(s) || lab.identifier?.toLowerCase().includes(s) || lab.address?.city?.toLowerCase().includes(s);
+                                            }).map(lab => {
+                                                const isChecked = (roleConfig.assignedLabs || []).includes(lab._id);
+                                                return (
+                                                    <label
+                                                        key={lab._id}
+                                                        className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer transition-colors ${isChecked ? 'bg-teal-50' : 'hover:bg-gray-50'}`}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isChecked}
+                                                            onChange={(e) => {
+                                                                const current = roleConfig.assignedLabs || [];
+                                                                handleRoleConfigChange(
+                                                                    'assignedLabs',
+                                                                    e.target.checked
+                                                                        ? [...current, lab._id]
+                                                                        : current.filter(id => id !== lab._id)
+                                                                );
+                                                            }}
+                                                            className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
+                                                        />
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-medium text-gray-800 truncate">{lab.name}</p>
+                                                            <p className="text-[10px] text-gray-400 truncate">{lab.identifier} {lab.address?.city ? `• ${lab.address.city}` : ''}</p>
+                                                        </div>
+                                                        {isChecked && <CheckCircle className="w-3 h-3 text-teal-600 flex-shrink-0" />}
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                    </>
                                 )}
 
                                 {(roleConfig.assignedLabs || []).length > 0 && (
-                                    <p className="text-xs text-blue-600 mt-1.5 flex items-center gap-1">
-                                        <CheckCircle className="w-3.5 h-3.5" />
+                                    <p className="text-[10px] text-teal-600 mt-1 flex items-center gap-1">
+                                        <CheckCircle className="w-3 h-3" />
                                         {roleConfig.assignedLabs.length} lab(s) selected
                                     </p>
                                 )}
                             </div>
                         )}
 
-                        {/* ── SUMMARY BADGE ── */}
+                        {/* ── SUMMARY ── */}
                         {((roleConfig.assignedRadiologists || []).length > 0 || (roleConfig.labAccessMode || 'all') !== 'all') && (
-                            <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
-                                <p className="text-xs font-semibold text-indigo-800 mb-1">📋 Binding Summary</p>
-                                <ul className="text-xs text-indigo-700 space-y-0.5">
-                                    {(roleConfig.assignedRadiologists || []).length > 0 && (
-                                        <li>• Doctors: {roleConfig.assignedRadiologists.length} radiologist(s) bound</li>
-                                    )}
-                                    {(roleConfig.labAccessMode || 'all') === 'selected' && (
-                                        <li>• Labs: {(roleConfig.assignedLabs || []).length} lab(s) selected</li>
-                                    )}
-                                    {(roleConfig.labAccessMode || 'all') === 'none' && (
-                                        <li>• Labs: ❌ No lab access</li>
-                                    )}
-                                    {(roleConfig.labAccessMode || 'all') === 'all' && (
-                                        <li>• Labs: ✅ All labs accessible</li>
-                                    )}
-                                </ul>
+                            <div className="p-2 bg-indigo-50 border border-indigo-100 rounded-lg text-[10px] text-indigo-700">
+                                <span className="font-semibold">Summary:</span>
+                                {(roleConfig.assignedRadiologists || []).length > 0 && ` ${roleConfig.assignedRadiologists.length} doctor(s) bound`}
+                                {(roleConfig.labAccessMode || 'all') === 'selected' && ` · ${(roleConfig.assignedLabs || []).length} lab(s)`}
+                                {(roleConfig.labAccessMode || 'all') === 'none' && ' · No lab access'}
+                                {(roleConfig.labAccessMode || 'all') === 'all' && ' · All labs'}
                             </div>
                         )}
                     </div>
@@ -722,95 +684,101 @@ const isRadiologistSelected = () => {
     };
 
     // Handle form submission
-        const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    if (!formData.fullName || !formData.email || !formData.password) {
-        toast.error('Please fill in all required fields');
-        return;
-    }
+    const handleSubmit = async (e) => {
+        e.preventDefault();
 
-    if (!useMultiRole && !formData.role) {
-        toast.error('Please select a role');
-        return;
-    }
-
-    if (useMultiRole && formData.accountRoles.length === 0) {
-        toast.error('Please select at least one role');
-        return;
-    }
-
-    // Role-specific validation
-    if (formData.role === 'typist' && !roleConfig.linkedRadiologist) {
-        toast.error('Please select a radiologist for the typist');
-        return;
-    }
-
-    // ✅ NEW: Radiologist validation
-    if (isRadiologistSelected() && !formData.specialization) {
-        toast.error('Please enter specialization for radiologist');
-        return;
-    }
-
-    setLoading(true);
-
-    try {
-        // ✅ NEW: Convert signature to base64 if uploaded
-        let signatureBase64 = null;
-        if (signatureImage) {
-            signatureBase64 = await convertImageToBase64(signatureImage);
+        if (!formData.fullName || !formData.email || !formData.password) {
+            toast.error('Please fill in all required fields');
+            return;
         }
 
-        const submissionData = {
-            ...formData,
-            roleConfig: {
-                ...roleConfig,
-                // ✅ Verifier: ensure lab config is included cleanly
-                ...(formData.role === 'verifier' || (useMultiRole && formData.accountRoles.includes('verifier'))) && {
-                    assignedRadiologists: roleConfig.assignedRadiologists || [],
-                    labAccessMode: roleConfig.labAccessMode || 'all',
-                    assignedLabs: roleConfig.labAccessMode === 'selected' 
-                        ? (roleConfig.assignedLabs || []) 
-                        : []
-                }
-            },
-            requireReportVerification: formData.requireReportVerification,
-            ...(isRadiologistSelected() && {
-                specialization: formData.specialization,
-                licenseNumber: formData.licenseNumber,
-                department: formData.department,
-                qualifications: formData.qualifications.filter(q => q.trim()),
-                yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : undefined,
-                contactPhoneOffice: formData.contactPhoneOffice,
-                signatureImageData: signatureBase64
-            }),
-            ...(useMultiRole && {
-                role: formData.primaryRole,
-                accountRoles: formData.accountRoles,
-                primaryRole: formData.primaryRole
-            })
-        };
-
-        const endpoint = currentUser?.role === 'admin' 
-            ? '/admin/user-management/create'
-            : '/group/user-management/create';
-
-        const response = await api.post(endpoint, submissionData);
-
-        if (response.data.success) {
-            toast.success(`User created successfully!`);
-            const redirectPath = currentUser?.role === 'admin' 
-                ? '/admin/dashboard'
-                : '/group/dashboard';
-            navigate(redirectPath);
+        if (!useMultiRole && !formData.role) {
+            toast.error('Please select a role');
+            return;
         }
-    } catch (error) {
-        console.error('Error creating user:', error);
-        toast.error(error.response?.data?.message || 'Failed to create user');
-    } finally {
-        setLoading(false);
-    }
-};
+
+        if (useMultiRole && formData.accountRoles.length === 0) {
+            toast.error('Please select at least one role');
+            return;
+        }
+
+        // Role-specific validation
+        if (formData.role === 'typist' && !roleConfig.linkedRadiologist) {
+            toast.error('Please select a radiologist for the typist');
+            return;
+        }
+
+        // ✅ NEW: Radiologist validation
+        if (isRadiologistSelected() && !formData.specialization) {
+            toast.error('Please enter specialization for radiologist');
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            // ✅ NEW: Convert signature to base64 if uploaded
+            let signatureBase64 = null;
+            if (signatureImage) {
+                signatureBase64 = await convertImageToBase64(signatureImage);
+            }
+
+            const submissionData = {
+                ...formData,
+                roleConfig: {
+                    ...roleConfig,
+                    // ✅ Verifier: ensure lab config is included cleanly
+                    ...(formData.role === 'verifier' || (useMultiRole && formData.accountRoles.includes('verifier'))) && {
+                        assignedRadiologists: roleConfig.assignedRadiologists || [],
+                        labAccessMode: roleConfig.labAccessMode || 'all',
+                        assignedLabs: roleConfig.labAccessMode === 'selected'
+                            ? (roleConfig.assignedLabs || [])
+                            : []
+                    }
+                },
+                requireReportVerification: formData.requireReportVerification,
+                ...(isRadiologistSelected() && {
+                    specialization: formData.specialization,
+                    licenseNumber: formData.licenseNumber,
+                    department: formData.department,
+                    qualifications: formData.qualifications.filter(q => q.trim()),
+                    yearsOfExperience: formData.yearsOfExperience ? parseInt(formData.yearsOfExperience) : undefined,
+                    contactPhoneOffice: formData.contactPhoneOffice,
+                    signature: signatureBase64,           // ✅ FIX: was 'signatureImageData'
+                    signatureMetadata: signatureImage ? {
+                        originalName: signatureImage.name,
+                        originalSize: signatureImage.size,
+                        mimeType: signatureImage.type,
+                        format: 'base64'
+                    } : undefined
+                }),
+                ...(useMultiRole && {
+                    role: formData.primaryRole,
+                    accountRoles: formData.accountRoles,
+                    primaryRole: formData.primaryRole
+                })
+            };
+
+            const endpoint = currentUser?.role === 'admin'
+                ? '/admin/user-management/create'
+                : '/group/user-management/create';
+
+            const response = await api.post(endpoint, submissionData);
+
+            if (response.data.success) {
+                toast.success(`User created successfully!`);
+                const redirectPath = currentUser?.role === 'admin'
+                    ? '/admin/dashboard'
+                    : '/group/dashboard';
+                navigate(redirectPath);
+            }
+        } catch (error) {
+            console.error('Error creating user:', error);
+            toast.error(error.response?.data?.message || 'Failed to create user');
+        } finally {
+            setLoading(false);
+        }
+    };
     // Get role icon and color
     const getRoleDisplay = (roleKey) => {
         const roleIcons = {
@@ -847,150 +815,309 @@ const isRadiologistSelected = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-            {/* Header */}
-            <div className="bg-white border-b border-gray-200 shadow-sm">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-16">
-                        <button
-                            onClick={() => navigate(getBackPath())}
-                            className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 transition-colors"
-                        >
-                            <ArrowLeft className="w-5 h-5" />
-                            <span className="font-medium">Back to Dashboard</span>
-                        </button>
-                        
-                        <div className="flex items-center space-x-2">
-                            <Sparkles className="w-5 h-5 text-blue-500" />
-                            <h1 className="text-xl font-bold text-gray-900">{getPageTitle()}</h1>
-                        </div>
+        <div className="h-screen flex flex-col bg-gray-50 overflow-hidden">
+            {/* ─── SLIM STICKY HEADER ─── */}
+            <div className="flex items-center justify-between px-6 py-2.5 bg-white border-b border-gray-200 flex-shrink-0 z-10">
+                <button
+                    onClick={() => navigate(getBackPath())}
+                    className="flex items-center gap-2 text-gray-500 hover:text-gray-900 transition-colors text-sm"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span className="font-medium">Back</span>
+                </button>
 
-                        {/* ✅ REMOVED: Create Lab button from here - moved into form */}
-                        <div className="w-24" /> {/* spacer for alignment */}
-                    </div>
+                <div className="flex items-center gap-2">
+                    <UserPlus className="w-4 h-4 text-teal-600" />
+                    <h1 className="text-sm font-semibold text-gray-900">{getPageTitle()}</h1>
+                </div>
+
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/admin/create-lab')}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-orange-700 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors"
+                    >
+                        <Building2 className="w-3.5 h-3.5" />
+                        + Lab
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate(getBackPath())}
+                        className="px-3.5 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={loading}
+                        className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                        {loading ? (
+                            <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                            <Save className="w-3.5 h-3.5" />
+                        )}
+                        {loading ? 'Creating…' : 'Create User'}
+                    </button>
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="max-w-6xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
-                <form onSubmit={handleSubmit} className="space-y-8">
+            {/* ─── BODY: 3-Column Grid ─── */}
+            <form onSubmit={handleSubmit} className="flex-1 overflow-hidden">
+                <div className="grid grid-cols-1 lg:grid-cols-12 h-full">
 
-                    {/* Basic Information */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                <User className="w-5 h-5 text-blue-600" />
-                                <span>Basic Information</span>
-                            </h3>
-                        </div>
-                        
-                        <div className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* ══════ COLUMN 1: User Identity & Settings ══════ */}
+                    <div className="lg:col-span-3 border-r border-gray-200 bg-white overflow-y-auto px-4 py-3 space-y-3">
+
+                        {/* User Details */}
+                        <div>
+                            <div className="flex items-center gap-1.5 mb-2">
+                                <User className="w-3.5 h-3.5 text-teal-600" />
+                                <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Account Details</h4>
+                            </div>
+                            <div className="space-y-2">
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Full Name *
-                                    </label>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Full Name <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         name="fullName"
                                         value={formData.fullName}
                                         onChange={handleInputChange}
-                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-shadow"
                                         placeholder="Enter full name"
                                         required
                                     />
                                 </div>
 
-                                {/* ✅ USERNAME ONLY - backend appends @bharatpacs.com */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Username *
-                                    </label>
-                                    <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 overflow-hidden">
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Username <span className="text-red-500">*</span></label>
+                                    <div className="flex rounded-lg border border-gray-300 focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500 overflow-hidden">
                                         <input
                                             type="text"
                                             name="email"
                                             value={formData.email}
                                             onChange={handleEmailChange}
-                                            className="flex-1 px-3 py-2 outline-none border-none focus:ring-0"
+                                            className="flex-1 px-2.5 py-1.5 outline-none border-none focus:ring-0 text-sm"
                                             placeholder="username"
                                             required
                                         />
-                                        <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
+                                        <span className="flex items-center px-2.5 bg-gray-50 text-gray-400 text-xs border-l border-gray-300 whitespace-nowrap">
                                             @bharatpacs.com
                                         </span>
                                     </div>
-                                    <p className="text-xs text-gray-400 mt-1">
+                                    <p className="text-[10px] text-gray-400 mt-0.5">
                                         Login: <strong>{formData.email || 'username'}@bharatpacs.com</strong>
                                     </p>
                                 </div>
 
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Password *
-                                    </label>
+                                    <label className="block text-xs font-medium text-gray-700 mb-1">Password <span className="text-red-500">*</span></label>
                                     <div className="relative">
                                         <input
                                             type={showPassword ? 'text' : 'password'}
                                             name="password"
                                             value={formData.password}
                                             onChange={handleInputChange}
-                                            className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                            placeholder="Enter password"
+                                            className="w-full px-2.5 py-1.5 pr-9 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500 transition-shadow"
+                                            placeholder="••••••••"
                                             required
                                         />
                                         <button
                                             type="button"
                                             onClick={() => setShowPassword(!showPassword)}
-                                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                            className="absolute inset-y-0 right-0 pr-2.5 flex items-center"
                                         >
-                                            {showPassword ? <EyeOff className="w-4 h-4 text-gray-400" /> : <Eye className="w-4 h-4 text-gray-400" />}
+                                            {showPassword ? <EyeOff className="w-3.5 h-3.5 text-gray-400" /> : <Eye className="w-3.5 h-3.5 text-gray-400" />}
                                         </button>
                                     </div>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Report Verification Toggle (radiologist) */}
+                        {((formData.role === 'radiologist' && !useMultiRole) ||
+                            (useMultiRole && formData.accountRoles.includes('radiologist'))) && (
+                                <div>
+                                    <div className="flex items-center gap-1.5 mb-2">
+                                        <Shield className="w-3.5 h-3.5 text-teal-600" />
+                                        <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Verification</h4>
+                                    </div>
+                                    <label className="flex items-center justify-between p-2.5 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                                        <div className="pr-3">
+                                            <div className="text-xs font-medium text-gray-900">Require Report Verification</div>
+                                            <div className="text-[10px] text-gray-500 mt-0.5">Reports verified before completion</div>
+                                        </div>
+                                        <div className="relative flex-shrink-0">
+                                            <input
+                                                type="checkbox"
+                                                checked={formData.requireReportVerification}
+                                                onChange={(e) => setFormData(prev => ({
+                                                    ...prev,
+                                                    requireReportVerification: e.target.checked
+                                                }))}
+                                                className="sr-only"
+                                            />
+                                            <div className={`block w-10 h-5 rounded-full transition ${formData.requireReportVerification ? 'bg-teal-500' : 'bg-gray-300'}`}></div>
+                                            <div className={`absolute left-0.5 top-0.5 bg-white w-4 h-4 rounded-full transition-transform shadow-sm ${formData.requireReportVerification ? 'transform translate-x-5' : ''}`}></div>
+                                        </div>
+                                    </label>
+                                    {formData.requireReportVerification && (
+                                        <div className="mt-2 p-2 bg-blue-50 border border-blue-100 rounded-lg text-[10px] text-blue-700">
+                                            <strong>Workflow:</strong> Reports → Verification Queue → Verifier Approves → Completed
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                        {/* Radiologist Details (conditional) */}
+                        {isRadiologistSelected() && (
+                            <div>
+                                <div className="flex items-center gap-1.5 mb-2">
+                                    <Stethoscope className="w-3.5 h-3.5 text-teal-600" />
+                                    <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Professional Details</h4>
+                                </div>
+                                <div className="space-y-2.5">
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Specialization <span className="text-red-500">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={formData.specialization}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                            placeholder="e.g., Neuroradiology"
+                                            required={isRadiologistSelected()}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">License No.</label>
+                                            <input
+                                                type="text"
+                                                value={formData.licenseNumber}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, licenseNumber: e.target.value }))}
+                                                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                placeholder="License #"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-gray-700 mb-1">Experience</label>
+                                            <input
+                                                type="number"
+                                                value={formData.yearsOfExperience}
+                                                onChange={(e) => setFormData(prev => ({ ...prev, yearsOfExperience: e.target.value }))}
+                                                className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                placeholder="Years"
+                                                min="0"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
+                                        <input
+                                            type="text"
+                                            value={formData.department}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                            placeholder="Department"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Office Phone</label>
+                                        <input
+                                            type="tel"
+                                            value={formData.contactPhoneOffice}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, contactPhoneOffice: e.target.value }))}
+                                            className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                            placeholder="+91 98765 43210"
+                                        />
+                                    </div>
+
+                                    {/* Qualifications */}
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1">Qualifications</label>
+                                        <div className="space-y-1.5">
+                                            {formData.qualifications.map((qual, index) => (
+                                                <div key={index} className="flex gap-1.5">
+                                                    <input
+                                                        type="text"
+                                                        value={qual}
+                                                        onChange={(e) => handleQualificationChange(index, e.target.value)}
+                                                        className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                                                        placeholder="e.g., MD, MBBS"
+                                                    />
+                                                    <button type="button" onClick={() => removeQualification(index)} className="px-2 py-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button
+                                                type="button"
+                                                onClick={addQualification}
+                                                className="w-full px-3 py-1.5 border border-dashed border-gray-300 rounded-lg text-xs text-gray-500 hover:border-teal-400 hover:text-teal-600 transition-colors"
+                                            >
+                                                + Add Qualification
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Digital Signature */}
+                                    <div>
+                                        <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1">
+                                            <Award className="w-3 h-3 text-purple-600" />
+                                            Signature <span className="text-gray-400 font-normal">(optional)</span>
+                                        </label>
+                                        {!signaturePreview ? (
+                                            <div className="border border-dashed border-gray-300 rounded-lg p-3 text-center hover:border-teal-400 transition-colors">
+                                                <Upload className="mx-auto w-6 h-6 text-gray-300 mb-1" />
+                                                <input ref={fileInputRef} type="file" accept="image/*" onChange={handleSignatureUpload} className="hidden" id="signature-upload" />
+                                                <label htmlFor="signature-upload" className="text-xs text-teal-600 font-medium cursor-pointer hover:underline">
+                                                    Upload Image
+                                                </label>
+                                                <p className="text-[10px] text-gray-400 mt-0.5">PNG/JPG, max 5MB</p>
+                                            </div>
+                                        ) : (
+                                            <div className="border border-indigo-200 rounded-lg p-2 bg-indigo-50">
+                                                <div className="flex items-center justify-between mb-1.5">
+                                                    <span className="text-[10px] font-medium text-indigo-800 flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3" /> Uploaded
+                                                    </span>
+                                                    <button type="button" onClick={removeSignature} className="text-indigo-500 hover:text-indigo-700">
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                                <div className="bg-white rounded p-2 flex items-center justify-center">
+                                                    <img src={signaturePreview} alt="Signature" className="max-h-16 object-contain" />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* Role Configuration */}
-                    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="px-6 py-4 bg-gradient-to-r from-purple-50 to-pink-50 border-b border-gray-200">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                    <Shield className="w-5 h-5 text-purple-600" />
-                                    <span>Role Configuration</span>
-                                </h3>
-                                
-                                {/* ✅ CREATE LAB BUTTON - right side of Role Configuration header */}
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/admin/create-lab')}
-                                    className="flex items-center gap-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-                                    title="Create a new Lab / Center"
-                                >
-                                    <Building2 className="w-4 h-4" />
-                                    <span>+ Create Lab</span>
-                                </button>
-                            </div>
+                    {/* ══════ COLUMN 2: Roles & Configuration ══════ */}
+                    <div className="lg:col-span-4 border-r border-gray-200 bg-white overflow-y-auto px-4 py-3 space-y-3">
 
-                            <div className="flex items-center justify-between mt-2">
-                                <p className="text-sm text-gray-600">
-                                    Select the role for this user
-                                </p>
-                                {/* ✅ existing multi-role toggle */}
-                                <label className="flex items-center space-x-2 cursor-pointer">
+                        {/* Role Selector */}
+                        <div>
+                            <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-1.5">
+                                    <Shield className="w-3.5 h-3.5 text-teal-600" />
+                                    <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Role Selection</h4>
+                                </div>
+                                <label className="flex items-center gap-1.5 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={useMultiRole}
                                         onChange={(e) => setUseMultiRole(e.target.checked)}
-                                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                        className="w-3.5 h-3.5 rounded border-gray-300 text-teal-600 focus:ring-teal-500"
                                     />
-                                    <span className="text-sm font-medium text-gray-700">Enable Multi-Role</span>
+                                    <span className="text-[11px] font-medium text-gray-600">Multi-Role</span>
                                 </label>
                             </div>
-                        </div>
-                        
-                        <div className="p-6">
+
                             {useMultiRole ? (
                                 <MultiAccountRoleSelector
                                     availableRoles={availableRoles}
@@ -1000,70 +1127,97 @@ const isRadiologistSelected = () => {
                                     onPrimaryRoleChange={(role) => setFormData(prev => ({ ...prev, primaryRole: role }))}
                                 />
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {Object.entries(availableRoles).map(([roleKey, roleData]) => {
-                                        const roleDisplay = getRoleDisplay(roleKey);
-                                        const isSelected = formData.role === roleKey;
-                                        
-                                        return (
-                                            <div
-                                                key={roleKey}
-                                                onClick={() => handleInputChange({ target: { name: 'role', value: roleKey } })}
-                                                className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                                                    isSelected 
-                                                        ? 'border-blue-500 bg-blue-50 shadow-md' 
-                                                        : 'border-gray-200 hover:border-gray-300'
-                                                }`}
-                                            >
-                                                <div className="flex items-start space-x-3">
-                                                    <div className={`p-2 rounded-lg ${roleDisplay.bg}`}>
-                                                        <div className={roleDisplay.color}>
-                                                            {roleDisplay.icon}
+                                <div className="grid grid-cols-2 gap-2">
+                                    {Object.entries(availableRoles)
+                                        .filter(([key]) => key !== 'labs')
+                                        .map(([roleKey, roleData]) => {
+                                            const roleDisplay = getRoleDisplay(roleKey);
+                                            const isSelected = formData.role === roleKey;
+
+                                            return (
+                                                <div
+                                                    key={roleKey}
+                                                    onClick={() => handleInputChange({ target: { name: 'role', value: roleKey } })}
+                                                    className={`relative p-2 border rounded-lg cursor-pointer transition-all text-left ${isSelected
+                                                        ? 'border-teal-500 bg-teal-50 shadow-sm'
+                                                        : 'border-gray-200 hover:border-gray-300 hover:shadow-sm'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <div className={`p-1.5 rounded-md ${roleDisplay.bg}`}>
+                                                            <div className={`${roleDisplay.color} [&>svg]:w-3.5 [&>svg]:h-3.5`}>
+                                                                {roleDisplay.icon}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-xs font-semibold text-gray-900 truncate flex items-center gap-1">
+                                                                {roleData.name || roleKey}
+                                                                {roleKey === 'group_id' && <Crown className="w-3 h-3 text-purple-500 flex-shrink-0" />}
+                                                            </div>
+                                                            <div className="text-[10px] text-gray-500 line-clamp-1">{roleData.description}</div>
                                                         </div>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <h4 className="text-sm font-semibold text-gray-900 mb-1">
-                                                            {roleData.name}
-                                                            {roleKey === 'group_id' && (
-                                                                <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800">
-                                                                    <Crown className="w-3 h-3 mr-1" />
-                                                                    Creator
-                                                                </span>
-                                                            )}
-                                                        </h4>
-                                                        <p className="text-xs text-gray-600 leading-relaxed">
-                                                            {roleData.description}
-                                                        </p>
-                                                    </div>
+                                                    {isSelected && (
+                                                        <CheckCircle className="absolute top-1.5 right-1.5 w-3.5 h-3.5 text-teal-600" />
+                                                    )}
                                                 </div>
-                                                
-                                                {isSelected && (
-                                                    <div className="absolute top-2 right-2">
-                                                        <CheckCircle className="w-5 h-5 text-blue-500" />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })}
                                 </div>
                             )}
                         </div>
+
+                        {/* Role-Specific Configuration (verifier/typist/group_id) */}
+                        {getRoleSpecificConfig() && (
+                            <div>
+                                <div className="flex items-center gap-1.5 mb-3">
+                                    <Settings className="w-3.5 h-3.5 text-teal-600" />
+                                    <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Role Settings</h4>
+                                </div>
+                                <div className="border border-gray-200 rounded-lg p-2.5 bg-gray-50/50">
+                                    {getRoleSpecificConfig()}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Lab/Center Access */}
+                        {shouldShowLabSelector() && (
+                            <div>
+                                <div className="flex items-center gap-1.5 mb-2">
+                                    <Building2 className="w-3.5 h-3.5 text-teal-600" />
+                                    <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Lab / Center Access</h4>
+                                </div>
+                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <LabSelector
+                                        selectedLabs={formData.linkedLabs.map(lab => lab.labId)}
+                                        onLabToggle={handleLabToggle}
+                                        onSelectAll={(labIds) => setFormData(prev => ({
+                                            ...prev,
+                                            linkedLabs: labIds.map(labId => ({
+                                                labId,
+                                                permissions: { canViewStudies: true, canAssignStudies: false }
+                                            }))
+                                        }))}
+                                        onClearAll={() => setFormData(prev => ({ ...prev, linkedLabs: [] }))}
+                                        availableLabs={availableRoles.labs || []}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* ✅ FEATURE 1: Column-based Restriction */}
-                    {(formData.role || formData.accountRoles.length > 0) && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 bg-gradient-to-r from-teal-50 to-cyan-50 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                    <Columns className="w-5 h-5 text-teal-600" />
-                                    <span>Visible Columns Configuration</span>
-                                </h3>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Select which columns this user can see in their worklist
-                                </p>
-                            </div>
-                            
-                            <div className="p-6">
+                    {/* ══════ COLUMN 3: Worklist Column Configuration ══════ */}
+                    <div className="lg:col-span-5 bg-white overflow-y-auto px-4 py-3 flex flex-col">
+                        <div className="flex items-center gap-1.5 mb-2">
+                            <Columns className="w-3.5 h-3.5 text-teal-600" />
+                            <h4 className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Worklist Columns</h4>
+                            <span className="ml-auto text-[11px] text-gray-400 font-medium">
+                                {formData.visibleColumns.length} selected
+                            </span>
+                        </div>
+
+                        {(formData.role || formData.accountRoles.length > 0) ? (
+                            <div className="flex-1 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50/30">
                                 <ColumnSelector
                                     selectedColumns={formData.visibleColumns}
                                     onColumnToggle={handleColumnToggle}
@@ -1075,344 +1229,18 @@ const isRadiologistSelected = () => {
                                     useMultiRole={useMultiRole}
                                 />
                             </div>
-                        </div>
-                    )}
-
-                    {/* ✅ FEATURE 3: Lab/Center Linking */}
-                    {shouldShowLabSelector() && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                    <Building2 className="w-5 h-5 text-orange-600" />
-                                    <span>Lab/Center Access</span>
-                                </h3>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Select which labs/centers this user can access
-                                </p>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center rounded-lg border border-dashed border-gray-200">
+                                <div className="text-center py-12">
+                                    <Columns className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm text-gray-400">Select a role first</p>
+                                    <p className="text-xs text-gray-300 mt-0.5">Column configuration will appear here</p>
+                                </div>
                             </div>
-                            
-                            <div className="p-6">
-                                <LabSelector
-    selectedLabs={formData.linkedLabs.map(lab => lab.labId)}
-    onLabToggle={handleLabToggle}
-    onSelectAll={(labIds) => setFormData(prev => ({ 
-        ...prev, 
-        linkedLabs: labIds.map(labId => ({ 
-            labId, 
-            permissions: { canViewStudies: true, canAssignStudies: false } 
-        })) 
-    }))}
-    onClearAll={() => setFormData(prev => ({ ...prev, linkedLabs: [] }))}
-    availableLabs={availableRoles.labs || []}
-/>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Role-Specific Configuration */}
-                    {getRoleSpecificConfig() && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                    <Settings className="w-5 h-5 text-green-600" />
-                                    <span>Advanced Role Configuration</span>
-                                </h3>
-                            </div>
-                            
-                            <div className="p-6">
-                                {getRoleSpecificConfig()}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ✅ NEW: Radiologist Professional Details */}
-{isRadiologistSelected() && (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-gray-200">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                <Stethoscope className="w-5 h-5 text-indigo-600" />
-                <span>Radiologist Professional Details</span>
-            </h3>
-            <p className="text-sm text-gray-600 mt-1">
-                Medical credentials and professional information
-            </p>
-        </div>
-        
-        <div className="p-6 space-y-6">
-            {/* Specialization & License */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Specialization <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                        <Stethoscope className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                            type="text"
-                            value={formData.specialization}
-                            onChange={(e) => setFormData(prev => ({ ...prev, specialization: e.target.value }))}
-                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="e.g., Radiology, Neuroradiology"
-                            required={isRadiologistSelected()}
-                        />
+                        )}
                     </div>
                 </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        License Number
-                    </label>
-                    <input
-                        type="text"
-                        value={formData.licenseNumber}
-                        onChange={(e) => setFormData(prev => ({ ...prev, licenseNumber: e.target.value }))}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="Medical license number"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Department
-                    </label>
-                    <input
-                        type="text"
-                        value={formData.department}
-                        onChange={(e) => setFormData(prev => ({ ...prev, department: e.target.value }))}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="Department name"
-                    />
-                </div>
-
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Years of Experience
-                    </label>
-                    <input
-                        type="number"
-                        value={formData.yearsOfExperience}
-                        onChange={(e) => setFormData(prev => ({ ...prev, yearsOfExperience: e.target.value }))}
-                        className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                        placeholder="0"
-                        min="0"
-                    />
-                </div>
-
-                <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Office Phone
-                    </label>
-                    <div className="relative">
-                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                        <input
-                            type="tel"
-                            value={formData.contactPhoneOffice}
-                            onChange={(e) => setFormData(prev => ({ ...prev, contactPhoneOffice: e.target.value }))}
-                            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                            placeholder="+1 (555) 123-4567"
-                        />
-                    </div>
-                </div>
-            </div>
-
-            {/* Qualifications */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Qualifications
-                </label>
-                <div className="space-y-2">
-                    {formData.qualifications.map((qual, index) => (
-                        <div key={index} className="flex space-x-2">
-                            <input
-                                type="text"
-                                value={qual}
-                                onChange={(e) => handleQualificationChange(index, e.target.value)}
-                                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                                placeholder="e.g., MD, MBBS, Fellowship in Radiology"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => removeQualification(index)}
-                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                    ))}
-                    <button
-                        type="button"
-                        onClick={addQualification}
-                        className="w-full px-4 py-2 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center space-x-2"
-                    >
-                        <UserPlus className="w-4 h-4" />
-                        <span>Add Qualification</span>
-                    </button>
-                </div>
-            </div>
-
-            {/* Digital Signature */}
-            <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center space-x-2">
-                    <Award className="w-4 h-4 text-purple-600" />
-                    <span>Digital Signature (Optional)</span>
-                </label>
-                
-                {!signaturePreview ? (
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-indigo-400 transition-colors">
-                        <div className="text-center">
-                            <Upload className="mx-auto w-10 h-10 text-gray-400 mb-3" />
-                            <h4 className="text-sm font-medium text-gray-700 mb-1">
-                                Upload Signature Image
-                            </h4>
-                            <p className="text-xs text-gray-500 mb-3">
-                                PNG, JPG up to 5MB
-                            </p>
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={handleSignatureUpload}
-                                className="hidden"
-                                id="signature-upload"
-                            />
-                            <label
-                                htmlFor="signature-upload"
-                                className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer transition-colors"
-                            >
-                                <Image className="w-4 h-4 mr-2" />
-                                Choose Image
-                            </label>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50">
-                        <div className="flex items-start justify-between mb-3">
-                            <div className="flex items-center space-x-2">
-                                <CheckCircle className="w-5 h-5 text-indigo-600" />
-                                <span className="text-sm font-medium text-indigo-900">
-                                    Signature Uploaded
-                                </span>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={removeSignature}
-                                className="text-indigo-600 hover:text-indigo-800 transition-colors"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="bg-white rounded-lg p-4 flex items-center justify-center">
-                            <img
-                                src={signaturePreview}
-                                alt="Signature preview"
-                                className="max-h-32 object-contain"
-                            />
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    </div>
-)}
-
-                    {/* ✅ FEATURE 4: Report Verification Toggle for Radiologist */}
-                    {((formData.role === 'radiologist' && !useMultiRole) || 
-                      (useMultiRole && formData.accountRoles.includes('radiologist'))) && (
-                        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                            <div className="px-6 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-gray-200">
-                                <h3 className="text-lg font-semibold text-gray-900 flex items-center space-x-2">
-                                    <Shield className="w-5 h-5 text-green-600" />
-                                    <span>Report Verification Settings</span>
-                                </h3>
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Configure whether reports need verification before completion
-                                </p>
-                            </div>
-                            
-                            <div className="p-6">
-                                <label className="flex items-center justify-between p-4 border-2 border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
-                                    <div className="flex-1">
-                                        <div className="flex items-center space-x-2">
-                                            <div className="font-medium text-gray-900">Require Report Verification</div>
-                                            <div className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                                formData.requireReportVerification 
-                                                    ? 'bg-green-100 text-green-800' 
-                                                    : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                                {formData.requireReportVerification ? 'ENABLED' : 'DISABLED'}
-                                            </div>
-                                        </div>
-                                        <div className="text-sm text-gray-500 mt-1">
-                                            When enabled, all finalized reports must be verified by a verifier before being marked as complete
-                                        </div>
-                                    </div>
-                                    <div className="relative ml-4">
-                                        <input
-                                            type="checkbox"
-                                            checked={formData.requireReportVerification}
-                                            onChange={(e) => setFormData(prev => ({ 
-                                                ...prev, 
-                                                requireReportVerification: e.target.checked 
-                                            }))}
-                                            className="sr-only"
-                                        />
-                                        <div className={`block w-14 h-8 rounded-full transition ${
-                                            formData.requireReportVerification ? 'bg-green-500' : 'bg-gray-300'
-                                        }`}></div>
-                                        <div className={`absolute left-1 top-1 bg-white w-6 h-6 rounded-full transition-transform ${
-                                            formData.requireReportVerification ? 'transform translate-x-6' : ''
-                                        }`}></div>
-                                    </div>
-                                </label>
-
-                                {formData.requireReportVerification && (
-                                    <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <div className="flex items-start space-x-2">
-                                            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
-                                            <div className="text-sm text-blue-800">
-                                                <strong>Verification Workflow:</strong>
-                                                <ul className="list-disc ml-4 mt-2 space-y-1">
-                                                    <li>Reports will be sent to verification queue after finalization</li>
-                                                    <li>A verifier must review and approve the report</li>
-                                                    <li>Only verified reports will be marked as "Completed"</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Submit Button */}
-                    <div className="flex justify-end space-x-4">
-                        <button
-                            type="button"
-                            onClick={() => navigate(getBackPath())}
-                            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all duration-300"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-700 hover:to-purple-700 transition-all duration-300 hover:scale-105 hover:shadow-lg transform disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center space-x-2"
-                        >
-                            {loading ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                                    <span>Creating...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Save className="w-5 h-5" />
-                                    <span>Create User</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                </form>
-            </div>
+            </form>
         </div>
     );
 };
