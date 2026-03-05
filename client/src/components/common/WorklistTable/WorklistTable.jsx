@@ -1469,7 +1469,7 @@ const StudyRow = ({
 
       {isColumnVisible('printCount') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('printCount')}px` }}>
-          {['report_completed', 'final_report_downloaded'].includes(study.workflowStatus) ? (
+          {['report_completed', 'final_report_downloaded', 'report_reprint_needed'].includes(study.workflowStatus) ? (
             <div className="flex flex-col items-center gap-1">
               <div className="flex items-center gap-1 justify-center">
                 <button onClick={() => onDirectPrint(study)} className="p-1 hover:bg-purple-50 rounded transition-all hover:scale-110" title="Print Report">
