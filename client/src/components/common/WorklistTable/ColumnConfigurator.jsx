@@ -111,21 +111,18 @@ const ColumnConfigurator = ({ columnConfig, onColumnChange, onResetToDefault, th
               {Object.entries(filteredColumnConfig)
                 .sort((a, b) => a[1].order - b[1].order)
                 .map(([key, config]) => {
-                  const isEssential = ['patientName'].includes(key);
                   return (
-                    <div key={key} className={`flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors ${isEssential ? 'bg-blue-50' : ''}`}>
+                    <div key={key} className="flex items-center justify-between p-2 rounded hover:bg-gray-50 transition-colors">
                       <div className="flex items-center space-x-2.5">
                         <input
                           type="checkbox"
                           id={`column-${key}`}
                           checked={config.visible}
                           onChange={() => handleColumnToggle(key)}
-                          disabled={isEssential}
                           className="w-3.5 h-3.5 text-blue-600 rounded border-gray-300"
                         />
-                        <label htmlFor={`column-${key}`} className={`text-xs cursor-pointer ${isEssential ? 'text-blue-700 font-medium' : 'text-gray-700'}`}>
+                        <label htmlFor={`column-${key}`} className="text-xs cursor-pointer text-gray-700">
                           {config.label}
-                          {isEssential && <span className="ml-1.5 text-[9px] bg-blue-100 text-blue-600 px-1 py-0.5 rounded font-semibold">Required</span>}
                         </label>
                       </div>
                     </div>

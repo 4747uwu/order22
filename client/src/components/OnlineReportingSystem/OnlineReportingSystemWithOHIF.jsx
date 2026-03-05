@@ -820,7 +820,7 @@ const OnlineReportingSystemWithOHIF = () => {
                       </div>
                       <div className="h-6 w-px bg-purple-300"></div>
                       <div className="flex items-center space-x-1">
-                        <button onClick={handleUpdateReport} disabled={saving || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Updating...' : 'Update'}</button>
+                        
                         <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Reverting...' : 'Revert'}</button>
                         <button onClick={handleVerifyReport} disabled={verifying || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded disabled:opacity-50">{verifying ? 'Verifying...' : 'Verify'}</button>
                       </div>
@@ -890,7 +890,7 @@ const OnlineReportingSystemWithOHIF = () => {
               )}
 
               {/* ✅ REPORT SWITCHER DROPDOWN — always visible for doctors */}
-              {!isVerifierMode && (
+              
                 <div className="relative" ref={reportDropdownRef}>
                   <button
                     onClick={() => setShowReportDropdown(prev => !prev)}
@@ -982,7 +982,7 @@ const OnlineReportingSystemWithOHIF = () => {
                     </div>
                   )}
                 </div>
-              )}
+              
 
               <button 
                 onClick={handleBackToWorklist} 

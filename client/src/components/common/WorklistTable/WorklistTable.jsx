@@ -1302,7 +1302,7 @@ const StudyRow = ({
 
 
       {isColumnVisible('reporting') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('reporting')}px` }}>
+        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('reporting')}px` }}>
           <button
             onClick={handleOHIFReporting}
             // ✅ FIXED: Check both workflowStatus AND assignment info

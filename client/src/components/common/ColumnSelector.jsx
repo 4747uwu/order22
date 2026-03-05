@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useCallback } from 'react';
 import { CheckSquare, Square, Sparkles, Info } from 'lucide-react';
 import { getDefaultColumnsForUser, getAllColumns, MULTI_ROLE_DEFAULTS } from '../../constants/unifiedWorklistColumns';
 
@@ -56,6 +56,8 @@ const ColumnSelector = ({
       setFormData(prev => ({ ...prev, visibleColumns: presetColumns }));
     }
   };
+
+
 
   return (
     <div className="space-y-4">
@@ -128,15 +130,10 @@ const ColumnSelector = ({
                 checked={isSelected(col.id)}
                 onChange={() => onColumnToggle(col.id)}
                 className="mt-1 rounded border-slate-300 text-teal-600 focus:ring-teal-500"
-                disabled={col.alwaysVisible}
+                // disabled={col.alwaysVisible}
               />
               <div className="text-sm flex-1">
-                <div className="font-medium text-slate-800 flex items-center space-x-1">
-                  <span>{col.label}</span>
-                  {col.alwaysVisible && (
-                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded">Required</span>
-                  )}
-                </div>
+                <div className="font-medium text-slate-800">{col.label}</div>
                 {col.description && (
                   <div className="text-xs text-slate-500 mt-0.5">{col.description}</div>
                 )}

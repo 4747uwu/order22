@@ -320,6 +320,10 @@ export const formatStudyForWorklist = (rawStudy) => {
       // ✅ NOTES / ATTACHMENTS FLAGS
       hasStudyNotes,
       hasAttachments,
+            // priority: rawStudy.priority || 'NORMAL',
+
+       priority: rawStudy.priority || assignmentInfo.priority,  // ✅ ADD THIS
+  // assignmentPriority: assignmentInfo.priority,   
       
       // ✅ ASSIGNMENT INFO - UPPERCASE
       isAssigned: assignmentInfo.isAssigned,
@@ -336,6 +340,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       verifiedBy: verificationInfo.verifiedBy,
       verifiedAt: verificationInfo.verifiedAt,
       verificationNotes,
+      
       
       // ✅ PRINT INFO
       printCount,

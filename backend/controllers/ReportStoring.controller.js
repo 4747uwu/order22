@@ -121,19 +121,13 @@ export const storeDraftReport = async (req, res) => {
             const patientInfo = {
                 fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
-                age: placeholders?.['--agegender--']?.split(' / ')[0] || 
-                     study.patientInfo?.age || 
-                     study.patient?.age || 'N/A',
-                gender: study.patient?.gender || 
-                       study.patientInfo?.gender || 
-                       placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
+                age: study.patientInfo?.age || study.patient?.age || 'N/A',
+                gender: study.patient?.gender || study.patientInfo?.gender || 'N/A',
                 dateOfBirth: study.patient?.dateOfBirth,
-                clinicalHistory: study.clinicalHistory?.clinicalHistory || 
-                               study.patient?.clinicalHistory || 'N/A'
+                clinicalHistory: study.clinicalHistory?.clinicalHistory || study.patient?.clinicalHistory || 'N/A'
             };
 
-            const referringPhysicianData = placeholders?.['--referredby--'] || 
-                                          study.referringPhysician || 
+            const referringPhysicianData = study.referringPhysician || 
                                           study.referringPhysicianName || 
                                           'N/A';
             const referringPhysicianName = typeof referringPhysicianData === 'string' 
@@ -145,7 +139,9 @@ export const storeDraftReport = async (req, res) => {
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
                 .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = `${patientNameForFilename}`;
+            const fileName = reports.length > 1
+                ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
@@ -392,9 +388,7 @@ export const storeFinalizedReport = async (req, res) => {
             const patientInfo = {
                 fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
-                age: placeholders?.['--agegender--']?.split(' / ')[0] || 
-                     study.patientInfo?.age || 
-                     study.patient?.age || 'N/A',
+                age: study.patientInfo?.age || study.patient?.age || 'N/A',
                 gender: study.patient?.gender || 
                        study.patientInfo?.gender || 
                        placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
@@ -403,8 +397,7 @@ export const storeFinalizedReport = async (req, res) => {
                                study.patient?.clinicalHistory || 'N/A'
             };
 
-            const referringPhysicianData = placeholders?.['--referredby--'] || 
-                                          study.referringPhysician || 
+            const referringPhysicianData = study.referringPhysician || 
                                           study.referringPhysicianName || 
                                           'N/A';
             const referringPhysicianName = typeof referringPhysicianData === 'string' 
@@ -416,7 +409,7 @@ export const storeFinalizedReport = async (req, res) => {
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
                 .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = `${patientNameForFilename}`;
+            const fileName = patientNameForFilename;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
@@ -686,21 +679,16 @@ export const storeMultipleReports = async (req, res) => {
             const patientInfo = {
                 fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
-                age: placeholders?.['--agegender--']?.split(' / ')[0] || 
-                     study.patientInfo?.age || 
-                     study.patient?.age || 'N/A',
-                gender: study.patient?.gender || 
-                       study.patientInfo?.gender || 
-                       placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
+                age: study.patientInfo?.age || study.patient?.age || 'N/A',
+                gender: study.patient?.gender || study.patientInfo?.gender || 'N/A',
                 dateOfBirth: study.patient?.dateOfBirth,
                 clinicalHistory: study.clinicalHistory?.clinicalHistory || 
                                study.patient?.clinicalHistory || 'N/A'
             };
 
-            const referringPhysicianData = placeholders?.['--referredby--'] || 
-                                          study.referringPhysician || 
-                                          study.referringPhysicianName || 
-                                          'N/A';
+           const referringPhysicianData = study.referringPhysician || 
+                              study.referringPhysicianName || 
+                              'N/A';
             const referringPhysicianName = typeof referringPhysicianData === 'string' 
                 ? referringPhysicianData
                 : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
@@ -710,14 +698,15 @@ export const storeMultipleReports = async (req, res) => {
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
                 .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = reports.length > 1
-                ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                : `${patientNameForFilename}_final_${Date.now()}.docx`;
+            const fileName = patientNameForFilename;
 
             const savedReports = [];
             for (let i = 0; i < reports.length; i++) {
                 const reportData = reports[i];
                 const reportNumber = i + 1;
+                const fileName = reports.length > 1
+                    ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                    : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
                 console.log(`📄 [Multi-Report] Processing report ${reportNumber}/${reports.length}`);
 
