@@ -205,6 +205,7 @@ class ReportDownloadController {
 
         try {
             const { reportId } = req.params;
+            console.log(req.body)
 
             if (!mongoose.Types.ObjectId.isValid(reportId)) {
                 return res.status(400).json({ success: false, message: 'Invalid reportId' });
@@ -214,7 +215,7 @@ class ReportDownloadController {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -242,14 +243,15 @@ class ReportDownloadController {
 
             const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.docx`;
 
-            if (report.dicomStudy?._id) {
-                updateWorkflowStatus({
-                    studyId: report.dicomStudy._id,
-                    status: 'final_report_downloaded',
-                    note: `Report downloaded as DOCX by ${req.user?.fullName || 'User'}`,
-                    user: req.user
-                }).catch(e => console.warn('Workflow update failed'));
-            }
+            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
+if (downloaderRoles.includes('lab_staff')) {
+    updateWorkflowStatus({
+        studyId: report.dicomStudy._id,
+        status: 'final_report_downloaded',
+        note: `Report downloaded as docx by ${req.user?.fullName || 'User'}`,
+        user: req.user
+    }).catch(e => console.warn('Workflow update failed'));
+}
 
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -267,10 +269,8 @@ class ReportDownloadController {
     // ============================================================
     static async downloadReportAsPDF(req, res) {
         console.log('📥 [Download PDF] Starting...');
-
         try {
             const { reportId } = req.params;
-
             if (!mongoose.Types.ObjectId.isValid(reportId)) {
                 return res.status(400).json({ success: false, message: 'Invalid reportId' });
             }
@@ -279,7 +279,7 @@ class ReportDownloadController {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -288,9 +288,7 @@ class ReportDownloadController {
                 return res.status(404).json({ success: false, message: 'Report not found' });
             }
 
-            // ✅ GUARD: Only allow verified reports to be downloaded
             if (report.reportStatus !== 'verified') {
-                console.warn(`⚠️ [Download PDF] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
                 return res.status(403).json({
                     success: false,
                     message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
@@ -298,14 +296,11 @@ class ReportDownloadController {
             }
 
             const payload = await buildDocxPayload(report, 'pdf');
-
             const pdfResponse = await axios.post(DOCX_SERVICE_URL, payload, {
-                responseType: 'arraybuffer',
-                timeout: 60000,
-                httpsAgent
+                responseType: 'arraybuffer', timeout: 60000, httpsAgent
             });
 
-            // Update download history
+            // ✅ Update Report model download history
             if (!report.downloadInfo) report.downloadInfo = { downloadHistory: [], totalDownloads: 0 };
             report.downloadInfo.totalDownloads += 1;
             report.downloadInfo.lastDownloaded = new Date();
@@ -317,40 +312,64 @@ class ReportDownloadController {
             });
             await report.save();
 
-            const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.pdf`;
-
+            // ✅ NEW: Update DicomStudy printHistory + lastDownload
             if (report.dicomStudy?._id) {
-                updateWorkflowStatus({
-                    studyId: report.dicomStudy._id,
-                    status: 'final_report_downloaded',
-                    note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
-                    user: req.user
-                }).catch(e => console.warn('Workflow update failed'));
+                await DicomStudy.findByIdAndUpdate(report.dicomStudy._id, {
+                    $push: {
+                        printHistory: {
+                            printedAt: new Date(),
+                            printedBy: req.user?._id,
+                            printedByName: req.user?.fullName || 'Unknown',
+                            printType: 'pdf_download',
+                            printMethod: 'pdf_download',
+                            reportStatus: report.reportStatus,
+                            bharatPacsId: report.dicomStudy?.bharatPacsId || '',
+                            ipAddress: req.ip
+                        }
+                    },
+                    $set: {
+                        lastDownload: {
+                            downloadedAt: new Date(),
+                            downloadedBy: req.user?._id,
+                            downloadedByName: req.user?.fullName || 'Unknown',
+                            downloadType: 'pdf',
+                            reportId: report._id,
+                        }
+                    }
+                });
+                            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
+
+
+                if (downloaderRoles.includes('lab_staff')) {
+                    updateWorkflowStatus({
+                        studyId: report.dicomStudy._id,
+                        status: 'final_report_downloaded',
+                        note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
+                        user: req.user
+                    }).catch(e => console.warn('Workflow update failed'));
+                }
             }
 
+            const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.pdf`;
             res.setHeader('Content-Type', 'application/pdf');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
             res.send(Buffer.from(pdfResponse.data));
-            console.log(`✅ [Download PDF] Sent verified report: ${fileName}`);
+            console.log(`✅ [Download PDF] Sent: ${fileName}`);
 
         } catch (error) {
             console.error('❌ [Download PDF] Error:', error.message);
-            if (error.code === 'ECONNREFUSED') {
-                return res.status(503).json({ success: false, message: 'PDF Service unavailable' });
-            }
+            if (error.code === 'ECONNREFUSED') return res.status(503).json({ success: false, message: 'PDF Service unavailable' });
             res.status(500).json({ success: false, message: 'Failed to download PDF', error: error.message });
         }
     }
 
     // ============================================================
-    // ✅ Print — VERIFIED ONLY
+    // ✅ Download single report as DOCX
     // ============================================================
-    static async printReportAsPDF(req, res) {
-        console.log('🖨️ [Print] Starting...');
-
+    static async downloadReportAsDOCX(req, res) {
+        console.log('📥 [Download DOCX] Starting...');
         try {
             const { reportId } = req.params;
-
             if (!mongoose.Types.ObjectId.isValid(reportId)) {
                 return res.status(400).json({ success: false, message: 'Invalid reportId' });
             }
@@ -359,18 +378,97 @@ class ReportDownloadController {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
 
-            if (!report) {
-                return res.status(404).json({ success: false, message: 'Report not found' });
+            if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
+            if (report.reportStatus !== 'verified') {
+                return res.status(403).json({
+                    success: false,
+                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                });
             }
 
-            // ✅ GUARD: Only allow verified reports to be printed
+            const payload = await buildDocxPayload(report, 'docx');
+            const docxResponse = await axios.post(DOCX_SERVICE_URL, payload, {
+                responseType: 'arraybuffer', timeout: 60000, httpsAgent
+            });
+
+            // ✅ NEW: Update DicomStudy printHistory + lastDownload
+            if (report.dicomStudy?._id) {
+                await DicomStudy.findByIdAndUpdate(report.dicomStudy._id, {
+                    $push: {
+                        printHistory: {
+                            printedAt: new Date(),
+                            printedBy: req.user?._id,
+                            printedByName: req.user?.fullName || 'Unknown',
+                            printType: 'docx_download',
+                            printMethod: 'docx_download',
+                            reportStatus: report.reportStatus,
+                            bharatPacsId: report.dicomStudy?.bharatPacsId || '',
+                            ipAddress: req.ip
+                        }
+                    },
+                    $set: {
+                        lastDownload: {
+                            downloadedAt: new Date(),
+                            downloadedBy: req.user?._id,
+                            downloadedByName: req.user?.fullName || 'Unknown',
+                            downloadType: 'docx',
+                            reportId: report._id,
+                        }
+                    }
+                });
+            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
+
+                if (downloaderRoles.includes('lab_staff')) {
+                    updateWorkflowStatus({
+                        studyId: report.dicomStudy._id,
+                        status: 'final_report_downloaded',
+                        note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
+                        user: req.user
+                    }).catch(e => console.warn('Workflow update failed'));
+                }
+            }
+
+            const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.docx`;
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+            res.send(Buffer.from(docxResponse.data));
+            console.log(`✅ [Download DOCX] Sent: ${fileName}`);
+
+        } catch (error) {
+            console.error('❌ [Download DOCX] Error:', error.message);
+            res.status(500).json({ success: false, message: 'Failed to download DOCX', error: error.message });
+        }
+    }
+
+    // ============================================================
+    // ✅ Print — VERIFIED ONLY
+    // ============================================================
+    static async printReportAsPDF(req, res) {
+        console.log('🖨️ [Print] Starting...');
+        try {
+            const { reportId } = req.params;
+            if (!mongoose.Types.ObjectId.isValid(reportId)) {
+                return res.status(400).json({ success: false, message: 'Invalid reportId' });
+            }
+
+            const report = await Report.findById(reportId)
+                .populate('patient', 'fullName patientId age gender')
+                .populate({
+                    path: 'dicomStudy',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id workflowStatus bharatPacsId',
+                    populate: { path: 'sourceLab', model: 'Lab' }
+                })
+                .populate('doctorId', 'fullName email');
+
+            if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
             if (report.reportStatus !== 'verified') {
-                console.warn(`⚠️ [Print] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
                 return res.status(403).json({
                     success: false,
                     message: `Only verified reports can be printed. This report is currently '${report.reportStatus}'.`
@@ -378,43 +476,48 @@ class ReportDownloadController {
             }
 
             const payload = await buildDocxPayload(report, 'pdf');
-
             const pdfResponse = await axios.post(DOCX_SERVICE_URL, payload, {
-                responseType: 'arraybuffer',
-                timeout: 60000,
-                httpsAgent
+                responseType: 'arraybuffer', timeout: 60000, httpsAgent
             });
-
             const pdfBuffer = Buffer.from(pdfResponse.data);
 
-            // Update print history
+            // Update report print info
             if (!report.printInfo) report.printInfo = { printHistory: [], totalPrints: 0 };
             const printType = report.printInfo.totalPrints === 0 ? 'print' : 'reprint';
             report.printInfo.totalPrints += 1;
             report.printInfo.lastPrintedAt = new Date();
             if (!report.printInfo.firstPrintedAt) report.printInfo.firstPrintedAt = new Date();
             report.printInfo.printHistory.push({
-                printedBy: req.user?._id,
-                printedAt: new Date(),
-                printType,
-                userRole: req.user?.role || 'unknown',
-                ipAddress: req.ip
+                printedBy: req.user?._id, printedAt: new Date(),
+                printType, userRole: req.user?.role || 'unknown', ipAddress: req.ip
             });
             await report.save();
 
-            // Update study history
+            // ✅ NEW: Update DicomStudy printHistory + lastDownload
             if (report.dicomStudy?._id) {
-                const study = await DicomStudy.findById(report.dicomStudy._id);
-                if (study) {
-                    study.statusHistory.push({
-                        status: study.workflowStatus,
-                        changedBy: req.user?._id,
-                        changedAt: new Date(),
-                        action: printType === 'print' ? 'report_printed' : 'report_reprinted',
-                        notes: `Report ${printType}ed via C# Engine`
-                    });
-                    await study.save();
-                }
+                await DicomStudy.findByIdAndUpdate(report.dicomStudy._id, {
+                    $push: {
+                        printHistory: {
+                            printedAt: new Date(),
+                            printedBy: req.user?._id,
+                            printedByName: req.user?.fullName || 'Unknown',
+                            printType: printType === 'print' ? 'original' : 'reprint',
+                            printMethod: 'physical_print',
+                            reportStatus: report.reportStatus,
+                            bharatPacsId: report.dicomStudy?.bharatPacsId || '',
+                            ipAddress: req.ip
+                        }
+                    },
+                    $set: {
+                        lastDownload: {
+                            downloadedAt: new Date(),
+                            downloadedBy: req.user?._id,
+                            downloadedByName: req.user?.fullName || 'Unknown',
+                            downloadType: 'print',
+                            reportId: report._id,
+                        }
+                    }
+                });
             }
 
             const fileName = `${report.reportId || `Report_${report._id}`}_Print.pdf`;

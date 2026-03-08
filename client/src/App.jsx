@@ -26,6 +26,8 @@ import AdminTemplates from './pages/admin/Templates';
 import LabBrandingSettings from './pages/lab/LabBrandingSettings';
 import Login2Page from './pages/Login2';
 import ManageLabs from './pages/admin/ManageLabs';
+import QRStudyDecisionPage from './pages/public/QRStudyDecisionPage';
+
 
 
 // Protected Route Component - Updated for multi-role support with better fallback
@@ -100,6 +102,7 @@ const AppRoutes = () => {
       {/* Public Routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/login2" element={<Login2Page />} />
+      <Route path="/qr/:studyId" element={<QRStudyDecisionPage />} />
       
       {/* ✅ SUPER ADMIN ROUTES */}
       <Route 

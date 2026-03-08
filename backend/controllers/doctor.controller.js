@@ -457,6 +457,7 @@ export const getValues = async (req, res) => {
                 'report_verified',
                 'report_completed',        // ✅ ADDED: No verifier path
                 'final_report_downloaded',
+                'report_reprint_needed',
                 'archived'
             ],
             
@@ -629,6 +630,7 @@ export const getCompletedStudies = async (req, res) => {
             'report_verified',
             'report_completed',        // ✅ ADDED: No verifier path
             'final_report_downloaded',
+            'report_reprint_needed',
             'archived'
         ];
         const queryFilters = buildDoctorBaseQuery(req, user, completedStatuses);
@@ -940,7 +942,7 @@ export const getAllStudiesForDoctor = async (req, res) => {
             const statusMap = {
                 'pending': ['new_study_received', 'pending_assignment', 'assigned_to_doctor'],
                 'inprogress': ['doctor_opened_report', 'report_in_progress', 'report_drafted'],
-                'completed': ['report_finalized', 'final_report_downloaded', 'archived']
+                'completed': ['report_finalized', 'final_report_downloaded','report_reprint_needed', 'archived']
             };
             workflowStatuses = statusMap[req.query.category];
         }

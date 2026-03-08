@@ -1261,7 +1261,7 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
               className={`text-[9px] sm:text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'
                 } whitespace-normal break-all leading-tight mt-0.5`}
             >
-              UHID: {study.orthancStudyID || '-'}
+              UHID: {study.accessionNumber || '-'}
             </div>
           </button>
 

@@ -21,7 +21,7 @@ class QRDownloaderController {
             }
 
             // 2️⃣ FETCH STUDY
-            const study = await DicomStudy.findById(studyId).select('_id patientInfo currentReportStatus workflowStatus').lean();
+            const study = await DicomStudy.findById(studyId).select('_id patientInfo currentReportStatus workflowStatus createdAt studyInstanceUID orthancStudyID').lean();
             if (!study) {
                 return res.status(404).json({ success: false, message: 'Study not found' });
             }
@@ -79,7 +79,7 @@ class QRDownloaderController {
             }
 
             const study = await DicomStudy.findById(studyId)
-                .select('_id patientInfo currentReportStatus workflowStatus createdAt')
+                .select('_id patientInfo currentReportStatus workflowStatus createdAt studyInstanceUID orthancStudyID')
                 .lean();
 
             if (!study) {
@@ -95,6 +95,10 @@ class QRDownloaderController {
             .populate('doctorId', 'fullName')
             .lean();
 
+            const OHIF_BASE_URL = process.env.OHIF_BASE_URL || 'https://viewer.bharatpacs.com/viewer';
+            const uid = study.studyInstanceUID || study.orthancStudyID || '';
+            const ohifUrl = uid ? `${OHIF_BASE_URL}?StudyInstanceUIDs=${encodeURIComponent(uid)}` : null;
+
             res.json({
                 success: true,
                 data: {
@@ -102,7 +106,12 @@ class QRDownloaderController {
                     patientName: study.patientInfo?.patientName,
                     patientId: study.patientInfo?.patientID,
                     workflowStatus: study.workflowStatus,
-                    hasReport: !!report,
+                    createdAt: study.createdAt,
+                    viewer: {
+                        studyInstanceUID: study.studyInstanceUID || null,
+                        orthancStudyID: study.orthancStudyID || null,
+                        ohifUrl
+                    },
                     report: report ? {
                         reportId: report._id,
                         reportStatus: report.reportStatus,
@@ -110,8 +119,7 @@ class QRDownloaderController {
                         reportedBy: report.doctorId?.fullName || 'Unknown',
                         createdAt: report.createdAt,
                         downloadUrl: `/api/qr/${studyId}`
-                    } : null,
-                    createdAt: study.createdAt
+                    } : null
                 }
             });
 

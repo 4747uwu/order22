@@ -1296,7 +1296,7 @@ const accountRoles = (currentUser?.accountRoles?.length > 0)
         isUrgent ? 'text-rose-400' : 'text-slate-500'
       } whitespace-normal break-all leading-tight mt-0.5`}
     >
-      UHID: {study.patientId || '-'}
+      UHID: {study.accessionNumber || '-'}
     </div>
   </button>
 

@@ -84,12 +84,33 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         '--Content--': htmlContent
     };
 
+    // if (doctorData) {
+    //     placeholders['--drname--'] = doctorData.fullName;
+    //     placeholders['--department--'] = doctorData.department;
+    //     placeholders['--Licence--'] = doctorData.licenseNumber;
+    //     placeholders['--disc--'] = doctorData.disclaimer;
+    // }
+
     if (doctorData) {
-        placeholders['--drname--'] = doctorData.fullName;
-        placeholders['--department--'] = doctorData.department;
-        placeholders['--Licence--'] = doctorData.licenseNumber;
-        placeholders['--disc--'] = doctorData.disclaimer;
-    }
+    placeholders['--drname--'] = ''; // keep this plain to avoid breaking signature region
+
+    // placeholders['--department--'] =
+    //     `<span style="white-space: normal; word-wrap: break-word; font-size: 9pt; line-height: 0.5; font-weight: 700;">
+    //         ${doctorData.fullName}<br/>${doctorData.department}<br/>${doctorData.licenseNumber}<br/>${doctorData.disclaimer}
+    //     </span>`;
+
+
+    placeholders['--department--'] =
+  `<div style="font-weight:700;font-size:9pt;line-height:1;margin:0;padding:0;mso-line-height-rule:exactly;">
+    <span style="display:block;margin:0;padding:0;">${doctorData.fullName}</span><br/>
+    <span style="display:block;margin:0;padding:0;">${doctorData.department}</span><br/>
+    <span style="display:block;margin:0;padding:0;">${doctorData.licenseNumber}</span><br/>
+    <span style="display:block;margin:0;padding:0;">${doctorData.disclaimer}</span><br/>
+  </div>`.replace(/\n\s*/g, '');
+
+    placeholders['--Licence--'] = '';
+    placeholders['--disc--'] = '';
+}
 
     const images = {};
     
