@@ -678,7 +678,9 @@ export const storeMultipleReports = async (req, res) => {
                 fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 age: study.patientInfo?.age || study.patient?.age || 'N/A',
-                gender: study.patient?.gender || study.patientInfo?.gender || 'N/A',
+                gender: study.patient?.gender || 
+                       study.patientInfo?.gender || 
+                       placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
                 dateOfBirth: study.patient?.dateOfBirth,
                 clinicalHistory: study.clinicalHistory?.clinicalHistory || 
                                study.patient?.clinicalHistory || 'N/A'
@@ -702,14 +704,21 @@ export const storeMultipleReports = async (req, res) => {
             for (let i = 0; i < reports.length; i++) {
                 const reportData = reports[i];
                 const reportNumber = i + 1;
-                const fileName = reports.length > 1
-                    ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                    : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
-                console.log(`📄 [Multi-Report] Processing report ${reportNumber}/${reports.length}`);
+                // ✅ UPSERT: find existing report by ID if provided, otherwise create new
+                let existingReport = null;
+                if (reportData.existingReportId && mongoose.Types.ObjectId.isValid(reportData.existingReportId)) {
+                    existingReport = await Report.findById(reportData.existingReportId).session(session);
+                    console.log(`🔍 [Multi-Report] Report ${reportNumber}: existingReportId=${reportData.existingReportId} → found=${!!existingReport}`);
+                }
 
-                const newReport = new Report({
-                    reportId: `RPT_${studyId}_${reportNumber}_${Date.now()}`,
+                const fileNameForReport = existingReport?.exportInfo?.fileName ||
+                    (reports.length > 1
+                        ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                        : `${patientNameForFilename}_final_${Date.now()}.docx`);
+
+                const reportFields = {
+                    reportId: existingReport?.reportId || `RPT_${studyId}_${reportNumber}_${Date.now()}`,
                     organizationIdentifier: currentUser.organizationIdentifier,
                     organization: organization?._id,
                     patient: study.patient?._id,
@@ -718,9 +727,7 @@ export const storeMultipleReports = async (req, res) => {
                     studyInstanceUID: study.studyInstanceUID || study.orthancStudyID || studyId.toString(),
                     orthancStudyID: study.orthancStudyID,
                     accessionNumber: study.accessionNumber,
-                    createdBy: currentUser.role === 'admin' || currentUser.role === 'super_admin' 
-                        ? doctorId 
-                        : currentUser._id,
+                    createdBy: currentUser.role === 'admin' || currentUser.role === 'super_admin' ? doctorId : currentUser._id,
                     doctorId: doctorId,
                     reportContent: {
                         htmlContent: reportData.htmlContent,
@@ -738,49 +745,48 @@ export const storeMultipleReports = async (req, res) => {
                             imageCount: reportData.capturedImages?.length || 0
                         }
                     },
-                    reportType: reportData.reportType || 'finalized',
-                    reportStatus: reportData.reportStatus || 'finalized',
-                    exportInfo: { 
-                        format: reportData.format || 'docx', 
-                        fileName: fileName
-                    },
+                    reportType: 'finalized',
+                    reportStatus: 'finalized',
+                    exportInfo: { format: reportData.format || 'docx', fileName: fileNameForReport },
                     patientInfo: patientInfo,
                     studyInfo: {
                         studyDate: study.studyDate,
                         modality: study.modality || study.modalitiesInStudy?.join(', '),
                         examDescription: study.examDescription,
                         institutionName: study.institutionName,
-                        referringPhysician: {
-                            name: referringPhysicianName,
-                            institution: '',
-                            contactInfo: ''
-                        },
+                        referringPhysician: { name: referringPhysicianName, institution: '', contactInfo: '' },
                         seriesCount: study.seriesCount,
                         instanceCount: study.instanceCount,
                         priority: study.priority,
                         caseType: study.caseType
                     },
                     workflowInfo: {
-                        draftedAt: reportData.draftedAt || now,
-                        finalizedAt: reportData.finalizedAt || now,
-                        statusHistory: [{
-                            status: reportData.reportStatus || 'finalized',
-                            changedAt: now,
-                            changedBy: currentUser._id,
-                            notes: `Report ${reportNumber} created`,
-                            userRole: currentUser.role
-                        }]
+                        draftedAt: existingReport?.workflowInfo?.draftedAt || now,
+                        finalizedAt: now,
+                        statusHistory: existingReport?.workflowInfo?.statusHistory || []
                     },
                     systemInfo: { dataSource: 'online_reporting_system' }
+                };
+
+                reportFields.workflowInfo.statusHistory.push({
+                    status: 'finalized',
+                    changedAt: now,
+                    changedBy: currentUser._id,
+                    notes: existingReport ? `Report ${reportNumber} updated` : `Report ${reportNumber} created`,
+                    userRole: currentUser.role
                 });
 
-                await newReport.save({ session });
-                savedReports.push(newReport);
-
-                console.log(`✅ [Multi-Report] Report ${reportNumber} saved:`, {
-                    reportId: newReport._id,
-                    fileName: fileName
-                });
+                let savedReport;
+                if (existingReport) {
+                    Object.assign(existingReport, reportFields);
+                    savedReport = await existingReport.save({ session });
+                    console.log(`✅ [Multi-Report] Report ${reportNumber} UPDATED:`, existingReport._id);
+                } else {
+                    savedReport = new Report(reportFields);
+                    await savedReport.save({ session });
+                    console.log(`✅ [Multi-Report] Report ${reportNumber} CREATED:`, savedReport._id);
+                }
+                savedReports.push(savedReport);
             }
 
             await updateStudyReportStatus(study, savedReports[savedReports.length - 1], session);

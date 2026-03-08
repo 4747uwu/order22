@@ -9,6 +9,7 @@ import sessionManager from '../../services/sessionManager';
 import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2 } from 'lucide-react';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
+import { StudyDocumentsManager } from '../StudyDocuments/StudyDocumentsManager';
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
@@ -56,6 +57,7 @@ const OnlineReportingSystemWithOHIF = () => {
   const activeReport = reports[activeReportIndex] || reports[0];
   const reportContent = activeReport.content;
   const capturedImages = activeReport.capturedImages;
+  const [showDocuments, setShowDocuments] = useState(false);
 
   const setReportContent = (content) => {
     setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, content } : r));
@@ -236,8 +238,13 @@ const OnlineReportingSystemWithOHIF = () => {
         const orthancStudyID = currentStudy.orthancStudyID || currentStudy.studyId || studyInfo.studyId || null;
         const studyInstanceUID = passedStudyInstanceUID || currentStudy.studyInstanceUID || currentStudy.studyId || studyInfo.studyInstanceUID || studyInfo.studyId || null;
 
-        if (studyInstanceUID) {
-          const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
+         if (studyInstanceUID) {
+          const OHIF_VIEWERS = {
+            viewer1: 'https://viewer.bharatpacs.com/viewer',
+            viewer2: 'http://206.189.133.52:9004/viewer',
+          };
+          const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
+          const OHIF_BASE = OHIF_VIEWERS[viewerPref] || OHIF_VIEWERS.viewer1;
           let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
           if (studyUIDs) setOhifViewerUrl(`${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`);
         }
@@ -492,6 +499,7 @@ const OnlineReportingSystemWithOHIF = () => {
         // ✅ MULTI endpoint
         const response = await api.post(`/reports/studies/${studyId}/store-multiple`, {
           reports: reports.map(r => ({
+            existingReportId: r.existingReportId || null,
             htmlContent: r.content,
             placeholders: buildPlaceholders(r.content),
             capturedImages: r.capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
@@ -696,6 +704,7 @@ const OnlineReportingSystemWithOHIF = () => {
   }
 
   return (
+    <>
     <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
 
       {/* ✅ Single Toaster - bottom-left */}
@@ -754,6 +763,12 @@ const OnlineReportingSystemWithOHIF = () => {
                       <span className="font-medium text-gray-600 mr-1 uppercase">CLINICAL HISTORY:</span>
                       <span className="font-normal uppercase">{(reportData?.clinicalHistory || 'No clinical history').toString().toUpperCase()}</span>
                     </div>
+                    <button
+      onClick={() => setShowDocuments(true)}
+      className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+    >
+      <FileText className="w-3 h-3" /> Docs
+    </button>
                   </div>
                 </div>
               </div>
@@ -1040,8 +1055,23 @@ const OnlineReportingSystemWithOHIF = () => {
           </div>
         </div>
       )}
+         
     </div>
+
+    
+    <StudyDocumentsManager
+      studyId={studyId}
+      isOpen={showDocuments}
+      onClose={() => setShowDocuments(false)}
+      studyMeta={{ patientName: patientData?.fullName, accessionNumber: studyData?.accessionNumber }}
+    />
+    
+    </>
+    
+    
+    
   );
+   
 };
 
 export default OnlineReportingSystemWithOHIF;

@@ -692,6 +692,19 @@ const UnifiedStudyRow = ({
     const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
         const hasActiveViewers = activeViewers.length > 0;
 
+        // ✅ Viewer preference — persisted in localStorage
+const [selectedViewer, setSelectedViewer] = useState(
+    () => localStorage.getItem('preferredOhifViewer') || 'viewer1'
+);
+const handleViewerChange = (e) => {
+    const v = e.target.value;
+    setSelectedViewer(v);
+    localStorage.setItem('preferredOhifViewer', v);
+};
+
+
+const [showViewerDropdownView, setShowViewerDropdownView] = useState(false);
+const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
 
     const assignInputRef = useRef(null);
     const downloadButtonRef = useRef(null);
@@ -911,55 +924,54 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
 }, []);
 
 
-        const handleDirectDownloadPDF = useCallback(async (study) => {
-        try {
-            const loadingToast = toast.loading('Generating PDF...', { icon: '⚙️' });
+      const handleDirectDownloadPDF = useCallback(async (study) => {
+    toast.loading('Fetching reports...', { id: 'pdf-download' });
+    try {
+        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-            // Step 1: Get reports for this study
-            const response = await api.get(`/reports/studies/${study._id}/reports`);
-
-            if (!response.data.success || !response.data.data?.reports?.length) {
-                toast.dismiss(loadingToast);
-                toast.error('No report found for this study');
-                return;
-            }
-
-            // Step 2: Pick latest finalized report
-            const reports = response.data.data.reports;
-            const latestReport = reports.find(r => r.reportStatus === 'finalized') || reports[0];
-
-            if (!latestReport) {
-                toast.dismiss(loadingToast);
-                toast.error('No finalized report available');
-                return;
-            }
-
-            // Step 3: Download PDF directly
-            const pdfResponse = await api.get(
-                `/reports/reports/${latestReport._id}/download/pdf`,
-                { responseType: 'blob', timeout: 60000 }
-            );
-
-            toast.dismiss(loadingToast);
-
-            // Step 4: Trigger browser download
-            const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-
-            toast.success('PDF downloaded successfully!', { icon: '📥' });
-
-        } catch (error) {
-            console.error('❌ [Download PDF] Error:', error);
-            toast.error('Failed to download PDF');
+        if (!response.data.success || !response.data.data?.reports?.length) {
+            toast.error('No finalized reports found', { id: 'pdf-download' });
+            return;
         }
-    }, []);
+
+        const { reports, totalReports } = response.data.data;
+        toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
+
+        for (let i = 0; i < reports.length; i++) {
+            const reportMeta = reports[i];
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+            toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
+
+            try {
+                const pdfResponse = await api.get(
+                    `/reports/reports/${reportMeta.reportId}/download/pdf`,
+                    { responseType: 'blob', timeout: 60000 }
+                );
+                const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
+            } catch (err) {
+                toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
+            }
+        }
+
+        if (totalReports > 1) {
+            toast.success(`🎉 All ${totalReports} reports downloaded!`, { id: 'pdf-download-done', duration: 3000 });
+        }
+
+    } catch (error) {
+        console.error('❌ [Download PDF] Error:', error);
+        toast.error('Failed to fetch reports', { id: 'pdf-download' });
+    }
+}, []);
 
     const handleCloseAssignmentModal = () => {
         setShowAssignmentModal(false);
@@ -1011,8 +1023,15 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
       studyUIDs = String(src._id || '');
     }
 
-    const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-    window.open(ohifUrl, '_blank');
+    const ohifUrl = (() => {
+    const OHIF_VIEWERS = {
+        viewer1: 'https://viewer.bharatpacs.com/viewer',
+        viewer2: 'http://165.232.189.64:4000/viewer',
+    };
+    const base = OHIF_VIEWERS[selectedViewer] || OHIF_VIEWERS.viewer1;
+    return `${base}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+})();
+window.open(ohifUrl, '_blank');
   } catch (error) {
     console.error('Error opening OHIF viewer:', error);
     window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
@@ -1078,9 +1097,10 @@ const accountRoles = (currentUser?.accountRoles?.length > 0)
             }
 
             // ✅ Build URL with appropriate query params
-            const queryParams = new URLSearchParams({
+             const queryParams = new URLSearchParams({
                 openOHIF: 'true',
-                ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+                viewer: selectedViewer,
+                ...(accountRoles.includes('verifier') && { verifierMode: 'true', action: 'verify' })
             });
 
             const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
@@ -1333,15 +1353,34 @@ const accountRoles = (currentUser?.accountRoles?.length > 0)
 
     {/* 10. VIEW ONLY */}
     {isColumnVisible('viewOnly') && (
-        <td className="px-3 py-3.5 text-center border-r border-slate-200 align-center" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+<td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+    <div className="relative flex items-center justify-center gap-0.5">
+        <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title={`View Only — ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'}`}>
+            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
+        </button>
+        <div className="relative">
             <button
-                onClick={handleViewOnlyClick}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto"
-                title="View Images Only (No Locking)"
+                className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+    onClick={(e) => { e.stopPropagation(); setShowViewerDropdownView(prev => !prev); setShowViewerDropdownReport(false); }}
             >
-                <Eye className="w-4 h-4 text-gray-700 group-hover:text-gray-900" />
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
             </button>
-        </td>
+            {showViewerDropdownView && (
+                <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                    {['viewer1', 'viewer2'].map(v => (
+                        <button
+                            key={v}
+                            onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownView(false); }}
+                            className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                        >
+                            {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    </div>
+</td>
     )}
 
     {/* 11. REPORTING */}
@@ -1364,37 +1403,55 @@ const accountRoles = (currentUser?.accountRoles?.length > 0)
 
 {/* 11. REPORTING */}
     {isColumnVisible('reporting') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('reporting')}px` }}>
-            <button
-                onClick={handleOHIFReporting}
-                // ✅ FIXED: Check both workflowStatus AND assignment info
-                disabled={
-                    study.workflowStatus === 'new_study_received' || 
-                    !study.isAssigned || 
-                    !study.radiologist
-                }
-                className={`p-2 rounded-lg transition-all group mx-auto ${
-                    study.workflowStatus === 'new_study_received' || !study.isAssigned
-                        ? 'opacity-40 cursor-not-allowed hover:scale-100'
-                        : 'hover:bg-gray-100 hover:scale-110'
-                }`}
-                title={
-                    study.workflowStatus === 'new_study_received' 
-                        ? 'Available after study is received' 
-                        : !study.isAssigned
-                        ? 'Available after assignment'
-                        : 'Open OHIF + Reporting'
-                }
-            >
-                <Monitor className="w-4 h-4 text-emerald-600" />
-            </button>
+     <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('reporting')}px` }}>
+            <div className="relative flex items-center justify-center gap-0.5">
+                <button
+                    onClick={handleOHIFReporting}
+                    disabled={study.workflowStatus === 'new_study_received' || !study.isAssigned || !study.radiologist}
+                    className={`p-1 sm:p-1.5 rounded-lg transition-all group ${
+                        study.workflowStatus === 'new_study_received' || !study.isAssigned
+                            ? 'opacity-40 cursor-not-allowed'
+                            : 'hover:bg-gray-100 hover:scale-110'
+                    }`}
+                    title={
+                        study.workflowStatus === 'new_study_received'
+                            ? 'Available after study is received'
+                            : !study.isAssigned
+                            ? 'Available after assignment'
+                            : `Open ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'} + Reporting`
+                    }
+                >
+                    <Monitor className="w-4 h-4 text-emerald-600" />
+                </button>
+                <div className="relative">
+                    <button
+                         className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+        onClick={(e) => { e.stopPropagation(); setShowViewerDropdownReport(prev => !prev); setShowViewerDropdownView(false); }}
+                    >
+                        <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
+                    </button>
+                    {showViewerDropdownReport && (
+                        <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                            {['viewer1', 'viewer2'].map(v => (
+                                <button
+                                    key={v}
+                                    onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownReport(false); }}
+                                    className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                                >
+                                    {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
         </td>
-    )}
+)}
 
     {/* 12. SERIES/IMAGES */}
     {isColumnVisible('studySeriesImages') && (
         <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-            <div className="text-[11px] text-slate-600 whitespace-normal break-words leading-tight mb-1">{study.studyDescription || 'N/A'}</div>
+          <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
             <div className="text-xs font-medium text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
         </td>
     )}
@@ -2013,7 +2070,8 @@ const UnifiedWorklistTable = ({
 }) => {
 
     const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
-
+        // ✅ Viewer preference — persisted in localStorage
+    
     // ✅ ADD COLUMN RESIZING HOOK
     const { columnWidths, getColumnWidth, handleColumnResize, resetColumnWidths } = useColumnResizing(
         `unified-worklist-widths-${userAccountRoles.join('+')}`,

@@ -205,6 +205,7 @@ class ReportDownloadController {
 
         try {
             const { reportId } = req.params;
+            console.log(req.body)
 
             if (!mongoose.Types.ObjectId.isValid(reportId)) {
                 return res.status(400).json({ success: false, message: 'Invalid reportId' });
@@ -242,14 +243,15 @@ class ReportDownloadController {
 
             const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.docx`;
 
-            if (report.dicomStudy?._id) {
-                updateWorkflowStatus({
-                    studyId: report.dicomStudy._id,
-                    status: 'final_report_downloaded',
-                    note: `Report downloaded as DOCX by ${req.user?.fullName || 'User'}`,
-                    user: req.user
-                }).catch(e => console.warn('Workflow update failed'));
-            }
+            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
+if (downloaderRoles.includes('lab_staff')) {
+    updateWorkflowStatus({
+        studyId: report.dicomStudy._id,
+        status: 'final_report_downloaded',
+        note: `Report downloaded as docx by ${req.user?.fullName || 'User'}`,
+        user: req.user
+    }).catch(e => console.warn('Workflow update failed'));
+}
 
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -335,13 +337,17 @@ class ReportDownloadController {
                         }
                     }
                 });
+                            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
 
-                updateWorkflowStatus({
-                    studyId: report.dicomStudy._id,
-                    status: 'final_report_downloaded',
-                    note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
-                    user: req.user
-                }).catch(e => console.warn('Workflow update failed'));
+
+                if (downloaderRoles.includes('lab_staff')) {
+                    updateWorkflowStatus({
+                        studyId: report.dicomStudy._id,
+                        status: 'final_report_downloaded',
+                        note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
+                        user: req.user
+                    }).catch(e => console.warn('Workflow update failed'));
+                }
             }
 
             const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.pdf`;
@@ -416,13 +422,16 @@ class ReportDownloadController {
                         }
                     }
                 });
+            const downloaderRoles = req.user?.accountRoles?.length > 0 ? req.user.accountRoles : [req.user?.role];
 
-                updateWorkflowStatus({
-                    studyId: report.dicomStudy._id,
-                    status: 'final_report_downloaded',
-                    note: `Report downloaded as DOCX by ${req.user?.fullName || 'User'}`,
-                    user: req.user
-                }).catch(e => console.warn('Workflow update failed'));
+                if (downloaderRoles.includes('lab_staff')) {
+                    updateWorkflowStatus({
+                        studyId: report.dicomStudy._id,
+                        status: 'final_report_downloaded',
+                        note: `Report downloaded as PDF by ${req.user?.fullName || 'User'}`,
+                        user: req.user
+                    }).catch(e => console.warn('Workflow update failed'));
+                }
             }
 
             const fileName = `${report.reportId || `Report_${report._id}`}_${new Date().toISOString().split('T')[0]}.docx`;

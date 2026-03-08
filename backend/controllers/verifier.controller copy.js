@@ -217,11 +217,10 @@ export const getValues = async (req, res) => {
 
         // ✅ SIMPLIFIED: Only 2 status categories for counting
         const statusCategories = {
-            // ✅ VERIFIED: report_completed + final_report_downloaded
-            verified: ['report_completed', 'final_report_downloaded'],
-            // ✅ REVERTED: report_rejected + revert_to_radiologist
-            rejected: ['report_rejected', 'revert_to_radiologist'],
-        };
+    pending: ['verification_pending', 'verification_in_progress'],
+    verified: ['report_completed', 'final_report_downloaded'],
+    rejected: ['report_rejected', 'revert_to_radiologist'],
+};
 
         const pipeline = [
             { $match: queryFilters },
@@ -246,16 +245,19 @@ export const getValues = async (req, res) => {
         const totalFiltered = totalFilteredResult.status === 'fulfilled' ? totalFilteredResult.value : 0;
 
         // ✅ SIMPLIFIED: Calculate only verified and rejected
-        let verified = 0;
-        let rejected = 0;
+        let pending = 0;
+let verified = 0;
+let rejected = 0;
 
         statusCounts.forEach(({ _id: status, count }) => {
-            if (statusCategories.verified.includes(status)) {
-                verified += count;
-            } else if (statusCategories.rejected.includes(status)) {
-                rejected += count;
-            }
-        });
+    if (statusCategories.pending.includes(status)) {
+        pending += count;
+    } else if (statusCategories.verified.includes(status)) {
+        verified += count;
+    } else if (statusCategories.rejected.includes(status)) {
+        rejected += count;
+    }
+});
 
         const processingTime = Date.now() - startTime;
         console.log(`🎯 Verifier dashboard values fetched in ${processingTime}ms`);
@@ -263,6 +265,7 @@ export const getValues = async (req, res) => {
         const response = {
             success: true,
             total: totalFiltered,
+            pending,
             verified,
             rejected,
             performance: {
@@ -408,7 +411,6 @@ export const verifyReport = async (req, res) => {
             approved, 
             rejectionReason,
             verificationTimeMinutes,
-            isRevert = false,   // ✅ NEW: true when called from RevertModal (final_report_downloaded state)
         } = req.body;
         const user = req.user;
         console.log(`🔍 [Verify Report] User ${user.fullName} (${user.role}) is verifying study ${studyId} with approved=${approved}`);
@@ -496,36 +498,27 @@ export const verifyReport = async (req, res) => {
                 currentCategory: approved 
                     ? (needsReprint ? 'REPRINT_NEED' : 'COMPLETED')
                     : 'REVERTED',
-                'reportInfo.verificationInfo.verifiedBy': user._id,
-                'reportInfo.verificationInfo.verifiedAt': now,
-                'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
-                'reportInfo.verificationInfo.verificationNotes': verificationNotes || '',
+                'reportInfo.verificationInfo.verifiedBy':            user._id,
+                'reportInfo.verificationInfo.verifiedAt':            now,
+                'reportInfo.verificationInfo.verificationStatus':    approved ? 'verified' : 'rejected',
+                'reportInfo.verificationInfo.verificationNotes':     verificationNotes || '',
                 'reportInfo.verificationInfo.verificationTimeMinutes': verificationTimeMinutes || 0
             };
 
-            // ✅ CLEAR reprintNeeded flag after processing approval
+            // ✅ CLEAR reprintNeeded when approving a reprint study
             if (approved && needsReprint) {
                 studyUpdateData.reprintNeeded = false;
-                console.log(`✅ [Verify] Study was marked for reprint, setting status to report_reprint_needed and clearing flag`);
+                console.log('✅ [Verify] reprintNeeded cleared → setting report_reprint_needed');
             }
 
-            // ✅ CHANGED: Only set reprintNeeded=true when isRevert=true (called from RevertModal
-            //             on a final_report_downloaded study), NOT on every rejection
+            // ✅ REJECTION: Never touch reprintNeeded here — that's revert.controller.js's job
             if (!approved) {
                 studyUpdateData['reportInfo.verificationInfo.rejectionReason'] = rejectionReason || '';
-                if (corrections && corrections.length > 0) {
+                if (corrections?.length > 0) {
                     studyUpdateData['reportInfo.verificationInfo.corrections'] = corrections;
                 }
-
-                if (isRevert) {
-                    // ✅ RevertModal: study was downloaded → radiologist must re-do → needs reprint
-                    studyUpdateData.reprintNeeded = true;
-                    console.log('🔄 [Verify Revert] isRevert=true → setting reprintNeeded=true');
-                } else {
-                    // ✅ Normal verifier rejection: do NOT touch reprintNeeded
-                    // reprintNeeded stays false — radiologist re-finalizes → goes back to verification
-                    console.log('🔄 [Verify Reject] Normal rejection — reprintNeeded NOT set');
-                }
+                // ✅ reprintNeeded is NOT set here — stays whatever it was
+                console.log('🔄 [Verify Reject] Normal verifier rejection — reprintNeeded NOT touched');
             }
 
             const historyEntry = {
@@ -852,7 +845,7 @@ export const getPendingStudies = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
-        const pendingStatuses = ['report_finalized', 'report_drafted'];
+const pendingStatuses = ['verification_pending', 'verification_in_progress'];
         const queryFilters = buildVerifierBaseQuery(req, pendingStatuses);
         
         const { studies, totalStudies } = await executeStudyQuery(queryFilters, limit);

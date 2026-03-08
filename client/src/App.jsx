@@ -17,7 +17,7 @@ import DoctorDashboard from './pages/doctor/dashboard';
 import TypistDashboard from './pages/typist/dashboard';
 import VerifierDashboard from './pages/verifier/dashboard';
 import DoctorTemplates from './pages/doctor/templates';
-import OnlineReportingSystem from './components/OnlineReportingSystem/OnlineReportingSystem';
+import OnlineReportingSystemEditMode from './components/OnlineReportingSystem/OnlineReportingSystemeditmode.jsx';
 import OnlineReportingSystemWithOHIF from './components/OnlineReportingSystem/OnlineReportingSystemWithOHIF';
 import OHIFViewerPage from './pages/doctor/OHIFViewerPage';
 import SystemOverview from './pages/admin/SystemOverview';
@@ -422,7 +422,7 @@ const OnlineReportingRouteHandler = () => {
     return <OnlineReportingSystemWithOHIF />;
   } else {
     console.log('📝 [Route Handler] Loading regular OnlineReportingSystem');
-    return <OnlineReportingSystem />;
+    return <OnlineReportingSystemEditMode />;
   }
 };
 

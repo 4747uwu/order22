@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { toast } from 'react-toastify';
 import TemplateTreeView from './TemplateTreeView';
-import ReportEditor from './ReportEditor';
+import ReportEditorWithOhif from './ReportEditorWithOhif';
 import PatientInfoPanel from './PatientInfoPanel';
 // import RecentStudies from './RecentStudies';
 import sessionManager from '../../services/sessionManager';
@@ -19,7 +19,8 @@ const OnlineReportingSystem = () => {
   const [templates, setTemplates] = useState({});
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [reportData, setReportData] = useState({});
-  const [reportContent, setReportContent] = useState('');
+  const [reports, setReports] = useState([]);
+  const [activeReportIndex, setActiveReportIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
@@ -56,8 +57,12 @@ const OnlineReportingSystem = () => {
   }, [reportData]);
 
   useEffect(() => {
-    console.log('📊 [State Update] reportContent length:', reportContent?.length || 0);
-  }, [reportContent]);
+    console.log('📊 [State Update] reports:', reports);
+  }, [reports]);
+
+  useEffect(() => {
+    console.log('📊 [State Update] activeReportIndex:', activeReportIndex);
+  }, [activeReportIndex]);
 
   // Re-initialize when studyId changes
   useEffect(() => {
@@ -69,7 +74,8 @@ const OnlineReportingSystem = () => {
       setPatientData(null);
       setSelectedTemplate(null);
       setReportData({});
-      setReportContent('');
+      setReports([]);
+      setActiveReportIndex(0);
       setSaving(false);
       setFinalizing(false);
       setExportFormat('docx');
@@ -130,12 +136,7 @@ const OnlineReportingSystem = () => {
       const templatesEndpoint = '/html-templates/reporting';
       
       // ✅ UPDATED: Use different endpoint for specific report editing
-      let existingReportEndpoint = `/reports/studies/${studyId}/edit-report`;
-      if (reportIdParam && actionParam === 'edit') {
-        existingReportEndpoint = `/reports/studies/${studyId}/edit-report?reportId=${reportIdParam}`;
-        console.log('📝 [Initialize] Loading specific report for editing:', reportIdParam);
-      }
-      
+      const existingReportEndpoint = `/reports/studies/${studyId}/all-reports`;
       console.log('📡 [API] Calling endpoints:');
       console.log('  - Study Info:', studyInfoEndpoint);
       console.log('  - Templates:', templatesEndpoint);
@@ -973,6 +974,57 @@ const OnlineReportingSystem = () => {
     }
   };
 
+  const handleUpdateReport = async () => {
+    if (!reportContent.trim()) {
+      toast.error('Cannot update an empty report.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
+        htmlContent: reportContent,
+        templateId: selectedTemplate?._id,
+        templateInfo: selectedTemplate ? {
+          templateId: selectedTemplate._id,
+          templateName: selectedTemplate.title,
+          templateCategory: selectedTemplate.category,
+          templateTitle: selectedTemplate.title
+        } : null,
+        existingReportId: activeReport?._id || null
+      });
+
+      if (response.data.success) {
+        const savedId = response.data.data?.reportId;
+        toast.success('Report updated successfully!', { duration: 3000, icon: '✅' });
+
+        // If this was a new report (no active report), add it to list
+        if (!activeReport?._id && savedId) {
+          const newEntry = {
+            _id: savedId,
+            reportStatus: 'draft',
+            reportType: 'draft',
+            reportContent: { htmlContent: reportContent },
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          setReports(prev => [...prev, newEntry]);
+          setActiveReportIndex(reports.length);
+        } else {
+          // Update the updatedAt on the existing entry
+          setReports(prev => prev.map((r, i) =>
+            i === activeReportIndex ? { ...r, updatedAt: new Date().toISOString() } : r
+          ));
+        }
+      } else {
+        throw new Error(response.data.message || 'Update failed');
+      }
+    } catch (error) {
+      toast.error(`Failed to update report: ${error.response?.data?.message || error.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleBackToWorklist = () => {
     console.log('🔙 [Navigation] Back to worklist clicked');
     const currentUser = sessionManager.getCurrentUser();
@@ -1040,6 +1092,32 @@ const OnlineReportingSystem = () => {
         </div>
       </div>
 
+      {/* Report Tabs */}
+{reports.length > 1 && (
+  <div className="flex items-center gap-1 px-2 pt-2 bg-gray-100 border-b border-gray-200 overflow-x-auto flex-shrink-0">
+    {reports.map((report, i) => (
+      <button
+        key={report._id || i}
+        onClick={() => setActiveReportIndex(i)}
+        className={`px-3 py-1 text-xs font-medium rounded-t whitespace-nowrap transition-colors ${
+          i === activeReportIndex
+            ? 'bg-white border border-b-white border-gray-200 text-gray-900 -mb-px'
+            : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+        }`}
+      >
+        Report {i + 1}
+        <span className={`ml-1 px-1 rounded text-[10px] ${
+          report.reportStatus === 'finalized' ? 'bg-green-100 text-green-700' :
+          report.reportStatus === 'draft' ? 'bg-yellow-100 text-yellow-700' :
+          'bg-gray-100 text-gray-500'
+        }`}>
+          {report.reportStatus}
+        </span>
+      </button>
+    ))}
+  </div>
+)}
+
       {/* Template Tree View */}
       <div className="flex-1 overflow-y-auto">
         <TemplateTreeView
@@ -1078,13 +1156,7 @@ const OnlineReportingSystem = () => {
     <div className="flex-1 flex min-w-0 h-screen">
       {/* Center - Report Editor */}
       <div className="flex-1 flex flex-col min-w-0 pr-84">
-        <ReportEditor
-          content={reportContent}
-          onChange={(content) => {
-            console.log('✏️ [Editor] Content changed, new length:', content?.length || 0);
-            setReportContent(content);
-          }}
-        />
+        <ReportEditorWithOhif content={reportContent} onChange={setReportContent} />
       </div>
       
       {/* Right Side Panel - Fixed Width */}

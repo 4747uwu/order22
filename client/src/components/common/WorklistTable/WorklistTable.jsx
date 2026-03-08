@@ -618,6 +618,20 @@ const StudyRow = ({
   //  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
 
+// ✅ Viewer preference — persisted in localStorage
+const [selectedViewer, setSelectedViewer] = useState(
+    () => localStorage.getItem('preferredOhifViewer') || 'viewer1'
+);
+const handleViewerChange = (e) => {
+    const v = e.target.value;
+    setSelectedViewer(v);
+    localStorage.setItem('preferredOhifViewer', v);
+};
+
+
+const [showViewerDropdownView, setShowViewerDropdownView] = useState(false);
+const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
+
   const assignInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
   const [assignInputValue, setAssignInputValue] = useState('');
@@ -894,12 +908,16 @@ const StudyRow = ({
       else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
       else studyUIDs = String(src._id || '');
 
-      const ohifUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-      window.open(ohifUrl, '_blank');
+      const OHIF_VIEWERS = {
+        viewer1: 'https://viewer.bharatpacs.com/viewer',
+        viewer2: 'http://206.189.133.52:9004/viewer',
+      };
+      const ohifBase = OHIF_VIEWERS[selectedViewer] || OHIF_VIEWERS.viewer1;
+      window.open(`${ohifBase}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`, '_blank');
     } catch (error) {
       window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
     }
-  };
+};
 
   const handleOHIFReporting = async () => {
     setRestoringStudy(true);
@@ -950,8 +968,13 @@ const StudyRow = ({
         toast.error(error.response?.data?.message || 'Failed to open study', { duration: 4000, icon: '❌' });
       }
 
-      const queryParams = new URLSearchParams({ openOHIF: 'true', ...(accountRoles.includes('verifier') && { verifierMode: 'true', action: 'verify' }) });
-      window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+            const queryParams = new URLSearchParams({
+    openOHIF: 'true',
+    viewer: selectedViewer,
+    ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+});
+
+window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
     } finally {
       setTogglingLock(false);
       setRestoringStudy(false);
@@ -960,56 +983,54 @@ const StudyRow = ({
 
 
 
-  const handleDirectDownloadPDF = useCallback(async (study) => {
+       const handleDirectDownloadPDF = useCallback(async (study) => {
     toast.loading('Fetching reports...', { id: 'pdf-download' });
     try {
-      const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-      if (!response.data.success || !response.data.data?.reports?.length) {
-        toast.error('No finalized reports found', { id: 'pdf-download' });
-        return;
-      }
-
-      const { reports, totalReports } = response.data.data;
-      toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
-
-      for (let i = 0; i < reports.length; i++) {
-        const reportMeta = reports[i];
-        if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
-
-        toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
-
-        try {
-          const pdfResponse = await api.get(
-            `/reports/reports/${reportMeta.reportId}/download/pdf`,
-            { responseType: 'blob', timeout: 60000 }
-          );
-          const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}_of_${totalReports}.pdf`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-          toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
-        } catch (err) {
-          console.error(`❌ Failed to download report ${i + 1}:`, err);
-          toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
+        if (!response.data.success || !response.data.data?.reports?.length) {
+            toast.error('No finalized reports found', { id: 'pdf-download' });
+            return;
         }
-      }
 
-      toast.success(
-        totalReports > 1 ? `🎉 All ${totalReports} reports downloaded!` : '🎉 Report downloaded!',
-        { id: 'pdf-download-done', duration: 3000 }
-      );
+        const { reports, totalReports } = response.data.data;
+        toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
+
+        for (let i = 0; i < reports.length; i++) {
+            const reportMeta = reports[i];
+            if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+            toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
+
+            try {
+                const pdfResponse = await api.get(
+                    `/reports/reports/${reportMeta.reportId}/download/pdf`,
+                    { responseType: 'blob', timeout: 60000 }
+                );
+                const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
+            } catch (err) {
+                toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
+            }
+        }
+
+        if (totalReports > 1) {
+            toast.success(`🎉 All ${totalReports} reports downloaded!`, { id: 'pdf-download-done', duration: 3000 });
+        }
 
     } catch (error) {
-      console.error('❌ [Download PDF] Error:', error);
-      toast.error('Failed to fetch reports', { id: 'pdf-download' });
+        console.error('❌ [Download PDF] Error:', error);
+        toast.error('Failed to fetch reports', { id: 'pdf-download' });
     }
-  }, []);
+}, []);
 
   const handleDirectPrint = useCallback(async (study) => {
     toast.loading('Fetching reports...', { id: 'print-load' });
@@ -1276,62 +1297,85 @@ const StudyRow = ({
       )}
 
       {/* 9. VIEW & REPORTING */}
-      <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
-        <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110 mx-auto" title="View Images Only">
-          <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
+   <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+    <div className="relative flex items-center justify-center gap-0.5">
+        <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title={`View Only — ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'}`}>
+            <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
         </button>
-      </td>
+        <div className="relative">
+            <button
+                className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+    onClick={(e) => { e.stopPropagation(); setShowViewerDropdownView(prev => !prev); setShowViewerDropdownReport(false); }}
+            >
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
+            </button>
+            {showViewerDropdownView && (
+                <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                    {['viewer1', 'viewer2'].map(v => (
+                        <button
+                            key={v}
+                            onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownView(false); }}
+                            className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                        >
+                            {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    </div>
+</td>
 
-
-      {/* {isColumnVisible('reporting') && (
-    <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-top" style={{ width: `${getColumnWidth('reporting')}px` }}>
-        <button
-            onClick={handleOHIFReporting}
-            disabled={study.workflowStatus === 'new_study_received'}  // ✅ ADD THIS
-            className={`p-2 rounded-lg transition-all group mx-auto ${
-                study.workflowStatus === 'new_study_received'
-                    ? 'opacity-40 cursor-not-allowed hover:scale-100'
-                    : 'hover:bg-gray-100 hover:scale-110'
-            }`}
-            title={study.workflowStatus === 'new_study_received' ? 'Available after assignment' : 'Open OHIF + Reporting'}
-        >
-            <Monitor className="w-4 h-4 text-emerald-600" />
-        </button>
+{isColumnVisible('reporting') && (
+    <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('reporting')}px` }}>
+        <div className="relative flex items-center justify-center gap-0.5">
+            <button
+                onClick={handleOHIFReporting}
+                disabled={study.workflowStatus === 'new_study_received' || !study.isAssigned || !study.radiologist}
+                className={`p-1 sm:p-1.5 rounded-lg transition-all group ${
+                    study.workflowStatus === 'new_study_received' || !study.isAssigned
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-gray-100 hover:scale-110'
+                }`}
+                title={
+                    study.workflowStatus === 'new_study_received'
+                        ? 'Available after study is received'
+                        : !study.isAssigned
+                        ? 'Available after assignment'
+                        : `Open ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'} + Reporting`
+                }
+            >
+                <Monitor className="w-4 h-4 text-emerald-600" />
+            </button>
+            <div className="relative">
+                <button
+                     className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+    onClick={(e) => { e.stopPropagation(); setShowViewerDropdownReport(prev => !prev); setShowViewerDropdownView(false); }}
+                >
+                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
+                </button>
+                {showViewerDropdownReport && (
+                    <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                        {['viewer1', 'viewer2'].map(v => (
+                            <button
+                                key={v}
+                                onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownReport(false); }}
+                                className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                            >
+                                {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
     </td>
-)} */}
-
-
-      {isColumnVisible('reporting') && (
-        <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('reporting')}px` }}>
-          <button
-            onClick={handleOHIFReporting}
-            // ✅ FIXED: Check both workflowStatus AND assignment info
-            disabled={
-              study.workflowStatus === 'new_study_received' ||
-              !study.isAssigned ||
-              !study.radiologist
-            }
-            className={`p-2 rounded-lg transition-all group mx-auto ${study.workflowStatus === 'new_study_received' || !study.isAssigned
-              ? 'opacity-40 cursor-not-allowed hover:scale-100'
-              : 'hover:bg-gray-100 hover:scale-110'
-              }`}
-            title={
-              study.workflowStatus === 'new_study_received'
-                ? 'Available after study is received'
-                : !study.isAssigned
-                  ? 'Available after assignment'
-                  : 'Open OHIF + Reporting'
-            }
-          >
-            <Monitor className="w-4 h-4 text-emerald-600" />
-          </button>
-        </td>
-      )}
+)}
 
       {/* 10. SERIES/IMAGES */}
       {isColumnVisible('seriesCount') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-          <div className="text-[9px] sm:text-[10px] text-slate-600 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
+          <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
           <div className="text-[10px] sm:text-xs font-semibold text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
         </td>
       )}
@@ -1778,6 +1822,8 @@ const WorklistTable = ({
   const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
   const [printModal, setPrintModal] = useState({ show: false, report: null, reports: [] });
+      // ✅ Viewer preference — persisted in localStorage
+    
   useEffect(() => {
     if (readyState === WebSocket.OPEN) {
       sendMessage({ type: 'subscribe_to_viewer_updates' });

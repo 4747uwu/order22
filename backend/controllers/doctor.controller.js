@@ -3,6 +3,13 @@ import DicomStudy from '../models/dicomStudyModel.js';
 import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
 
+// ✅ Parse comma-separated or array query params (same as admin controller)
+const parseListParam = (param) => {
+    if (!param) return [];
+    if (Array.isArray(param)) return param.filter(Boolean);
+    return param.includes(',') ? param.split(',').map(s => s.trim()).filter(Boolean) : [param];
+};
+
 // ✅ ENHANCED: Date filtering utility (same as admin controller)
 const buildDateFilter = (req) => {
     const IST_OFFSET = 5.5 * 60 * 60 * 1000;
@@ -324,16 +331,35 @@ const buildDoctorBaseQuery = (req, user, workflowStatuses = null) => {
     }
 
     // ✅ MODALITY FILTERING
-    if (req.query.modality && req.query.modality !== 'all') {
-        queryFilters.$or = [
-            { modality: req.query.modality },
-            { modalitiesInStudy: req.query.modality }
-        ];
+    const modalities = parseListParam(req.query.modalities);
+    if (modalities.length > 0) {
+        console.log('🔬 [Doctor Modality Filter]:', { parsedModalities: modalities });
+        queryFilters.modalitiesInStudy = { $in: modalities };
+    } else if (req.query.modality && req.query.modality !== 'all') {
+        queryFilters.modalitiesInStudy = req.query.modality;
     }
 
-    // ✅ PRIORITY FILTERING
-    if (req.query.priority && req.query.priority !== 'all') {
-        queryFilters['assignment.priority'] = req.query.priority;
+    // ✅ PRIORITY FILTERING - multi-select, checks both priority and assignment.priority
+    const priorities = parseListParam(req.query.priorities);
+    if (priorities.length > 0) {
+        const priorityOr = priorities.length === 1
+            ? [{ priority: priorities[0] }, { 'assignment.priority': priorities[0] }]
+            : [{ priority: { $in: priorities } }, { 'assignment.priority': { $in: priorities } }];
+        if (queryFilters.$or) {
+            queryFilters.$and = [{ $or: queryFilters.$or }, { $or: priorityOr }];
+            delete queryFilters.$or;
+        } else {
+            queryFilters.$or = priorityOr;
+        }
+    } else if (req.query.priority && req.query.priority !== 'all') {
+        const p = req.query.priority;
+        const priorityOr = [{ priority: p }, { 'assignment.priority': p }];
+        if (queryFilters.$or) {
+            queryFilters.$and = [{ $or: queryFilters.$or }, { $or: priorityOr }];
+            delete queryFilters.$or;
+        } else {
+            queryFilters.$or = priorityOr;
+        }
     }
 
     // ✅ STUDY INSTANCE UIDS

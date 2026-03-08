@@ -595,58 +595,55 @@ export const verifyReport = async (req, res) => {
 
             // ✅ STEP 2: Update Report model with verification info
             const Report = mongoose.model('Report');
-            const report = await Report.findOne({
+            const reports = await Report.find({
                 dicomStudy: studyId,
                 reportStatus: { $in: ['finalized', 'draft'] }
             }).session(session);
 
-            if (report) {
-                console.log('📋 [Verify] Updating Report model with verification info:', report._id);
-                
-                // Update report verification info
-                if (!report.verificationInfo) {
-                    report.verificationInfo = {};
-                }
-                
-                report.verificationInfo.verifiedBy = user._id;
-                report.verificationInfo.verifiedAt = now;
-                report.verificationInfo.verificationStatus = approved ? 'verified' : 'rejected';
-                report.verificationInfo.verificationNotes = verificationNotes || '';
-                
-                if (!approved) {
-                    report.verificationInfo.rejectionReason = rejectionReason || '';
-                    if (corrections && corrections.length > 0) {
-                        report.verificationInfo.corrections = corrections;
+            if (reports.length > 0) {
+                console.log(`📋 [Verify] Updating ${reports.length} Report(s) with verification info`);
+
+                for (const report of reports) {
+                    if (!report.verificationInfo) report.verificationInfo = {};
+
+                    report.verificationInfo.verifiedBy = user._id;
+                    report.verificationInfo.verifiedAt = now;
+                    report.verificationInfo.verificationStatus = approved ? 'verified' : 'rejected';
+                    report.verificationInfo.verificationNotes = verificationNotes || '';
+
+                    if (!approved) {
+                        report.verificationInfo.rejectionReason = rejectionReason || '';
+                        if (corrections && corrections.length > 0) {
+                            report.verificationInfo.corrections = corrections;
+                        }
                     }
+
+                    if (approved) {
+                        report.reportStatus = 'verified';
+                    }
+
+                    if (!report.verificationInfo.verificationHistory) {
+                        report.verificationInfo.verificationHistory = [];
+                    }
+                    report.verificationInfo.verificationHistory.push(historyEntry);
+
+                    if (!report.workflowInfo.statusHistory) {
+                        report.workflowInfo.statusHistory = [];
+                    }
+                    report.workflowInfo.statusHistory.push({
+                        status: approved ? 'verified' : 'rejected',
+                        changedAt: now,
+                        changedBy: user._id,
+                        notes: verificationNotes || rejectionReason || '',
+                        userRole: user.role
+                    });
+
+                    await report.save({ session });
                 }
-                
-                // Update report status if verified
-                if (approved) {
-                    report.reportStatus = 'verified';
-                }
-                
-                // Add to verification history
-                if (!report.verificationInfo.verificationHistory) {
-                    report.verificationInfo.verificationHistory = [];
-                }
-                report.verificationInfo.verificationHistory.push(historyEntry);
-                
-                // Update workflow info
-                if (!report.workflowInfo.statusHistory) {
-                    report.workflowInfo.statusHistory = [];
-                }
-                report.workflowInfo.statusHistory.push({
-                    status: approved ? 'verified' : 'rejected',
-                    changedAt: now,
-                    changedBy: user._id,
-                    notes: verificationNotes || rejectionReason || '',
-                    userRole: user.role
-                });
-                
-                await report.save({ session });
-                console.log('✅ [Verify] Report model updated with verification info');
+
+                console.log(`✅ [Verify] All ${reports.length} Report(s) updated with verification info`);
             } else {
-                console.warn('⚠️ [Verify] No Report document found for study:', studyId);
+                console.warn('⚠️ [Verify] No Report documents found for study:', studyId);
             }
 
             // ✅ STEP 3: Update verifier stats
@@ -690,8 +687,7 @@ export const verifyReport = async (req, res) => {
                     corrections: !approved ? corrections : undefined,
                     rejectionReason: !approved ? rejectionReason : undefined,
                     adminBypass: hasAdminRole,
-                    reportModelUpdated: !!report
-                }
+  reportModelUpdated: reports.length > 0                }
             });
 
         } catch (error) {

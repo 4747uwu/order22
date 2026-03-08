@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Upload, FileText, Download, Trash2, Eye, File, Image, FileSpreadsheet, X, Loader } from 'lucide-react';
+import { Upload, FileText, Download, Trash2, Eye, File, Image, X, Loader, Lock } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
+import sessionManager from '../../services/sessionManager';
 
 export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = null }) => {
     const [documents, setDocuments] = useState([]);
@@ -9,6 +10,22 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     const [uploading, setUploading] = useState(false);
     const [previewDocument, setPreviewDocument] = useState(null);
     const [dragActive, setDragActive] = useState(false);
+
+    const currentUser = sessionManager.getCurrentUser();
+    
+    const userAccountRoles = (() => {
+        const roles = [];
+        if (currentUser?.role) roles.push(currentUser.role);
+        if (currentUser?.primaryRole) roles.push(currentUser.primaryRole);
+        if (currentUser?.accountRoles && Array.isArray(currentUser.accountRoles)) {
+            roles.push(...currentUser.accountRoles);
+        }
+        return [...new Set(roles.map(r => String(r).toLowerCase().trim()))];
+    })();
+
+    const canManageDocs = userAccountRoles.some(role => 
+        ['admin', 'assignor', 'super_admin'].includes(role)
+    );
 
     const fetchDocuments = useCallback(async () => {
         if (!studyId) return;
@@ -28,96 +45,44 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     }, [isOpen, studyId, fetchDocuments]);
 
     const handleFileUpload = async (files) => {
-        if (!files || files.length === 0) return;
+        if (!canManageDocs || !files?.[0]) return;
         const file = files[0];
-        
-        if (file.size > 10 * 1024 * 1024) return toast.error('File size must be less than 10MB');
-
-        const allowedTypes = [
-            'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'application/pdf',
-            'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        ];
-
-        if (!allowedTypes.includes(file.type)) return toast.error('File type not supported.');
+        if (file.size > 10 * 1024 * 1024) return toast.error('Max 10MB');
 
         setUploading(true);
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('documentType', getDocumentType(file.type));
+        formData.append('documentType', 'clinical');
 
         try {
             const response = await api.post(`/documents/study/${studyId}/upload`, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             if (response.data.success) {
-                toast.success('Uploaded successfully');
+                toast.success('Uploaded');
                 fetchDocuments();
             }
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Failed to upload');
+            toast.error('Upload failed');
         } finally {
             setUploading(false);
         }
     };
 
-    const getDocumentType = (mimeType) => {
-        if (mimeType.startsWith('image/')) return 'image';
-        if (mimeType === 'application/pdf') return 'clinical';
-        return 'other';
-    };
-
-    const handleDrag = (e) => {
-        e.preventDefault(); e.stopPropagation();
-        if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
-        else if (e.type === 'dragleave') setDragActive(false);
-    };
-
-    const handleDrop = (e) => {
-        e.preventDefault(); e.stopPropagation();
-        setDragActive(false);
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFileUpload(e.dataTransfer.files);
-    };
-
-    const handleFileChange = (e) => {
-        if (e.target.files && e.target.files[0]) handleFileUpload(e.target.files);
-    };
-
-    const handlePreview = async (document) => {
-        try {
-            const response = await api.get(`/documents/${document._id}/url?action=view`);
-            if (response.data.success) setPreviewDocument({ ...document, url: response.data.data.url });
-        } catch (error) { toast.error('Failed to preview document'); }
-    };
-
-    const handleDownload = async (document) => {
-        try {
-            const response = await api.get(`/documents/${document._id}/url?action=download`);
-            if (response.data.success) {
-                const link = window.document.createElement('a');
-                link.href = response.data.data.url;
-                link.download = document.fileName;
-                link.click();
-                toast.success('Download started');
-            }
-        } catch (error) { toast.error('Failed to download document'); }
-    };
-
     const handleDelete = async (documentId) => {
-        if (!window.confirm('Delete this document?')) return;
+        if (!canManageDocs || !window.confirm('Delete?')) return;
         try {
             const response = await api.delete(`/documents/${documentId}`);
             if (response.data.success) {
-                toast.success('Deleted successfully');
+                toast.success('Deleted');
                 fetchDocuments();
             }
-        } catch (error) { toast.error(error.response?.data?.message || 'Failed to delete'); }
+        } catch (error) { toast.error('Failed'); }
     };
 
     const getFileIcon = (contentType) => {
-        if (contentType.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
+        if (contentType?.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
         if (contentType === 'application/pdf') return <FileText className="w-3.5 h-3.5" />;
-        if (contentType.includes('sheet') || contentType.includes('excel')) return <FileSpreadsheet className="w-3.5 h-3.5" />;
         return <File className="w-3.5 h-3.5" />;
     };
 
@@ -131,125 +96,120 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     if (!isOpen) return null;
 
     return (
-        <>
-            {/* Main Modal */}
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10000] p-2">
-                <div className="bg-white rounded w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col border border-gray-900 shadow-2xl">
-                    
-                    {/* ✅ COMPACT HEADER: Matches PatientEditModal */}
-                    <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
-                        <div>
-                            <h2 className="text-xs sm:text-sm font-bold uppercase truncate">Study Documents</h2>
-                            {(studyMeta?.patientName || studyMeta?.patientId) && (
-                                <p className="text-[9px] text-gray-300 mt-0 uppercase leading-tight">
-                                    PT: {studyMeta.patientName || 'Unknown'} | ID: {studyMeta.patientId || 'N/A'}
-                                </p>
-                            )}
-                        </div>
-                        <button onClick={onClose} className="p-1 hover:bg-gray-700 rounded transition-colors">
-                            <X className="w-4 h-4" />
-                        </button>
+        <div 
+            className="fixed inset-0 flex items-center justify-center p-2 bg-black/60 backdrop-blur-sm"
+            style={{ zIndex: 999999 }}
+            onClick={onClose}
+        >
+            <div 
+                className="bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden border border-gray-300"
+                style={{ width: '880px', maxHeight: '80vh' }}
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header - Super Compact */}
+                <div className="bg-gray-900 text-white px-3 py-2 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <h2 className="text-[11px] font-black uppercase tracking-widest">Documents</h2>
+                        <div className="h-3 w-px bg-gray-700" />
+                        <p className="text-[10px] text-gray-400 truncate font-medium uppercase">
+                            {studyMeta?.patientName || 'N/A'} | ID: {studyMeta?.patientId || 'N/A'}
+                        </p>
                     </div>
+                    <button onClick={onClose} className="p-1 hover:bg-red-500 transition-colors rounded">
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
 
-                    {/* Content */}
-                    <div className="flex-1 overflow-y-auto p-3 bg-gray-50">
-                        {/* ✅ COMPACT UPLOAD ZONE */}
+                <div className="flex-1 overflow-y-auto p-3 bg-gray-50/50">
+                    {/* Compact Upload Bar */}
+                    {canManageDocs ? (
                         <div
-                            className={`border border-dashed rounded p-4 text-center transition-all bg-white ${
-                                dragActive ? 'border-gray-900 bg-gray-100' : 'border-gray-300 hover:border-gray-500'
-                            } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}
-                            onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
+                            className={`border border-dashed rounded-md p-3 text-center transition-all bg-white mb-3 ${
+                                dragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-blue-400'
+                            }`}
+                            onDragEnter={(e) => { e.preventDefault(); setDragActive(true); }}
+                            onDragLeave={() => setDragActive(false)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => { e.preventDefault(); setDragActive(false); handleFileUpload(e.dataTransfer.files); }}
                         >
-                            <Upload className="w-6 h-6 mx-auto text-gray-400 mb-1.5" />
-                            <p className="text-[10px] text-gray-600 mb-0.5 font-medium uppercase">Drag & drop files or click to browse</p>
-                            <p className="text-[8px] text-gray-400 mb-2 uppercase">Images, PDF, Word, Excel (Max 10MB)</p>
-                            
-                            <label className="inline-flex items-center px-3 py-1 bg-gray-900 text-white text-[10px] font-bold rounded hover:bg-black cursor-pointer transition-colors uppercase">
-                                <Upload className="w-3 h-3 mr-1.5" />
-                                {uploading ? 'UPLOADING...' : 'CHOOSE FILE'}
-                                <input type="file" className="hidden" onChange={handleFileChange} disabled={uploading} accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx" />
-                            </label>
+                            <div className="flex items-center justify-center gap-3">
+                                <Upload className="w-4 h-4 text-gray-400" />
+                                <label className="text-[10px] font-bold text-blue-600 cursor-pointer hover:underline uppercase">
+                                    {uploading ? 'Uploading...' : 'Drop file or Click to Add'}
+                                    <input type="file" className="hidden" onChange={(e) => handleFileUpload(e.target.files)} disabled={uploading} />
+                                </label>
+                                <span className="text-[9px] text-gray-400 font-bold">(MAX 10MB)</span>
+                            </div>
                         </div>
+                    ) : (
+                        <div className="bg-amber-50 border border-amber-100 rounded-md p-2 mb-3 flex items-center gap-2">
+                            <Lock className="w-3 h-3 text-amber-500" />
+                            <p className="text-[9px] font-bold text-amber-700 uppercase">Read-Only: Upload restricted</p>
+                        </div>
+                    )}
 
-                        {/* ✅ COMPACT DOCUMENTS LIST */}
-                        <div className="mt-3">
-                            <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">
-                                Uploaded Documents ({documents.length})
-                            </h3>
-
-                            {loading ? (
-                                <div className="flex items-center justify-center py-4"><Loader className="w-5 h-5 animate-spin text-gray-900" /></div>
-                            ) : documents.length === 0 ? (
-                                <div className="text-center py-4 text-gray-400 border border-gray-200 rounded bg-white">
-                                    <FileText className="w-6 h-6 mx-auto mb-1 opacity-50" />
-                                    <p className="text-[10px] uppercase font-semibold">No documents uploaded</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-1">
-                                    {documents.map((doc) => (
-                                        <div key={doc._id} className="flex items-center justify-between p-1.5 bg-white border border-gray-200 rounded hover:border-gray-400 transition-colors">
-                                            <div className="flex items-center space-x-2 flex-1 min-w-0">
-                                                <div className="p-1 bg-gray-100 rounded text-gray-600">
-                                                    {getFileIcon(doc.contentType)}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-bold text-gray-900 truncate leading-tight uppercase" title={doc.fileName}>{doc.fileName}</p>
-                                                    <p className="text-[8px] text-gray-500 font-medium uppercase truncate">
-                                                        {formatFileSize(doc.fileSize)} • {new Date(doc.uploadedAt).toLocaleDateString()} • {doc.uploadedBy?.fullName || 'Unknown'}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-0.5 ml-2">
-                                                <button onClick={() => handlePreview(doc)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="Preview"><Eye className="w-3.5 h-3.5" /></button>
-                                                <button onClick={() => handleDownload(doc)} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Download"><Download className="w-3.5 h-3.5" /></button>
-                                                <button onClick={() => handleDelete(doc._id)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                    <div className="space-y-1">
+                        <div className="flex items-center justify-between px-1 mb-1">
+                            <h3 className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Files ({documents.length})</h3>
+                        </div>
+                        
+                        {loading ? (
+                            <div className="py-10 flex justify-center"><Loader className="w-5 h-5 animate-spin text-blue-500" /></div>
+                        ) : documents.length === 0 ? (
+                            <div className="text-center py-6 text-gray-300 text-[10px] font-bold uppercase border border-dashed rounded bg-white">No attachments</div>
+                        ) : (
+                            <div className="grid grid-cols-1 gap-1">
+                                {documents.map((doc) => (
+                                    <div key={doc._id} className="flex items-center justify-between px-3 py-1.5 bg-white border border-gray-100 rounded hover:border-blue-300 transition-all group shadow-sm">
+                                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                                            <div className="text-gray-400">{getFileIcon(doc.contentType)}</div>
+                                            <p className="text-[10px] font-bold text-gray-700 truncate uppercase" title={doc.fileName}>{doc.fileName}</p>
+                                            <div className="flex items-center gap-2 text-[9px] text-gray-400 font-bold border-l pl-2 border-gray-100">
+                                                <span>{formatFileSize(doc.fileSize)}</span>
+                                                <span className="w-0.5 h-0.5 bg-gray-300 rounded-full" />
+                                                <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <button onClick={() => api.get(`/documents/${doc._id}/url?action=view`).then(res => setPreviewDocument({ ...doc, url: res.data.data.url }))} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => api.get(`/documents/${doc._id}/url?action=download`).then(res => window.open(res.data.data.url))} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Download"><Download className="w-3.5 h-3.5" /></button>
+                                            {canManageDocs && (
+                                                <button onClick={() => handleDelete(doc._id)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
+                </div>
 
-                    {/* Footer */}
-                    <div className="px-3 py-2 border-t bg-white flex justify-end">
-                        <button onClick={onClose} className="px-4 py-1.5 text-[10px] font-bold bg-gray-100 text-gray-700 rounded border border-gray-300 uppercase hover:bg-gray-200">CLOSE</button>
-                    </div>
+                <div className="p-2 border-t bg-gray-50 flex justify-end">
+                    <button onClick={onClose} className="px-4 py-1 text-[10px] font-black bg-white border border-gray-200 text-gray-600 rounded hover:bg-gray-100 uppercase transition-all shadow-sm">
+                        Close
+                    </button>
                 </div>
             </div>
 
-            {/* ✅ COMPACT PREVIEW MODAL */}
+            {/* Preview Layer */}
             {previewDocument && (
-                <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-[10001] p-2">
-                    <div className="bg-white rounded w-full max-w-4xl max-h-[95vh] flex flex-col overflow-hidden">
-                        <div className="px-3 py-2 bg-gray-900 text-white flex items-center justify-between">
-                            <div className="min-w-0 flex-1">
-                                <h3 className="text-xs font-bold uppercase truncate">{previewDocument.fileName}</h3>
-                                <p className="text-[9px] text-gray-300 uppercase leading-tight">{formatFileSize(previewDocument.fileSize)}</p>
-                            </div>
-                            <button onClick={() => setPreviewDocument(null)} className="p-1 hover:bg-gray-700 rounded ml-2">
-                                <X className="w-4 h-4" />
-                            </button>
+                <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-[1000000]">
+                    <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+                        <div className="px-4 py-2 bg-gray-900 text-white flex justify-between items-center">
+                            <span className="text-[10px] font-bold uppercase truncate">{previewDocument.fileName}</span>
+                            <button onClick={() => setPreviewDocument(null)} className="p-1 hover:bg-red-500 rounded"><X className="w-4 h-4" /></button>
                         </div>
-                        <div className="flex-1 overflow-auto bg-gray-100 flex items-center justify-center p-2">
-                            {previewDocument.contentType.startsWith('image/') ? (
-                                <img src={previewDocument.url} alt={previewDocument.fileName} className="max-w-full max-h-full object-contain" />
-                            ) : previewDocument.contentType === 'application/pdf' ? (
-                                <iframe src={previewDocument.url} className="w-full h-full min-h-[500px] border-0" title={previewDocument.fileName} />
-                            ) : (
-                                <div className="text-center text-gray-500">
-                                    <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                                    <p className="text-[10px] font-bold uppercase mb-2">Preview not available</p>
-                                    <button onClick={() => handleDownload(previewDocument)} className="px-3 py-1.5 bg-gray-900 text-white text-[10px] font-bold rounded hover:bg-black uppercase flex items-center mx-auto">
-                                        <Download className="w-3 h-3 mr-1.5" /> Download File
-                                    </button>
-                                </div>
-                            )}
+                        <div className="flex-1 bg-black flex items-center justify-center p-4 overflow-hidden">
+                           {previewDocument.contentType?.startsWith('image/') ? (
+                               <img src={previewDocument.url} className="max-w-full max-h-full object-contain" alt="Preview" />
+                           ) : (
+                               <iframe src={previewDocument.url} className="w-full h-full border-0 bg-white" title="PDF Viewer" />
+                           )}
                         </div>
                     </div>
                 </div>
             )}
-        </>
+        </div>
     );
 };
 
