@@ -239,15 +239,23 @@ const OnlineReportingSystemWithOHIF = () => {
         const studyInstanceUID = passedStudyInstanceUID || currentStudy.studyInstanceUID || currentStudy.studyId || studyInfo.studyInstanceUID || studyInfo.studyId || null;
 
          if (studyInstanceUID) {
-          const OHIF_VIEWERS = {
-            viewer1: 'https://viewer.bharatpacs.com/viewer',
-            viewer2: 'http://206.189.133.52:9004/viewer',
-          };
-          const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
-          const OHIF_BASE = OHIF_VIEWERS[viewerPref] || OHIF_VIEWERS.viewer1;
-          let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
-          if (studyUIDs) setOhifViewerUrl(`${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`);
-        }
+    const OHIF_VIEWERS = {
+        viewer1: 'https://viewer.bharatpacs.com/viewer',
+        viewer2: 'http://206.189.133.52:9004/viewer',
+    };
+    
+    const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
+    let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
+
+    if (studyUIDs) {
+        // Apply conditional formatting
+        const formattedUrl = viewerPref === 'viewer2'
+            ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Path format
+            : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Query format
+            
+        setOhifViewerUrl(formattedUrl);
+    }
+}
 
         setStudyData({ _id: studyId, ...currentStudy, ...studyInfo });
         setPatientData({ ...patientInfo, fullName: patientInfo.fullName || patientInfo.patientName || 'Unknown Patient' });

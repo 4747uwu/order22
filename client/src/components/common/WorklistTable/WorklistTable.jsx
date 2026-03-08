@@ -898,24 +898,30 @@ const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
     }
   };
 
-  const handleViewOnlyClick = (e) => {
+ const handleViewOnlyClick = (e) => {
     e.stopPropagation();
     try {
-      const src = study || {};
-      const studyInstanceUID = src.studyInstanceUID || src.studyInstanceUIDs || src.StudyInstanceUID || src.studyInstanceUid || src.orthancStudyID || src.studyId || src._id || '';
-      let studyUIDs = '';
-      if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
-      else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
-      else studyUIDs = String(src._id || '');
+        const src = study || {};
+        const studyInstanceUID = src.studyInstanceUID || src.studyInstanceUIDs || src.StudyInstanceUID || src.studyInstanceUid || src.orthancStudyID || src.studyId || src._id || '';
+        
+        let studyUIDs = '';
+        if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
+        else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
+        else studyUIDs = String(src._id || '');
 
-      const OHIF_VIEWERS = {
-        viewer1: 'https://viewer.bharatpacs.com/viewer',
-        viewer2: 'http://206.189.133.52:9004/viewer',
-      };
-      const ohifBase = OHIF_VIEWERS[selectedViewer] || OHIF_VIEWERS.viewer1;
-      window.open(`${ohifBase}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`, '_blank');
+        const OHIF_VIEWERS = {
+            viewer1: 'https://viewer.bharatpacs.com/viewer',
+            viewer2: 'http://206.189.133.52:9004/viewer',
+        };
+
+        // Determine format based on selectedViewer
+        const finalUrl = selectedViewer === 'viewer2' 
+            ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Viewer 2 format: /viewer/UID
+            : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Viewer 1 format: ?StudyInstanceUIDs=UID
+
+        window.open(finalUrl, '_blank');
     } catch (error) {
-      window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
+        window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
     }
 };
 

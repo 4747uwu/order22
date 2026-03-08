@@ -997,45 +997,31 @@ const handleDirectPrintDOCX = useCallback(async (study) => {
         }
     };
 
-      const handleViewOnlyClick = (e) => {
-  e.stopPropagation();
+const handleViewOnlyClick = (e) => {
+    e.stopPropagation();
+    try {
+        const src = study || {};
+        const studyInstanceUID = src.studyInstanceUID || src.studyInstanceUIDs || src.StudyInstanceUID || src.studyInstanceUid || src.orthancStudyID || src.studyId || src._id || '';
+        
+        let studyUIDs = '';
+        if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
+        else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
+        else studyUIDs = String(src._id || '');
 
-//   console.log(study)
+        const OHIF_VIEWERS = {
+            viewer1: 'https://viewer.bharatpacs.com/viewer',
+            viewer2: 'http://206.189.133.52:9004/viewer',
+        };
 
-  try {
-    const src = study || {};
-    const studyInstanceUID =
-      src.studyInstanceUID ||
-      src.studyInstanceUIDs ||
-      src.StudyInstanceUID ||
-      src.studyInstanceUid ||
-      src.orthancStudyID ||
-      src.studyId ||
-      src._id ||
-      '';
+        // Determine format based on selectedViewer
+        const finalUrl = selectedViewer === 'viewer2' 
+            ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Viewer 2 format: /viewer/UID
+            : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Viewer 1 format: ?StudyInstanceUIDs=UID
 
-    let studyUIDs = '';
-    if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) {
-      studyUIDs = studyInstanceUID.join(',');
-    } else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) {
-      studyUIDs = studyInstanceUID.trim();
-    } else {
-      studyUIDs = String(src._id || '');
+        window.open(finalUrl, '_blank');
+    } catch (error) {
+        window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
     }
-
-    const ohifUrl = (() => {
-    const OHIF_VIEWERS = {
-        viewer1: 'https://viewer.bharatpacs.com/viewer',
-        viewer2: 'http://165.232.189.64:4000/viewer',
-    };
-    const base = OHIF_VIEWERS[selectedViewer] || OHIF_VIEWERS.viewer1;
-    return `${base}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-})();
-window.open(ohifUrl, '_blank');
-  } catch (error) {
-    console.error('Error opening OHIF viewer:', error);
-    window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
-  }
 };
 
     const handleOHIFReporting = async () => {
