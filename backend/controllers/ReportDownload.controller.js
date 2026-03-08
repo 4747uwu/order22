@@ -175,6 +175,22 @@ const fetchReportsForStudy = async (studyId) => {
         .sort({ createdAt: -1 });
 };
 
+const canDownloadReport = (report) => {
+    const allowedReportStatuses = ['verified', 'approved'];
+    const allowedFinalizedStudyStatuses = [
+        'report_completed',
+        'report_reprint_needed',
+        'final_report_downloaded',
+        'archived'
+    ];
+
+    return (
+        allowedReportStatuses.includes(report.reportStatus) ||
+        (report.reportStatus === 'finalized' &&
+            allowedFinalizedStudyStatuses.includes(report.dicomStudy?.workflowStatus))
+    );
+};
+
 class ReportDownloadController {
 
     // ============================================================
@@ -236,7 +252,7 @@ class ReportDownloadController {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -245,12 +261,11 @@ class ReportDownloadController {
                 return res.status(404).json({ success: false, message: 'Report not found' });
             }
 
-            // ✅ GUARD: Only allow verified reports to be downloaded
-            if (report.reportStatus !== 'verified') {
-                console.warn(`⚠️ [Download DOCX] Blocked — report status is '${report.reportStatus}', not 'verified'. ReportId: ${reportId}`);
+            if (!canDownloadReport(report)) {
+                console.warn(`⚠️ [Download DOCX] Blocked — reportStatus='${report.reportStatus}', studyWorkflowStatus='${report.dicomStudy?.workflowStatus || 'unknown'}'. ReportId: ${reportId}`);
                 return res.status(403).json({
                     success: false,
-                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                    message: `Report is not downloadable yet. reportStatus='${report.reportStatus}', studyWorkflowStatus='${report.dicomStudy?.workflowStatus || 'unknown'}'.`
                 });
             }
 
@@ -300,7 +315,7 @@ if (downloaderRoles.includes('lab_staff')) {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -309,10 +324,10 @@ if (downloaderRoles.includes('lab_staff')) {
                 return res.status(404).json({ success: false, message: 'Report not found' });
             }
 
-            if (report.reportStatus !== 'verified') {
+            if (!canDownloadReport(report)) {
                 return res.status(403).json({
                     success: false,
-                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                    message: `Report is not downloadable yet. reportStatus='${report.reportStatus}', studyWorkflowStatus='${report.dicomStudy?.workflowStatus || 'unknown'}'.`
                 });
             }
 
@@ -399,17 +414,17 @@ if (downloaderRoles.includes('lab_staff')) {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId',
+                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
 
             if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
-            if (report.reportStatus !== 'verified') {
+            if (!canDownloadReport(report)) {
                 return res.status(403).json({
                     success: false,
-                    message: `Only verified reports can be downloaded. This report is currently '${report.reportStatus}'.`
+                    message: `Report is not downloadable yet. reportStatus='${report.reportStatus}', studyWorkflowStatus='${report.dicomStudy?.workflowStatus || 'unknown'}'.`
                 });
             }
 
@@ -489,10 +504,10 @@ if (downloaderRoles.includes('lab_staff')) {
 
             if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
 
-            if (report.reportStatus !== 'verified') {
+            if (!canDownloadReport(report)) {
                 return res.status(403).json({
                     success: false,
-                    message: `Only verified reports can be printed. This report is currently '${report.reportStatus}'.`
+                    message: `Report is not downloadable yet. reportStatus='${report.reportStatus}', studyWorkflowStatus='${report.dicomStudy?.workflowStatus || 'unknown'}'.`
                 });
             }
 
