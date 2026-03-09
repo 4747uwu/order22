@@ -24,7 +24,7 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     })();
 
     const canManageDocs = userAccountRoles.some(role => 
-        ['admin', 'assignor', 'super_admin'].includes(role)
+        ['admin', 'assignor', 'super_admin', 'lab_staff'].includes(role)
     );
 
     const fetchDocuments = useCallback(async () => {

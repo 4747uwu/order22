@@ -121,27 +121,32 @@ const Dashboard = ({ isSuperAdminView = false }) => {
   });
 
   // Column configuration
-    const getDefaultColumnConfig = () => ({
-    checkbox: { visible: true, order: 1, label: 'Select' },
-    bharatPacsId: { visible: true, order: 2, label: 'BP ID' },
-    centerName: { visible: true, order: 3, label: 'Center' },
-    // ✅ ADD: separate location entry
-    location: { visible: true, order: 4, label: 'Location' },
-    timeline: { visible: true, order: 5, label: 'Timeline' },
-    patientName: { visible: true, order: 6, label: 'Patient Name' },
-    patientId: { visible: true, order: 7, label: 'Patient ID' },
-    ageGender: { visible: true, order: 8, label: 'Age/Sex' },
-    modality: { visible: true, order: 9, label: 'Modality' },
-    seriesCount: { visible: true, order: 10, label: 'Series' },
-    accessionNumber: { visible: true, order: 11, label: 'Acc. No.' },
-    referralDoctor: { visible: true, order: 12, label: 'Referral Dr.' },
-    clinicalHistory: { visible: true, order: 13, label: 'History' },
-    studyTime: { visible: true, order: 14, label: 'Study Time' },
-    uploadTime: { visible: true, order: 15, label: 'Upload Time' },
-    radiologist: { visible: true, order: 16, label: 'Radiologist' },
-    caseStatus: { visible: true, order: 17, label: 'Status' },
-    actions: { visible: true, order: 18, label: 'Actions' }
-  });
+  const getDefaultColumnConfig = () => ({
+  selection:        { visible: true,  order: 1,  label: 'Select' },
+  bharatPacsId:     { visible: true,  order: 2,  label: 'BP ID' },
+  centerName:       { visible: true,  order: 3,  label: 'Center' },
+  location:         { visible: true,  order: 4,  label: 'Location' },
+  timeline:         { visible: true,  order: 5,  label: 'Timeline' },
+  patientName:      { visible: true,  order: 6,  label: 'Patient Name' },
+  ageGender:        { visible: true,  order: 7,  label: 'Age/Sex' },
+  modality:         { visible: true,  order: 8,  label: 'Modality' },
+  viewOnly:         { visible: true,  order: 9,  label: 'View' },
+  reporting:        { visible: true,  order: 10, label: 'Reporting' },
+  seriesCount:      { visible: true,  order: 11, label: 'Series' },
+  patientId:        { visible: true,  order: 12, label: 'Patient ID' },
+  referralDoctor:   { visible: true,  order: 13, label: 'Referral Dr.' },
+  clinicalHistory:  { visible: true,  order: 14, label: 'History' },
+  studyTime:        { visible: true,  order: 15, label: 'Study Time' },
+  uploadTime:       { visible: true,  order: 16, label: 'Upload Time' },
+  radiologist:      { visible: true,  order: 17, label: 'Radiologist' },
+  studyLock:        { visible: true,  order: 18, label: 'Lock/Unlock' },
+  caseStatus:       { visible: true,  order: 19, label: 'Status' },
+  printCount:       { visible: true,  order: 20, label: 'Print Report' },
+  rejectionReason:  { visible: true,  order: 21, label: 'Reverted Reason' },
+  assignedVerifier: { visible: true,  order: 22, label: 'Finalised By' },
+  verifiedDateTime: { visible: true,  order: 23, label: 'Finalised Date/Time' },
+  actions:          { visible: true,  order: 24, label: 'Actions' },
+});
 
 
   const [columnConfig, setColumnConfig] = useState(() => {
