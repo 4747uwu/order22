@@ -911,7 +911,7 @@ const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
 
         const OHIF_VIEWERS = {
             viewer1: 'https://viewer.bharatpacs.com/viewer',
-            viewer2: 'http://206.189.133.52:9004/viewer',
+            viewer2: 'https://viewer2.bharatpacs.com/viewer',
         };
 
         // Determine format based on selectedViewer
