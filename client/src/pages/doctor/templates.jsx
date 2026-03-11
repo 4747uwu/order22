@@ -4,7 +4,7 @@ import Navbar from '../../components/common/Navbar';
 import api from '../../services/api';
 import TextToHtmlService from '../../services/textToHtml.js';
 import {
-  Plus, Search, Edit3, Trash2, Eye, Globe, User, FileText,
+  Plus, Search, Trash2, Eye, Globe, User, FileText,
   Tag, X, Save, Code, Type, Zap, Loader2, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -44,6 +44,9 @@ const DoctorTemplates = () => {
   });
   const [previewHtml, setPreviewHtml] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [showTableDialog, setShowTableDialog] = useState(false);
+  const [tableRows, setTableRows] = useState(2);
+  const [tableCols, setTableCols] = useState(3);
 
   // ── Data fetching ──
 
@@ -207,6 +210,26 @@ const DoctorTemplates = () => {
     if (formErrors[field]) setFormErrors(prev => ({ ...prev, [field]: '' }));
   };
   const handleTagsChange = (value) => handleFormChange('tags', value.split(',').map(t => t.trim()).filter(Boolean));
+
+  const insertTableToContent = () => {
+    const rows = Math.max(1, parseInt(tableRows) || 2);
+    const cols = Math.max(1, parseInt(tableCols) || 3);
+    let html = '<table border="1" style="border-collapse:collapse;width:100%;margin:10px 0;">\n  <tr>\n';
+    for (let c = 0; c < cols; c++) {
+      html += `    <th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;font-weight:bold;">Header ${c + 1}</th>\n`;
+    }
+    html += '  </tr>\n';
+    for (let r = 0; r < rows - 1; r++) {
+      html += '  <tr>\n';
+      for (let c = 0; c < cols; c++) {
+        html += '    <td style="border:1px solid #ddd;padding:8px;"> </td>\n';
+      }
+      html += '  </tr>\n';
+    }
+    html += '</table>\n';
+    handleFormChange('htmlContent', formData.htmlContent + '\n' + html);
+    setShowTableDialog(false);
+  };
 
   // ── Render ──
 
@@ -385,16 +408,10 @@ const DoctorTemplates = () => {
                           <Eye className="w-3 h-3" /> View
                         </button>
                         {template.templateScope === 'doctor_specific' && template.assignedDoctor?._id === currentUser._id && (
-                          <>
-                            <button onClick={() => handleEditTemplate(template)}
-                              className="h-7 w-7 flex items-center justify-center text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors">
-                              <Edit3 className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => handleDeleteTemplate(template._id)}
-                              className="h-7 w-7 flex items-center justify-center text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </>
+                          <button onClick={() => handleDeleteTemplate(template._id)}
+                            className="h-7 w-7 flex items-center justify-center text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -587,13 +604,44 @@ const DoctorTemplates = () => {
                           )}
                         </div>
                       ) : (
-                        <textarea
-                          value={formData.htmlContent}
-                          onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                          placeholder="Enter HTML content…"
-                          className={`w-full h-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 outline-none
-                            ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
-                        />
+                        <div className="flex flex-col h-full gap-1">
+                          {/* Table insert toolbar */}
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {showTableDialog ? (
+                              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                                <span className="text-[10px] text-gray-500 font-medium">Rows:</span>
+                                <input type="number" min="1" max="20" value={tableRows}
+                                  onChange={e => setTableRows(e.target.value)}
+                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                                <span className="text-[10px] text-gray-500 font-medium">Cols:</span>
+                                <input type="number" min="1" max="10" value={tableCols}
+                                  onChange={e => setTableCols(e.target.value)}
+                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                                <button type="button" onClick={insertTableToContent}
+                                  className="px-2 py-0.5 text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded">
+                                  Insert
+                                </button>
+                                <button type="button" onClick={() => setShowTableDialog(false)}
+                                  className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">✕</button>
+                              </div>
+                            ) : (
+                              <button type="button" onClick={() => setShowTableDialog(true)}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                                </svg>
+                                Insert Table
+                              </button>
+                            )}
+                          </div>
+                          <textarea
+                            value={formData.htmlContent}
+                            onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                            placeholder="Enter HTML content…"
+                            className={`flex-1 w-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 outline-none
+                              ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
+                          />
+                        </div>
                       )}
                       {formErrors.htmlContent && <p className="text-[10px] text-red-500 mt-1">{formErrors.htmlContent}</p>}
                     </div>

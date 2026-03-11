@@ -745,8 +745,8 @@ export const storeMultipleReports = async (req, res) => {
                             imageCount: reportData.capturedImages?.length || 0
                         }
                     },
-                    reportType: 'finalized',
-                    reportStatus: 'finalized',
+                    reportType: reportData.reportType || 'finalized',
+                    reportStatus: reportData.reportStatus || 'finalized',
                     exportInfo: { format: reportData.format || 'docx', fileName: fileNameForReport },
                     patientInfo: patientInfo,
                     studyInfo: {
@@ -762,14 +762,15 @@ export const storeMultipleReports = async (req, res) => {
                     },
                     workflowInfo: {
                         draftedAt: existingReport?.workflowInfo?.draftedAt || now,
-                        finalizedAt: now,
+                        ...(reportData.reportType !== 'draft' && reportData.reportStatus !== 'draft' && { finalizedAt: now }),
                         statusHistory: existingReport?.workflowInfo?.statusHistory || []
                     },
                     systemInfo: { dataSource: 'online_reporting_system' }
                 };
 
+                const entryStatus = reportData.reportStatus || reportData.reportType || 'finalized';
                 reportFields.workflowInfo.statusHistory.push({
-                    status: 'finalized',
+                    status: entryStatus,
                     changedAt: now,
                     changedBy: currentUser._id,
                     notes: existingReport ? `Report ${reportNumber} updated` : `Report ${reportNumber} created`,
@@ -791,10 +792,21 @@ export const storeMultipleReports = async (req, res) => {
 
             await updateStudyReportStatus(study, savedReports[savedReports.length - 1], session);
 
+            // Check if this is a draft save or a finalized save
+            const isDraftOperation = reports.every(r => r.reportStatus === 'draft' || r.reportType === 'draft');
             const doctorInfo = await mongoose.model('Doctor').findOne({ userAccount: doctorId }).select('requireReportVerification').session(session);
             const requiresVerification = study.sourceLab?.settings?.requireReportVerification || doctorInfo?.requireReportVerification;
 
-            if (requiresVerification) {
+            if (isDraftOperation) {
+                // Mirror single-report draft workflow — no verification flow for drafts
+                study.workflowStatus = 'report_drafted';
+                study.currentCategory = 'DRAFT';
+                if (!study.reportInfo) study.reportInfo = {};
+                study.reportInfo.draftedAt = now;
+                study.reportInfo.reporterName = doctorName;
+                study.reportInfo.multipleReports = savedReports.length > 1;
+                study.reportInfo.reportCount = savedReports.length;
+            } else if (requiresVerification) {
                 study.workflowStatus = 'verification_pending';
                 study.currentCategory = 'VERIFICATION_PENDING';
                 if (!study.reportInfo) study.reportInfo = {};
@@ -826,7 +838,7 @@ export const storeMultipleReports = async (req, res) => {
                 status: study.workflowStatus,
                 changedAt: now,
                 changedBy: currentUser._id,
-                note: `${savedReports.length} report(s) finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : wasPreviouslyDownloaded ? ' - reprint needed' : ' - completed'}`
+                note: `${savedReports.length} report(s) ${isDraftOperation ? 'drafted' : requiresVerification ? 'sent for verification' : wasPreviouslyDownloaded ? 'reprint needed' : 'finalized'} by ${doctorName}`
             });
 
             await study.save({ session });

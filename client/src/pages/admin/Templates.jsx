@@ -74,6 +74,9 @@ const AdminTemplates = () => {
   });
   const [previewHtml, setPreviewHtml] = useState('');
   const [showPreview, setShowPreview] = useState(false);
+  const [showTableDialog, setShowTableDialog] = useState(false);
+  const [tableRows, setTableRows] = useState(2);
+  const [tableCols, setTableCols] = useState(3);
 
   // Fetch templates
   const fetchTemplates = useCallback(async () => {
@@ -330,6 +333,26 @@ const AdminTemplates = () => {
   const handleTagsChange = (value) => {
     const tags = value.split(',').map(tag => tag.trim()).filter(Boolean);
     handleFormChange('tags', tags);
+  };
+
+  const insertTableToContent = () => {
+    const rows = Math.max(1, parseInt(tableRows) || 2);
+    const cols = Math.max(1, parseInt(tableCols) || 3);
+    let html = '<table border="1" style="border-collapse:collapse;width:100%;margin:10px 0;">\n  <tr>\n';
+    for (let c = 0; c < cols; c++) {
+      html += `    <th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;font-weight:bold;">Header ${c + 1}</th>\n`;
+    }
+    html += '  </tr>\n';
+    for (let r = 0; r < rows - 1; r++) {
+      html += '  <tr>\n';
+      for (let c = 0; c < cols; c++) {
+        html += '    <td style="border:1px solid #ddd;padding:8px;"> </td>\n';
+      }
+      html += '  </tr>\n';
+    }
+    html += '</table>\n';
+    handleFormChange('htmlContent', formData.htmlContent + '\n' + html);
+    setShowTableDialog(false);
   };
 
   const additionalActions = [
@@ -667,15 +690,48 @@ const AdminTemplates = () => {
                       placeholder="Enter your plain text content here. It will be automatically converted to HTML..."
                     />
                   ) : (
-                    <textarea
-                      value={formData.htmlContent}
-                      onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                      rows={15}
-                      className={`w-full px-4 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-teal-500 ${
-                        formErrors.content ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter your HTML content here..."
-                    />
+                    <div className="flex flex-col gap-2">
+                      {/* Table insert toolbar */}
+                      <div className="flex items-center gap-2">
+                        {showTableDialog ? (
+                          <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
+                            <span className="text-sm text-teal-700 font-medium">Rows:</span>
+                            <input type="number" min="1" max="20" value={tableRows}
+                              onChange={e => setTableRows(e.target.value)}
+                              className="w-14 px-2 py-1 text-sm border border-teal-300 rounded" />
+                            <span className="text-sm text-teal-700 font-medium">Cols:</span>
+                            <input type="number" min="1" max="10" value={tableCols}
+                              onChange={e => setTableCols(e.target.value)}
+                              className="w-14 px-2 py-1 text-sm border border-teal-300 rounded" />
+                            <button type="button" onClick={insertTableToContent}
+                              className="px-3 py-1 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg">
+                              Insert
+                            </button>
+                            <button type="button" onClick={() => setShowTableDialog(false)}
+                              className="px-2 py-1 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setShowTableDialog(true)}
+                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors">
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                            </svg>
+                            Insert Table
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={formData.htmlContent}
+                        onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                        rows={15}
+                        className={`w-full px-4 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-teal-500 ${
+                          formErrors.content ? 'border-red-500' : 'border-gray-300'
+                        }`}
+                        placeholder="Enter your HTML content here..."
+                      />
+                    </div>
                   )}
                   
                   {formErrors.content && (

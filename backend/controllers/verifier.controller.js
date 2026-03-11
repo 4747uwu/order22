@@ -1239,7 +1239,8 @@ export const updateReportDuringVerification = async (req, res) => {
             verificationNotes,
             templateId,
             templateInfo,
-            maintainFinalizedStatus = true
+            maintainFinalizedStatus = true,
+            reportId
         } = req.body;
         const user = req.user;
 
@@ -1303,12 +1304,24 @@ export const updateReportDuringVerification = async (req, res) => {
             // ✅ STEP 2: Find THE MOST RECENT finalized report for this study
             const Report = mongoose.model('Report');
             
-            const existingReport = await Report.findOne({
-                dicomStudy: studyId,
-                reportStatus: 'finalized'
-            })
-            .sort({ createdAt: -1 }) // ✅ Get the most recent one
-            .session(session);
+            // If reportId provided, target that specific report; otherwise fall back to most recent finalized
+            let existingReport = null;
+            if (reportId && mongoose.Types.ObjectId.isValid(reportId)) {
+                existingReport = await Report.findOne({
+                    _id: reportId,
+                    dicomStudy: studyId
+                }).session(session);
+                console.log('🎯 [Verifier Update] Targeted report by ID:', reportId, '→ found:', !!existingReport);
+            }
+            if (!existingReport) {
+                existingReport = await Report.findOne({
+                    dicomStudy: studyId,
+                    reportStatus: { $in: ['finalized', 'verified'] }
+                })
+                .sort({ createdAt: -1 })
+                .session(session);
+                console.log('🔍 [Verifier Update] Fallback to most recent finalized/verified report:', existingReport?._id);
+            }
 
             if (!existingReport) {
                 await session.abortTransaction();

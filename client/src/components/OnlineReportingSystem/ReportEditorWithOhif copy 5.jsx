@@ -415,29 +415,13 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           <select
             value={fontFamily}
             onChange={(e) => applyFontFamily(e.target.value)}
-            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-32"
+            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-20"
             title="Font"
           >
             <option value="Arial">Arial</option>
-            <option value="Arial Black">Arial Black</option>
+            <option value="Times New Roman">Times</option>
             <option value="Calibri">Calibri</option>
-            <option value="Calibri Light">Calibri Light</option>
-            <option value="Comic Sans MS">Comic Sans MS</option>
-            <option value="Courier New">Courier New</option>
             <option value="Georgia">Georgia</option>
-            <option value="Impact">Impact</option>
-            <option value="Palatino Linotype">Palatino</option>
-            <option value="Segoe Print">Segoe Print</option>
-            <option value="Segoe Script">Segoe Script</option>
-            <option value="Segoe UI">Segoe UI</option>
-            <option value="Sylfaen">Sylfaen</option>
-            <option value="Symbol">Symbol</option>
-            <option value="Tahoma">Tahoma</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Trebuchet MS">Trebuchet MS</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Webdings">Webdings</option>
-            <option value="Wingdings">Wingdings ✉</option>
           </select>
 
           <select

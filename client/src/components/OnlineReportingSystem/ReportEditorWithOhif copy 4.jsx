@@ -1,7 +1,7 @@
 import React from 'react';
 import { useState, useRef, useEffect, useCallback, useImperativeHandle } from 'react';
 
-const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100, isOpen = true }, ref) =>{
+const ReportEditor = ({ content, onChange, containerWidth = 100, isOpen = true }) => {
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [paginatedContent, setPaginatedContent] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -31,79 +31,6 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     superscript: false
   });
   const contentEditableRef = useRef(null);
-
-    const savedRangeRef = useRef(null);
-
-  const saveSelection = () => {
-  const selection = window.getSelection();
-  if (selection && selection.rangeCount > 0) {
-    const range = selection.getRangeAt(0);
-    // Only save if the range is actually inside our editor
-    if (contentEditableRef.current && contentEditableRef.current.contains(range.commonAncestorContainer)) {
-      savedRangeRef.current = range.cloneRange();
-    }
-  }
-};
-
-  useImperativeHandle(ref, () => ({
-  insertHTML: (html) => {
-    if (!contentEditableRef.current) return;
-    contentEditableRef.current.focus();
-
-    const sel = window.getSelection();
-    if (sel) {
-      if (savedRangeRef.current) {
-        try {
-          sel.removeAllRanges();
-          sel.addRange(savedRangeRef.current);
-        } catch {
-          // saved range references dead nodes (editor content was replaced) — fall back to end
-          const r = document.createRange();
-          r.selectNodeContents(contentEditableRef.current);
-          r.collapse(false);
-          sel.removeAllRanges();
-          sel.addRange(r);
-        }
-      } else {
-        // No saved position yet — place cursor at end of editor
-        const r = document.createRange();
-        r.selectNodeContents(contentEditableRef.current);
-        r.collapse(false);
-        sel.removeAllRanges();
-        sel.addRange(r);
-      }
-    }
-
-    const range = sel ? sel.getRangeAt(0) : null;
-    if (range) {
-      range.deleteContents();
-      // Parse via innerHTML — 100% faithful, preserves all tags/styles/attributes
-      const temp = document.createElement('div');
-      temp.innerHTML = html;
-      const fragment = document.createDocumentFragment();
-      while (temp.firstChild) fragment.appendChild(temp.firstChild);
-      const lastNode = fragment.lastChild;
-      range.insertNode(fragment);
-      if (lastNode) {
-        try {
-          const newRange = document.createRange();
-          newRange.setStartAfter(lastNode);
-          newRange.collapse(true);
-          sel.removeAllRanges();
-          sel.addRange(newRange);
-        } catch {}
-      }
-    } else {
-      // Absolute last resort
-      document.execCommand('insertHTML', false, html);
-    }
-    setTimeout(() => {
-      if (contentEditableRef.current) onChange(contentEditableRef.current.innerHTML);
-    }, 10);
-  },
-  focus: () => contentEditableRef.current?.focus(),
-}), [onChange]);
-
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -415,29 +342,13 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           <select
             value={fontFamily}
             onChange={(e) => applyFontFamily(e.target.value)}
-            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-32"
+            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-20"
             title="Font"
           >
             <option value="Arial">Arial</option>
-            <option value="Arial Black">Arial Black</option>
+            <option value="Times New Roman">Times</option>
             <option value="Calibri">Calibri</option>
-            <option value="Calibri Light">Calibri Light</option>
-            <option value="Comic Sans MS">Comic Sans MS</option>
-            <option value="Courier New">Courier New</option>
             <option value="Georgia">Georgia</option>
-            <option value="Impact">Impact</option>
-            <option value="Palatino Linotype">Palatino</option>
-            <option value="Segoe Print">Segoe Print</option>
-            <option value="Segoe Script">Segoe Script</option>
-            <option value="Segoe UI">Segoe UI</option>
-            <option value="Sylfaen">Sylfaen</option>
-            <option value="Symbol">Symbol</option>
-            <option value="Tahoma">Tahoma</option>
-            <option value="Times New Roman">Times New Roman</option>
-            <option value="Trebuchet MS">Trebuchet MS</option>
-            <option value="Verdana">Verdana</option>
-            <option value="Webdings">Webdings</option>
-            <option value="Wingdings">Wingdings ✉</option>
           </select>
 
           <select
@@ -693,14 +604,11 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
                 />
               </div>
             ) : (
-               <div
+              <div
                 ref={contentEditableRef}
                 contentEditable
                 className="report-editor ms-word-page"
                 onInput={handleContentChange}
-                onMouseUp={saveSelection}
-                onKeyUp={saveSelection}
-                // onBlur={saveSelection}
                 suppressContentEditableWarning={true}
               />
             )}
@@ -950,6 +858,6 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     }
 `;
   }
-});
+};
 
 export default ReportEditor;

@@ -77,7 +77,9 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         '--accessionno--': report.accessionNumber || report.dicomStudy?.accessionNumber || '[Accession Number]',
         '--agegender--': `${report.patientInfo?.age || report.patient?.age || '[Age]'} / ${report.patientInfo?.gender || report.patient?.gender || '[Gender]'}`,
         '--referredby--': report.studyInfo?.referringPhysician?.name || report.dicomStudy?.referringPhysician || '[Referring Physician]',
-        '--reporteddate--': report.studyInfo?.studyDate ? new Date(report.studyInfo.studyDate).toLocaleDateString() : new Date().toLocaleDateString(),
+        '--reporteddate--': report.studyInfo?.studyDate
+  ? new Date(report.studyInfo.studyDate).toLocaleDateString('en-GB')
+  : new Date().toLocaleDateString('en-GB'),
         '--studydate--': report.studyInfo?.studyDate ? new Date(report.studyInfo.studyDate).toLocaleDateString() : '[Study Date]',
         '--modality--': report.studyInfo?.modality || report.dicomStudy?.modality || '[Modality]',
         '--clinicalhistory--': report.patientInfo?.clinicalHistory || '[Clinical History]',

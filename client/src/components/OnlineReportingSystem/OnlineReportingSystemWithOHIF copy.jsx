@@ -6,9 +6,12 @@ import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
 import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
-import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2 } from 'lucide-react';
+import TemplateSearchPanel from './TemplateSearchPanel.jsx';
+// also add BookOpen to the lucide-react import line:
+import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2, BookOpen, Save } from 'lucide-react';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
+import { StudyDocumentsManager } from '../StudyDocuments/StudyDocumentsManager';
 
 const OnlineReportingSystemWithOHIF = () => {
   const { studyId } = useParams();
@@ -52,10 +55,56 @@ const OnlineReportingSystemWithOHIF = () => {
   const [showReportDropdown, setShowReportDropdown] = useState(false);
   const reportDropdownRef = useRef(null);
 
+  const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
+  const [saveTemplateForm, setSaveTemplateForm] = useState({ name: '', category: '' });
+  const [savingAsTemplate, setSavingAsTemplate] = useState(false);
+
+  const editorRef = useRef(null);
+  const [showTemplateSearch, setShowTemplateSearch] = useState(false);
+
+  const handleInsertFromSearch = (html) => {
+    editorRef.current?.insertHTML(html);
+  };
+
+  const handleOpenSaveAsTemplate = () => {
+    setSaveTemplateForm({
+      name: '',
+      category: studyData?.modality || 'General',
+    });
+    setShowSaveAsTemplate(true);
+  };
+
+  const handleSaveAsTemplate = async () => {
+    if (!saveTemplateForm.name.trim()) {
+      toast.error('Please enter a template name');
+      return;
+    }
+    if (!reportContent?.trim()) {
+      toast.error('Report is empty — nothing to save');
+      return;
+    }
+    try {
+      setSavingAsTemplate(true);
+      const htmlContent = cleanTemplateHTML(reportContent);
+      await api.post('/html-templates', {
+        title: saveTemplateForm.name.trim(),
+        category: saveTemplateForm.category || 'General',
+        htmlContent,
+      });
+      toast.success('Template saved successfully!');
+      setShowSaveAsTemplate(false);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to save template');
+    } finally {
+      setSavingAsTemplate(false);
+    }
+  };
+
   // ✅ Helpers to get/set current report data
   const activeReport = reports[activeReportIndex] || reports[0];
   const reportContent = activeReport.content;
   const capturedImages = activeReport.capturedImages;
+  const [showDocuments, setShowDocuments] = useState(false);
 
   const setReportContent = (content) => {
     setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, content } : r));
@@ -76,7 +125,7 @@ const OnlineReportingSystemWithOHIF = () => {
   // const autoSaveIntervalRef = useRef(null);
   // const autoSaveStatusTimerRef = useRef(null);
 
-// ...existing code...
+  // ...existing code...
 
 
   // ✅ Add new report
@@ -202,7 +251,7 @@ const OnlineReportingSystemWithOHIF = () => {
 
 
 
-  
+
 
   const initializeReportingSystem = async () => {
     setLoading(true);
@@ -237,9 +286,22 @@ const OnlineReportingSystemWithOHIF = () => {
         const studyInstanceUID = passedStudyInstanceUID || currentStudy.studyInstanceUID || currentStudy.studyId || studyInfo.studyInstanceUID || studyInfo.studyId || null;
 
         if (studyInstanceUID) {
-          const OHIF_BASE = 'https://viewer.bharatpacs.com/viewer';
+          const OHIF_VIEWERS = {
+            viewer1: 'https://viewer.bharatpacs.com/viewer',
+            viewer2: 'https://viewer2.bharatpacs.com/viewer',
+          };
+
+          const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
           let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
-          if (studyUIDs) setOhifViewerUrl(`${OHIF_BASE}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`);
+
+          if (studyUIDs) {
+            // Apply conditional formatting
+            const formattedUrl = viewerPref === 'viewer2'
+              ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Path format
+              : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Query format
+
+            setOhifViewerUrl(formattedUrl);
+          }
         }
 
         setStudyData({ _id: studyId, ...currentStudy, ...studyInfo });
@@ -284,14 +346,14 @@ const OnlineReportingSystemWithOHIF = () => {
           setReports(loadedReports);
           setActiveReportIndex(0);
           setIsReportOpen(true);
-          toast.success(`📝 Loaded ${allReports.length} existing reports`);
+          // toast.success(`📝 Loaded ${allReports.length} existing reports`);
 
           // Load template for first report
           if (allReports[0]?.reportContent?.templateInfo?.templateId) {
             try {
               const tr = await api.get(`/html-templates/${allReports[0].reportContent.templateInfo.templateId}`);
               if (tr.data.success) setSelectedTemplate(tr.data.data);
-            } catch (e) {}
+            } catch (e) { }
           }
 
           setReportData(prev => ({ ...prev, existingReport: { id: allReports[0]._id, reportType: allReports[0].reportType, reportStatus: allReports[0].reportStatus } }));
@@ -311,7 +373,7 @@ const OnlineReportingSystemWithOHIF = () => {
           try {
             const tr = await api.get(`/html-templates/${existingReport.reportContent.templateInfo.templateId}`);
             if (tr.data.success) setSelectedTemplate(tr.data.data);
-          } catch (e) {}
+          } catch (e) { }
         }
         setReportData(prev => ({ ...prev, existingReport: { id: existingReport._id, reportId: existingReport.reportId, reportType: existingReport.reportType, reportStatus: existingReport.reportStatus } }));
       }
@@ -374,7 +436,7 @@ const OnlineReportingSystemWithOHIF = () => {
       setSelectedTemplate(templateData);
       setReportContent(processedContent);
       setIsReportOpen(true);
-      try { await api.post(`/html-templates/${template._id}/record-usage`); } catch (e) {}
+      try { await api.post(`/html-templates/${template._id}/record-usage`); } catch (e) { }
       toast.success(`Template "${template.title}" applied to Report ${activeReportIndex + 1}!`);
     } catch (error) { toast.error(`Failed to load template: ${error.message}`); }
   };
@@ -420,7 +482,6 @@ const OnlineReportingSystemWithOHIF = () => {
       const currentUser = sessionManager.getCurrentUser();
       const isMulti = reports.length > 1;
 
-      // ✅ MULTI: use store-multiple, SINGLE: use store-draft
       if (isMulti) {
         const emptyReports = reports.filter(r => !r.content.trim());
         if (emptyReports.length > 0) { toast.error(`Report(s) ${emptyReports.map((_, i) => reports.findIndex(r => r === emptyReports[i]) + 1).join(', ')} are empty`); return; }
@@ -437,6 +498,9 @@ const OnlineReportingSystemWithOHIF = () => {
         if (response.data.success) toast.success(`${reports.length} drafts saved!`, { icon: '📝' });
         else throw new Error(response.data.message);
       } else {
+        // ✅ FIX: Use existingReportId from the active report OR reportData
+        const existingId = reports[activeReportIndex]?.existingReportId || reportData.existingReport?.id || null;
+
         const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
           templateName: `${currentUser.email.split('@')[0]}_draft_${Date.now()}.docx`,
           placeholders: buildPlaceholders(reportContent),
@@ -444,10 +508,19 @@ const OnlineReportingSystemWithOHIF = () => {
           templateId: selectedTemplate?._id,
           templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
           capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
-          existingReportId: reportData.existingReport?.id || null
+          existingReportId: existingId  // ✅ Always pass existing ID
         });
         if (response.data.success) {
-          if (!reportData.existingReport) setReportData(prev => ({ ...prev, existingReport: { id: response.data.data.reportId, reportType: 'draft', reportStatus: 'draft' } }));
+          const returnedReportId = response.data.data?.reportId;
+          if (returnedReportId) {
+            // ✅ Store on both the report and reportData
+            setReports(prev => prev.map((r, i) =>
+              i === activeReportIndex ? { ...r, existingReportId: returnedReportId } : r
+            ));
+            if (!existingId) {
+              setReportData(prev => ({ ...prev, existingReport: { id: returnedReportId, reportType: 'draft', reportStatus: 'draft' } }));
+            }
+          }
           toast.success('Draft saved!', { icon: '📝' });
         } else throw new Error(response.data.message);
       }
@@ -464,7 +537,7 @@ const OnlineReportingSystemWithOHIF = () => {
     }
 
     if (!window.confirm(`Finalize ${isMulti ? reports.length + ' reports' : 'this report'} as ${exportFormat.toUpperCase()}?`)) return;
-    
+
     // ✅ FIX: Stop auto-save BEFORE setting finalizing state
     if (autoSaveIntervalRef.current) {
       clearInterval(autoSaveIntervalRef.current);
@@ -481,6 +554,7 @@ const OnlineReportingSystemWithOHIF = () => {
         // ✅ MULTI endpoint
         const response = await api.post(`/reports/studies/${studyId}/store-multiple`, {
           reports: reports.map(r => ({
+            existingReportId: r.existingReportId || null,
             htmlContent: r.content,
             placeholders: buildPlaceholders(r.content),
             capturedImages: r.capturedImages.map(img => ({ ...img, capturedBy: currentUser._id })),
@@ -500,19 +574,21 @@ const OnlineReportingSystemWithOHIF = () => {
           htmlContent: reportContent,
           format: exportFormat,
           templateId: selectedTemplate?._id,
-          templateInfo: selectedTemplate ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title } : null,
+          templateInfo: selectedTemplate
+            ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
+            : null,
           capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id }))
         });
-         if (response.data.success) {
-            toast.success(`Report finalized as ${exportFormat.toUpperCase()}! Closing...`, { icon: '🎉' });
-            setTimeout(() => window.close(), 2500); // ✅ close tab
-          } else throw new Error(response.data.message);
+        if (response.data.success) {
+          toast.success(`Report finalized as ${exportFormat.toUpperCase()}! Closing...`, { icon: '🎉' });
+          setTimeout(() => window.close(), 2500); // ✅ close tab
+        } else throw new Error(response.data.message);
       }
-    } catch (error) { 
-      toast.error(`Failed to finalize: ${error.message}`); 
+    } catch (error) {
+      toast.error(`Failed to finalize: ${error.message}`);
       isFinalizedRef.current = false; // ✅ Reset on failure so auto-save can resume
-    } finally { 
-      setFinalizing(false); 
+    } finally {
+      setFinalizing(false);
     }
   };
 
@@ -540,8 +616,8 @@ const OnlineReportingSystemWithOHIF = () => {
     setVerifying(true);
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: true, verificationNotes: 'Verified via OHIF', corrections: [], verificationTimeMinutes: 0 });
-    if (response.data.success) { 
-        toast.success('Report verified! Closing tab...', { icon: '✅' }); 
+      if (response.data.success) {
+        toast.success('Report verified! Closing tab...', { icon: '✅' });
         setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
       } else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to verify: ${error.message}`); } finally { setVerifying(false); }
@@ -554,10 +630,10 @@ const OnlineReportingSystemWithOHIF = () => {
     setRejecting(true);
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: false, verificationNotes: reason, rejectionReason: reason, corrections: [], verificationTimeMinutes: 0 });
-      if (response.data.success) { 
-        toast.success('Report Reverted! Closing tab...', { icon: '❌' }); 
+      if (response.data.success) {
+        toast.success('Report Reverted! Closing tab...', { icon: '❌' });
         setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
-      }       else throw new Error(response.data.message);
+      } else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to Revert: ${error.message}`); } finally { setRejecting(false); }
   };
 
@@ -568,13 +644,12 @@ const OnlineReportingSystemWithOHIF = () => {
   };
 
 
-  
+
   // ✅ ADD: Auto-save handler — must be defined BEFORE the useEffect that uses it
   const handleAutoSave = useCallback(async () => {
     const currentContent = reports[activeReportIndex]?.content || '';
     const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
 
-    // ✅ FIX: Block auto-save if already finalized or currently finalizing
     if (!textContent || saving || finalizing || isVerifierMode || isFinalizedRef.current) {
       console.log('⏭️ [AutoSave] Skipped — empty content, already saving, or finalized');
       return;
@@ -583,6 +658,9 @@ const OnlineReportingSystemWithOHIF = () => {
     setAutoSaveStatus('saving');
     try {
       const currentUser = sessionManager.getCurrentUser();
+
+      // ✅ FIX: Check BOTH reportData.existingReport AND the active report's own existingReportId
+      const existingId = reports[activeReportIndex]?.existingReportId || reportData.existingReport?.id || null;
 
       const response = await api.post(`/reports/studies/${studyId}/store-draft`, {
         templateName: `${currentUser.email.split('@')[0]}_autosave_${Date.now()}.docx`,
@@ -593,26 +671,37 @@ const OnlineReportingSystemWithOHIF = () => {
           ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
           : null,
         capturedImages: (reports[activeReportIndex]?.capturedImages || []).map(img => ({ ...img, capturedBy: currentUser._id })),
-        existingReportId: reportData.existingReport?.id || null,  // ✅ UPDATE same report each time
+        existingReportId: existingId,  // ✅ Always send the correct ID
         reportStatus: 'report_drafted',
         isAutoSave: true
       });
 
       if (response.data.success) {
-        // ✅ Store reportId so next auto-save UPDATEs instead of INSERTs
-        if (!reportData.existingReport?.id && response.data.data?.reportId) {
-          setReportData(prev => ({
-            ...prev,
-            existingReport: {
-              id: response.data.data.reportId,
-              reportType: 'draft',
-              reportStatus: 'report_drafted'
-            }
-          }));
+        const returnedReportId = response.data.data?.reportId;
+
+        if (returnedReportId) {
+          // ✅ FIX: Save reportId BOTH in active report state AND in reportData
+          setReports(prev => prev.map((r, i) =>
+            i === activeReportIndex
+              ? { ...r, existingReportId: returnedReportId }  // ✅ Store on the report itself
+              : r
+          ));
+
+          if (!existingId) {
+            setReportData(prev => ({
+              ...prev,
+              existingReport: {
+                id: returnedReportId,
+                reportType: 'draft',
+                reportStatus: 'report_drafted'
+              }
+            }));
+          }
         }
+
         setAutoSaveStatus('saved');
         setLastAutoSaved(new Date());
-        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString());
+        console.log('✅ [AutoSave] Saved at', new Date().toLocaleTimeString(), '| reportId:', returnedReportId);
       } else {
         setAutoSaveStatus('error');
         console.warn('⚠️ [AutoSave] Server returned failure:', response.data.message);
@@ -621,7 +710,6 @@ const OnlineReportingSystemWithOHIF = () => {
       console.error('❌ [AutoSave] Failed:', error);
       setAutoSaveStatus('error');
     } finally {
-      // ✅ Reset status back to idle after 3s
       if (autoSaveStatusTimerRef.current) clearTimeout(autoSaveStatusTimerRef.current);
       autoSaveStatusTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 3000);
     }
@@ -671,209 +759,231 @@ const OnlineReportingSystemWithOHIF = () => {
   }
 
   return (
-    <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
+    <>
+      <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
 
-      {/* ✅ Single Toaster - bottom-left */}
-      <Toaster
-        position="bottom-left"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            fontSize: '12px',
-            maxWidth: '320px',
-            padding: '8px 12px',
-            borderRadius: '6px'
-          },
-          success: {
-            duration: 2500,
-            style: { background: '#10b981', color: '#fff' }
-          },
-          error: {
+        {/* ✅ Single Toaster - bottom-left */}
+        <Toaster
+          position="bottom-left"
+          toastOptions={{
             duration: 3000,
-            style: { background: '#ef4444', color: '#fff' }
-          },
-          loading: {
-            style: { background: '#3b82f6', color: '#fff' }
-          }
-        }}
-      />
+            style: {
+              fontSize: '12px',
+              maxWidth: '320px',
+              padding: '8px 12px',
+              borderRadius: '6px'
+            },
+            success: {
+              duration: 2500,
+              style: { background: '#10b981', color: '#fff' }
+            },
+            error: {
+              duration: 3000,
+              style: { background: '#ef4444', color: '#fff' }
+            },
+            loading: {
+              style: { background: '#3b82f6', color: '#fff' }
+            }
+          }}
+        />
 
-      {/* Top Control Bar */}
-      <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-10">
-        <div className="px-3 py-2">
-          <div className="flex items-center justify-between gap-4">
+        {/* Top Control Bar */}
+        <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-50">
+          <div className="px-3 py-2">
+            <div className="flex items-center justify-between gap-4">
 
-            {/* Left — Study Info */}
-            <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-2">
-                <div className="p-1 bg-gray-600 rounded">
-                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                  </svg>
-                </div>
-                <div className="text-xs">
-                  <div className="flex flex-row gap-4">
-                    <div className="flex items-center gap-4">
-                      <span className="font-medium text-gray-900 truncate uppercase" title={patientData?.fullName || ''}>
-                        {(patientData?.fullName || 'Loading...').toString().toUpperCase()}
-                      </span>
-                      <span className="text-gray-500 text-[11px] uppercase">
-                        {(studyData?.accessionNumber || (studyId ? `${String(studyId).substring(0, 8)}...` : '')).toString().toUpperCase()}
-                      </span>
-                      <span className="text-[11px] text-gray-600 ml-2 uppercase">
-                        <strong>AGE:</strong> {(patientData?.age || studyData?.patientAge || 'N/A').toString().toUpperCase()}
-                        {(patientData?.gender || studyData?.patientSex) ? ` / ${(patientData?.gender || studyData?.patientSex).toString().toUpperCase()}` : ''}
-                      </span>
-                    </div>
-                    <div className="text-[12px] text-gray-700 truncate max-w-xs" title={reportData?.clinicalHistory || ''}>
-                      <span className="font-medium text-gray-600 mr-1 uppercase">CLINICAL HISTORY:</span>
-                      <span className="font-normal uppercase">{(reportData?.clinicalHistory || 'No clinical history').toString().toUpperCase()}</span>
+              {/* Left — Study Info */}
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1 bg-gray-600 rounded">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="text-xs">
+                    <div className="flex flex-row gap-4">
+                      <div className="flex items-center gap-4">
+                        <span className="font-medium text-gray-900 truncate uppercase" title={patientData?.fullName || ''}>
+                          {(patientData?.fullName || 'Loading...').toString().toUpperCase()}
+                        </span>
+                        <span className="text-gray-500 text-[11px] uppercase">
+                          {(studyData?.accessionNumber || (studyId ? `${String(studyId).substring(0, 8)}...` : '')).toString().toUpperCase()}
+                        </span>
+                        <span className="text-[11px] text-gray-600 ml-2 uppercase">
+                          <strong>AGE:</strong> {(patientData?.age || studyData?.patientAge || 'N/A').toString().toUpperCase()}
+                          {(patientData?.gender || studyData?.patientSex) ? ` / ${(patientData?.gender || studyData?.patientSex).toString().toUpperCase()}` : ''}
+                        </span>
+                      </div>
+                      <div className="text-[12px] text-gray-700 truncate max-w-xs" title={reportData?.clinicalHistory || ''}>
+                        <span className="font-medium text-gray-600 mr-1 uppercase">CLINICAL HISTORY:</span>
+                        <span className="font-normal uppercase">{(reportData?.clinicalHistory || 'No clinical history').toString().toUpperCase()}</span>
+                      </div>
+                      <button
+                        onClick={() => setShowDocuments(true)}
+                        className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                      >
+                        <FileText className="w-3 h-3" /> Docs
+                      </button>
                     </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex items-center space-x-3 text-xs text-gray-600">
-                <span>{studyData?.modality || 'N/A'}</span>
-                <span>•</span>
-                <span>{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : 'N/A'}</span>
-              </div>
-            </div>
-
-            {/* Center — Controls */}
-            <div className="flex items-center space-x-3">
-              {!isReportOpen && (
-                <button onClick={() => setIsReportOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition-all font-medium text-sm animate-pulse">
-                  <FileText className="w-4 h-4" />
-                  {isVerifierMode ? 'Start Verification' : 'Report Now'}
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              )}
-
-              {isReportOpen && (
-                <>
-                  {!isVerifierMode ? (
-                    <>
-                      <div className="flex items-center space-x-2">
-                        <DoctorTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null} />
-                        <AllTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate} />
-                      </div>
-                      <div className="h-6 w-px bg-gray-300"></div>
-                      <button
-                        onClick={handleAttachOhifImage}
-                        className="relative flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
-                        title="Capture active viewport"
-                      >
-                        <Camera className="w-3 h-3" />
-                        <span>Capture</span>
-                        {capturedImages.length > 0 && (
-                          <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold text-white bg-green-500 rounded-full border border-white">
-                            {capturedImages.length}
-                          </span>
-                        )}
-                      </button>
-                      <div className="flex items-center space-x-2">
-                        <label className="text-xs font-medium text-gray-700">Layout:</label>
-                        <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-2 py-1 text-xs border border-gray-200 rounded bg-white">
-                          {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <label className="text-xs font-medium text-gray-700">Format:</label>
-                        <select value={exportFormat} onChange={(e) => setExportFormat(e.target.value)} className="px-2 py-1 text-xs border border-gray-200 rounded bg-white">
-                          <option value="docx">DOCX</option>
-                          <option value="pdf">PDF</option>
-                        </select>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="flex items-center space-x-2">
-                        <label className="text-xs font-medium text-purple-700">Layout:</label>
-                        <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-1.5 py-0.5 text-xs border border-purple-200 rounded bg-white">
-                          {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                      </div>
-                      <div className="h-6 w-px bg-purple-300"></div>
-                      <div className="flex items-center space-x-1">
-                        <button onClick={handleUpdateReport} disabled={saving || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-blue-600 text-white rounded disabled:opacity-50">{saving ? 'Updating...' : 'Update'}</button>
-                        <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Reverting...' : 'Revert'}</button>
-                        <button onClick={handleVerifyReport} disabled={verifying || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded disabled:opacity-50">{verifying ? 'Verifying...' : 'Verify'}</button>
-                      </div>
-                    </>
-                  )}
-                  <button onClick={() => setIsReportOpen(false)} className="p-1 text-gray-500 hover:text-gray-700 border border-gray-300 rounded ml-2" title="Hide Report Panel">
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Right — Actions + REPORT SWITCHER */}
-            <div className="flex items-center space-x-1.5">
-
-              {/* ✅ ADD: Auto-save status indicator */}
-              {isReportOpen && !isVerifierMode && (
-                <div className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-medium transition-all ${
-                  autoSaveStatus === 'saving' ? 'border-blue-200 bg-blue-50' :
-                  autoSaveStatus === 'saved'  ? 'border-green-200 bg-green-50' :
-                  autoSaveStatus === 'error'  ? 'border-red-200 bg-red-50' :
-                  'border-gray-200 bg-gray-50'
-                }`}>
-                  {autoSaveStatus === 'saving' && (
-                    <><div className="animate-spin rounded-full h-2 w-2 border border-blue-500 border-t-transparent" /><span className="text-blue-600">Saving...</span></>
-                  )}
-                  {autoSaveStatus === 'saved' && (
-                    <><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-green-600">Saved {lastAutoSaved?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></>
-                  )}
-                  {autoSaveStatus === 'error' && (
-                    <><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-red-600">Save failed</span></>
-                  )}
-                  {autoSaveStatus === 'idle' && (
-                    <><div className="w-2 h-2 rounded-full bg-gray-300" /><span className="text-gray-400">Auto-save on</span></>
-                  )}
+                <div className="flex items-center space-x-3 text-xs text-gray-600">
+                  <span>{studyData?.modality || 'N/A'}</span>
+                  <span>•</span>
+                  <span>{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : 'N/A'}</span>
                 </div>
-              )}
+              </div>
 
-              {/* ✅ Save, Finalize buttons */}
-              {(isReportOpen && !isVerifierMode) && (
-                <>
-                  <button 
-                    onClick={handleSaveDraft} 
-                    disabled={saving || !reportContent.trim()} 
-                    className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {saving ? (
-                      <span className="flex items-center gap-1">
-                        <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
-                        <span className="hidden sm:inline">Saving...</span>
-                      </span>
-                    ) : 'Save'}
+              {/* Center — Controls */}
+              <div className="flex items-center space-x-3">
+                {!isReportOpen && (
+                  <button onClick={() => setIsReportOpen(true)} className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 text-white rounded-md shadow hover:bg-blue-700 transition-all font-medium text-sm animate-pulse">
+                    <FileText className="w-4 h-4" />
+                    {isVerifierMode ? 'Start Verification' : 'Report Now'}
+                    <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <button 
-                    onClick={handleFinalizeReport} 
-                    disabled={finalizing || !reportContent.trim()} 
-                    className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {finalizing ? (
-                      <span className="flex items-center gap-1">
-                        <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
-                        <span className="hidden sm:inline">Finalizing...</span>
-                      </span>
-                    ) : `Final${reports.length > 1 ? ` (${reports.length})` : ''}`}
-                  </button>
-                </>
-              )}
+                )}
 
-              {/* ✅ REPORT SWITCHER DROPDOWN — always visible for doctors */}
-              {!isVerifierMode && (
+                {isReportOpen && (
+                  <>
+                    {!isVerifierMode ? (
+                      <>
+                        <div className="flex items-center space-x-2">
+                          <DoctorTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null} />
+                          <AllTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate} />
+                        </div>
+                        <div className="h-6 w-px bg-gray-300"></div>
+                        <button
+                          onClick={handleAttachOhifImage}
+                          className="relative flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                          title="Capture active viewport"
+                        >
+                          <Camera className="w-3 h-3" />
+                          <span>Capture</span>
+                          {capturedImages.length > 0 && (
+                            <span className="absolute -top-2 -right-2 flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold text-white bg-green-500 rounded-full border border-white">
+                              {capturedImages.length}
+                            </span>
+                          )}
+                        </button>
+                        <div className="flex items-center space-x-2">
+                          <label className="text-xs font-medium text-gray-700">Layout:</label>
+                          <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-2 py-1 text-xs border border-gray-200 rounded bg-white">
+                            {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </div>
+
+                        <button
+                          onClick={() => setShowTemplateSearch(prev => !prev)}
+                          className={`flex items-center space-x-1 px-3 py-1 text-xs font-medium border rounded transition-colors ${showTemplateSearch
+                              ? 'bg-indigo-600 text-white border-indigo-600'
+                              : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                            }`}
+                          title="Search inside templates (insert at cursor)"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          <span>Find</span>
+                        </button>
+
+
+                        <button
+                          onClick={handleOpenSaveAsTemplate}
+                          disabled={!reportContent?.trim()}
+                          className="flex items-center space-x-1 px-3 py-1 text-xs font-medium bg-green-50 text-green-700 border border-green-200 rounded hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Save current report content as a reusable template"
+                        >
+                          <Save className="w-3 h-3" />
+                          <span>Save as Template</span>
+                        </button>
+
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center space-x-2">
+                          <label className="text-xs font-medium text-purple-700">Layout:</label>
+                          <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-1.5 py-0.5 text-xs border border-purple-200 rounded bg-white">
+                            {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="h-6 w-px bg-purple-300"></div>
+                        <div className="flex items-center space-x-1">
+
+                          <button onClick={handleRejectReport} disabled={rejecting} className="px-2 py-1 text-xs font-medium bg-red-600 text-white rounded disabled:opacity-50">{rejecting ? 'Reverting...' : 'Revert'}</button>
+                          <button onClick={handleVerifyReport} disabled={verifying || !reportContent.trim()} className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded disabled:opacity-50">{verifying ? 'Verifying...' : 'Verify'}</button>
+                        </div>
+                      </>
+                    )}
+                    <button onClick={() => setIsReportOpen(false)} className="p-1 text-gray-500 hover:text-gray-700 border border-gray-300 rounded ml-2" title="Hide Report Panel">
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Right — Actions + REPORT SWITCHER */}
+              <div className="flex items-center space-x-1.5">
+
+                {/* ✅ ADD: Auto-save status indicator */}
+                {isReportOpen && !isVerifierMode && (
+                  <div className={`flex items-center gap-1 px-2 py-1 rounded border text-[10px] font-medium transition-all ${autoSaveStatus === 'saving' ? 'border-blue-200 bg-blue-50' :
+                      autoSaveStatus === 'saved' ? 'border-green-200 bg-green-50' :
+                        autoSaveStatus === 'error' ? 'border-red-200 bg-red-50' :
+                          'border-gray-200 bg-gray-50'
+                    }`}>
+                    {autoSaveStatus === 'saving' && (
+                      <><div className="animate-spin rounded-full h-2 w-2 border border-blue-500 border-t-transparent" /><span className="text-blue-600">Saving...</span></>
+                    )}
+                    {autoSaveStatus === 'saved' && (
+                      <><div className="w-2 h-2 rounded-full bg-green-500" /><span className="text-green-600">Saved {lastAutoSaved?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span></>
+                    )}
+                    {autoSaveStatus === 'error' && (
+                      <><div className="w-2 h-2 rounded-full bg-red-500" /><span className="text-red-600">Save failed</span></>
+                    )}
+                    {autoSaveStatus === 'idle' && (
+                      <><div className="w-2 h-2 rounded-full bg-gray-300" /><span className="text-gray-400">Auto-save on</span></>
+                    )}
+                  </div>
+                )}
+
+                {/* ✅ Save, Finalize buttons */}
+                {(isReportOpen && !isVerifierMode) && (
+                  <>
+                    <button
+                      onClick={handleSaveDraft}
+                      disabled={saving || !reportContent.trim()}
+                      className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {saving ? (
+                        <span className="flex items-center gap-1">
+                          <div className="animate-spin rounded-full h-2 w-2 border border-gray-500 border-t-transparent"></div>
+                          <span className="hidden sm:inline">Saving...</span>
+                        </span>
+                      ) : 'Save'}
+                    </button>
+                    <button
+                      onClick={handleFinalizeReport}
+                      disabled={finalizing || !reportContent.trim()}
+                      className="px-2 py-1 text-xs font-medium bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 whitespace-nowrap"
+                    >
+                      {finalizing ? (
+                        <span className="flex items-center gap-1">
+                          <div className="animate-spin rounded-full h-2 w-2 border border-white border-t-transparent"></div>
+                          <span className="hidden sm:inline">Finalizing...</span>
+                        </span>
+                      ) : `Final${reports.length > 1 ? ` (${reports.length})` : ''}`}
+                    </button>
+                  </>
+                )}
+
+                {/* ✅ REPORT SWITCHER DROPDOWN — always visible for doctors */}
+
                 <div className="relative" ref={reportDropdownRef}>
                   <button
                     onClick={() => setShowReportDropdown(prev => !prev)}
-                    className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${
-                      reports.length > 1
+                    className={`flex items-center gap-1 px-2 py-1 text-xs font-medium rounded border transition-colors ${reports.length > 1
                         ? 'bg-blue-50 text-blue-700 border-blue-300 hover:bg-blue-100'
                         : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
+                      }`}
                     title="Alt+R: Toggle | Alt+1-9: Switch | Alt+N: Add"
                   >
                     <Layers className="w-3 h-3" />
@@ -906,15 +1016,13 @@ const OnlineReportingSystemWithOHIF = () => {
                         {reports.map((report, index) => (
                           <div
                             key={report.id}
-                            className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0 ${
-                              index === activeReportIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
-                            }`}
+                            className={`flex items-center justify-between px-3 py-2 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0 ${index === activeReportIndex ? 'bg-blue-50' : 'hover:bg-gray-50'
+                              }`}
                             onClick={() => handleSwitchReport(index)}
                           >
                             <div className="flex items-center gap-2">
-                              <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${
-                                index === activeReportIndex ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
-                              }`}>
+                              <span className={`w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center flex-shrink-0 ${index === activeReportIndex ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                                }`}>
                                 {index + 1}
                               </span>
                               <div>
@@ -957,66 +1065,166 @@ const OnlineReportingSystemWithOHIF = () => {
                     </div>
                   )}
                 </div>
-              )}
 
-              <button 
-                onClick={handleBackToWorklist} 
-                className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 whitespace-nowrap"
-              >
-                {isVerifierMode ? 'Back' : 'Back'}
-              </button>
+
+                <button
+                  onClick={handleBackToWorklist}
+                  className="px-2 py-1 text-xs font-medium text-gray-600 border border-gray-200 rounded hover:bg-gray-50 whitespace-nowrap"
+                >
+                  {isVerifierMode ? 'Back' : 'Back'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex min-h-0">
-        {/* LEFT — OHIF */}
-        <div className="bg-black border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out h-full" style={{ width: isReportOpen ? `${leftPanelWidth}%` : '100%' }}>
-          <div className="flex-1 h-full w-full">
-            {ohifViewerUrl ? (
-              <iframe id="ohif-viewer-iframe" src={ohifViewerUrl} className="w-full h-full border-0" title="OHIF DICOM Viewer" allow="cross-origin-isolated" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-white">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-                  <p className="text-sm">Loading OHIF viewer...</p>
+        {/* Main Content */}
+        <div className="flex-1 flex min-h-0">
+          {/* LEFT — OHIF */}
+          <div className="bg-black border-r border-gray-200 flex flex-col transition-all duration-300 ease-in-out h-full" style={{ width: isReportOpen ? `${leftPanelWidth}%` : '100%' }}>
+            <div className="flex-1 h-full w-full">
+              {ohifViewerUrl ? (
+                <iframe id="ohif-viewer-iframe" src={ohifViewerUrl} className="w-full h-full border-0" title="OHIF DICOM Viewer" allow="cross-origin-isolated" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-white">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                    <p className="text-sm">Loading OHIF viewer...</p>
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT — Report Editor */}
+          <div
+            className="bg-white flex flex-col transition-all duration-300 ease-in-out h-full"
+            style={{ width: isReportOpen ? `${100 - leftPanelWidth}%` : '0%', opacity: isReportOpen ? 1 : 0, overflow: 'hidden' }}
+          >
+            <div className="flex-1 min-h-0 h-full overflow-hidden flex flex-row">
+              <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+                <ReportEditor
+                  key={`report-${activeReport.id}`}
+                  ref={editorRef}
+                  content={reportContent}
+                  onChange={setReportContent}
+                />
               </div>
-            )}
+              <TemplateSearchPanel
+                isOpen={showTemplateSearch}
+                onClose={() => setShowTemplateSearch(false)}
+                onInsert={handleInsertFromSearch}
+                templateList={Object.values(templates).flat()}
+              />
+            </div>
           </div>
         </div>
 
-        {/* RIGHT — Report Editor */}
-        <div
-          className="bg-white flex flex-col transition-all duration-300 ease-in-out h-full"
-          style={{ width: isReportOpen ? `${100 - leftPanelWidth}%` : '0%', opacity: isReportOpen ? 1 : 0, overflow: 'hidden' }}
-        >
-          <div className="flex-1 min-h-0 h-full overflow-hidden flex flex-col">
-            {/* ✅ Key forces ReportEditor to re-render with new state when switching reports */}
-            <ReportEditor
-              key={`report-${activeReport.id}`}
-              content={reportContent}
-              onChange={setReportContent}
-            />
+        {/* Template Indicator */}
+        {selectedTemplate && isReportOpen && (
+          <div className="fixed bottom-4 right-4 z-40 bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-xs">
+            <div className="flex items-start justify-between">
+              <p className="text-sm font-medium text-gray-900 truncate mr-2">📋 {selectedTemplate.title}</p>
+              <button onClick={() => setSelectedTemplate(null)} className="p-1 hover:bg-gray-100 rounded">
+                <XCircle className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
           </div>
-        </div>
+        )}
+
       </div>
 
-      {/* Template Indicator */}
-      {selectedTemplate && isReportOpen && (
-        <div className="fixed bottom-4 right-4 z-40 bg-white border border-gray-200 rounded-lg shadow-lg p-3 max-w-xs">
-          <div className="flex items-start justify-between">
-            <p className="text-sm font-medium text-gray-900 truncate mr-2">📋 {selectedTemplate.title}</p>
-            <button onClick={() => setSelectedTemplate(null)} className="p-1 hover:bg-gray-100 rounded">
-              <XCircle className="w-4 h-4 text-gray-400" />
-            </button>
+
+      <StudyDocumentsManager
+        studyId={studyId}
+        isOpen={showDocuments}
+        onClose={() => setShowDocuments(false)}
+        studyMeta={{ patientName: patientData?.fullName, accessionNumber: studyData?.accessionNumber }}
+      />
+
+
+      {showSaveAsTemplate && (
+        <>
+          <div
+            className="fixed inset-0 z-[300] bg-black/50"
+            onClick={() => setShowSaveAsTemplate(false)}
+          />
+          <div className="fixed z-[310] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl shadow-2xl border border-gray-200 w-[420px]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 bg-green-50 border-b border-green-100 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <Save className="w-4 h-4 text-green-600" />
+                <span className="text-sm font-bold text-green-900">Save as Template</span>
+              </div>
+              <button
+                onClick={() => setShowSaveAsTemplate(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <XCircle className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">
+                  Template Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={saveTemplateForm.name}
+                  onChange={(e) => setSaveTemplateForm(f => ({ ...f, name: e.target.value }))}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveAsTemplate(); if (e.key === 'Escape') setShowSaveAsTemplate(false); }}
+                  placeholder="e.g. CT Brain Routine"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Category</label>
+                <select
+                  value={saveTemplateForm.category}
+                  onChange={(e) => setSaveTemplateForm(f => ({ ...f, category: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 bg-white"
+                >
+                  {['General', 'CT', 'CR', 'CT SCREENING FORMAT', 'ECHO', 'EEG-TMT-NCS', 'MR', 'MRI SCREENING FORMAT', 'PT', 'US', 'Other'].map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                {studyData?.modality && (
+                  <p className="mt-1 text-[10px] text-gray-400">Auto-filled from study modality: <strong>{studyData.modality}</strong></p>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-100 rounded-b-xl bg-gray-50">
+              <button
+                onClick={() => setShowSaveAsTemplate(false)}
+                className="px-4 py-1.5 text-xs font-medium text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveAsTemplate}
+                disabled={savingAsTemplate || !saveTemplateForm.name.trim()}
+                className="px-4 py-1.5 text-xs font-bold bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <Save className="w-3 h-3" />
+                {savingAsTemplate ? 'Saving…' : 'Save Template'}
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
-    </div>
+
+    </>
+
+
+
   );
+
 };
 
 export default OnlineReportingSystemWithOHIF;

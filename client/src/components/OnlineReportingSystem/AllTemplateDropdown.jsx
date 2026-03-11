@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../../services/api';
-import { 
-  ChevronDown, 
-  Search, 
-  Globe, 
+import {
+  ChevronDown,
+  Search,
+  Globe,
   User,
-  FileText, 
+  FileText,
   Filter,
   X,
   Check,
@@ -20,13 +20,13 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [stats, setStats] = useState({ globalCount: 0, personalCount: 0 });
-  
+
   const dropdownRef = useRef(null);
 
   // Categories for filtering
   const categoryOptions = [
-    'all', 'General', 'CT', 'CR', 'CT SCREENING FORMAT', 
-    'ECHO', 'EEG-TMT-NCS', 'MR', 'MRI SCREENING FORMAT', 
+    'all', 'General', 'CT', 'CR', 'CT SCREENING FORMAT',
+    'ECHO', 'EEG-TMT-NCS', 'MR', 'MRI SCREENING FORMAT',
     'PT', 'US', 'Other'
   ];
 
@@ -78,7 +78,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
     onTemplateSelect(template);
     setIsOpen(false);
     const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
-    toast.success(`Applied ${templateType}: ${template.title}`, { duration: 1500 });
+    // toast.success(`Applied ${templateType}: ${template.title}`, { duration: 1500 });
   };
 
   // Debounced search
@@ -114,8 +114,8 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
             {totalTemplates}
           </span>
         )}
-        <ChevronDown 
-          size={10} 
+        <ChevronDown
+          size={10}
           className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
@@ -123,7 +123,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
       {/* ✅ INCREASED HEIGHT: Dropdown Panel */}
       {isOpen && (
         <div className="absolute top-full left-0 mt-1 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50">
-          
+
           {/* ✅ COMPACT: Header */}
           <div className="p-2 border-b border-gray-100">
             <div className="flex items-center justify-between mb-1">
@@ -201,7 +201,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
               Object.entries(templates).map(([category, categoryData]) => {
                 const hasGlobal = categoryData.global && categoryData.global.length > 0;
                 const hasPersonal = categoryData.personal && categoryData.personal.length > 0;
-                
+
                 if (!hasGlobal && !hasPersonal) return null;
 
                 return (
@@ -330,7 +330,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
           {totalTemplates > 0 && (
             <div className="p-1 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 text-center">
               {totalTemplates} template{totalTemplates !== 1 ? 's' : ''}
-              {stats.globalCount > 0 && stats.personalCount > 0 && 
+              {stats.globalCount > 0 && stats.personalCount > 0 &&
                 ` (${stats.globalCount} global, ${stats.personalCount} personal)`
               }
             </div>
