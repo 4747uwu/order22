@@ -208,7 +208,6 @@ const AdminTemplates = () => {
       setPreviewHtml(htmlContent);
       setFormData(prev => ({ ...prev, htmlContent }));
       setShowPreview(true);
-      toast.success('Text converted to HTML successfully!');
     } catch (error) {
       console.error('Error converting text to HTML:', error);
       toast.error('Failed to convert text to HTML');
@@ -524,7 +523,7 @@ const AdminTemplates = () => {
 
       {/* Create/Edit Modal */}
       {(showCreateModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-600 to-teal-700">
@@ -546,37 +545,29 @@ const AdminTemplates = () => {
             </div>
 
             {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <form onSubmit={handleSubmitTemplate} className="space-y-6">
-                {/* Basic Info */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Template Title *
-                    </label>
+            <div className="flex-1 overflow-y-auto p-4">
+              <form onSubmit={handleSubmitTemplate} className="space-y-3">
+                {/* Basic Info — single row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
                     <input
                       type="text"
                       value={formData.title}
                       onChange={(e) => handleFormChange('title', e.target.value)}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
-                        formErrors.title ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full h-8 px-2.5 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                        formErrors.title ? 'border-red-400' : 'border-gray-200'
                       }`}
                       placeholder="e.g., CT Head Standard Report"
                     />
-                    {formErrors.title && (
-                      <p className="text-red-500 text-sm mt-1">{formErrors.title}</p>
-                    )}
                   </div>
-
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Category *
-                    </label>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
                     <select
                       value={formData.category}
                       onChange={(e) => handleFormChange('category', e.target.value)}
-                      className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-teal-500 ${
-                        formErrors.category ? 'border-red-500' : 'border-gray-300'
+                      className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none ${
+                        formErrors.category ? 'border-red-400' : 'border-gray-200'
                       }`}
                     >
                       {categoryOptions.map(cat => (
@@ -586,197 +577,149 @@ const AdminTemplates = () => {
                   </div>
                 </div>
 
-                {/* Description */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Description
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => handleFormChange('description', e.target.value)}
-                    rows={2}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                    placeholder="Brief description of this template..."
-                  />
-                </div>
-
-                {/* Tags */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tags (comma separated)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.tags.join(', ')}
-                    onChange={(e) => handleTagsChange(e.target.value)}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500"
-                    placeholder="e.g., head, CT, routine"
-                  />
-                </div>
-
-                {/* Input Mode Toggle */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Input Mode
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleInputModeChange('text')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
-                        inputMode === 'text'
-                          ? 'border-teal-600 bg-teal-50 text-teal-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Type className="w-5 h-5" />
-                      Plain Text
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleInputModeChange('html')}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 transition-colors ${
-                        inputMode === 'html'
-                          ? 'border-teal-600 bg-teal-50 text-teal-700'
-                          : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
-                      }`}
-                    >
-                      <Code className="w-5 h-5" />
-                      HTML
-                    </button>
+                {/* Description + Tags — single row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
+                    <input
+                      type="text"
+                      value={formData.description}
+                      onChange={(e) => handleFormChange('description', e.target.value)}
+                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
+                    <input
+                      type="text"
+                      value={formData.tags.join(', ')}
+                      onChange={(e) => handleTagsChange(e.target.value)}
+                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                      placeholder="head, CT, routine"
+                    />
                   </div>
                 </div>
 
-                {/* Conversion Options (Text Mode) */}
-                {inputMode === 'text' && (
-                  <div className="bg-teal-50 border border-teal-200 rounded-lg p-4">
-                    <h4 className="font-medium text-teal-900 mb-3 flex items-center gap-2">
-                      <Zap className="w-5 h-5" />
-                      Conversion Options
-                    </h4>
-                    <div className="grid grid-cols-2 gap-3">
+                {/* Input Mode + Conversion Options — inline row */}
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex bg-gray-100 rounded-lg p-0.5">
+                    <button type="button" onClick={() => handleInputModeChange('text')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                        inputMode === 'text' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                      <Type className="w-3.5 h-3.5" /> Text
+                    </button>
+                    <button type="button" onClick={() => handleInputModeChange('html')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                        inputMode === 'html' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                      <Code className="w-3.5 h-3.5" /> HTML
+                    </button>
+                  </div>
+
+                  {inputMode === 'text' && (
+                    <div className="flex items-center gap-3 text-[11px] text-gray-600">
                       {Object.entries(conversionOptions).map(([key, value]) => (
-                        <label key={key} className="flex items-center gap-2 text-sm text-teal-700">
-                          <input
-                            type="checkbox"
-                            checked={value}
-                            onChange={(e) => setConversionOptions(prev => ({
-                              ...prev,
-                              [key]: e.target.checked
-                            }))}
-                            className="rounded border-teal-300 text-teal-600 focus:ring-teal-500"
-                          />
-                          {key.replace(/([A-Z])/g, ' $1').trim()}
+                        <label key={key} className="flex items-center gap-1 cursor-pointer">
+                          <input type="checkbox" checked={value}
+                            onChange={(e) => setConversionOptions(prev => ({ ...prev, [key]: e.target.checked }))}
+                            className="w-3.5 h-3.5 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
+                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
                         </label>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {/* Content Editor */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Template Content *
-                  </label>
-                  
-                  {inputMode === 'text' ? (
-                    <textarea
-                      value={plainTextContent}
-                      onChange={(e) => setPlainTextContent(e.target.value)}
-                      rows={15}
-                      className={`w-full px-4 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-teal-500 ${
-                        formErrors.content ? 'border-red-500' : 'border-gray-300'
-                      }`}
-                      placeholder="Enter your plain text content here. It will be automatically converted to HTML..."
-                    />
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {/* Table insert toolbar */}
-                      <div className="flex items-center gap-2">
-                        {showTableDialog ? (
-                          <div className="flex items-center gap-2 bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">
-                            <span className="text-sm text-teal-700 font-medium">Rows:</span>
-                            <input type="number" min="1" max="20" value={tableRows}
-                              onChange={e => setTableRows(e.target.value)}
-                              className="w-14 px-2 py-1 text-sm border border-teal-300 rounded" />
-                            <span className="text-sm text-teal-700 font-medium">Cols:</span>
-                            <input type="number" min="1" max="10" value={tableCols}
-                              onChange={e => setTableCols(e.target.value)}
-                              className="w-14 px-2 py-1 text-sm border border-teal-300 rounded" />
-                            <button type="button" onClick={insertTableToContent}
-                              className="px-3 py-1 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg">
-                              Insert
-                            </button>
-                            <button type="button" onClick={() => setShowTableDialog(false)}
-                              className="px-2 py-1 text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg">
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button type="button" onClick={() => setShowTableDialog(true)}
-                            className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-lg transition-colors">
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-                            </svg>
-                            Insert Table
-                          </button>
-                        )}
-                      </div>
-                      <textarea
-                        value={formData.htmlContent}
-                        onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                        rows={15}
-                        className={`w-full px-4 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-teal-500 ${
-                          formErrors.content ? 'border-red-500' : 'border-gray-300'
-                        }`}
-                        placeholder="Enter your HTML content here..."
-                      />
-                    </div>
-                  )}
-                  
-                  {formErrors.content && (
-                    <p className="text-red-500 text-sm mt-1">{formErrors.content}</p>
                   )}
                 </div>
 
-                {/* Preview Toggle */}
-                {previewHtml && (
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => setShowPreview(!showPreview)}
-                      className="flex items-center gap-2 text-teal-600 hover:text-teal-700 font-medium"
-                    >
-                      <Eye className="w-5 h-5" />
-                      {showPreview ? 'Hide Preview' : 'Show Preview'}
-                    </button>
-                    
+                {/* Content Editor with Table Insert (BOTH modes) */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
+                    <div className="flex items-center gap-1.5">
+                      {showTableDialog ? (
+                        <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
+                          <span className="text-[10px] text-gray-500">R:</span>
+                          <input type="number" min="1" max="20" value={tableRows}
+                            onChange={e => setTableRows(e.target.value)}
+                            className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                          <span className="text-[10px] text-gray-500">C:</span>
+                          <input type="number" min="1" max="10" value={tableCols}
+                            onChange={e => setTableCols(e.target.value)}
+                            className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                          <button type="button" onClick={() => {
+                            if (inputMode === 'text') {
+                              const rows = Math.max(1, parseInt(tableRows) || 2);
+                              const cols = Math.max(1, parseInt(tableCols) || 3);
+                              let table = '\n| ' + Array.from({length: cols}, (_, c) => `Header ${c+1}`).join(' | ') + ' |\n';
+                              table += '| ' + Array.from({length: cols}, () => '---').join(' | ') + ' |\n';
+                              for (let r = 0; r < rows - 1; r++) {
+                                table += '| ' + Array.from({length: cols}, () => '   ').join(' | ') + ' |\n';
+                              }
+                              setPlainTextContent(prev => prev + table);
+                            } else {
+                              insertTableToContent();
+                            }
+                            setShowTableDialog(false);
+                          }}
+                            className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">Insert</button>
+                          <button type="button" onClick={() => setShowTableDialog(false)}
+                            className="px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">✕</button>
+                        </div>
+                      ) : (
+                        <button type="button" onClick={() => setShowTableDialog(true)}
+                          className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                          </svg>
+                          Table
+                        </button>
+                      )}
+                      {previewHtml && (
+                        <button type="button" onClick={() => setShowPreview(!showPreview)}
+                          className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg transition-all ${
+                            showPreview ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}>
+                          <Eye className="w-3 h-3" /> {showPreview ? 'Hide' : 'Preview'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={`flex gap-3 ${showPreview ? '' : ''}`}>
+                    <div className={showPreview ? 'w-1/2' : 'w-full'}>
+                      <textarea
+                        value={inputMode === 'text' ? plainTextContent : formData.htmlContent}
+                        onChange={(e) => inputMode === 'text' ? setPlainTextContent(e.target.value) : handleFormChange('htmlContent', e.target.value)}
+                        rows={10}
+                        className={`w-full px-3 py-2 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                          formErrors.content ? 'border-red-400' : 'border-gray-200'
+                        }`}
+                        placeholder={inputMode === 'text'
+                          ? 'Paste report text here...\n\nTable syntax:\n| Header 1 | Header 2 |\n|---|---|\n| data | data |'
+                          : 'Enter HTML content...'}
+                      />
+                    </div>
                     {showPreview && (
-                      <div className="mt-4 border border-gray-300 rounded-lg p-4 bg-white max-h-96 overflow-y-auto">
-                        <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                      <div className="w-1/2 border border-gray-200 rounded-lg p-3 bg-gray-50/50 overflow-y-auto" style={{maxHeight: '300px'}}>
+                        <div className="prose max-w-none text-[11pt]" dangerouslySetInnerHTML={{ __html: previewHtml || formData.htmlContent || '<p style="color:#aaa">No preview</p>' }} />
                       </div>
                     )}
                   </div>
-                )}
+                  {formErrors.content && <p className="text-[10px] text-red-500 mt-0.5">{formErrors.content}</p>}
+                </div>
 
                 {/* Form Actions */}
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreateModal(false);
-                      setShowEditModal(false);
-                    }}
-                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                  <button type="button"
+                    onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                    className="px-3 h-8 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    className="flex items-center gap-2 px-6 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
-                  >
-                    <Save className="w-5 h-5" />
-                    {showEditModal ? 'Update Template' : 'Create Template'}
+                  <button type="submit"
+                    className="flex items-center gap-1.5 px-4 h-8 text-[12px] font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all">
+                    <Save className="w-3.5 h-3.5" />
+                    {showEditModal ? 'Update' : 'Create'}
                   </button>
                 </div>
               </form>
@@ -787,7 +730,7 @@ const AdminTemplates = () => {
 
       {/* View Modal */}
       {showViewModal && selectedTemplate && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-600 to-teal-700">
               <div className="flex items-center gap-3">

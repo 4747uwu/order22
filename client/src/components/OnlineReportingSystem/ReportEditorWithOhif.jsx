@@ -6,7 +6,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
   const [paginatedContent, setPaginatedContent] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fontSize, setFontSize] = useState('11pt');
-  const [fontFamily, setFontFamily] = useState('Arial');
+  const [fontFamily, setFontFamily] = useState('Comic Sans MS');
   const [showWordCount, setShowWordCount] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [darkMode, setDarkMode] = useState(false);
@@ -31,6 +31,10 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     superscript: false
   });
   const contentEditableRef = useRef(null);
+
+  // ✅ FORMAT PAINTER
+  const [formatPainterActive, setFormatPainterActive] = useState(false);
+  const storedFormatRef = useRef(null);
 
     const savedRangeRef = useRef(null);
 
@@ -241,12 +245,55 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     }, 10);
   };
 
-  // ✅ FIXED: Enhanced font family application
   const applyFontFamily = (family) => {
     setFontFamily(family);
     document.execCommand('fontName', false, family);
     contentEditableRef.current?.focus();
   };
+
+  // ✅ FORMAT PAINTER: Capture formatting from current selection
+  const activateFormatPainter = () => {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+    const node = selection.anchorNode?.parentElement || selection.anchorNode;
+    if (!node) return;
+    const computed = window.getComputedStyle(node);
+    storedFormatRef.current = {
+      fontWeight: computed.fontWeight,
+      fontStyle: computed.fontStyle,
+      textDecoration: computed.textDecoration,
+      fontFamily: computed.fontFamily,
+      fontSize: computed.fontSize,
+      color: computed.color,
+    };
+    setFormatPainterActive(true);
+  };
+
+  // ✅ FORMAT PAINTER: Apply stored format to current selection
+  const applyStoredFormat = useCallback(() => {
+    if (!formatPainterActive || !storedFormatRef.current) return;
+    const selection = window.getSelection();
+    if (!selection.rangeCount || selection.isCollapsed) return;
+    const range = selection.getRangeAt(0);
+    const span = document.createElement('span');
+    const fmt = storedFormatRef.current;
+    span.style.fontWeight = fmt.fontWeight;
+    span.style.fontStyle = fmt.fontStyle;
+    span.style.textDecoration = fmt.textDecoration;
+    span.style.fontFamily = fmt.fontFamily;
+    span.style.fontSize = fmt.fontSize;
+    span.style.color = fmt.color;
+    try {
+      const fragment = range.extractContents();
+      span.appendChild(fragment);
+      range.insertNode(span);
+    } catch (e) { /* fallback */ }
+    setFormatPainterActive(false);
+    storedFormatRef.current = null;
+    setTimeout(() => {
+      if (contentEditableRef.current) onChange(contentEditableRef.current.innerHTML);
+    }, 10);
+  }, [formatPainterActive, onChange]);
 
   // Word count functionality
   const getWordCount = () => {
@@ -486,6 +533,17 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             </ToolbarButton>
           </ToolbarGroup>
 
+          {/* Format Painter */}
+          <ToolbarButton
+            onClick={activateFormatPainter}
+            active={formatPainterActive}
+            tooltip="Format Painter — select text, click to capture, then select target text"
+          >
+            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M4 2a2 2 0 00-2 2v1h2V4h3v1h2V4a2 2 0 00-2-2H4zM2 7v2h7V7H2zm0 4v5a2 2 0 002 2h1a2 2 0 002-2v-5H2z"/>
+            </svg>
+          </ToolbarButton>
+
           <ToolbarSeparator />
 
           {/* Alignment */}
@@ -698,7 +756,10 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
                 contentEditable
                 className="report-editor ms-word-page"
                 onInput={handleContentChange}
-                onMouseUp={saveSelection}
+                onMouseUp={(e) => {
+                  saveSelection();
+                  if (formatPainterActive) applyStoredFormat();
+                }}
                 onKeyUp={saveSelection}
                 // onBlur={saveSelection}
                 suppressContentEditableWarning={true}

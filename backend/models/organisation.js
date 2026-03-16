@@ -62,7 +62,8 @@ const OrganizationSchema = new mongoose.Schema({
         timezone: { type: String, default: 'UTC' },
         dateFormat: { type: String, default: 'MM/DD/YYYY' },
         currency: { type: String, default: 'USD' },
-        language: { type: String, default: 'en' }
+        language: { type: String, default: 'en' },
+        supportNumber: { type: String, default: '98XXXX', trim: true }
     },
 
     // Subscription & Billing

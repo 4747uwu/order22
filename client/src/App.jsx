@@ -27,6 +27,7 @@ import LabBrandingSettings from './pages/lab/LabBrandingSettings';
 import Login2Page from './pages/Login2';
 import ManageLabs from './pages/admin/ManageLabs';
 import QRStudyDecisionPage from './pages/public/QRStudyDecisionPage';
+import TATReport from './pages/admin/TATReport';
 
 
 
@@ -50,24 +51,24 @@ const ProtectedRoute = ({ children, allowedRoles = [] }) => {
   // ✅ MULTI-ROLE SUPPORT: Check if user has ANY of the allowed roles
   if (allowedRoles.length > 0) {
     // Get user roles - use accountRoles if available, otherwise fallback to role
-    const userRoles = (currentUser?.accountRoles && currentUser.accountRoles.length > 0) 
-      ? currentUser.accountRoles 
+    const userRoles = (currentUser?.accountRoles && currentUser.accountRoles.length > 0)
+      ? currentUser.accountRoles
       : [currentUser?.role];
-    
+
     console.log('🔐 [ProtectedRoute] Checking access:', {
       allowedRoles,
       userRoles,
       currentUserRole: currentUser?.role,
       accountRoles: currentUser?.accountRoles
     });
-    
+
     const hasAccess = userRoles.some(role => allowedRoles.includes(role));
-    
+
     if (!hasAccess) {
       console.log('❌ [ProtectedRoute] Access denied, redirecting to dashboard');
       return <Navigate to={getDashboardRoute()} replace />;
     }
-    
+
     console.log('✅ [ProtectedRoute] Access granted');
   }
 
@@ -103,33 +104,33 @@ const AppRoutes = () => {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/login2" element={<Login2Page />} />
       <Route path="/qr/:studyId" element={<QRStudyDecisionPage />} />
-      
+
       {/* ✅ SUPER ADMIN ROUTES */}
-      <Route 
-        path="/superadmin/dashboard" 
+      <Route
+        path="/superadmin/dashboard"
         element={
           <ProtectedRoute allowedRoles={['super_admin']}>
             <SuperAdminDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ ADMIN ROUTES - Allow admin + super_admin */}
-      <Route 
-        path="/admin/dashboard" 
+      <Route
+        path="/admin/dashboard"
         element={
           <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
             <AdminDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
 
       <Route path="/admin/manage-labs" element={
-    <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
-        <ManageLabs />
-    </ProtectedRoute>
-} />
-      
+        <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
+          <ManageLabs />
+        </ProtectedRoute>
+      } />
+
       {/* ✅ SYSTEM OVERVIEW (Admin / Super Admin) */}
       <Route
         path="/admin/system-overview"
@@ -139,223 +140,229 @@ const AppRoutes = () => {
           </ProtectedRoute>
         }
       />
-      
+
       {/* ✅ CREATE DOCTOR - Allow admin, group_id, assignor */}
-      <Route 
-        path="/admin/create-doctor" 
+      <Route
+        path="/admin/create-doctor"
         element={
           <ProtectedRoute allowedRoles={['admin', 'group_id', 'super_admin', 'assignor']}>
             <CreateDoctor />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ CREATE LAB - Allow admin + super_admin */}
-      <Route 
-        path="/admin/create-lab" 
+      <Route
+        path="/admin/create-lab"
         element={
           <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
             <CreateLab />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
+      <Route path="/admin/tat-report" element={
+        <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id']}>
+          <TATReport />
+        </ProtectedRoute>
+      } />
+
       {/* ✅ CREATE USER - Allow admin, group_id, super_admin, assignor */}
-      <Route 
-        path="/admin/create-user" 
+      <Route
+        path="/admin/create-user"
         element={
           <ProtectedRoute allowedRoles={['admin', 'group_id', 'super_admin', 'assignor']}>
             <CreateUser />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ USER MANAGEMENT - Allow admin, super_admin, group_id, assignor */}
-      <Route 
-        path="/admin/user-management" 
+      <Route
+        path="/admin/user-management"
         element={
           <ProtectedRoute allowedRoles={['admin', 'super_admin', 'group_id', 'assignor']}>
             <UserManagement />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ ROLE-SPECIFIC DASHBOARD ROUTES WITH MULTI-ROLE SUPPORT */}
-      
+
       {/* Owner Dashboard */}
-      <Route 
-        path="/owner/dashboard" 
+      <Route
+        path="/owner/dashboard"
         element={
           <ProtectedRoute allowedRoles={['owner', 'admin', 'super_admin']}>
-            <DashboardPlaceholder 
-              title="Owner Dashboard" 
+            <DashboardPlaceholder
+              title="Owner Dashboard"
               description="Organization ownership and management interface"
               role="Owner"
             />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Lab Staff Dashboard - Allow lab_staff + assignor combo */}
-      <Route 
-        path="/lab/dashboard" 
+      <Route
+        path="/lab/dashboard"
         element={
           <ProtectedRoute allowedRoles={['lab_staff', 'assignor', 'admin']}>
-            <LabDashboard/>
+            <LabDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Doctor Account Dashboard - Allow doctor_account, radiologist, verifier combos */}
-      <Route 
-        path="/doctor/dashboard" 
+      <Route
+        path="/doctor/dashboard"
         element={
           <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'verifier', 'assignor']}>
             <DoctorDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Group ID Dashboard */}
-      <Route 
-        path="/group/dashboard" 
+      <Route
+        path="/group/dashboard"
         element={
           <ProtectedRoute allowedRoles={['group_id', 'admin', 'super_admin']}>
             <GroupIdDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Assignor Dashboard - Allow assignor + multi-role combos */}
-      <Route 
-        path="/assignor/dashboard" 
+      <Route
+        path="/assignor/dashboard"
         element={
           <ProtectedRoute allowedRoles={['assignor', 'radiologist', 'verifier', 'admin']}>
             <AssignerDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Radiologist Dashboard - Allow radiologist + multi-role combos */}
-      <Route 
-        path="/radiologist/dashboard" 
+      <Route
+        path="/radiologist/dashboard"
         element={
           <ProtectedRoute allowedRoles={['radiologist', 'assignor', 'verifier', 'doctor_account']}>
             <DoctorDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Verifier Dashboard - Allow verifier + multi-role combos */}
-      <Route 
-        path="/verifier/dashboard" 
+      <Route
+        path="/verifier/dashboard"
         element={
           <ProtectedRoute allowedRoles={['verifier', 'assignor', 'radiologist', 'admin']}>
             <VerifierDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Physician Dashboard */}
-      <Route 
-        path="/physician/dashboard" 
+      <Route
+        path="/physician/dashboard"
         element={
           <ProtectedRoute allowedRoles={['physician', 'doctor_account', 'radiologist']}>
-            <DashboardPlaceholder 
-              title="Physician Dashboard" 
+            <DashboardPlaceholder
+              title="Physician Dashboard"
               description="Patient reports and clinical decision support"
               role="Physician"
             />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Receptionist Dashboard */}
-      <Route 
-        path="/receptionist/dashboard" 
+      <Route
+        path="/receptionist/dashboard"
         element={
           <ProtectedRoute allowedRoles={['receptionist', 'admin']}>
-            <DashboardPlaceholder 
-              title="Receptionist Dashboard" 
+            <DashboardPlaceholder
+              title="Receptionist Dashboard"
               description="Patient registration and appointment management"
               role="Receptionist"
             />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Billing Dashboard */}
-      <Route 
-        path="/billing/dashboard" 
+      <Route
+        path="/billing/dashboard"
         element={
           <ProtectedRoute allowedRoles={['billing', 'admin']}>
-            <DashboardPlaceholder 
-              title="Billing Dashboard" 
+            <DashboardPlaceholder
+              title="Billing Dashboard"
               description="Invoice generation and payment processing"
               role="Billing"
             />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Typist Dashboard - Allow typist + radiologist combo */}
-      <Route 
-        path="/typist/dashboard" 
+      <Route
+        path="/typist/dashboard"
         element={
           <ProtectedRoute allowedRoles={['typist', 'radiologist', 'assignor']}>
             <TypistDashboard />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Dashboard Viewer */}
-      <Route 
-        path="/dashboard/viewer" 
+      <Route
+        path="/dashboard/viewer"
         element={
           <ProtectedRoute allowedRoles={['dashboard_viewer', 'admin', 'super_admin']}>
-            <DashboardPlaceholder 
-              title="Dashboard Viewer" 
+            <DashboardPlaceholder
+              title="Dashboard Viewer"
               description="Read-only analytics and monitoring"
               role="Dashboard Viewer"
             />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ Doctor Templates - Allow all reporting roles */}
-      <Route 
-        path="/doctor/templates" 
+      <Route
+        path="/doctor/templates"
         element={
           <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'typist', 'assignor', 'verifier']}>
             <DoctorTemplates />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ FALLBACK DASHBOARD ROUTE */}
-      <Route 
-        path="/dashboard" 
+      <Route
+        path="/dashboard"
         element={
           <ProtectedRoute>
-            <DashboardPlaceholder 
-              title="Default Dashboard" 
+            <DashboardPlaceholder
+              title="Default Dashboard"
               description="Generic dashboard interface"
               role="User"
             />
           </ProtectedRoute>
-        } 
+        }
       />
 
       {/* ✅ Online Reporting Routes - Allow all reporting roles */}
-      <Route 
-        path="/online-reporting/:studyId" 
+      <Route
+        path="/online-reporting/:studyId"
         element={
           <ProtectedRoute allowedRoles={['doctor_account', 'radiologist', 'typist', 'verifier', 'admin', 'assignor']}>
             <OnlineReportingRouteHandler />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* ✅ OHIF full-view route - Allow all roles that can view studies */}
       <Route
         path="/doctor/viewer/:studyId"
@@ -366,40 +373,40 @@ const AppRoutes = () => {
         }
       />
 
-      <Route 
-        path="/admin/templates" 
+      <Route
+        path="/admin/templates"
         element={
           <ProtectedRoute allowedRoles={['admin', 'super_admin']}>
             <AdminTemplates />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Admin Branding Settings - Allow admin only */}
-      <Route 
-        path="/admin/branding" 
+      <Route
+        path="/admin/branding"
         element={
           <ProtectedRoute allowedRoles={['admin']}>
             <BrandingSettings />
           </ProtectedRoute>
-        } 
+        }
       />
 
-      
-      
+
+
       {/* Lab Branding Settings - Allow lab_staff + admin */}
-      <Route 
-        path="/lab/branding" 
+      <Route
+        path="/lab/branding"
         element={
           <ProtectedRoute allowedRoles={['lab_staff', 'admin']}>
             <LabBrandingSettings />
           </ProtectedRoute>
-        } 
+        }
       />
-      
+
       {/* Default redirect */}
       <Route path="/" element={<Navigate to="/login" replace />} />
-      
+
       {/* Catch all - redirect to login */}
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
@@ -412,13 +419,13 @@ const OnlineReportingRouteHandler = () => {
   const openOHIF = urlParams.get('openOHIF');
   const isVerifier = urlParams.get('verifier');
   const isVerification = urlParams.get('verification');
-  
+
   console.log('🔀 [Route Handler] URL Parameters:', {
     openOHIF,
     isVerifier,
     isVerification
   });
-  
+
   // Route to OHIF version if verifier mode OR openOHIF is true
   if (openOHIF === 'true' || isVerifier === 'true' || isVerification === 'true') {
     console.log('🖼️ [Route Handler] Loading OnlineReportingSystemWithOHIF');

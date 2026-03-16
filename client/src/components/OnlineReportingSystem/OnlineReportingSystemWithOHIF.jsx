@@ -389,7 +389,7 @@ const OnlineReportingSystemWithOHIF = () => {
   const handleAttachOhifImage = () => {
     const iframe = document.getElementById('ohif-viewer-iframe');
     if (iframe?.contentWindow) { iframe.contentWindow.postMessage({ action: 'ATTACH_REPORT_SIGNAL' }, '*'); }
-    else toast.error('❌ OHIF Viewer not ready');
+    else console.warn('OHIF Viewer not ready');
   };
 
   useEffect(() => {
@@ -540,8 +540,6 @@ const OnlineReportingSystemWithOHIF = () => {
       if (emptyReports.length > 0) { toast.error(`Reports ${emptyReports.map((_, i) => reports.findIndex(r => r === emptyReports[i]) + 1).join(', ')} are empty`); return; }
     }
 
-    if (!window.confirm(`Finalize ${isMulti ? reports.length + ' reports' : 'this report'} as ${exportFormat.toUpperCase()}?`)) return;
-
     // ✅ FIX: Stop auto-save BEFORE setting finalizing state
     if (autoSaveIntervalRef.current) {
       clearInterval(autoSaveIntervalRef.current);
@@ -617,7 +615,7 @@ const OnlineReportingSystemWithOHIF = () => {
           i === activeReportIndex ? { ...r, existingReportId: response.data.data.reportId } : r
         ));
       }
-      toast.success('Changes saved');
+      // toast.success('Changes saved'); // ✅ Removed noisy toast
     } catch (error) { toast.error(`Failed to update: ${error.message}`); } finally { setSaving(false); }
   };
 

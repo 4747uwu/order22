@@ -150,7 +150,6 @@ const DoctorTemplates = () => {
     try {
       const html = TextToHtmlService.convertToHtml(plainTextContent, conversionOptions);
       setPreviewHtml(html); setFormData(prev => ({ ...prev, htmlContent: html }));
-      toast.success('Converted!', { duration: 1500, icon: '✨' });
     } catch (error) {
       toast.error('Conversion failed');
     }
@@ -590,10 +589,53 @@ const DoctorTemplates = () => {
                     <div className={`${showPreview ? 'w-1/2' : 'w-full'} p-3 overflow-y-auto`}>
                       {inputMode === 'text' ? (
                         <div className="h-full flex flex-col">
+                          {/* ✅ Table insert for text mode */}
+                          <div className="flex items-center gap-1.5 mb-1 shrink-0">
+                            {showTableDialog ? (
+                              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                                <span className="text-[10px] text-gray-500 font-medium">Rows:</span>
+                                <input type="number" min="1" max="20" value={tableRows}
+                                  onChange={e => setTableRows(e.target.value)}
+                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                                <span className="text-[10px] text-gray-500 font-medium">Cols:</span>
+                                <input type="number" min="1" max="10" value={tableCols}
+                                  onChange={e => setTableCols(e.target.value)}
+                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                                <button type="button" onClick={() => {
+                                  const rows = Math.max(1, parseInt(tableRows) || 2);
+                                  const cols = Math.max(1, parseInt(tableCols) || 3);
+                                  let table = '\n';
+                                  // Header row
+                                  table += '| ' + Array.from({length: cols}, (_, c) => `Header ${c+1}`).join(' | ') + ' |\n';
+                                  // Separator
+                                  table += '| ' + Array.from({length: cols}, () => '---').join(' | ') + ' |\n';
+                                  // Data rows
+                                  for (let r = 0; r < rows - 1; r++) {
+                                    table += '| ' + Array.from({length: cols}, () => '   ').join(' | ') + ' |\n';
+                                  }
+                                  setPlainTextContent(prev => prev + table);
+                                  setShowTableDialog(false);
+                                }}
+                                  className="px-2 py-0.5 text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded">
+                                  Insert
+                                </button>
+                                <button type="button" onClick={() => setShowTableDialog(false)}
+                                  className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">✕</button>
+                              </div>
+                            ) : (
+                              <button type="button" onClick={() => setShowTableDialog(true)}
+                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                                </svg>
+                                Insert Table
+                              </button>
+                            )}
+                          </div>
                           <textarea
                             value={plainTextContent}
                             onChange={(e) => setPlainTextContent(e.target.value)}
-                            placeholder={`Paste your medical report text here...\n\nExample:\nCLINICAL HISTORY:\nPatient presents with chest pain.\n\nFINDINGS:\n1. Normal lung fields\n2. Heart size normal\n\nIMPRESSION:\nNormal chest radiograph.`}
+                            placeholder={`Paste your medical report text here...\n\nExample:\nCLINICAL HISTORY:\nPatient presents with chest pain.\n\nFINDINGS:\n1. Normal lung fields\n2. Heart size normal\n\nTable syntax:\n| Header 1 | Header 2 |\n|---|---|\n| data | data |\n\nIMPRESSION:\nNormal chest radiograph.`}
                             className={`flex-1 w-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400 outline-none
                               ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
                           />

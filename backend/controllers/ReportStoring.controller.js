@@ -1299,6 +1299,64 @@ export const getReportForEditing = async (req, res) => {
     }
 };
 
+// ✅ DELETE REPORT
+export const deleteReport = async (req, res) => {
+    try {
+        const { reportId } = req.params;
+        const user = req.user;
+
+        const report = await Report.findById(reportId);
+        if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
+        if (report.organizationIdentifier !== user.organizationIdentifier) {
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+
+        // Remove references from DicomStudy
+        await DicomStudy.findByIdAndUpdate(report.dicomStudy, {
+            $pull: {
+                reports: { reportId: report._id },
+                'reportInfo.modernReports': { reportId: report._id }
+            }
+        });
+
+        await Report.findByIdAndDelete(reportId);
+        res.json({ success: true, message: 'Report deleted successfully' });
+    } catch (error) {
+        console.error('❌ Error deleting report:', error);
+        res.status(500).json({ success: false, message: 'Failed to delete report' });
+    }
+};
+
+// ✅ RENAME REPORT
+export const renameReport = async (req, res) => {
+    try {
+        const { reportId } = req.params;
+        const { filename } = req.body;
+        const user = req.user;
+
+        if (!filename?.trim()) {
+            return res.status(400).json({ success: false, message: 'Filename is required' });
+        }
+
+        const report = await Report.findById(reportId);
+        if (!report) return res.status(404).json({ success: false, message: 'Report not found' });
+
+        if (report.organizationIdentifier !== user.organizationIdentifier) {
+            return res.status(403).json({ success: false, message: 'Access denied' });
+        }
+
+        const ext = report.exportInfo?.format || 'docx';
+        const newFileName = `${filename.trim()}.${ext}`;
+
+        await Report.findByIdAndUpdate(reportId, { $set: { 'exportInfo.fileName': newFileName } });
+        res.json({ success: true, message: 'Report renamed successfully', data: { filename: newFileName } });
+    } catch (error) {
+        console.error('❌ Error renaming report:', error);
+        res.status(500).json({ success: false, message: 'Failed to rename report' });
+    }
+};
+
 // Add this to the existing exports
 export default {
     storeDraftReport,
@@ -1307,5 +1365,7 @@ export default {
     getAllReportsWithContent,
     getStudyReports,
     downloadReport,
-    getReportForEditing // ✅ NEW
+    getReportForEditing,
+    deleteReport,
+    renameReport
 };

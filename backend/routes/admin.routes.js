@@ -1,6 +1,7 @@
 import express from 'express';
 import multer from 'multer';    
 import User from '../models/userModel.js';
+import Organization from '../models/organisation.js';
 import { 
     getValues, 
     getCategoryValues, // ✅ NEW
@@ -262,5 +263,34 @@ router.get('/system-overview',
     systemOverviewController.getSystemOverview);
 
 
+// ✅ SUPPORT NUMBER SETTINGS
+router.get('/settings/support-number', protect, async (req, res) => {
+    try {
+        const org = await Organization.findOne({ identifier: req.user.organizationIdentifier }).select('settings.supportNumber');
+        res.json({ success: true, supportNumber: org?.settings?.supportNumber || '98XXXX' });
+    } catch (error) {
+        console.error('Error fetching support number:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch support number' });
+    }
+});
+
+router.put('/settings/support-number', protect, async (req, res) => {
+    try {
+        const { supportNumber } = req.body;
+        if (!supportNumber || !supportNumber.trim()) {
+            return res.status(400).json({ success: false, message: 'Support number is required' });
+        }
+        const org = await Organization.findOneAndUpdate(
+            { identifier: req.user.organizationIdentifier },
+            { $set: { 'settings.supportNumber': supportNumber.trim() } },
+            { new: true }
+        ).select('settings.supportNumber');
+        if (!org) return res.status(404).json({ success: false, message: 'Organization not found' });
+        res.json({ success: true, supportNumber: org.settings.supportNumber, message: 'Support number updated' });
+    } catch (error) {
+        console.error('Error updating support number:', error);
+        res.status(500).json({ success: false, message: 'Failed to update support number' });
+    }
+});
 
 export default router;

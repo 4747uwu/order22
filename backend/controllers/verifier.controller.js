@@ -1495,6 +1495,175 @@ export const updateReportDuringVerification = async (req, res) => {
         });
     }
 };
+// ✅ NEW: Bulk verify multiple reports at once
+export const bulkVerifyReports = async (req, res) => {
+    try {
+        const { studyIds, approved = true, verificationNotes = 'Bulk verified' } = req.body;
+        const user = req.user;
+
+        if (!studyIds || !Array.isArray(studyIds) || studyIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'studyIds array is required' });
+        }
+
+        const userRoles = user?.accountRoles || [user?.role];
+        const hasVerifierRole = userRoles.includes('verifier');
+        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
+
+        if (!hasVerifierRole && !hasAdminRole) {
+            return res.status(403).json({ success: false, message: 'Access denied: Verifier or Admin role required' });
+        }
+
+        console.log(`🔍 [Bulk Verify] User ${user.fullName} verifying ${studyIds.length} studies, approved=${approved}`);
+
+        const results = [];
+
+        for (const studyId of studyIds) {
+            if (!mongoose.Types.ObjectId.isValid(studyId)) {
+                results.push({ studyId, success: false, message: 'Invalid study ID' });
+                continue;
+            }
+
+            const session = await mongoose.startSession();
+            session.startTransaction();
+
+            try {
+                const study = await DicomStudy.findById(studyId).session(session);
+                if (!study) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    results.push({ studyId, success: false, message: 'Study not found' });
+                    continue;
+                }
+
+                // Check if study is in a verifiable state
+                const verifiableStatuses = ['verification_pending', 'report_finalized', 'report_completed', 'verification_in_progress'];
+                if (!hasAdminRole && !verifiableStatuses.includes(study.workflowStatus)) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    results.push({ studyId, success: false, message: `Not verifiable (status: ${study.workflowStatus})` });
+                    continue;
+                }
+
+                const now = new Date();
+                const needsReprint = study.reprintNeeded === true;
+
+                // Update DicomStudy
+                const studyUpdateData = {
+                    workflowStatus: approved 
+                        ? (needsReprint ? 'report_reprint_needed' : 'report_completed')
+                        : 'report_rejected',
+                    currentCategory: approved 
+                        ? (needsReprint ? 'REPRINT_NEED' : 'COMPLETED')
+                        : 'REVERTED',
+                    'reportInfo.verificationInfo.verifiedBy': user._id,
+                    'reportInfo.verificationInfo.verifiedAt': now,
+                    'reportInfo.verificationInfo.verificationStatus': approved ? 'verified' : 'rejected',
+                    'reportInfo.verificationInfo.verificationNotes': verificationNotes,
+                    'reportInfo.verificationInfo.verificationTimeMinutes': 0
+                };
+
+                if (approved && needsReprint) {
+                    studyUpdateData.reprintNeeded = false;
+                }
+
+                const historyEntry = {
+                    action: approved ? (needsReprint ? 'report_reprint_needed' : 'report_completed') : 'rejected',
+                    performedBy: user._id,
+                    performedAt: now,
+                    notes: verificationNotes
+                };
+
+                studyUpdateData.$push = {
+                    'reportInfo.verificationInfo.verificationHistory': historyEntry,
+                    'statusHistory': {
+                        status: approved ? (needsReprint ? 'report_reprint_needed' : 'report_completed') : 'report_rejected',
+                        changedAt: now,
+                        changedBy: user._id,
+                        note: `Report ${approved ? 'bulk verified' : 'bulk rejected'} by ${user.fullName}`
+                    }
+                };
+
+                await DicomStudy.findByIdAndUpdate(studyId, studyUpdateData, { session, new: true });
+
+                // Update Report model
+                const Report = mongoose.model('Report');
+                const reports = await Report.find({
+                    dicomStudy: studyId,
+                    reportStatus: { $in: ['finalized', 'draft'] }
+                }).session(session);
+
+                for (const report of reports) {
+                    if (!report.verificationInfo) report.verificationInfo = {};
+                    report.verificationInfo.verifiedBy = user._id;
+                    report.verificationInfo.verifiedAt = now;
+                    report.verificationInfo.verificationStatus = approved ? 'verified' : 'rejected';
+                    report.verificationInfo.verificationNotes = verificationNotes;
+                    if (approved) report.reportStatus = 'verified';
+                    if (!report.verificationInfo.verificationHistory) report.verificationInfo.verificationHistory = [];
+                    report.verificationInfo.verificationHistory.push(historyEntry);
+                    if (!report.workflowInfo) report.workflowInfo = { statusHistory: [] };
+                    if (!report.workflowInfo.statusHistory) report.workflowInfo.statusHistory = [];
+                    report.workflowInfo.statusHistory.push({
+                        status: approved ? 'verified' : 'rejected',
+                        changedAt: now,
+                        changedBy: user._id,
+                        notes: verificationNotes,
+                        userRole: user.role
+                    });
+                    await report.save({ session });
+                }
+
+                // Update verifier stats
+                if (hasVerifierRole) {
+                    try {
+                        const VerifierModel = mongoose.model('Verifier');
+                        await VerifierModel.findOneAndUpdate(
+                            { userAccount: user._id },
+                            {
+                                $inc: {
+                                    'verificationStats.totalReportsVerified': 1,
+                                    'verificationStats.reportsVerifiedToday': 1,
+                                    'verificationStats.reportsVerifiedThisMonth': 1
+                                },
+                                $set: { 'verificationStats.lastVerificationAt': now }
+                            },
+                            { upsert: false, session }
+                        );
+                    } catch (e) { /* stats update non-critical */ }
+                }
+
+                await session.commitTransaction();
+                session.endSession();
+                results.push({ studyId, success: true, message: approved ? 'Verified' : 'Rejected' });
+
+            } catch (error) {
+                await session.abortTransaction();
+                session.endSession();
+                console.error(`❌ [Bulk Verify] Error verifying study ${studyId}:`, error.message);
+                results.push({ studyId, success: false, message: error.message });
+            }
+        }
+
+        const successCount = results.filter(r => r.success).length;
+        const failCount = results.filter(r => !r.success).length;
+
+        console.log(`✅ [Bulk Verify] Complete: ${successCount} succeeded, ${failCount} failed out of ${studyIds.length}`);
+
+        res.status(200).json({
+            success: true,
+            message: `${successCount} of ${studyIds.length} studies ${approved ? 'verified' : 'rejected'}`,
+            data: { results, successCount, failCount, total: studyIds.length }
+        });
+
+    } catch (error) {
+        console.error('❌ [Bulk Verify] Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error during bulk verification',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
 
 // ✅ FIXED: Update the default export to only include defined functions
 export default {
@@ -1510,5 +1679,6 @@ export default {
     // Alias for backward compatibility
     getCompletedStudies: getVerifiedStudies,
     getReportForVerification,
-    updateReportDuringVerification // ✅ NEW
+    updateReportDuringVerification,
+    bulkVerifyReports // ✅ NEW
 };

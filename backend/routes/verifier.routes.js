@@ -19,6 +19,7 @@ router.get('/studies/pending', verifierController.getPendingStudies);
 router.get('/studies/:studyId/report', verifierController.getReportForVerification);
 
 // ✅ VERIFICATION ACTIONS
+router.post('/studies/bulk-verify', verifierController.bulkVerifyReports); // ✅ NEW: must be before :studyId routes
 router.post('/studies/:studyId/start-verification', verifierController.startVerification);
 router.post('/studies/:studyId/verify', verifierController.verifyReport);
 

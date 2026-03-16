@@ -50,7 +50,7 @@ class RadiologyReportEngine {
   static convert(text, options = {}) {
     const {
       templateVariables = {},
-      fontFamily = 'Times New Roman',
+      fontFamily = 'Comic Sans MS',
       fontSize = '12pt',
       lineHeight = '1.15',
       formatHeaders = true,
@@ -87,14 +87,46 @@ class RadiologyReportEngine {
     let html = '';
     let isFirstLine = true;
     let firstLineProcessed = false;
+    let i = 0;
 
-    for (let i = 0; i < lines.length; i++) {
+    while (i < lines.length) {
       const line = lines[i];
       const trimmed = line.trim();
 
       // Empty line = line break
       if (!trimmed) {
         html += '<br>';
+        i++;
+        continue;
+      }
+
+      // ✅ TABLE DETECTION: pipe-delimited rows like | col1 | col2 |
+      if (trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.includes('|')) {
+        const tableRows = [];
+        while (i < lines.length) {
+          const tl = lines[i].trim();
+          if (!tl.startsWith('|') || !tl.endsWith('|')) break;
+          // Skip separator rows like |---|---|
+          if (/^\|[\s\-:]+\|$/.test(tl.replace(/\|/g, m => m))) {
+            if (/^[\|\s\-:]+$/.test(tl)) { i++; continue; }
+          }
+          const cells = tl.slice(1, -1).split('|').map(c => c.trim());
+          tableRows.push(cells);
+          i++;
+        }
+        if (tableRows.length > 0) {
+          html += '<table border="1" style="border-collapse:collapse;width:100%;margin:10px 0;">\n';
+          tableRows.forEach((row, idx) => {
+            html += '  <tr>\n';
+            const tag = idx === 0 ? 'th' : 'td';
+            const bgStyle = idx === 0 ? 'background:#f5f5f5;font-weight:bold;' : '';
+            row.forEach(cell => {
+              html += `    <${tag} style="border:1px solid #ddd;padding:8px;${bgStyle}">${cell}</${tag}>\n`;
+            });
+            html += '  </tr>\n';
+          });
+          html += '</table>\n';
+        }
         continue;
       }
 
@@ -105,40 +137,39 @@ class RadiologyReportEngine {
 
         if (trimmed === trimmed.toUpperCase() && trimmed.length < 80) {
           html += `<div style="text-align: center; font-weight: bold; font-size: 14pt; text-decoration: underline; margin-bottom: 8px;">${trimmed}</div>\n`;
+          i++;
           continue;
         }
       }
 
-      // Check if this line is a section header (standalone like "OBSERVATION:" or inline like "TECHNIQUE: content")
+      // Check if this line is a section header
       if (options.formatHeaders) {
         const headerMatch = this.matchSectionHeader(trimmed);
 
         if (headerMatch) {
           if (headerMatch.content) {
-            // Inline header: "TECHNIQUE: Volume scan of arm..."
             let content = headerMatch.content;
             if (options.formatMedicalTerms) {
               content = this.applyMedicalEmphasis(content);
             }
             html += `<div style="margin-top: 6px;"><span style="font-weight: bold; text-decoration: underline;">${headerMatch.header}:</span> ${content}</div>\n`;
           } else {
-            // Standalone header: "OBSERVATION:"
             html += `<div style="font-weight: bold; text-decoration: underline; margin-top: 6px;">${headerMatch.header}:</div>\n`;
           }
+          i++;
           continue;
         }
       }
 
-      // Check if line starts with any bullet-like character or checkbox
+      // Check if line starts with any bullet-like character
       if (options.formatLists && this.isBulletLine(trimmed)) {
         const cleaned = this.stripBulletMarker(trimmed);
         let content = cleaned;
         if (options.formatMedicalTerms) {
           content = this.applyMedicalEmphasis(content);
         }
-        
-        // Use simple bullet point that works in Times New Roman
         html += `<div style="margin-left: 30px; text-indent: -20px; margin-top: 2px;">• ${content}</div>\n`;
+        i++;
         continue;
       }
 
@@ -148,6 +179,7 @@ class RadiologyReportEngine {
         content = this.applyMedicalEmphasis(content);
       }
       html += `<div style="margin-top: 2px;">${content}</div>\n`;
+      i++;
     }
 
     return html;

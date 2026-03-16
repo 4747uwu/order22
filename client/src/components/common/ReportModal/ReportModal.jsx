@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, FileText, Download, Eye, Calendar, Clock, AlertCircle, CheckCircle, RefreshCw, ExternalLink, Monitor, Edit, File, Printer } from 'lucide-react';
+import { X, FileText, Calendar, Clock, AlertCircle, CheckCircle, RefreshCw, ExternalLink, Monitor, Edit, File, Trash2, Pencil } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from '../../../services/api';
 import { useAuth } from '../../../hooks/useAuth'; // ✅ AD
@@ -20,6 +20,10 @@ const ReportModal = ({
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);
+  const [renameValue, setRenameValue] = useState('');
 
   // ✅ FIX: Read roles from auth context directly — don't trust props alone
   const resolvedRoles = [
@@ -33,13 +37,10 @@ const ReportModal = ({
 
   // ✅ SINGLE SOURCE OF TRUTH
   const isLabStaff = resolvedRoles.includes('lab_staff');
-  const isAdmin    = resolvedRoles.includes('admin') || resolvedRoles.includes('super_admin');
   
-  // ✅ Lab staff ONLY sees PDF download — nothing else
   const canEdit      = !isLabStaff;
-  const canView      = !isLabStaff;
-  const canPrint     = !isLabStaff;  // ✅ No print for lab_staff either
-  const canDOCX      = !isLabStaff;
+  const canDelete    = !isLabStaff;
+  const canRename    = !isLabStaff;
   const canCreateNew = !isLabStaff;
 
   useEffect(() => {
@@ -67,50 +68,42 @@ const ReportModal = ({
     }
   }, [studyId]);
 
-  const handleDownloadReport = useCallback(async (report, format = 'pdf') => {
-    console.log(`📥 Downloading report as ${format.toUpperCase()}:`, report.filename);
+  const handleDeleteReport = useCallback(async (reportId) => {
     try {
-        const loadingToast = toast.loading(`Generating ${format.toUpperCase()}...`, { icon: '⚙️' });
-        const response = await api.get(`/reports/reports/${report._id}/download/${format}`, {
-            responseType: 'blob',
-            timeout: 60000
-        });
-        toast.dismiss(loadingToast);
-        if (response.data) {
-            const blob = new Blob([response.data], { 
-                type: format === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${report.filename.replace(/\.[^/.]+$/, '')}_${new Date().toISOString().split('T')[0]}.${format}`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            toast.success(`${format.toUpperCase()} downloaded successfully!`, { icon: '📥', duration: 3000 });
-        } else {
-            throw new Error('Empty response from server');
-        }
+      setDeletingId(reportId);
+      await api.delete(`/reports/reports/${reportId}`);
+      toast.success('Report deleted');
+      setReports(prev => prev.filter(r => r._id !== reportId));
+      setConfirmDeleteId(null);
     } catch (error) {
-        toast.error(`Failed to download ${format.toUpperCase()}`);
+      toast.error('Failed to delete report');
+    } finally {
+      setDeletingId(null);
     }
   }, []);
 
-  const handleViewReport = useCallback((report) => {
-    toast.success(`Opening ${report.filename}...`, { icon: '👁️' });
+  const handleStartRename = useCallback((report) => {
+    setRenamingId(report._id);
+    setRenameValue(report.filename?.replace(/\.[^/.]+$/, '') || '');
   }, []);
+
+  const handleConfirmRename = useCallback(async (report) => {
+    if (!renameValue.trim()) return;
+    try {
+      const res = await api.patch(`/reports/reports/${report._id}/rename`, { filename: renameValue.trim() });
+      toast.success('Report renamed');
+      setReports(prev => prev.map(r => r._id === report._id ? { ...r, filename: res.data.data.filename } : r));
+      setRenamingId(null);
+    } catch (error) {
+      toast.error('Failed to rename report');
+    }
+  }, [renameValue]);
 
   const handleEditReport = useCallback((report) => {
     if (!studyId) return;
     onClose();
     navigate(`/online-reporting/${studyId}?reportId=${report._id}&action=edit`);
   }, [studyId, navigate, onClose]);
-
-  const handlePrintReport = useCallback((report) => {
-    if (!report._id) return;
-    onShowPrintModal?.(report);
-  }, [onShowPrintModal]);
 
   const handleOnlineReporting = useCallback(() => {
     if (!studyId) return;
@@ -284,39 +277,49 @@ const ReportModal = ({
                   {/* Right: Actions */}
                   <div className="flex items-center gap-1 pl-2">
 
-                    {/* ✅ Edit, View, Print — COMPLETELY hidden for lab_staff */}
-                    {canEdit && (
+                    {renamingId === report._id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(report); if (e.key === 'Escape') setRenamingId(null); }}
+                          className="px-2 py-1 text-xs border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 w-40"
+                        />
+                        <button onClick={() => handleConfirmRename(report)} className="px-2 py-1 bg-gray-900 text-white text-[10px] rounded hover:bg-black">Save</button>
+                        <button onClick={() => setRenamingId(null)} className="px-2 py-1 bg-white border border-gray-200 text-gray-600 text-[10px] rounded hover:bg-gray-50">Cancel</button>
+                      </div>
+                    ) : confirmDeleteId === report._id ? (
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-red-600 font-medium">Delete?</span>
+                        <button
+                          onClick={() => handleDeleteReport(report._id)}
+                          disabled={deletingId === report._id}
+                          className="px-2 py-1 bg-red-600 text-white text-[10px] rounded hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {deletingId === report._id ? '...' : 'Yes'}
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} className="px-2 py-1 bg-white border border-gray-200 text-gray-600 text-[10px] rounded hover:bg-gray-50">No</button>
+                      </div>
+                    ) : (
                       <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => handleEditReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="Edit">
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handleViewReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="View">
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handlePrintReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="Print">
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
+                        {canEdit && (
+                          <button onClick={() => handleEditReport(report)} className="p-1.5 text-gray-500 hover:text-black hover:bg-white rounded border border-transparent hover:border-gray-200 transition-all" title="Edit">
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canRename && (
+                          <button onClick={() => handleStartRename(report)} className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded border border-transparent hover:border-blue-200 transition-all" title="Rename">
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button onClick={() => setConfirmDeleteId(report._id)} className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded border border-transparent hover:border-red-200 transition-all" title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     )}
-
-                    {/* ✅ DOCX — hidden for lab_staff */}
-                    {canDOCX && (
-                      <>
-                        <div className="w-px h-4 bg-gray-200 mx-1"></div>
-                        <button onClick={() => handleDownloadReport(report, 'docx')} className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors opacity-60 group-hover:opacity-100" title="Download DOCX">
-                          <FileText className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-
-                    {/* ✅ PDF — ONLY option for lab_staff */}
-                    <button
-                      onClick={() => handleDownloadReport(report, 'pdf')}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors opacity-60 group-hover:opacity-100"
-                      title="Download PDF"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </button>
 
                   </div>
                 </div>

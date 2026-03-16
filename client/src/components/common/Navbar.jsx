@@ -186,11 +186,13 @@ const Navbar = ({
               
               {/* ✅ ADD: Bharat PACS Logo */}
               <div className="flex items-center space-x-2.5">
-                <img 
-                  src="/logo.png" 
-                  alt="Bharat PACS" 
-                  className="h-12 w-12 object-contain"
-                />
+                <a href="https://bharatpacs.com" target="_blank" rel="noopener noreferrer">
+                  <img 
+                    src="/logo.png" 
+                    alt="Bharat PACS" 
+                    className="h-12 w-12 object-contain"
+                  />
+                </a>
                 <div className="hidden md:block">
                   <div className="flex items-center space-x-2">
                     <h1 className="text-lg font-bold text-black tracking-tight">{title}</h1>

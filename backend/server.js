@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
-import compression from 'compression'; 
+import compression from 'compression';
 import connectDB from './config/db.js';
 import cookieParser from 'cookie-parser';
 import http from 'http';
@@ -11,9 +11,9 @@ import WebSocketService from './config/webSocket.js'; // ✅ ADD THIS
 import authRoutes from './routes/auth.routes.js';
 import superadminRoutes from './routes/superadmin.routes.js';
 import orthancRoutes from './routes/ingestion.routes.js';
-import adminRoutes from './routes/admin.routes.js'; 
+import adminRoutes from './routes/admin.routes.js';
 import assignerRoutes from './routes/assigner.routes.js';
-import dataExtractionRoutes from './routes/dataExtraction.routes.js'; 
+import dataExtractionRoutes from './routes/dataExtraction.routes.js';
 import groupRoutes from './routes/groupUserManagement.routes.js'; // ✅ NEW GROUP ROUTES
 import doctorRoutes from './routes/doctor.routes.js'
 import typistRoutes from './routes/typist.routes.js';
@@ -33,6 +33,8 @@ import backupRoutes from './routes/backup.routes.js';
 import qrRoutes from './routes/qrdownload.routes.js';
 import followUP from './routes/followUp.routes.js'; // ✅ ADD THIS LINE
 import revertRoutes from './routes/revert.routes.js';
+import tatRoutes from './routes/tat.routes.js';
+
 
 
 
@@ -65,33 +67,33 @@ app.use(cookieParser()); // Parse cookies
 app.use((req, res, next) => {
     // Remove server fingerprinting
     res.removeHeader('X-Powered-By');
-    
+
     // Add custom security headers
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    
+
     // ✅ NEW: SharedArrayBuffer headers for OHIF viewer
     res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
     res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
-    
+
     // HSTS in production
     if (process.env.NODE_ENV === 'production') {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
     }
-    
+
     next();
 });
 
-const allowedOrigins = process.env.NODE_ENV === 'production' 
+const allowedOrigins = process.env.NODE_ENV === 'production'
     ? [
         'http://64.227.187.164',        // ✅ CHANGE from 157.245.86.199
         'https://64.227.187.164',       // ✅ HTTPS version
         process.env.FRONTEND_URL,       // ✅ Environment variable fallback
         'http://localhost',             // ✅ Local testing
-        'https://localhost',   
-        'http://portal.xcentic.in',     
+        'https://localhost',
+        'http://portal.xcentic.in',
         'https://portal.xcentic.in',
         'http://ai.starradiology.com',
         'http://157.245.86.199',
@@ -102,17 +104,17 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://pacs.bharatpacs.com'
 
 
-               // ✅ Local HTTPS testing
-      ]
+        // ✅ Local HTTPS testing
+    ]
     : [
         'http://localhost:3000',
-        'http://localhost:3001', 
+        'http://localhost:3001',
         'http://localhost:5173', // Vite dev server
         'http://127.0.0.1:3000',
         'http://127.0.0.1:5173',
         'http://64.227.187.164',        // ✅ CHANGE from 157.245.86.199
         'https://64.227.187.164',
-        'http://portal.xcentic.in',     
+        'http://portal.xcentic.in',
         'https://portal.xcentic.in',
         'http://ai.starradiology.com',
         'http://157.245.86.199',
@@ -120,16 +122,16 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://pacs.xcentic.com',
         'http://206.189.133.52',
         'http://206.189.133.52:8080',
-                'https://pacs.bharatpacs.com'
+        'https://pacs.bharatpacs.com'
 
 
-      ];
+    ];
 
 app.use(cors({
     origin: (origin, callback) => {
         // Allow requests with no origin (mobile apps, Postman, etc.)
         if (!origin) return callback(null, true);
-        
+
         if (allowedOrigins.includes(origin)) {
             console.log(`✅ CORS allowed origin: ${origin}`);
             callback(null, true);
@@ -141,7 +143,7 @@ app.use(cors({
     credentials: true,  // ✅ Already set - good!
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
-        'Content-Type', 
+        'Content-Type',
         'Authorization',
         'X-Requested-With',
         'Accept',
@@ -167,21 +169,21 @@ app.get('/health', (req, res) => {
 app.get('/ready', async (req, res) => {
     try {
         // Add your readiness checks here
-        res.status(200).json({ 
+        res.status(200).json({
             status: 'ready',
             timestamp: new Date().toISOString()
         });
     } catch (error) {
-        res.status(503).json({ 
-            status: 'not ready', 
-            error: error.message 
+        res.status(503).json({
+            status: 'not ready',
+            error: error.message
         });
     }
 });
 
 // Root endpoint
 app.get('/', (req, res) => {
-    res.json({ 
+    res.json({
         message: 'DICOM Workflow API is running!',
         version: '1.0.0',
         environment: process.env.NODE_ENV || 'development',
@@ -214,6 +216,7 @@ app.use('/api/qr', qrRoutes);
 app.use('/api/follow-up', followUP); // ✅ ADD THIS LINE
 app.use('/api/revert', revertRoutes);
 app.use('/api/compression', compressionRoutes);
+app.use('/api/tat', tatRoutes);
 
 
 

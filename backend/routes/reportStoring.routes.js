@@ -37,4 +37,8 @@ router.get('/reports/:reportId/print', ReportDownloadController.printReportAsPDF
 // ✅ TRACK PRINT
 router.post('/reports/:reportId/track-print', ReportDownloadController.trackPrintClick);
 
+// ✅ DELETE & RENAME
+router.delete('/reports/:reportId', protect, reportStoringController.deleteReport);
+router.patch('/reports/:reportId/rename', protect, reportStoringController.renameReport);
+
 export default router;

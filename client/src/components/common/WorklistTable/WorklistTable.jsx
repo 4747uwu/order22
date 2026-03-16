@@ -618,19 +618,19 @@ const StudyRow = ({
   //  const userAccountRoles = userRoles.length > 0 ? userRoles : [userRole];
 
 
-// ✅ Viewer preference — persisted in localStorage
-const [selectedViewer, setSelectedViewer] = useState(
+  // ✅ Viewer preference — persisted in localStorage
+  const [selectedViewer, setSelectedViewer] = useState(
     () => localStorage.getItem('preferredOhifViewer') || 'viewer1'
-);
-const handleViewerChange = (e) => {
+  );
+  const handleViewerChange = (e) => {
     const v = e.target.value;
     setSelectedViewer(v);
     localStorage.setItem('preferredOhifViewer', v);
-};
+  };
 
 
-const [showViewerDropdownView, setShowViewerDropdownView] = useState(false);
-const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
+  const [showViewerDropdownView, setShowViewerDropdownView] = useState(false);
+  const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
 
   const assignInputRef = useRef(null);
   const downloadButtonRef = useRef(null);
@@ -646,9 +646,9 @@ const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
   const hasActiveViewers = activeViewers.length > 0;
   const [shareModal, setShareModal] = useState(false);
 
-  const printCount   = study.printCount   || 0;
-  const lastPrint    = study.lastPrintedAt || null;
-  const lastDownload = study.lastDownload  || null;
+  const printCount = study.printCount || 0;
+  const lastPrint = study.lastPrintedAt || null;
+  const lastDownload = study.lastDownload || null;
 
 
   const isSelected = selectedStudies?.includes(study._id);
@@ -898,32 +898,32 @@ const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
     }
   };
 
- const handleViewOnlyClick = (e) => {
+  const handleViewOnlyClick = (e) => {
     e.stopPropagation();
     try {
-        const src = study || {};
-        const studyInstanceUID = src.studyInstanceUID || src.studyInstanceUIDs || src.StudyInstanceUID || src.studyInstanceUid || src.orthancStudyID || src.studyId || src._id || '';
-        
-        let studyUIDs = '';
-        if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
-        else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
-        else studyUIDs = String(src._id || '');
+      const src = study || {};
+      const studyInstanceUID = src.studyInstanceUID || src.studyInstanceUIDs || src.StudyInstanceUID || src.studyInstanceUid || src.orthancStudyID || src.studyId || src._id || '';
 
-        const OHIF_VIEWERS = {
-            viewer1: 'https://viewer.bharatpacs.com/viewer',
-            viewer2: 'https://viewer2.bharatpacs.com/viewer',
-        };
+      let studyUIDs = '';
+      if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
+      else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
+      else studyUIDs = String(src._id || '');
 
-        // Determine format based on selectedViewer
-        const finalUrl = selectedViewer === 'viewer2' 
-            ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Viewer 2 format: /viewer/UID
-            : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Viewer 1 format: ?StudyInstanceUIDs=UID
+      const OHIF_VIEWERS = {
+        viewer1: 'https://viewer.bharatpacs.com/viewer',
+        viewer2: 'https://viewer2.bharatpacs.com/viewer',
+      };
 
-        window.open(finalUrl, '_blank');
+      // Determine format based on selectedViewer
+      const finalUrl = selectedViewer === 'viewer2'
+        ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Viewer 2 format: /viewer/UID
+        : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Viewer 1 format: ?StudyInstanceUIDs=UID
+
+      window.open(finalUrl, '_blank');
     } catch (error) {
-        window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
+      window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
     }
-};
+  };
 
   const handleOHIFReporting = async () => {
     setRestoringStudy(true);
@@ -974,13 +974,13 @@ const [showViewerDropdownReport, setShowViewerDropdownReport] = useState(false);
         toast.error(error.response?.data?.message || 'Failed to open study', { duration: 4000, icon: '❌' });
       }
 
-            const queryParams = new URLSearchParams({
-    openOHIF: 'true',
-    viewer: selectedViewer,
-    ...(isVerifier && { verifierMode: 'true', action: 'verify' })
-});
+      const queryParams = new URLSearchParams({
+        openOHIF: 'true',
+        viewer: selectedViewer,
+        ...(isVerifier && { verifierMode: 'true', action: 'verify' })
+      });
 
-window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+      window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
     } finally {
       setTogglingLock(false);
       setRestoringStudy(false);
@@ -989,54 +989,54 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
 
 
 
-       const handleDirectDownloadPDF = useCallback(async (study) => {
+  const handleDirectDownloadPDF = useCallback(async (study) => {
     toast.loading('Fetching reports...', { id: 'pdf-download' });
     try {
-        const response = await api.get(`/reports/studies/${study._id}/report-ids`);
+      const response = await api.get(`/reports/studies/${study._id}/report-ids`);
 
-        if (!response.data.success || !response.data.data?.reports?.length) {
-            toast.error('No finalized reports found', { id: 'pdf-download' });
-            return;
+      if (!response.data.success || !response.data.data?.reports?.length) {
+        toast.error('No finalized reports found', { id: 'pdf-download' });
+        return;
+      }
+
+      const { reports, totalReports } = response.data.data;
+      toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
+
+      for (let i = 0; i < reports.length; i++) {
+        const reportMeta = reports[i];
+        if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
+
+        toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
+
+        try {
+          const pdfResponse = await api.get(
+            `/reports/reports/${reportMeta.reportId}/download/pdf`,
+            { responseType: 'blob', timeout: 60000 }
+          );
+          const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
+        } catch (err) {
+          toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
         }
+      }
 
-        const { reports, totalReports } = response.data.data;
-        toast.success(`Found ${totalReports} report(s). Starting download...`, { id: 'pdf-download', duration: 2000 });
-
-        for (let i = 0; i < reports.length; i++) {
-            const reportMeta = reports[i];
-            if (i > 0) await new Promise(resolve => setTimeout(resolve, 800));
-
-            toast.loading(`Downloading report ${i + 1} of ${totalReports}...`, { id: `pdf-dl-${i}` });
-
-            try {
-                const pdfResponse = await api.get(
-                    `/reports/reports/${reportMeta.reportId}/download/pdf`,
-                    { responseType: 'blob', timeout: 60000 }
-                );
-                const blob = new Blob([pdfResponse.data], { type: 'application/pdf' });
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `${study.patientName || 'report'}_${study.bharatPacsId || study._id}_${i + 1}.pdf`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
-                toast.success(`✅ Report ${i + 1} of ${totalReports} downloaded!`, { id: `pdf-dl-${i}`, duration: 2500 });
-            } catch (err) {
-                toast.error(`❌ Report ${i + 1} failed`, { id: `pdf-dl-${i}`, duration: 3000 });
-            }
-        }
-
-        if (totalReports > 1) {
-            toast.success(`🎉 All ${totalReports} reports downloaded!`, { id: 'pdf-download-done', duration: 3000 });
-        }
+      if (totalReports > 1) {
+        toast.success(`🎉 All ${totalReports} reports downloaded!`, { id: 'pdf-download-done', duration: 3000 });
+      }
 
     } catch (error) {
-        console.error('❌ [Download PDF] Error:', error);
-        toast.error('Failed to fetch reports', { id: 'pdf-download' });
+      console.error('❌ [Download PDF] Error:', error);
+      toast.error('Failed to fetch reports', { id: 'pdf-download' });
     }
-}, []);
+  }, []);
 
   const handleDirectPrint = useCallback(async (study) => {
     toast.loading('Fetching reports...', { id: 'print-load' });
@@ -1261,7 +1261,7 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
               className={`text-[9px] sm:text-[10px] ${isUrgent ? 'text-rose-400' : 'text-slate-500'
                 } whitespace-normal break-all leading-tight mt-0.5`}
             >
-              UHID: {study.accessionNumber || '-'}
+              Accession No  : {study.accessionNumber || '-'}
             </div>
           </button>
 
@@ -1303,80 +1303,79 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
       )}
 
       {/* 9. VIEW & REPORTING */}
-   <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
-    <div className="relative flex items-center justify-center gap-0.5">
-        <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title={`View Only — ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'}`}>
+      <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+        <div className="relative flex items-center justify-center gap-0.5">
+          <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title={`View Only — ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'}`}>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
-        </button>
-        <div className="relative">
+          </button>
+          <div className="relative">
             <button
-                className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
-    onClick={(e) => { e.stopPropagation(); setShowViewerDropdownView(prev => !prev); setShowViewerDropdownReport(false); }}
+              className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+              onClick={(e) => { e.stopPropagation(); setShowViewerDropdownView(prev => !prev); setShowViewerDropdownReport(false); }}
             >
-                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
+              <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
             </button>
             {showViewerDropdownView && (
-                <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
-                    {['viewer1', 'viewer2'].map(v => (
-                        <button
-                            key={v}
-                            onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownView(false); }}
-                            className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
-                        >
-                            {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
-                        </button>
-                    ))}
-                </div>
+              <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                {['viewer1', 'viewer2'].map(v => (
+                  <button
+                    key={v}
+                    onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownView(false); }}
+                    className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                  >
+                    {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                  </button>
+                ))}
+              </div>
             )}
+          </div>
         </div>
-    </div>
-</td>
+      </td>
 
-{isColumnVisible('reporting') && (
-    <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('reporting')}px` }}>
-        <div className="relative flex items-center justify-center gap-0.5">
+      {isColumnVisible('reporting') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('reporting')}px` }}>
+          <div className="relative flex items-center justify-center gap-0.5">
             <button
-                onClick={handleOHIFReporting}
-                disabled={study.workflowStatus === 'new_study_received' || !study.isAssigned || !study.radiologist}
-                className={`p-1 sm:p-1.5 rounded-lg transition-all group ${
-                    study.workflowStatus === 'new_study_received' || !study.isAssigned
-                        ? 'opacity-40 cursor-not-allowed'
-                        : 'hover:bg-gray-100 hover:scale-110'
+              onClick={handleOHIFReporting}
+              disabled={study.workflowStatus === 'new_study_received' || !study.isAssigned || !study.radiologist}
+              className={`p-1 sm:p-1.5 rounded-lg transition-all group ${study.workflowStatus === 'new_study_received' || !study.isAssigned
+                  ? 'opacity-40 cursor-not-allowed'
+                  : 'hover:bg-gray-100 hover:scale-110'
                 }`}
-                title={
-                    study.workflowStatus === 'new_study_received'
-                        ? 'Available after study is received'
-                        : !study.isAssigned
-                        ? 'Available after assignment'
-                        : `Open ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'} + Reporting`
-                }
+              title={
+                study.workflowStatus === 'new_study_received'
+                  ? 'Available after study is received'
+                  : !study.isAssigned
+                    ? 'Available after assignment'
+                    : `Open ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'} + Reporting`
+              }
             >
-                <Monitor className="w-4 h-4 text-emerald-600" />
+              <Monitor className="w-4 h-4 text-emerald-600" />
             </button>
             <div className="relative">
-                <button
-                     className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
-    onClick={(e) => { e.stopPropagation(); setShowViewerDropdownReport(prev => !prev); setShowViewerDropdownView(false); }}
-                >
-                    <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd"/></svg>
-                </button>
-                {showViewerDropdownReport && (
-                    <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
-                        {['viewer1', 'viewer2'].map(v => (
-                            <button
-                                key={v}
-                                onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownReport(false); }}
-                                className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
-                            >
-                                {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
-                            </button>
-                        ))}
-                    </div>
-                )}
+              <button
+                className="p-0.5 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600 transition-colors"
+                onClick={(e) => { e.stopPropagation(); setShowViewerDropdownReport(prev => !prev); setShowViewerDropdownView(false); }}
+              >
+                <svg className="w-2.5 h-2.5" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+              </button>
+              {showViewerDropdownReport && (
+                <div className="absolute left-full top-0 ml-1 bg-white border border-gray-200 rounded shadow-lg z-50 min-w-[80px]">
+                  {['viewer1', 'viewer2'].map(v => (
+                    <button
+                      key={v}
+                      onClick={(e) => { e.stopPropagation(); setSelectedViewer(v); localStorage.setItem('preferredOhifViewer', v); setShowViewerDropdownReport(false); }}
+                      className={`w-full px-2 py-1.5 text-[9px] text-left hover:bg-gray-50 transition-colors ${selectedViewer === v ? 'font-bold text-blue-600 bg-blue-50' : 'text-gray-700'}`}
+                    >
+                      {v === 'viewer1' ? 'Viewer 1' : 'Viewer 2'}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-        </div>
-    </td>
-)}
+          </div>
+        </td>
+      )}
 
       {/* 10. SERIES/IMAGES */}
       {isColumnVisible('seriesCount') && (
@@ -1536,11 +1535,10 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
               {/* ✅ NEW: Last download info */}
               {study.lastDownload?.downloadedAt ? (
                 <div className="flex flex-col items-center gap-0.5">
-                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${
-                    study.lastDownload.downloadType === 'pdf'   ? 'bg-red-50 text-red-600 border border-red-200' :
-                    study.lastDownload.downloadType === 'docx'  ? 'bg-blue-50 text-blue-600 border border-blue-200' :
-                    'bg-purple-50 text-purple-600 border border-purple-200'
-                  }`}>
+                  <span className={`text-[8px] font-bold px-1 py-0.5 rounded ${study.lastDownload.downloadType === 'pdf' ? 'bg-red-50 text-red-600 border border-red-200' :
+                      study.lastDownload.downloadType === 'docx' ? 'bg-blue-50 text-blue-600 border border-blue-200' :
+                        'bg-purple-50 text-purple-600 border border-purple-200'
+                    }`}>
                     {study.lastDownload.downloadType?.toUpperCase() || 'DL'}
                   </span>
                   <div className="text-[7px] text-slate-500 whitespace-nowrap">
@@ -1752,7 +1750,7 @@ window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank'
   );
 };
 
-const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, displayedRecords, loading }) => {
+const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, displayedRecords, loading, supportNumber }) => {
   const { currentPage, totalPages, totalRecords, recordsPerPage, hasNextPage, hasPrevPage } = pagination;
   const recordsPerPageOptions = [10, 25, 50, 100];
   const startRecord = totalRecords === 0 ? 0 : ((currentPage - 1) * recordsPerPage) + 1;
@@ -1787,7 +1785,7 @@ const TableFooter = ({ pagination, onPageChange, onRecordsPerPageChange, display
 
         <div className="flex items-center gap-2 text-[9px] sm:text-[10px] text-slate-500">
           {loading && <div className="w-2.5 h-2.5 border border-teal-600 border-t-transparent rounded-full animate-spin" />}
-          <div>For any query call: <span className="font-semibold text-teal-600">98XXXX</span></div>
+          <div>For any query call: <span className="font-semibold text-teal-600">{supportNumber || '98XXXX'}</span></div>
         </div>
       </div>
     </div>
@@ -1810,6 +1808,17 @@ const WorklistTable = ({
   );
 
   const [multiAssignModal, setMultiAssignModal] = useState({ show: false });
+  const [supportNumber, setSupportNumber] = useState('');
+
+  useEffect(() => {
+    const fetchSupportNumber = async () => {
+      try {
+        const res = await api.get('/admin/settings/support-number');
+        if (res.data?.success) setSupportNumber(res.data.supportNumber);
+      } catch (e) { /* fallback to default */ }
+    };
+    fetchSupportNumber();
+  }, []);
 
   const handleMultiAssignSuccess = useCallback(() => {
     setMultiAssignModal({ show: false });
@@ -1828,8 +1837,8 @@ const WorklistTable = ({
   const [documentsModal, setDocumentsModal] = useState({ show: false, studyId: null });
   const [revertModal, setRevertModal] = useState({ show: false, study: null });
   const [printModal, setPrintModal] = useState({ show: false, report: null, reports: [] });
-      // ✅ Viewer preference — persisted in localStorage
-    
+  // ✅ Viewer preference — persisted in localStorage
+
   useEffect(() => {
     if (readyState === WebSocket.OPEN) {
       sendMessage({ type: 'subscribe_to_viewer_updates' });
@@ -2125,7 +2134,7 @@ const WorklistTable = ({
               {isColumnVisible('centerName') && <ResizableTableHeader columnId="centerName" label={<>CENTER<br />NAME</>} width={getColumnWidth('centerName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
               {isColumnVisible('location') && <ResizableTableHeader columnId="location" label={<>Location<br />NAME</>} width={getColumnWidth('location')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
               <ResizableTableHeader columnId="timeline" label="" width={getColumnWidth('timeline')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}><Clock className="w-4 h-4 mx-auto" /></ResizableTableHeader>
-              {isColumnVisible('patientName') && <ResizableTableHeader columnId="patientName" label={<>PT NAME /<br />UHID</>} width={getColumnWidth('patientName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth} />}
+              {isColumnVisible('patientName') && <ResizableTableHeader columnId="patientName" label={<>PT NAME</>} width={getColumnWidth('patientName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth} />}
               {isColumnVisible('ageGender') && <ResizableTableHeader columnId="ageGender" label={<>AGE/<br />SEX</>} width={getColumnWidth('ageGender')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth} />}
               {isColumnVisible('modality') && <ResizableTableHeader columnId="modality" label="MODALITY" width={getColumnWidth('modality')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth} />}
               <ResizableTableHeader columnId="viewOnly" label="VIEW" width={getColumnWidth('viewOnly')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}><Eye className="w-4 h-4 mx-auto" /></ResizableTableHeader>
@@ -2158,7 +2167,7 @@ const WorklistTable = ({
         </table>
       </div>
 
-      {studies.length > 0 && <TableFooter pagination={pagination} onPageChange={onPageChange} onRecordsPerPageChange={onRecordsPerPageChange} displayedRecords={studies.length} loading={loading} />}
+      {studies.length > 0 && <TableFooter pagination={pagination} onPageChange={onPageChange} onRecordsPerPageChange={onRecordsPerPageChange} displayedRecords={studies.length} loading={loading} supportNumber={supportNumber} />}
 
       {deleteModal.show && (
         <DeleteStudyModal
