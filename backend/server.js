@@ -86,6 +86,7 @@ app.use((req, res, next) => {
     next();
 });
 
+
 const allowedOrigins = process.env.NODE_ENV === 'production'
     ? [
         'http://64.227.187.164',        // ✅ CHANGE from 157.245.86.199
@@ -101,7 +102,9 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://pacs.xcentic.com',
         'http://206.189.133.52',
         'http://206.189.133.52:8080',
-        'https://pacs.bharatpacs.com'
+        'https://pacs.bharatpacs.com',
+        'chrome-extension://njnbplpejbonkhencclebaiklckemapm',
+        'chrome-extension://kmfcbonioiknadpjfefbglggfibjniad'
 
 
         // ✅ Local HTTPS testing
@@ -122,7 +125,10 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'https://pacs.xcentic.com',
         'http://206.189.133.52',
         'http://206.189.133.52:8080',
-        'https://pacs.bharatpacs.com'
+        'https://pacs.bharatpacs.com',
+        'chrome-extension://njnbplpejbonkhencclebaiklckemapm',
+        'chrome-extension://kmfcbonioiknadpjfefbglggfibjniad'
+
 
 
     ];
