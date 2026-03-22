@@ -31,6 +31,8 @@ import {
 
 
 import { createManualStudy } from '../controllers/manualStudyCreator.controller.js';
+import { uploadZipFromUrl } from '../controllers/dicom.controller.js';
+
 // Add import at the top
 import { getStudyStatusHistory } from '../controllers/statusHistory.controller.js';
 
@@ -247,6 +249,8 @@ router.post('/create-manual-study', protect, manualUpload.fields([
   { name: 'images', maxCount: 50 },
   { name: 'zipFile', maxCount: 5 }
 ]), createManualStudy);
+
+router.post('/upload-zip-url', protect, uploadZipFromUrl);
 
 
 

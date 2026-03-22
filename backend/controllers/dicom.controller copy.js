@@ -41,15 +41,14 @@ export const uploadZipFromUrl = async (req, res) => {
   console.log('======================================================');
   
   try {
-    const { zipUrl, labId, organizationId, reportId, patientName, patientId, authCookie } = req.body;
+    const { zipUrl, labId, organizationId, reportId, patientName, patientId } = req.body;
 
     console.log('📦 [ZIP URL Upload] Payload Received:', { 
       hasZipUrl: !!zipUrl, 
       labId, 
       organizationId,
       reportId,
-      patientName,
-      hasAuthCookie: !!authCookie
+      patientName 
     });
 
     if (!zipUrl || !labId) {
@@ -90,62 +89,37 @@ export const uploadZipFromUrl = async (req, res) => {
 
     // --- 2. Downloading the ZIP ---
     console.log('\n🌐 [ZIP URL Upload] Starting Axios GET request to download ZIP...');
-    console.log(`🔗 [ZIP URL Upload] Target URL: ${zipUrl.substring(0, 100)}...`); 
-
-    const requestHeaders = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1'
-    };
-
-    if (authCookie) {
-      requestHeaders['Cookie'] = authCookie;
-      console.log('🍪 [ZIP URL Upload] Attached Auth Cookies from Browser!');
-    }
-
-    const httpsAgent = new https.Agent({
-      rejectUnauthorized: false 
-    });
+    console.log(`🔗 [ZIP URL Upload] Target URL: ${zipUrl.substring(0, 80)}...`); 
 
     const zipResp = await axios.get(zipUrl, {
-      responseType: 'stream', 
-      timeout: 300000, 
+      responseType: 'arraybuffer',
+      timeout: 300000, // 5 minutes
       maxRedirects: 5,
-      httpsAgent: httpsAgent,
-      headers: requestHeaders
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Accept': '*/*'
+      }
     });
 
-    console.log(`✅ [ZIP URL Upload] Headers received! HTTP Status: ${zipResp.status}`);
+    console.log(`✅ [ZIP URL Upload] Download complete! HTTP Status: ${zipResp.status}`);
 
-    // Safely consume the dynamic stream into a memory buffer
-    console.log('⏳ [ZIP URL Upload] Streaming file data into memory...');
-    let chunks = []; // Using let so we can garbage collect it
-    for await (const chunk of zipResp.data) {
-      chunks.push(chunk);
-    }
-    
-    let zipBuffer = Buffer.concat(chunks);
-    
-    // 🧹 AGGRESSIVE MEMORY CLEANUP #1
-    chunks.length = 0; 
-    chunks = null; 
+    const contentType = String(zipResp.headers['content-type'] || '').toLowerCase();
+    console.log(`📊 [ZIP URL Upload] Content-Type received: ${contentType}`);
 
+    const zipBuffer = Buffer.from(zipResp.data);
     const fileSizeMB = (zipBuffer.length / (1024 * 1024)).toFixed(2);
-    console.log(`📏 [ZIP URL Upload] Buffer completed. Final File Size: ${fileSizeMB} MB`);
+    console.log(`📏 [ZIP URL Upload] Buffer created. File Size: ${fileSizeMB} MB`);
 
-    if (zipBuffer.length < 5000) {
-      console.warn(`⚠️ [ZIP URL Upload] Warning: File is suspiciously small (${fileSizeMB} MB). Ensure the PACS router is not blocking the server IP.`);
-    }
-
-    const fileName = deriveFileNameFromUrl(zipUrl, `FREEDOM_${Date.now()}.zip`);
+    const fileName = deriveFileNameFromUrl(zipUrl, `NANDICO_${Date.now()}.zip`);
 
     // --- 3. Forwarding to Python ---
     console.log('\n🏗️ [ZIP URL Upload] Building FormData for Python pipeline...');
     
-    let formData = new FormData();
-    let zipBlob = new Blob([zipBuffer], { type: 'application/zip' });
+    // Using native Node 18+ FormData
+    const formData = new FormData();
+    
+    // Convert the ArrayBuffer to a native Web Blob
+    const zipBlob = new Blob([zipResp.data], { type: 'application/zip' });
     
     formData.append('zipFile', zipBlob, fileName);
     formData.append('organization', organization.name);
@@ -162,16 +136,11 @@ export const uploadZipFromUrl = async (req, res) => {
         headers: {
           'Accept': 'application/json'
         },
-        timeout: 600000, 
+        timeout: 600000, // 10 minutes
         maxBodyLength: Infinity,
         maxContentLength: Infinity
       }
     );
-
-    // 🧹 AGGRESSIVE MEMORY CLEANUP #2: Destroy the massive objects the millisecond Python responds
-    zipBuffer = null;
-    zipBlob = null;
-    formData = null;
 
     console.log(`✅ [ZIP URL Upload] Python Server responded with Status: ${pyResp.status}`);
     
