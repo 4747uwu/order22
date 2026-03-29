@@ -9,6 +9,8 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     const [loading, setLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [previewDocument, setPreviewDocument] = useState(null);
+    const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
 
     const currentUser = sessionManager.getCurrentUser();
@@ -84,6 +86,37 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
         if (contentType?.startsWith('image/')) return <Image className="w-3.5 h-3.5" />;
         if (contentType === 'application/pdf') return <FileText className="w-3.5 h-3.5" />;
         return <File className="w-3.5 h-3.5" />;
+    };
+
+    const handlePreview = async (doc) => {
+        try {
+            setPreviewLoading(true);
+            setPreviewDocument(doc);
+            const res = await api.get(`/documents/${doc._id}/url?action=view`);
+            const presignedUrl = res.data.data.url;
+
+            if (doc.contentType?.startsWith('image/')) {
+                setPreviewBlobUrl(presignedUrl);
+            } else {
+                const response = await fetch(presignedUrl);
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                setPreviewBlobUrl(blobUrl);
+            }
+        } catch (error) {
+            toast.error('Failed to load preview');
+            setPreviewDocument(null);
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
+    const closePreview = () => {
+        if (previewBlobUrl && !previewDocument?.contentType?.startsWith('image/')) {
+            URL.revokeObjectURL(previewBlobUrl);
+        }
+        setPreviewDocument(null);
+        setPreviewBlobUrl(null);
     };
 
     const formatFileSize = (bytes) => {
@@ -171,7 +204,7 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1">
-                                            <button onClick={() => api.get(`/documents/${doc._id}/url?action=view`).then(res => setPreviewDocument({ ...doc, url: res.data.data.url }))} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye className="w-3.5 h-3.5" /></button>
+                                            <button onClick={() => handlePreview(doc)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye className="w-3.5 h-3.5" /></button>
                                             <button onClick={() => api.get(`/documents/${doc._id}/url?action=download`).then(res => window.open(res.data.data.url))} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Download"><Download className="w-3.5 h-3.5" /></button>
                                             {canManageDocs && (
                                                 <button onClick={() => handleDelete(doc._id)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -197,14 +230,18 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
                     <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
                         <div className="px-4 py-2 bg-gray-900 text-white flex justify-between items-center">
                             <span className="text-[10px] font-bold uppercase truncate">{previewDocument.fileName}</span>
-                            <button onClick={() => setPreviewDocument(null)} className="p-1 hover:bg-red-500 rounded"><X className="w-4 h-4" /></button>
+                            <button onClick={closePreview} className="p-1 hover:bg-red-500 rounded"><X className="w-4 h-4" /></button>
                         </div>
                         <div className="flex-1 bg-black flex items-center justify-center p-4 overflow-hidden">
-                           {previewDocument.contentType?.startsWith('image/') ? (
-                               <img src={previewDocument.url} className="max-w-full max-h-full object-contain" alt="Preview" />
-                           ) : (
-                               <iframe src={previewDocument.url} className="w-full h-full border-0 bg-white" title="PDF Viewer" />
-                           )}
+                           {previewLoading ? (
+                               <Loader className="w-6 h-6 animate-spin text-white" />
+                           ) : previewBlobUrl ? (
+                               previewDocument.contentType?.startsWith('image/') ? (
+                                   <img src={previewBlobUrl} className="max-w-full max-h-full object-contain" alt="Preview" />
+                               ) : (
+                                   <iframe src={previewBlobUrl} className="w-full h-full border-0 bg-white" title="PDF Viewer" />
+                               )
+                           ) : null}
                         </div>
                     </div>
                 </div>

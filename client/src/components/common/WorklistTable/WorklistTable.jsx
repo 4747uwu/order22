@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Trash2, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users, X, Link, Shield, Hash } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, Trash2, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Palette, Share2, RotateCcw, Printer, Users, X, Link, Shield, Hash, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -23,6 +23,7 @@ import sessionManager from '../../../services/sessionManager.jsx';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
 import { useStudyShare } from '../../../hooks/useStudyShare';
 import DeleteStudyModal from '../../superadmin/DeleteModal.jsx';
+import CompareStudiesModal from './CompareStudiesModal';
 
 // ✅ UTILITY FUNCTIONS
 
@@ -293,7 +294,7 @@ const getPriorityTag = (study) => {
 
 const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) => {
   const [formData, setFormData] = useState({
-    patientName: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
+    patientName: '', patientId: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
   });
   const [loading, setLoading] = useState(false);
 
@@ -316,6 +317,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) 
 
       setFormData({
         patientName: study.patientName || study.patientInfo?.patientName || '',
+        patientId: study.patientId || study.patientInfo?.patientID || '',
         patientAge: study.patientAge || study.patientInfo?.age || '',
         patientGender: study.patientSex || study.patientInfo?.gender || '',
         studyName: study.studyDescription || study.examDescription || '',
@@ -523,10 +525,14 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) 
           {/* PATIENT INFO */}
           <div className="mb-3">
             <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">Patient Info</h3>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <div>
                 <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Name *</label>
                 <input type="text" value={formData.patientName} onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" required />
+              </div>
+              <div>
+                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Patient ID</label>
+                <input type="text" value={formData.patientId} onChange={(e) => setFormData(prev => ({ ...prev, patientId: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" />
               </div>
               <div>
                 <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Age *</label>
@@ -1808,6 +1814,7 @@ const WorklistTable = ({
   );
 
   const [multiAssignModal, setMultiAssignModal] = useState({ show: false });
+  const [compareStudiesModal, setCompareStudiesModal] = useState({ show: false, studies: [] });
   const [supportNumber, setSupportNumber] = useState('');
 
   useEffect(() => {
@@ -2103,6 +2110,17 @@ const WorklistTable = ({
             </button>
           )}
 
+          {selectedStudies.length >= 2 && selectedStudies.length <= 3 && (
+            <button
+              onClick={() => setCompareStudiesModal({ show: true, studies: studies.filter(s => selectedStudies.includes(s._id)) })}
+              className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-400 transition-colors font-bold"
+            >
+              <Layers className="w-3 h-3" />
+              <span className="hidden sm:inline">Compare Studies</span>
+              <span className="sm:hidden">Compare</span>
+            </button>
+          )}
+
           {userAccountRoles.includes('super_admin') && (
             <button
               onClick={handleBulkDelete}
@@ -2200,6 +2218,14 @@ const WorklistTable = ({
           report={printModal.report}
           reports={printModal.reports}
           onClose={handleClosePrintModal}
+        />
+      )}
+
+      {compareStudiesModal.show && (
+        <CompareStudiesModal
+          isOpen={compareStudiesModal.show}
+          studies={compareStudiesModal.studies}
+          onClose={() => setCompareStudiesModal({ show: false, studies: [] })}
         />
       )}
 

@@ -1302,6 +1302,7 @@ export const getReportForEditing = async (req, res) => {
 // ✅ DELETE REPORT
 export const deleteReport = async (req, res) => {
     try {
+        console.log('🗑️ [Delete Report] Deleting report:', req.params.reportId);
         const { reportId } = req.params;
         const user = req.user;
 
@@ -1312,15 +1313,28 @@ export const deleteReport = async (req, res) => {
             return res.status(403).json({ success: false, message: 'Access denied' });
         }
 
-        // Remove references from DicomStudy
+        // Remove references from DicomStudy and update report count
         await DicomStudy.findByIdAndUpdate(report.dicomStudy, {
             $pull: {
                 reports: { reportId: report._id },
                 'reportInfo.modernReports': { reportId: report._id }
-            }
+            },
+            $inc: { 'currentReportStatus.reportCount': -1 }
         });
 
         await Report.findByIdAndDelete(reportId);
+
+        // Update remaining report count metadata
+        const remainingCount = await Report.countDocuments({ dicomStudy: report.dicomStudy });
+        await DicomStudy.findByIdAndUpdate(report.dicomStudy, {
+            $set: {
+                'currentReportStatus.hasReports': remainingCount > 0,
+                'currentReportStatus.reportCount': remainingCount,
+                'reportInfo.multipleReports': remainingCount > 1,
+                'reportInfo.reportCount': remainingCount
+            }
+        });
+
         res.json({ success: true, message: 'Report deleted successfully' });
     } catch (error) {
         console.error('❌ Error deleting report:', error);

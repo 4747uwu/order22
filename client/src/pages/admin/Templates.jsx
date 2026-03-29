@@ -6,14 +6,15 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/common/Navbar';
 import TextToHtmlService from '../../services/textToHtml';
-import { 
-  Plus, 
-  Search, 
-  Filter, 
-  Edit3, 
-  Trash2, 
-  Eye, 
-  Globe, 
+import RichTextEditor from '../../components/common/RichTextEditor';
+import {
+  Plus,
+  Search,
+  Filter,
+  Edit3,
+  Trash2,
+  Eye,
+  Globe,
   FileText,
   Tag,
   Calendar,
@@ -619,61 +620,43 @@ const AdminTemplates = () => {
                   </div>
 
                   {inputMode === 'text' && (
-                    <div className="flex items-center gap-3 text-[11px] text-gray-600">
-                      {Object.entries(conversionOptions).map(([key, value]) => (
-                        <label key={key} className="flex items-center gap-1 cursor-pointer">
-                          <input type="checkbox" checked={value}
-                            onChange={(e) => setConversionOptions(prev => ({ ...prev, [key]: e.target.checked }))}
-                            className="w-3.5 h-3.5 text-teal-600 rounded border-gray-300 focus:ring-teal-500" />
-                          <span className="capitalize">{key.replace(/([A-Z])/g, ' $1').trim()}</span>
-                        </label>
-                      ))}
-                    </div>
+                    <span className="text-[10px] text-gray-400 italic">WYSIWYG editor — format text directly</span>
                   )}
                 </div>
 
-                {/* Content Editor with Table Insert (BOTH modes) */}
+                {/* Content Editor */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
                     <div className="flex items-center gap-1.5">
-                      {showTableDialog ? (
-                        <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
-                          <span className="text-[10px] text-gray-500">R:</span>
-                          <input type="number" min="1" max="20" value={tableRows}
-                            onChange={e => setTableRows(e.target.value)}
-                            className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                          <span className="text-[10px] text-gray-500">C:</span>
-                          <input type="number" min="1" max="10" value={tableCols}
-                            onChange={e => setTableCols(e.target.value)}
-                            className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                          <button type="button" onClick={() => {
-                            if (inputMode === 'text') {
-                              const rows = Math.max(1, parseInt(tableRows) || 2);
-                              const cols = Math.max(1, parseInt(tableCols) || 3);
-                              let table = '\n| ' + Array.from({length: cols}, (_, c) => `Header ${c+1}`).join(' | ') + ' |\n';
-                              table += '| ' + Array.from({length: cols}, () => '---').join(' | ') + ' |\n';
-                              for (let r = 0; r < rows - 1; r++) {
-                                table += '| ' + Array.from({length: cols}, () => '   ').join(' | ') + ' |\n';
-                              }
-                              setPlainTextContent(prev => prev + table);
-                            } else {
+                      {inputMode === 'html' && (
+                        showTableDialog ? (
+                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
+                            <span className="text-[10px] text-gray-500">R:</span>
+                            <input type="number" min="1" max="20" value={tableRows}
+                              onChange={e => setTableRows(e.target.value)}
+                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <span className="text-[10px] text-gray-500">C:</span>
+                            <input type="number" min="1" max="10" value={tableCols}
+                              onChange={e => setTableCols(e.target.value)}
+                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <button type="button" onClick={() => {
                               insertTableToContent();
-                            }
-                            setShowTableDialog(false);
-                          }}
-                            className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">Insert</button>
-                          <button type="button" onClick={() => setShowTableDialog(false)}
-                            className="px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">✕</button>
-                        </div>
-                      ) : (
-                        <button type="button" onClick={() => setShowTableDialog(true)}
-                          className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
-                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-                          </svg>
-                          Table
-                        </button>
+                              setShowTableDialog(false);
+                            }}
+                              className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">Insert</button>
+                            <button type="button" onClick={() => setShowTableDialog(false)}
+                              className="px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">✕</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setShowTableDialog(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                            </svg>
+                            Table
+                          </button>
+                        )
                       )}
                       {previewHtml && (
                         <button type="button" onClick={() => setShowPreview(!showPreview)}
@@ -688,17 +671,24 @@ const AdminTemplates = () => {
 
                   <div className={`flex gap-3 ${showPreview ? '' : ''}`}>
                     <div className={showPreview ? 'w-1/2' : 'w-full'}>
-                      <textarea
-                        value={inputMode === 'text' ? plainTextContent : formData.htmlContent}
-                        onChange={(e) => inputMode === 'text' ? setPlainTextContent(e.target.value) : handleFormChange('htmlContent', e.target.value)}
-                        rows={10}
-                        className={`w-full px-3 py-2 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
-                          formErrors.content ? 'border-red-400' : 'border-gray-200'
-                        }`}
-                        placeholder={inputMode === 'text'
-                          ? 'Paste report text here...\n\nTable syntax:\n| Header 1 | Header 2 |\n|---|---|\n| data | data |'
-                          : 'Enter HTML content...'}
-                      />
+                      {inputMode === 'text' ? (
+                        <RichTextEditor
+                          value={formData.htmlContent}
+                          onChange={(html) => handleFormChange('htmlContent', html)}
+                          placeholder="Start typing your template content..."
+                          minHeight="260px"
+                        />
+                      ) : (
+                        <textarea
+                          value={formData.htmlContent}
+                          onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                          rows={10}
+                          className={`w-full px-3 py-2 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                            formErrors.content ? 'border-red-400' : 'border-gray-200'
+                          }`}
+                          placeholder="Enter HTML content..."
+                        />
+                      )}
                     </div>
                     {showPreview && (
                       <div className="w-1/2 border border-gray-200 rounded-lg p-3 bg-gray-50/50 overflow-y-auto" style={{maxHeight: '300px'}}>

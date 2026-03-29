@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import DicomStudy from '../models/dicomStudyModel.js';
+import Patient from '../models/patientModel.js';
 import User from '../models/userModel.js';
 import { ACTION_TYPES } from '../models/dicomStudyModel.js';
 
@@ -12,6 +13,7 @@ export const updateStudyDetails = async (req, res) => {
         const { studyId } = req.params;
         const {
             patientName,
+            patientId,
             patientAge,
             patientGender,
             studyName,
@@ -64,30 +66,36 @@ export const updateStudyDetails = async (req, res) => {
             updateData['patientInfo.patientName'] = patientName;
             changes.patientName = patientName;
         }
-        
+
+        if (patientId) {
+            updateData.patientId = patientId;
+            updateData['patientInfo.patientID'] = patientId;
+            changes.patientId = patientId;
+        }
+
         if (patientAge) {
             updateData.age = patientAge;
             updateData['patientInfo.age'] = patientAge;
             changes.patientAge = patientAge;
         }
-        
+
         if (patientGender) {
             updateData.gender = patientGender;
             updateData['patientInfo.gender'] = patientGender;
             changes.patientGender = patientGender;
         }
-        
+
         if (studyName) {
             updateData.examDescription = studyName;
             changes.studyName = studyName;
         }
-        
+
         if (referringPhysician) {
             updateData.referringPhysicianName = referringPhysician;
             updateData['physicians.referring.name'] = referringPhysician;
             changes.referringPhysician = referringPhysician;
         }
-        
+
         if (accessionNumber) {
             updateData.accessionNumber = accessionNumber;
             changes.accessionNumber = accessionNumber;
@@ -103,7 +111,7 @@ export const updateStudyDetails = async (req, res) => {
                 console.log(`✅ priority updated: ${study.priority} → ${newPriority}`);
             }
         }
-        
+
         // ✅ Only touch workflow if clinical history string actually changed
         if (clinicalHistory !== undefined) {
             const DEFAULT_PLACEHOLDERS = ['no history provided', 'no history provided...', ''];
@@ -136,7 +144,7 @@ export const updateStudyDetails = async (req, res) => {
         const priorityChanges = [];
         if (changes.priority) priorityChanges.push(`Priority: ${changes.priority.from || 'NORMAL'} → ${changes.priority.to}`);
 
-        const actionNote = priorityChanges.length > 0 
+        const actionNote = priorityChanges.length > 0
             ? `Study details updated via patient edit modal. Priority changes: ${priorityChanges.join(', ')}`
             : 'Study details updated via patient edit modal';
 
@@ -172,9 +180,17 @@ export const updateStudyDetails = async (req, res) => {
             },
             { new: true, runValidators: true }
         )
-        .populate('organization', 'name identifier')
-        .populate('patient', 'patientID patientNameRaw')
-        .populate('sourceLab', 'name identifier');
+            .populate('organization', 'name identifier')
+            .populate('patient', 'patientID patientNameRaw')
+            .populate('sourceLab', 'name identifier');
+
+        // Also update the Patient collection record so populated refs stay in sync
+        if (study.patient && (changes.patientId || changes.patientName)) {
+            const patientUpdate = {};
+            if (changes.patientId) patientUpdate.patientID = changes.patientId;
+            if (changes.patientName) patientUpdate.patientNameRaw = changes.patientName;
+            await Patient.findByIdAndUpdate(study.patient, { $set: patientUpdate });
+        }
 
         console.log(`✅ Study details updated successfully for ${studyId}`);
         if (priorityChanges.length > 0) {
@@ -207,9 +223,9 @@ export const getStudyActionLogs = async (req, res) => {
         const user = req.user;
 
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'User not authenticated' 
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
             });
         }
 
@@ -220,10 +236,10 @@ export const getStudyActionLogs = async (req, res) => {
             _id: studyId,
             organizationIdentifier: user.organizationIdentifier
         })
-        .select('_id bharatPacsId patientInfo patientId modality studyDate studyTime createdAt workflowStatus currentCategory actionLog seriesCount instanceCount organization sourceLab')
-        .populate('organization', 'name identifier')
-        .populate('sourceLab', 'name identifier')
-        .lean();
+            .select('_id bharatPacsId patientInfo patientId modality studyDate studyTime createdAt workflowStatus currentCategory actionLog seriesCount instanceCount organization sourceLab')
+            .populate('organization', 'name identifier')
+            .populate('sourceLab', 'name identifier')
+            .lean();
 
         if (!study) {
             return res.status(404).json({
@@ -273,9 +289,9 @@ export const lockStudyForReporting = async (req, res) => {
         const user = req.user;
 
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'User not authenticated' 
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
             });
         }
 
@@ -296,16 +312,16 @@ export const lockStudyForReporting = async (req, res) => {
 
         // ✅ CHECK IF USER CAN BYPASS LOCKS (admins skip assignment check too)
         const canBypassLock = ['admin', 'super_admin'].includes(user.role) ||
-                             user.accountRoles?.some(role => ['admin', 'super_admin'].includes(role));
+            user.accountRoles?.some(role => ['admin', 'super_admin'].includes(role));
 
-        const isRadiologist = user.role === 'radiologist' || 
-                              user.accountRoles?.includes('radiologist');
+        const isRadiologist = user.role === 'radiologist' ||
+            user.accountRoles?.includes('radiologist');
 
-        const isVerifier = user.role === 'verifier' || 
-                           user.accountRoles?.includes('verifier');
+        const isVerifier = user.role === 'verifier' ||
+            user.accountRoles?.includes('verifier');
 
-        const isTypist = user.role === 'typist' || 
-                         user.accountRoles?.includes('typist');
+        const isTypist = user.role === 'typist' ||
+            user.accountRoles?.includes('typist');
 
         // ✅ CHECK ASSIGNMENT - radiologists and verifiers must be assigned
         if (!canBypassLock && (isRadiologist || isVerifier || isTypist)) {
@@ -346,12 +362,12 @@ export const lockStudyForReporting = async (req, res) => {
                         lockReason: study.studyLock.lockReason
                     }
                 });
-            } 
-            
+            }
+
             // ✅ ALLOW BYPASS FOR RADIOLOGIST, TYPIST, ADMIN
             if (canBypassLock) {
                 console.log(`⚠️ Study locked by ${study.studyLock.lockedByName}, but ${user.role} can bypass`);
-                
+
                 // Lock for current user (takeover)
                 const lockExpiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 hours
 
@@ -366,7 +382,7 @@ export const lockStudyForReporting = async (req, res) => {
                             'studyLock.lockedAt': new Date(),
                             'studyLock.lockReason': 'reporting',
                             'studyLock.lockExpiry': lockExpiry,
-                            
+
                             workflowStatus: user.role === 'radiologist' ? 'doctor_opened_report' : 'report_in_progress',
                             currentCategory: 'PENDING'
                         },
@@ -401,8 +417,8 @@ export const lockStudyForReporting = async (req, res) => {
                     },
                     { new: true, runValidators: true }
                 )
-                .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
-                .lean();
+                    .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
+                    .lean();
 
                 console.log(`✅ Study ${studyId} lock bypassed and re-locked by ${user.email}`);
 
@@ -451,7 +467,7 @@ export const lockStudyForReporting = async (req, res) => {
                     'studyLock.lockedAt': new Date(),
                     'studyLock.lockReason': 'reporting',
                     'studyLock.lockExpiry': lockExpiry,
-                    
+
                     // ✅ UPDATE WORKFLOW STATUS
                     workflowStatus: user.role === 'radiologist' ? 'doctor_opened_report' : 'report_in_progress',
                     currentCategory: 'PENDING'
@@ -476,7 +492,7 @@ export const lockStudyForReporting = async (req, res) => {
                         ipAddress: req.ip,
                         userAgent: req.get('user-agent')
                     },
-                    
+
                     // ✅ ADD TO STATUS HISTORY
                     statusHistory: {
                         status: 'study_locked_for_reporting',
@@ -488,8 +504,8 @@ export const lockStudyForReporting = async (req, res) => {
             },
             { new: true, runValidators: true }
         )
-        .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
-        .lean();
+            .select('_id bharatPacsId studyLock workflowStatus currentCategory patientInfo')
+            .lean();
 
         console.log(`✅ Study ${studyId} locked successfully by ${user.email}`);
 
@@ -527,9 +543,9 @@ export const unlockStudy = async (req, res) => {
         const user = req.user;
 
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'User not authenticated' 
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
             });
         }
 
@@ -573,7 +589,10 @@ export const unlockStudy = async (req, res) => {
             studyId,
             {
                 $set: {
-                    'studyLock.isLocked': false
+                    'studyLock.isLocked': false,
+                    // ✅ Reset status to assigned_to_doctor + PENDING on unlock
+                    workflowStatus: 'assigned_to_doctor',
+                    currentCategory: 'PENDING'
                 },
                 $push: {
                     // ✅ ARCHIVE LOCK INFO
@@ -585,7 +604,7 @@ export const unlockStudy = async (req, res) => {
                         lockDuration: lockDuration,
                         lockReason: study.studyLock.lockReason
                     },
-                    
+
                     // ✅ ADD TO ACTION LOG
                     actionLog: {
                         actionType: ACTION_TYPES.STUDY_UNLOCKED,
@@ -605,7 +624,7 @@ export const unlockStudy = async (req, res) => {
                         ipAddress: req.ip,
                         userAgent: req.get('user-agent')
                     },
-                    
+
                     statusHistory: {
                         status: 'study_unlocked',
                         changedAt: new Date(),
@@ -624,8 +643,8 @@ export const unlockStudy = async (req, res) => {
             },
             { new: true }
         )
-        .select('_id bharatPacsId studyLock')
-        .lean();
+            .select('_id bharatPacsId studyLock')
+            .lean();
 
         console.log(`✅ Study ${studyId} unlocked successfully by ${user.email} (Duration: ${lockDuration}m)`);
 
@@ -657,9 +676,9 @@ export const checkStudyLockStatus = async (req, res) => {
         const user = req.user;
 
         if (!user) {
-            return res.status(401).json({ 
-                success: false, 
-                message: 'User not authenticated' 
+            return res.status(401).json({
+                success: false,
+                message: 'User not authenticated'
             });
         }
 
@@ -667,8 +686,8 @@ export const checkStudyLockStatus = async (req, res) => {
             _id: studyId,
             organizationIdentifier: user.organizationIdentifier
         })
-        .select('_id bharatPacsId studyLock')
-        .lean();
+            .select('_id bharatPacsId studyLock')
+            .lean();
 
         if (!study) {
             return res.status(404).json({
@@ -688,8 +707,8 @@ export const checkStudyLockStatus = async (req, res) => {
                 lockedAt: study.studyLock?.lockedAt || null,
                 lockExpiry: study.studyLock?.lockExpiry || null,
                 lockReason: study.studyLock?.lockReason || null,
-                canEdit: !study.studyLock?.isLocked || 
-                        study.studyLock?.lockedBy?.toString() === user._id.toString()
+                canEdit: !study.studyLock?.isLocked ||
+                    study.studyLock?.lockedBy?.toString() === user._id.toString()
             }
         });
 

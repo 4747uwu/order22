@@ -493,6 +493,7 @@ const handleRefreshStudies = useCallback(() => {
       
       const response = await api.put(`/admin/studies/${formData.studyId}/details`, {
         patientName: formData.patientName,
+        patientId: formData.patientId,
         patientAge: formData.patientAge,
         patientGender: formData.patientGender,
         studyName: formData.studyName,
@@ -500,7 +501,7 @@ const handleRefreshStudies = useCallback(() => {
         accessionNumber: formData.accessionNumber,
         clinicalHistory: formData.clinicalHistory,
         caseType: formData.caseType,
-        priority: formData.priority, 
+        priority: formData.priority,
         assignmentPriority: formData.assignmentPriority
       });
 

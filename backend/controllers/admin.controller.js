@@ -222,6 +222,9 @@ const buildBaseQuery = (req, user, workflowStatuses = null) => {
             { 'patientInfo.patientName':         { $regex: req.query.search, $options: 'i' } },
             { 'patientInfo.patientID':           { $regex: req.query.search, $options: 'i' } },
             { 'clinicalHistory.clinicalHistory': { $regex: req.query.search, $options: 'i' } },
+            { referringPhysicianName:            { $regex: req.query.search, $options: 'i' } },
+            { 'physicians.referring.name':       { $regex: req.query.search, $options: 'i' } },
+            { examDescription:                   { $regex: req.query.search, $options: 'i' } },
         ]);
     }
 

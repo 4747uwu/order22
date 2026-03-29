@@ -3,9 +3,10 @@ import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import api from '../../services/api';
 import TextToHtmlService from '../../services/textToHtml.js';
+import RichTextEditor from '../../components/common/RichTextEditor';
 import {
   Plus, Search, Trash2, Eye, Globe, User, FileText,
-  Tag, X, Save, Code, Type, Zap, Loader2, ChevronLeft, ChevronRight
+  Tag, X, Save, Code, Type, Loader2, ChevronLeft, ChevronRight, Pencil
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -407,6 +408,13 @@ const DoctorTemplates = () => {
                           <Eye className="w-3 h-3" /> View
                         </button>
                         {template.templateScope === 'doctor_specific' && template.assignedDoctor?._id === currentUser._id && (
+                          <button onClick={() => handleEditTemplate(template)}
+                            className="h-7 w-7 flex items-center justify-center text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            title="Edit template">
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        )}
+                        {template.templateScope === 'doctor_specific' && template.assignedDoctor?._id === currentUser._id && (
                           <button onClick={() => handleDeleteTemplate(template._id)}
                             className="h-7 w-7 flex items-center justify-center text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
                             <Trash2 className="w-3 h-3" />
@@ -518,26 +526,10 @@ const DoctorTemplates = () => {
                     />
                   </div>
 
-                  {/* Conversion options */}
+                  {/* WYSIWYG hint */}
                   {inputMode === 'text' && (
                     <div className="rounded-lg border border-green-200 bg-green-50/50 p-3">
-                      <h4 className="text-[10px] font-bold text-green-700 uppercase tracking-wider mb-2">Conversion</h4>
-                      <div className="space-y-1.5">
-                        {Object.entries({
-                          formatHeaders: 'Headers', formatLists: 'Lists',
-                          formatMedicalTerms: 'Medical Terms', createParagraphs: 'Paragraphs',
-                          addPageBreaks: 'Page Breaks'
-                        }).map(([key, label]) => (
-                          <label key={key} className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer">
-                            <input
-                              type="checkbox" checked={conversionOptions[key]}
-                              onChange={(e) => setConversionOptions(prev => ({ ...prev, [key]: e.target.checked }))}
-                              className="w-3.5 h-3.5 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                            />
-                            {label}
-                          </label>
-                        ))}
-                      </div>
+                      <p className="text-[10px] text-green-700 italic">WYSIWYG editor — use the toolbar to format text directly</p>
                     </div>
                   )}
 
@@ -570,12 +562,6 @@ const DoctorTemplates = () => {
                     </div>
 
                     <div className="flex items-center gap-1.5">
-                      {inputMode === 'text' && (
-                        <button type="button" onClick={handleTextToHtml}
-                          className="flex items-center gap-1 px-2.5 h-7 text-[10px] font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg transition-all">
-                          <Zap className="w-3 h-3" /> Convert
-                        </button>
-                      )}
                       <button type="button" onClick={() => setShowPreview(!showPreview)}
                         className={`flex items-center gap-1 px-2.5 h-7 text-[10px] font-bold rounded-lg transition-all
                           ${showPreview ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
@@ -589,7 +575,16 @@ const DoctorTemplates = () => {
                     <div className={`${showPreview ? 'w-1/2' : 'w-full'} p-3 overflow-y-auto`}>
                       {inputMode === 'text' ? (
                         <div className="h-full flex flex-col">
-                          {/* ✅ Table insert for text mode */}
+                          <RichTextEditor
+                            value={formData.htmlContent}
+                            onChange={(html) => handleFormChange('htmlContent', html)}
+                            placeholder="Start typing your template content..."
+                            minHeight="300px"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex flex-col h-full gap-1">
+                          {/* Table insert for HTML mode */}
                           <div className="flex items-center gap-1.5 mb-1 shrink-0">
                             {showTableDialog ? (
                               <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
@@ -601,65 +596,7 @@ const DoctorTemplates = () => {
                                 <input type="number" min="1" max="10" value={tableCols}
                                   onChange={e => setTableCols(e.target.value)}
                                   className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                                <button type="button" onClick={() => {
-                                  const rows = Math.max(1, parseInt(tableRows) || 2);
-                                  const cols = Math.max(1, parseInt(tableCols) || 3);
-                                  let table = '\n';
-                                  // Header row
-                                  table += '| ' + Array.from({length: cols}, (_, c) => `Header ${c+1}`).join(' | ') + ' |\n';
-                                  // Separator
-                                  table += '| ' + Array.from({length: cols}, () => '---').join(' | ') + ' |\n';
-                                  // Data rows
-                                  for (let r = 0; r < rows - 1; r++) {
-                                    table += '| ' + Array.from({length: cols}, () => '   ').join(' | ') + ' |\n';
-                                  }
-                                  setPlainTextContent(prev => prev + table);
-                                  setShowTableDialog(false);
-                                }}
-                                  className="px-2 py-0.5 text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded">
-                                  Insert
-                                </button>
-                                <button type="button" onClick={() => setShowTableDialog(false)}
-                                  className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">✕</button>
-                              </div>
-                            ) : (
-                              <button type="button" onClick={() => setShowTableDialog(true)}
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-                                </svg>
-                                Insert Table
-                              </button>
-                            )}
-                          </div>
-                          <textarea
-                            value={plainTextContent}
-                            onChange={(e) => setPlainTextContent(e.target.value)}
-                            placeholder={`Paste your medical report text here...\n\nExample:\nCLINICAL HISTORY:\nPatient presents with chest pain.\n\nFINDINGS:\n1. Normal lung fields\n2. Heart size normal\n\nTable syntax:\n| Header 1 | Header 2 |\n|---|---|\n| data | data |\n\nIMPRESSION:\nNormal chest radiograph.`}
-                            className={`flex-1 w-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 focus:border-green-400 outline-none
-                              ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
-                          />
-                          {plainTextContent.trim() && (
-                            <div className="flex items-center gap-1 mt-1.5 text-[10px] text-green-600">
-                              <Zap className="w-3 h-3" /> Auto-converting…
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col h-full gap-1">
-                          {/* Table insert toolbar */}
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {showTableDialog ? (
-                              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
-                                <span className="text-[10px] text-gray-500 font-medium">Rows:</span>
-                                <input type="number" min="1" max="20" value={tableRows}
-                                  onChange={e => setTableRows(e.target.value)}
-                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                                <span className="text-[10px] text-gray-500 font-medium">Cols:</span>
-                                <input type="number" min="1" max="10" value={tableCols}
-                                  onChange={e => setTableCols(e.target.value)}
-                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                                <button type="button" onClick={insertTableToContent}
+                                <button type="button" onClick={() => { insertTableToContent(); setShowTableDialog(false); }}
                                   className="px-2 py-0.5 text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded">
                                   Insert
                                 </button>
@@ -679,7 +616,7 @@ const DoctorTemplates = () => {
                           <textarea
                             value={formData.htmlContent}
                             onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                            placeholder="Enter HTML content…"
+                            placeholder="Enter HTML content..."
                             className={`flex-1 w-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 outline-none
                               ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
                           />

@@ -8,7 +8,7 @@ import AllTemplateDropdown from './AllTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
 import TemplateSearchPanel from './TemplateSearchPanel.jsx';
 // also add BookOpen to the lucide-react import line:
-import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2, BookOpen, Save } from 'lucide-react';
+import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2, BookOpen, Save, Pencil } from 'lucide-react';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
 import { StudyDocumentsManager } from '../StudyDocuments/StudyDocumentsManager';
@@ -50,7 +50,8 @@ const OnlineReportingSystemWithOHIF = () => {
   const [leftPanelWidth, setLeftPanelWidth] = useState(50);
 
   // ✅ MULTI-REPORT STATE — replaces single reportContent
-  const [reports, setReports] = useState([{ id: 1, content: '', capturedImages: [], template: null }]);
+  const [reports, setReports] = useState([{ id: 1, name: '', content: '', capturedImages: [], template: null }]);
+  const [editingReportName, setEditingReportName] = useState(null); // index being edited
   const [activeReportIndex, setActiveReportIndex] = useState(0);
   const [showReportDropdown, setShowReportDropdown] = useState(false);
   const reportDropdownRef = useRef(null);
@@ -129,8 +130,13 @@ const OnlineReportingSystemWithOHIF = () => {
 
 
   // ✅ Add new report
+  // ✅ Rename report
+  const handleRenameReport = (index, newName) => {
+    setReports(prev => prev.map((r, i) => i === index ? { ...r, name: newName } : r));
+  };
+
   const handleAddReport = () => {
-    const newReport = { id: Date.now(), content: '', capturedImages: [], template: null };
+    const newReport = { id: Date.now(), name: '', content: '', capturedImages: [], template: null };
     setReports(prev => [...prev, newReport]);
     setActiveReportIndex(reports.length);
     setIsReportOpen(true);
@@ -139,12 +145,25 @@ const OnlineReportingSystemWithOHIF = () => {
   };
 
   // ✅ Remove report
-  const handleRemoveReport = (index) => {
+  const handleRemoveReport = async (index) => {
     if (reports.length === 1) { toast.error('Must have at least one report'); return; }
+
+    const reportToRemove = reports[index];
+
+    // If report exists in backend, delete it there too
+    if (reportToRemove.existingReportId) {
+      try {
+        await api.delete(`/reports/reports/${reportToRemove.existingReportId}`);
+      } catch (err) {
+        console.error('Failed to delete report from backend:', err);
+        toast.error('Failed to delete report');
+        return;
+      }
+    }
+
     setReports(prev => prev.filter((_, i) => i !== index));
     setActiveReportIndex(Math.max(0, index === activeReportIndex ? index - 1 : activeReportIndex > index ? activeReportIndex - 1 : activeReportIndex));
     setShowReportDropdown(false);
-    // toast.success(`Report ${index + 1} removed`);
   };
 
   // ✅ Switch report
@@ -236,7 +255,7 @@ const OnlineReportingSystemWithOHIF = () => {
       setPatientData(null);
       setSelectedTemplate(null);
       setReportData({});
-      setReports([{ id: 1, content: '', capturedImages: [], template: null }]);
+      setReports([{ id: 1, name: '', content: '', capturedImages: [], template: null }]);
       setActiveReportIndex(0);
       setSaving(false);
       setFinalizing(false);
@@ -947,14 +966,37 @@ const OnlineReportingSystemWithOHIF = () => {
                         <div className="max-h-48 overflow-y-auto">
                           {reports.map((report, index) => (
                             <div key={report.id} className={`flex items-center justify-between px-3 py-1.5 cursor-pointer transition-colors border-b border-gray-50 last:border-b-0 ${index === activeReportIndex ? 'bg-blue-50' : 'hover:bg-gray-50'}`} onClick={() => handleSwitchReport(index)}>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <span className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center flex-shrink-0 ${index === activeReportIndex ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'}`}>{index + 1}</span>
-                                <div>
-                                  <div className={`text-[10px] font-medium ${index === activeReportIndex ? 'text-blue-700' : 'text-gray-700'}`}>
-                                    Report {index + 1}
-                                    {report.reportStatus && (<span className={`ml-1 text-[8px] px-1 rounded ${report.reportStatus === 'finalized' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{report.reportStatus}</span>)}
-                                  </div>
-                                  <div className="text-[8px] text-gray-400">{report.content.trim() ? `${report.content.replace(/<[^>]*>/g, '').substring(0, 25)}…` : 'Empty'}{report.capturedImages.length > 0 && ` · ${report.capturedImages.length} img`}</div>
+                                <div className="min-w-0 flex-1">
+                                  {editingReportName === index ? (
+                                    <input
+                                      autoFocus
+                                      type="text"
+                                      value={report.name || ''}
+                                      placeholder={`Report ${index + 1}`}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => handleRenameReport(index, e.target.value)}
+                                      onBlur={() => setEditingReportName(null)}
+                                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') setEditingReportName(null); }}
+                                      className="w-full px-1 py-0.5 text-[10px] font-medium border border-blue-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white"
+                                    />
+                                  ) : (
+                                    <div className="flex items-center gap-1 group/name">
+                                      <div className={`text-[10px] font-medium truncate ${index === activeReportIndex ? 'text-blue-700' : 'text-gray-700'}`}>
+                                        {report.name || `Report ${index + 1}`}
+                                        {report.reportStatus && (<span className={`ml-1 text-[8px] px-1 rounded ${report.reportStatus === 'finalized' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{report.reportStatus}</span>)}
+                                      </div>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setEditingReportName(index); }}
+                                        className="p-0.5 rounded opacity-0 group-hover/name:opacity-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition-all flex-shrink-0"
+                                        title="Rename report"
+                                      >
+                                        <Pencil className="w-2.5 h-2.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                  <div className="text-[8px] text-gray-400 truncate">{report.content.trim() ? `${report.content.replace(/<[^>]*>/g, '').substring(0, 25)}…` : 'Empty'}{report.capturedImages.length > 0 && ` · ${report.capturedImages.length} img`}</div>
                                 </div>
                               </div>
                               <div className="flex items-center gap-1">

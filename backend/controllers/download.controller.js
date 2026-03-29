@@ -417,6 +417,10 @@ export const toggleStudyLock = async (req, res) => {
             updateData['studyLock.lockedByName'] = null;
             updateData['studyLock.lockedAt'] = null;
             updateData['studyLock.lockReason'] = null;
+
+            // ✅ When admin unlocks, reset status to assigned_to_doctor + PENDING
+            updateData['workflowStatus'] = 'assigned_to_doctor';
+            updateData['currentCategory'] = 'PENDING';
         }
 
         // ✅ UPDATE DIRECTLY (BYPASS VALIDATION)

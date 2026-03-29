@@ -32,6 +32,10 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
   });
   const contentEditableRef = useRef(null);
 
+  // Color pickers
+  const [showTextColorPicker, setShowTextColorPicker] = useState(false);
+  const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+
   // ✅ FORMAT PAINTER
   const [formatPainterActive, setFormatPainterActive] = useState(false);
   const storedFormatRef = useRef(null);
@@ -111,6 +115,9 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
+  const [showTableDialog, setShowTableDialog] = useState(false);
+  const [tableDialogRows, setTableDialogRows] = useState(3);
+  const [tableDialogCols, setTableDialogCols] = useState(3);
 
   // When content prop changes, update the editor's view
   useEffect(() => {
@@ -533,6 +540,66 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             </ToolbarButton>
           </ToolbarGroup>
 
+          {/* Text Color */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => { setShowTextColorPicker(!showTextColorPicker); setShowHighlightPicker(false); }}
+              active={showTextColorPicker}
+              tooltip="Text Color"
+            >
+              <div className="flex flex-col items-center">
+                <span className="font-bold text-[10px] leading-none">A</span>
+                <div className="w-3 h-0.5 rounded-sm bg-red-500 mt-px" />
+              </div>
+            </ToolbarButton>
+            {showTextColorPicker && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 p-2 w-36">
+                <div className="text-[9px] font-semibold text-gray-500 mb-1">Text Color</div>
+                <div className="grid grid-cols-6 gap-1">
+                  {['#000000','#434343','#666666','#999999','#d32f2f','#c62828',
+                    '#ad1457','#6a1b9a','#283593','#1565c0','#00838f','#2e7d32',
+                    '#558b2f','#f9a825','#ff8f00','#ef6c00','#d84315','#37474f'].map(c => (
+                    <button key={c}
+                      onClick={() => { applyCommand('foreColor', c); setShowTextColorPicker(false); }}
+                      className="w-4 h-4 rounded border border-gray-200 hover:scale-125 transition-transform"
+                      style={{ backgroundColor: c }} title={c} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Highlight Color */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => { setShowHighlightPicker(!showHighlightPicker); setShowTextColorPicker(false); }}
+              active={showHighlightPicker}
+              tooltip="Highlight"
+            >
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"/>
+              </svg>
+            </ToolbarButton>
+            {showHighlightPicker && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 p-2 w-32">
+                <div className="text-[9px] font-semibold text-gray-500 mb-1">Highlight</div>
+                <div className="grid grid-cols-4 gap-1">
+                  {['transparent','#ffff00','#00ff00','#00ffff','#ff00ff','#ffd700',
+                    '#ffa07a','#98fb98','#add8e6','#dda0dd','#ffe4b5','#f0e68c'].map(c => (
+                    <button key={c}
+                      onClick={() => { applyCommand('hiliteColor', c); setShowHighlightPicker(false); }}
+                      className="w-5 h-5 rounded border border-gray-200 hover:scale-110 transition-transform"
+                      style={{ backgroundColor: c === 'transparent' ? '#fff' : c }}
+                      title={c === 'transparent' ? 'None' : c}
+                    >{c === 'transparent' ? <span className="text-[7px] text-gray-400">x</span> : null}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <ToolbarSeparator />
+
           {/* Format Painter */}
           <ToolbarButton
             onClick={activateFormatPainter}
@@ -588,11 +655,41 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
 
           {/* Insert */}
           <ToolbarGroup>
-            <ToolbarButton onClick={() => insertTable(2, 2)} tooltip="Table">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-              </svg>
-            </ToolbarButton>
+            <div className="relative">
+              <ToolbarButton onClick={() => setShowTableDialog(!showTableDialog)} active={showTableDialog} tooltip="Insert Table">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                </svg>
+              </ToolbarButton>
+
+              {showTableDialog && (
+                <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-3 z-50 w-44">
+                  <div className="text-[10px] font-semibold text-gray-700 mb-2">Insert Table</div>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <label className="text-[9px] text-gray-500 w-8">Rows:</label>
+                    <input type="number" min="1" max="30" value={tableDialogRows}
+                      onChange={e => setTableDialogRows(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="text-[9px] text-gray-500 w-8">Cols:</label>
+                    <input type="number" min="1" max="15" value={tableDialogCols}
+                      onChange={e => setTableDialogCols(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-14 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => { insertTable(tableDialogRows, tableDialogCols); setShowTableDialog(false); }}
+                      className="flex-1 px-2 py-1 text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded transition-colors"
+                    >Insert</button>
+                    <button
+                      onClick={() => setShowTableDialog(false)}
+                      className="px-2 py-1 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded transition-colors"
+                    >Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             <ToolbarButton onClick={insertHorizontalLine} tooltip="Line">
               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

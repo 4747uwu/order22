@@ -412,12 +412,12 @@ const Search = ({
         };
 
         // ✅ Only fetch if user can access these filters
-        if (['super_admin', 'admin', 'assignor'].includes(role)) {
+        if (['super_admin', 'admin', 'assignor', 'verifier'].includes(role)) {
             fetchFilterOptions();
         }
     }, [role]);
 
-    const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor'].includes(role);
+    const canAccessAdvancedFilters = ['super_admin', 'admin', 'assignor', 'verifier'].includes(role);
 
     return (
         <div className={`bg-white border-b ${themeColors.border} px-3 py-2.5`}>

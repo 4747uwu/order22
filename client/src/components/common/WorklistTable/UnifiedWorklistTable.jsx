@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
-import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, RotateCcw, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2, Printer, X } from 'lucide-react';
+import { Copy, UserPlus, Lock, Unlock, Edit, Clock, Download, Paperclip, MessageSquare, FileText, RotateCcw, Monitor, Eye, ChevronLeft, ChevronRight, CheckCircle, XCircle, Share2, Printer, X, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import AssignmentModal from '../../assigner/AssignmentModal';
 import StudyDetailedView from '../PatientDetailedView';
@@ -19,6 +19,7 @@ import sessionManager from '../../../services/sessionManager';
 import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
 import useWebSocket from '../../../hooks/useWebSocket';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
+import CompareStudiesModal from './CompareStudiesModal';
 
 
 
@@ -357,7 +358,7 @@ const getPriorityTag = (study, userRoles = [], userRole = '') => {
 };
 const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) => {
     const [formData, setFormData] = useState({
-        patientName: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
+        patientName: '', patientId: '', patientAge: '', patientGender: '', studyName: '', referringPhysician: '', accessionNumber: '', clinicalHistory: '', priority: 'NORMAL',
     });
     const [loading, setLoading] = useState(false);
 
@@ -380,6 +381,7 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) 
 
             setFormData({
                 patientName: study.patientName || study.patientInfo?.patientName || '',
+                patientId: study.patientId || study.patientInfo?.patientID || '',
                 patientAge: study.patientAge || study.patientInfo?.age || '',
                 patientGender: study.patientSex || study.patientInfo?.gender || '',
                 studyName: study.studyDescription || study.examDescription || '',
@@ -587,10 +589,14 @@ const PatientEditModal = ({ study, isOpen, onClose, onSave, onRefreshStudies }) 
                     {/* PATIENT INFO */}
                     <div className="mb-3">
                         <h3 className="text-[10px] font-bold text-gray-800 mb-1.5 uppercase">Patient Info</h3>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-4 gap-2">
                             <div>
                                 <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Name *</label>
                                 <input type="text" value={formData.patientName} onChange={(e) => setFormData(prev => ({ ...prev, patientName: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" required />
+                            </div>
+                            <div>
+                                <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Patient ID</label>
+                                <input type="text" value={formData.patientId} onChange={(e) => setFormData(prev => ({ ...prev, patientId: e.target.value }))} className="w-full px-1.5 py-1 text-[10px] font-semibold border border-gray-300 rounded focus:ring-1 focus:ring-gray-900 uppercase" />
                             </div>
                             <div>
                                 <label className="block text-[8px] font-medium text-gray-700 mb-0.5 uppercase">Age *</label>
@@ -1083,28 +1089,38 @@ const UnifiedStudyRow = ({
 
             const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
 
-            // ✅ USE navigateWithRestore TO CHECK 10-DAY THRESHOLD AND RESTORE IF NEEDED
-            await navigateWithRestore(
-                // Custom navigate function that opens in new tab
-                (path) => window.open(path, '_blank'),
-                reportingUrl,
-                study,
-                {
-                    daysThreshold: 10, // ✅ 10-day threshold for restore
-                    onRestoreStart: (study) => {
-                        console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
-                        toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
-                    },
-                    onRestoreComplete: (data) => {
-                        console.log(`✅ [OHIF Reporting] Restore completed:`, data);
-                        toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
-                    },
-                    onRestoreError: (error) => {
-                        console.error(`❌ [OHIF Reporting] Restore failed:`, error);
-                        toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
+            // ✅ Skip restore for verifiers and studies in advanced workflow states
+            const skipRestore = isVerifier ||
+                ['verification_pending', 'report_completed', 'final_report_downloaded']
+                    .includes(study.workflowStatus);
+
+            if (skipRestore) {
+                console.log(`⏭️ [Skip Restore] Skipping backup restore (isVerifier: ${isVerifier}, status: ${study.workflowStatus})`);
+                window.open(reportingUrl, '_blank');
+            } else {
+                // ✅ USE navigateWithRestore TO CHECK 10-DAY THRESHOLD AND RESTORE IF NEEDED
+                await navigateWithRestore(
+                    // Custom navigate function that opens in new tab
+                    (path) => window.open(path, '_blank'),
+                    reportingUrl,
+                    study,
+                    {
+                        daysThreshold: 10, // ✅ 10-day threshold for restore
+                        onRestoreStart: (study) => {
+                            console.log(`🔄 [OHIF Reporting] Restoring study: ${study.bharatPacsId}`);
+                            toast.loading(`Restoring study from backup...`, { id: `restore-report-${study._id}` });
+                        },
+                        onRestoreComplete: (data) => {
+                            console.log(`✅ [OHIF Reporting] Restore completed:`, data);
+                            toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: `restore-report-${study._id}` });
+                        },
+                        onRestoreError: (error) => {
+                            console.error(`❌ [OHIF Reporting] Restore failed:`, error);
+                            toast.error(`Restore failed: ${error}`, { id: `restore-report-${study._id}` });
+                        }
                     }
-                }
-            );
+                );
+            }
 
         } catch (error) {
             console.error('❌ [Error] OHIF reporting error:', error);
@@ -2321,6 +2337,7 @@ const UnifiedWorklistTable = ({
 
 
     const [multiAssignModal, setMultiAssignModal] = useState({ show: false });
+    const [compareStudiesModal, setCompareStudiesModal] = useState({ show: false, studies: [] });
 
     const handleMultiAssignSuccess = useCallback(() => {
         setMultiAssignModal({ show: false });
@@ -2420,6 +2437,16 @@ const UnifiedWorklistTable = ({
                             <UserPlus className="w-3 h-3" />
                             <span className="hidden sm:inline">Multi-Assign</span>
                             <span className="sm:hidden">Assign</span>
+                        </button>
+                    )}
+                    {selectedStudies.length >= 2 && selectedStudies.length <= 3 && (
+                        <button
+                            onClick={() => setCompareStudiesModal({ show: true, studies: studies.filter(s => selectedStudies.includes(s._id)) })}
+                            className="flex items-center gap-1 px-2 py-1 bg-indigo-500 text-white rounded hover:bg-indigo-400 transition-colors font-bold"
+                        >
+                            <Layers className="w-3 h-3" />
+                            <span className="hidden sm:inline">Compare Studies</span>
+                            <span className="sm:hidden">Compare</span>
                         </button>
                     )}
                     {(userAccountRoles.includes('verifier') || userAccountRoles.includes('admin') || userAccountRoles.includes('assignor')) && (
@@ -2845,6 +2872,13 @@ const UnifiedWorklistTable = ({
                     report={printModal.report}
                     reports={printModal.reports}  // ✅ THIS WAS MISSING
                     onClose={handleClosePrintModal}
+                />
+            )}
+            {compareStudiesModal.show && (
+                <CompareStudiesModal
+                    isOpen={compareStudiesModal.show}
+                    studies={compareStudiesModal.studies}
+                    onClose={() => setCompareStudiesModal({ show: false, studies: [] })}
                 />
             )}
         </div>
