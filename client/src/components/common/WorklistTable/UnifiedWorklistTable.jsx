@@ -1208,24 +1208,6 @@ const UnifiedStudyRow = ({
                         >
                             <Copy className="w-3.5 h-3.5 text-slate-500 hover:text-gray-900" />
                         </button>
-
-                        {/* ACTIVE VIEWERS INDICATOR AND TOOLTIP */}
-                        {hasActiveViewers && (
-                            <div className="relative group flex-shrink-0" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
-                                <Eye className="w-4 h-4 text-blue-600 animate-pulse mt-0.5" />
-                                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                                    {activeViewers.length}
-                                </span>
-
-                                {/* HOVER TOOLTIP WITH DETAILS */}
-                                <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
-                                    <div className="font-bold mb-1">👁️ Currently Viewing:</div>
-                                    {activeViewers.map((viewer) => (
-                                        <ViewerTimerRow key={viewer.userId} viewer={viewer} />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </td>
             )}
@@ -1317,6 +1299,20 @@ const UnifiedStudyRow = ({
                                 </span>
                             )}
                         </span>
+                    )}
+
+                    {/* ACTIVE VIEWERS INDICATOR */}
+                    {hasActiveViewers && (
+                        <div className="relative group inline-flex items-center gap-1 mt-0.5" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
+                            <Eye className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+                            <span className="text-[9px] font-bold text-blue-600">{activeViewers.length} viewing</span>
+                            <div className="absolute hidden group-hover:block bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
+                                <div className="font-bold mb-1">Currently Viewing:</div>
+                                {activeViewers.map((viewer) => (
+                                    <ViewerTimerRow key={viewer.userId} viewer={viewer} />
+                                ))}
+                            </div>
+                        </div>
                     )}
                 </td>
             )}

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ':*)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const c=fs.readFileSync\\('client/src/components/common/WorklistTable/WorklistTable.jsx','utf8'\\);const l=c.split\\('\\\\n'\\);for\\(let i=0;i<l.length;i++\\){if\\(l[i].includes\\('ResizableTableHeader'\\)&&!l[i].includes\\('isColumnVisible'\\)\\){console.log\\(\\(i+1\\)+': '+l[i].trim\\(\\).substring\\(0,100\\)\\);}};console.log\\('done'\\);\")",
+      "Bash(node -e \"const fs=require\\('fs'\\);const files=[['Admin','client/src/pages/admin/Dashboard.jsx'],['Assignor','client/src/pages/assigner/Dashboard.jsx'],['Doctor','client/src/pages/doctor/dashboard.jsx'],['Lab','client/src/pages/lab/Dashboard.jsx'],['Verifier','client/src/pages/verifier/dashboard.jsx']];const legacy=['checkbox','seriesCount','studyTime','uploadTime','caseStatus','workflowStatus'];files.forEach\\(\\([n,p]\\)=>{const c=fs.readFileSync\\(p,'utf8'\\);const section=c.substring\\(c.indexOf\\('getDefaultColumnConfig'\\)\\);const found=legacy.filter\\(k=>section.includes\\(k+':'\\)\\);console.log\\(n+': '+\\(found.length?'LEGACY: '+found.join\\(', '\\):'CLEAN'\\)\\);}\\);\")"
+    ]
+  }
+}

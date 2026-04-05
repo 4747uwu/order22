@@ -2,6 +2,7 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
 import DicomStudy from '../models/dicomStudyModel.js';
+import StudyViewLog from '../models/studyViewLogModel.js';
 import cookie from 'cookie';
 import dotenv from 'dotenv';
 import url from "url";
@@ -157,6 +158,7 @@ class WebSocketService {
             const connection = this.radiologistConnections.get(connectionId);
             if (connection?.currentlyViewingStudy) {
               this.notifyStudyClosed(connection.currentlyViewingStudy, user._id, user.fullName || user.email);
+              this.closeViewLog(connection.currentViewLogId);
             }
             this.radiologistConnections.delete(connectionId);
           } else {
@@ -225,13 +227,29 @@ class WebSocketService {
           studyId: message.studyId,
           mode: message.mode
         });
-        
+
         if (userRole === 'radiologist' || userRole === 'doctor_account' || userRole === 'verifier') {
           const { studyId, mode } = message;
           if (studyId) {
             console.log('✅ [WebSocket] Valid study_opened, notifying admins');
             this.notifyStudyOpened(studyId, connection.user._id, connection.user.fullName || connection.user.email, mode);
             connection.currentlyViewingStudy = studyId;
+
+            // Persist view log
+            try {
+              const viewLog = await StudyViewLog.create({
+                study: studyId,
+                user: connection.user._id,
+                userName: connection.user.fullName || connection.user.email,
+                userRole: connection.user.role,
+                mode: mode || 'viewing',
+                openedAt: new Date(),
+                organization: connection.user.organization
+              });
+              connection.currentViewLogId = viewLog._id;
+            } catch (err) {
+              console.error('❌ Error creating view log:', err.message);
+            }
           } else {
             console.log('❌ [WebSocket] No studyId in message');
           }
@@ -247,6 +265,10 @@ class WebSocketService {
           if (studyId) {
             this.notifyStudyClosed(studyId, connection.user._id, connection.user.fullName || connection.user.email);
             connection.currentlyViewingStudy = null;
+
+            // Finalize view log
+            await this.closeViewLog(connection.currentViewLogId);
+            connection.currentViewLogId = null;
           }
         }
         break;
@@ -282,6 +304,21 @@ class WebSocketService {
 
       default:
         console.log(`Unknown message type: ${message.type}`);
+    }
+  }
+
+  // Close an open view log entry with duration
+  async closeViewLog(viewLogId) {
+    if (!viewLogId) return;
+    try {
+      const log = await StudyViewLog.findById(viewLogId);
+      if (log && !log.closedAt) {
+        log.closedAt = new Date();
+        log.durationSeconds = Math.round((log.closedAt - log.openedAt) / 1000);
+        await log.save();
+      }
+    } catch (err) {
+      console.error('❌ Error closing view log:', err.message);
     }
   }
 

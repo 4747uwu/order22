@@ -407,14 +407,14 @@ const DoctorTemplates = () => {
                           className="flex-1 flex items-center justify-center gap-1 h-7 text-[11px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors">
                           <Eye className="w-3 h-3" /> View
                         </button>
-                        {template.templateScope === 'doctor_specific' && template.assignedDoctor?._id === currentUser._id && (
+                        {template.templateScope === 'doctor_specific' && (template.assignedDoctor?._id || template.assignedDoctor)?.toString() === currentUser._id?.toString() && (
                           <button onClick={() => handleEditTemplate(template)}
                             className="h-7 w-7 flex items-center justify-center text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
                             title="Edit template">
                             <Pencil className="w-3 h-3" />
                           </button>
                         )}
-                        {template.templateScope === 'doctor_specific' && template.assignedDoctor?._id === currentUser._id && (
+                        {template.templateScope === 'doctor_specific' && (template.assignedDoctor?._id || template.assignedDoctor)?.toString() === currentUser._id?.toString() && (
                           <button onClick={() => handleDeleteTemplate(template._id)}
                             className="h-7 w-7 flex items-center justify-center text-red-500 bg-red-50 hover:bg-red-100 rounded-lg transition-colors">
                             <Trash2 className="w-3 h-3" />

@@ -4,24 +4,10 @@ import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
 import Verifier from '../models/verifierModel.js';
 
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-const parseListParam = (param) => {
-    if (!param) return [];
-    if (Array.isArray(param)) return param.filter(Boolean);
-    return param.includes(',')
-        ? param.split(',').map(s => s.trim()).filter(Boolean)
-        : [param];
-};
-
-const parseObjectIdList = (param) =>
-    parseListParam(param)
-        .filter(id => mongoose.Types.ObjectId.isValid(id))
-        .map(id => new mongoose.Types.ObjectId(id));
-
 // ✅ UPDATED: More flexible base query for verifiers
 const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
     const user = req.user;
-
+    
     if (user.role !== 'verifier') {
         throw new Error('Access denied: Verifier role required');
     }
@@ -113,67 +99,44 @@ const buildVerifierBaseQuery = (req, workflowStatuses = null) => {
         if (filterEndDate) queryFilters[dateField].$lte = filterEndDate;
     }
 
-    // ✅ SEARCH - use $and to avoid overwriting existing $or
+    // ✅ SEARCH - no regex on clinicalHistory
     if (req.query.search) {
         const searchTerm = req.query.search.trim();
         const looksLikeId = /^[a-zA-Z0-9\-_.]+$/.test(searchTerm) && searchTerm.length <= 30;
 
-        if (!queryFilters.$and) queryFilters.$and = [];
         if (looksLikeId) {
-            queryFilters.$and.push({
-                $or: [
-                    { bharatPacsId: { $regex: `^${searchTerm}`, $options: 'i' } },
-                    { accessionNumber: { $regex: `^${searchTerm}`, $options: 'i' } },
-                    { 'patientInfo.patientID': { $regex: `^${searchTerm}`, $options: 'i' } },
-                    { 'patientInfo.patientName': { $regex: searchTerm, $options: 'i' } }
-                ]
-            });
+            queryFilters.$or = [
+                { bharatPacsId: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { accessionNumber: { $regex: `^${searchTerm}`, $options: 'i' } },
+                { 'patientInfo.patientID': { $regex: `^${searchTerm}`, $options: 'i' } }
+            ];
         } else {
             queryFilters.$text = { $search: searchTerm };
         }
     }
 
-    // ✅ MODALITY (multi-select or single)
-    const modalities = parseListParam(req.query.modalities);
-    if (modalities.length > 0) {
-        queryFilters.modalitiesInStudy = { $in: modalities };
-    } else if (req.query.modality && req.query.modality !== 'all') {
-        queryFilters.modalitiesInStudy = req.query.modality;
+    // ✅ MODALITY - single field, hits index
+    if (req.query.modality && req.query.modality !== 'all') {
+        queryFilters.modality = req.query.modality;
     }
 
-    // ✅ LAB (multi-select or single)
-    const labIds = parseObjectIdList(req.query.labs);
-    if (labIds.length > 0) {
-        queryFilters.sourceLab = { $in: labIds };
-    } else if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
+    // ✅ LAB override from query (admin viewing specific lab)
+    if (req.query.labId && req.query.labId !== 'all' && mongoose.Types.ObjectId.isValid(req.query.labId)) {
         if (labAccessMode === 'all' || assignedLabs.map(l => l.toString()).includes(req.query.labId)) {
             queryFilters.sourceLab = new mongoose.Types.ObjectId(req.query.labId);
         }
     }
 
-    // ✅ RADIOLOGIST (multi-select or single)
-    const radiologistIds = parseObjectIdList(req.query.radiologists);
-    if (radiologistIds.length > 0) {
-        queryFilters['assignment.assignedTo'] = { $in: radiologistIds };
-    } else if (req.query.radiologist && req.query.radiologist !== 'all' && mongoose.Types.ObjectId.isValid(req.query.radiologist)) {
+    // ✅ SPECIFIC RADIOLOGIST filter from query (override)
+    if (req.query.radiologist && req.query.radiologist !== 'all' && mongoose.Types.ObjectId.isValid(req.query.radiologist)) {
         const requestedRadId = new mongoose.Types.ObjectId(req.query.radiologist);
         if (assignedRadiologists.length === 0 || assignedRadiologists.map(r => r.toString()).includes(req.query.radiologist)) {
             queryFilters['assignment.assignedTo'] = requestedRadId;
         }
     }
 
-    // ✅ PRIORITY (multi-select or single)
-    const priorities = parseListParam(req.query.priorities);
-    if (priorities.length > 0) {
-        // Use $and to avoid overwriting existing $or from radiologist/lab binding
-        if (!queryFilters.$and) queryFilters.$and = [];
-        queryFilters.$and.push({
-            $or: [
-                { priority: { $in: priorities } },
-                { 'assignment.priority': { $in: priorities } }
-            ]
-        });
-    } else if (req.query.priority && req.query.priority !== 'all') {
+    // ✅ PRIORITY filter
+    if (req.query.priority && req.query.priority !== 'all') {
         queryFilters.priority = req.query.priority;
     }
 
@@ -453,7 +416,7 @@ export const verifyReport = async (req, res) => {
         console.log(`🔍 [Verify Report] User ${user.fullName} (${user.role}) is verifying study ${studyId} with approved=${approved}`);
 
         // ✅ MULTI-ROLE: Check if user has verifier role in accountRoles
-        const userRoles = user?.accountRoles?.length > 0 ? user.accountRoles : [user?.role];
+        const userRoles = user?.accountRoles || [user?.role];
         const hasVerifierRole = userRoles.includes('verifier');
         const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
 
@@ -750,11 +713,8 @@ export const startVerification = async (req, res) => {
         const { studyId } = req.params;
         const user = req.user;
 
-        const userRoles = user?.accountRoles?.length > 0 ? user.accountRoles : [user?.role];
-        const hasVerifierRole = userRoles.includes('verifier');
-        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
-        if (!user || (!hasVerifierRole && !hasAdminRole)) {
-            return res.status(403).json({ success: false, message: 'Access denied: Verifier, Admin, or Assignor role required' });
+        if (!user || user.role !== 'verifier') {
+            return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
         if (!mongoose.Types.ObjectId.isValid(studyId)) {
@@ -1089,11 +1049,8 @@ export const getReportForVerification = async (req, res) => {
             userRole: user.role
         });
 
-        const userRoles = user?.accountRoles?.length > 0 ? user.accountRoles : [user?.role];
-        const hasVerifierRole = userRoles.includes('verifier');
-        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
-        if (!user || (!hasVerifierRole && !hasAdminRole)) {
-            return res.status(403).json({ success: false, message: 'Access denied: Verifier, Admin, or Assignor role required' });
+        if (!user || user.role !== 'verifier') {
+            return res.status(403).json({ success: false, message: 'Access denied: Verifier role required' });
         }
 
         if (!mongoose.Types.ObjectId.isValid(studyId)) {
@@ -1289,40 +1246,18 @@ export const updateReportDuringVerification = async (req, res) => {
 
         console.log('📝 [Verifier Update] Starting report update during verification:', {
             studyId,
-            userId: user?._id,
-            userRole: user?.role,
-            userOrg: user?.organizationIdentifier,
-            accountRoles: user?.accountRoles,
-            accountRolesLength: user?.accountRoles?.length,
+            userId: user._id,
+            userRole: user.role,
+            userOrg: user.organizationIdentifier,
             contentLength: htmlContent?.length || 0,
-            maintainFinalized: maintainFinalizedStatus,
-            hasBody: !!req.body,
-            bodyKeys: Object.keys(req.body || {}),
-            reportId: reportId || 'none'
+            maintainFinalized: maintainFinalizedStatus
         });
 
-        // ✅ VALIDATION: Verifier or Admin role required
-        const userRoles = user?.accountRoles?.length > 0 ? user.accountRoles : [user?.role];
-        const hasVerifierRole = userRoles.includes('verifier');
-        const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
-        console.log('🔐 [Verifier Update] Role check:', {
-            primaryRole: user?.role,
-            accountRoles: user?.accountRoles,
-            resolvedUserRoles: userRoles,
-            hasVerifierRole,
-            hasAdminRole,
-            willAllow: hasVerifierRole || hasAdminRole
-        });
-        if (!user || (!hasVerifierRole && !hasAdminRole)) {
-            console.log('❌ [Verifier Update] ACCESS DENIED:', {
-                userExists: !!user,
-                role: user?.role,
-                accountRoles: user?.accountRoles,
-                resolvedRoles: userRoles
-            });
-            return res.status(403).json({
-                success: false,
-                message: 'Access denied: Verifier, Admin, or Assignor role required'
+        // ✅ VALIDATION: Verifier role required
+        if (!user || user.role !== 'verifier') {
+            return res.status(403).json({ 
+                success: false, 
+                message: 'Access denied: Verifier role required' 
             });
         }
 
@@ -1570,7 +1505,7 @@ export const bulkVerifyReports = async (req, res) => {
             return res.status(400).json({ success: false, message: 'studyIds array is required' });
         }
 
-        const userRoles = user?.accountRoles?.length > 0 ? user.accountRoles : [user?.role];
+        const userRoles = user?.accountRoles || [user?.role];
         const hasVerifierRole = userRoles.includes('verifier');
         const hasAdminRole = userRoles.includes('admin') || userRoles.includes('assignor');
 

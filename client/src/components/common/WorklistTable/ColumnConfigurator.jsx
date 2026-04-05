@@ -3,9 +3,14 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 
 // ...existing code...
 
+// Maps DB visibleColumns keys → local columnConfig keys
+// All keys are now canonical (matching unifiedWorklistColumns.js IDs)
+// Legacy keys are mapped to their canonical equivalents for backward compatibility
 const DB_TO_CONFIG_KEY_MAP = {
-  'checkbox'           : 'checkbox',
+  // Canonical keys (identity mapping)
+  'selection'          : 'selection',
   'bharatPacsId'       : 'bharatPacsId',
+  'organization'       : 'organization',
   'centerName'         : 'centerName',
   'location'           : 'location',
   'timeline'           : 'timeline',
@@ -15,22 +20,27 @@ const DB_TO_CONFIG_KEY_MAP = {
   'modality'           : 'modality',
   'viewOnly'           : 'viewOnly',
   'reporting'          : 'reporting',
-  'studySeriesImages'  : 'studySeriesImages',   // ✅ FIX: was 'seriesCount'
+  'studySeriesImages'  : 'studySeriesImages',
   'accessionNumber'    : 'accessionNumber',
   'referralDoctor'     : 'referralDoctor',
   'clinicalHistory'    : 'clinicalHistory',
-  'studyDateTime'      : 'studyDateTime',        // ✅ FIX: was 'studyTime'
-  'uploadDateTime'     : 'uploadDateTime',       // ✅ FIX: was 'uploadTime'
-  'assignedRadiologist': 'assignedRadiologist',  // ✅ FIX: was 'radiologist'
+  'studyDateTime'      : 'studyDateTime',
+  'uploadDateTime'     : 'uploadDateTime',
+  'assignedRadiologist': 'assignedRadiologist',
   'studyLock'          : 'studyLock',
-  'status'             : 'status',               // ✅ FIX: was 'caseStatus'
+  'status'             : 'status',
+  'printCount'         : 'printCount',
+  'rejectionReason'    : 'rejectionReason',
   'assignedVerifier'   : 'assignedVerifier',
   'verifiedDateTime'   : 'verifiedDateTime',
   'actions'            : 'actions',
-  'rejectionReason'    : 'rejectionReason',
-  'printCount'         : 'printCount',           // ✅ ADD: was missing entirely
-  'selection'          : 'selection',            // ✅ ADD: was missing entirely
-  'organization'       : 'organization',         // ✅ ADD: was missing entirely
+  'checkbox'           : 'selection',
+  // Legacy key aliases (old dashboard configs may still use these)
+  'seriesCount'        : 'studySeriesImages',
+  'studyTime'          : 'studyDateTime',
+  'uploadTime'         : 'uploadDateTime',
+  'radiologist'        : 'assignedRadiologist',
+  'caseStatus'         : 'status',
 };
 
 // ...existing code...

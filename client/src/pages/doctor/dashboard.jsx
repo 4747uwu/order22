@@ -71,31 +71,31 @@ const DoctorDashboard = () => {
 
   
   const getDefaultColumnConfig = () => ({
-   
-    checkbox:             { visible: false, order: 1,  label: 'Select' },
-    bharatPacsId:         { visible: true,  order: 2,  label: 'BP ID' },           // DB: bharatPacsId
-    centerName:           { visible: true,  order: 3,  label: 'Center' },           // DB: centerName
-    location:             { visible: false, order: 4,  label: 'Location' },         // DB: location
-    timeline:             { visible: true,  order: 5,  label: 'Timeline' },         // DB: timeline
-    patientName:          { visible: true,  order: 6,  label: 'Patient Name' },     // DB: patientName
-    patientId:            { visible: true,  order: 7,  label: 'Patient ID' },       // DB: patientId
-    ageGender:            { visible: true,  order: 8,  label: 'Age/Sex' },          // DB: ageGender
-    modality:             { visible: true,  order: 9,  label: 'Modality' },         // DB: modality
-    viewOnly:             { visible: true,  order: 10, label: 'View' },             
-    reporting:             { visible: true,  order: 24, label: 'reporting' },             
-    seriesCount:          { visible: true,  order: 11, label: 'Series/Images' },    // DB: studySeriesImages
-    accessionNumber:      { visible: false, order: 12, label: 'Acc. No.' },         // DB: accessionNumber
-    referralDoctor:       { visible: false, order: 13, label: 'Referral Dr.' },     // DB: referralDoctor
-    clinicalHistory:      { visible: true,  order: 14, label: 'History' },          // DB: clinicalHistory
-    studyTime:            { visible: true,  order: 15, label: 'Study Date/Time' },  // DB: studyDateTime
-    uploadTime:           { visible: true,  order: 16, label: 'Upload Date/Time' }, // DB: uploadDateTime
-    radiologist:          { visible: false, order: 17, label: 'Radiologist' },      // DB: assignedRadiologist
-    studyLock:            { visible: true,  order: 18, label: 'Lock/Unlock' },      // DB: studyLock
-    caseStatus:           { visible: true,  order: 19, label: 'Status' },           // DB: status
-    assignedVerifier:     { visible: true,  order: 20, label: 'Finalised By' },     // DB: assignedVerifier
-    verifiedDateTime:     { visible: true,  order: 21, label: 'Finalised Date' },   // DB: verifiedDateTime
-    actions:              { visible: true,  order: 22, label: 'Actions' },          // DB: actions
-    rejectionReason:      { visible: true,  order: 23, label: 'Rejection Reason' }, // DB: rejectionReason
+    selection:           { visible: false, order: 1,  label: 'Select' },
+    bharatPacsId:        { visible: true,  order: 2,  label: 'BP ID' },
+    centerName:          { visible: true,  order: 3,  label: 'Center' },
+    location:            { visible: false, order: 4,  label: 'Location' },
+    timeline:            { visible: true,  order: 5,  label: 'Timeline' },
+    patientName:         { visible: true,  order: 6,  label: 'Patient Name' },
+    patientId:           { visible: true,  order: 7,  label: 'Patient ID' },
+    ageGender:           { visible: true,  order: 8,  label: 'Age/Sex' },
+    modality:            { visible: true,  order: 9,  label: 'Modality' },
+    viewOnly:            { visible: true,  order: 10, label: 'View' },
+    reporting:           { visible: true,  order: 11, label: 'Reporting' },
+    studySeriesImages:   { visible: true,  order: 12, label: 'Series/Images' },
+    accessionNumber:     { visible: false, order: 13, label: 'Acc. No.' },
+    referralDoctor:      { visible: false, order: 14, label: 'Referral Dr.' },
+    clinicalHistory:     { visible: true,  order: 15, label: 'History' },
+    studyDateTime:       { visible: true,  order: 16, label: 'Study Date/Time' },
+    uploadDateTime:      { visible: true,  order: 17, label: 'Upload Date/Time' },
+    assignedRadiologist: { visible: false, order: 18, label: 'Radiologist' },
+    studyLock:           { visible: true,  order: 19, label: 'Lock/Unlock' },
+    status:              { visible: true,  order: 20, label: 'Status' },
+    printCount:          { visible: false, order: 21, label: 'Print Report' },
+    rejectionReason:     { visible: true,  order: 22, label: 'Rejection Reason' },
+    assignedVerifier:    { visible: true,  order: 23, label: 'Finalised By' },
+    verifiedDateTime:    { visible: true,  order: 24, label: 'Finalised Date/Time' },
+    actions:             { visible: true,  order: 25, label: 'Actions' },
   });
 
 

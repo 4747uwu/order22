@@ -19,7 +19,8 @@ import {
   CheckCircle,
   ArrowLeft,
   Power,
-  PowerOff
+  PowerOff,
+  FileText
 } from 'lucide-react';
 
 const SuperAdminDashboard = () => {
@@ -275,6 +276,13 @@ const SuperAdminDashboard = () => {
 
   // Navbar actions for list view
   const listViewNavbarActions = [
+    {
+      label: 'Global Templates',
+      icon: FileText,
+      onClick: () => navigate('/superadmin/templates'),
+      variant: 'secondary',
+      tooltip: 'Manage cross-organization templates'
+    },
     {
       label: 'Create Organization',
       icon: Plus,

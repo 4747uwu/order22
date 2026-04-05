@@ -1177,9 +1177,11 @@ const StudyRow = ({
   return (
     <tr className={rowClasses}>
       {/* 1. SELECTION */}
-      <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('selection')}px` }}>
-        <input type="checkbox" checked={isSelected} onChange={() => onSelectStudy(study._id)} className="w-3.5 h-3.5 rounded border-slate-300 text-slate-800 focus:ring-slate-500 mt-1" />
-      </td>
+      {isColumnVisible('selection') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('selection')}px` }}>
+          <input type="checkbox" checked={isSelected} onChange={() => onSelectStudy(study._id)} className="w-3.5 h-3.5 rounded border-slate-300 text-slate-800 focus:ring-slate-500 mt-1" />
+        </td>
+      )}
 
       {/* 2. BHARAT PACS ID */}
       {isColumnVisible('bharatPacsId') && (
@@ -1191,18 +1193,6 @@ const StudyRow = ({
             <button onClick={() => copyToClipboard(study.bharatPacsId !== 'N/A' ? study.bharatPacsId : study._id, 'BP ID')} className="p-0.5 sm:p-1 hover:bg-gray-200 rounded-md transition-colors flex-shrink-0">
               <Copy className="w-3 h-3 text-slate-500 hover:text-gray-900" />
             </button>
-            {hasActiveViewers && (
-              <div className="relative group flex-shrink-0" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
-                <Eye className="w-3.5 h-3.5 text-blue-600 animate-pulse mt-0.5" />
-                <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
-                  {activeViewers.length}
-                </span>
-                <div className="absolute hidden group-hover:block bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
-                  <div className="font-bold mb-1">👁️ Currently Viewing:</div>
-                  {activeViewers.map((viewer) => <ViewerTimerRow key={viewer.userId} viewer={viewer} />)}
-                </div>
-              </div>
-            )}
           </div>
         </td>
       )}
@@ -1228,11 +1218,13 @@ const StudyRow = ({
       )}
 
       {/* 5. TIMELINE */}
-      <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('timeline')}px` }}>
-        <button onClick={() => onShowTimeline?.(study)} className="p-1 sm:p-1.5 hover:bg-gray-200 rounded-lg transition-all hover:scale-110 mx-auto">
-          <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700" />
-        </button>
-      </td>
+      {isColumnVisible('timeline') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('timeline')}px` }}>
+          <button onClick={() => onShowTimeline?.(study)} className="p-1 sm:p-1.5 hover:bg-gray-200 rounded-lg transition-all hover:scale-110 mx-auto">
+            <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700" />
+          </button>
+        </td>
+      )}
 
       {/* 6. PATIENT NAME / UHID */}
       {isColumnVisible('patientName') && (
@@ -1285,6 +1277,18 @@ const StudyRow = ({
               )}
             </span>
           )}
+
+          {/* ACTIVE VIEWERS INDICATOR */}
+          {hasActiveViewers && (
+            <div className="relative group inline-flex items-center gap-1 mt-0.5" title={`Viewing: ${activeViewers.map(v => v.userName).join(', ')}`}>
+              <Eye className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+              <span className="text-[9px] font-bold text-blue-600">{activeViewers.length} viewing</span>
+              <div className="absolute hidden group-hover:block bottom-full left-0 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded whitespace-nowrap z-50 shadow-lg border border-gray-700">
+                <div className="font-bold mb-1">Currently Viewing:</div>
+                {activeViewers.map((viewer) => <ViewerTimerRow key={viewer.userId} viewer={viewer} />)}
+              </div>
+            </div>
+          )}
         </td>
       )}
 
@@ -1309,7 +1313,8 @@ const StudyRow = ({
       )}
 
       {/* 9. VIEW & REPORTING */}
-      <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
+      {isColumnVisible('viewOnly') && (
+        <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('viewOnly')}px` }}>
         <div className="relative flex items-center justify-center gap-0.5">
           <button onClick={handleViewOnlyClick} className="p-1 sm:p-1.5 hover:bg-gray-100 rounded-lg transition-all group hover:scale-110" title={`View Only — ${selectedViewer === 'viewer2' ? 'Viewer 2' : 'Viewer 1'}`}>
             <Eye className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-700 group-hover:text-gray-900" />
@@ -1337,6 +1342,7 @@ const StudyRow = ({
           </div>
         </div>
       </td>
+      )}
 
       {isColumnVisible('reporting') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('reporting')}px` }}>
@@ -1384,7 +1390,7 @@ const StudyRow = ({
       )}
 
       {/* 10. SERIES/IMAGES */}
-      {isColumnVisible('seriesCount') && (
+      {isColumnVisible('studySeriesImages') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
           <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
           <div className="text-[10px] sm:text-xs font-semibold text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
@@ -1428,13 +1434,13 @@ const StudyRow = ({
       )}
 
       {/* 14 & 15. DATES */}
-      {isColumnVisible('studyTime') && (
+      {isColumnVisible('studyDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
           <div className="text-[9px] sm:text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.studyDate)}</div>
           <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{formatTime(study.studyTime) || '-'}</div>
         </td>
       )}
-      {isColumnVisible('uploadTime') && (
+      {isColumnVisible('uploadDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
           <div className="text-[9px] sm:text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.uploadDate || study.createdAt)}</div>
           <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
@@ -1442,7 +1448,7 @@ const StudyRow = ({
       )}
 
       {/* 16. RADIOLOGIST */}
-      {isColumnVisible('radiologist') && (
+      {isColumnVisible('assignedRadiologist') && (
         <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
           <div className="relative">
             <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search..."} disabled={isLocked} className={`w-full px-1.5 py-1 text-[10px] sm:text-xs border rounded focus:ring-1 focus:ring-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium' : 'bg-white border-slate-200'}`} />
@@ -1494,7 +1500,7 @@ const StudyRow = ({
       )}
 
       {/* 18. STATUS */}
-      {isColumnVisible('caseStatus') && (
+      {isColumnVisible('status') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-slate-200 align-middle" style={{ width: `${getColumnWidth('status')}px` }}>
           <div className="flex flex-col items-center gap-1">
             <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-medium whitespace-normal break-words leading-tight ${getStatusColor(study.workflowStatus)}`}>
@@ -1644,12 +1650,12 @@ const StudyRow = ({
 
 
       {/* 20 & 21. VERIFIED INFO */}
-      {isColumnVisible('caseStatus') && (
+      {isColumnVisible('assignedVerifier') && (
         <td className="px-1.5 py-2 text-center sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('assignedVerifier')}px` }}>
           <div className="text-[9px] sm:text-[10px] text-slate-700 whitespace-normal break-words leading-tight">{typeof study.verifier === 'string' ? study.verifier : study.verifier?.fullName || study.verifier?.email || study.reportInfo?.verificationInfo?.verifiedBy?.name || study.verifiedBy || '-'}</div>
         </td>
       )}
-      {isColumnVisible('caseStatus') && (
+      {isColumnVisible('verifiedDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
           <div className="text-[9px] font-medium text-slate-800 whitespace-nowrap">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
           <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
@@ -2143,30 +2149,30 @@ const WorklistTable = ({
           <thead className="sticky top-0 z-10 bg-white">
             <tr className={`text-[10px] sm:text-xs font-bold bg-gradient-to-r ${headerColor?.gradient || 'from-gray-800 via-gray-900 to-black'} ${headerColor?.textColor || 'text-white'} shadow-lg`}>
               {/* Note: I'm leaving the ResizableTableHeader widths intact as they rely on your hooks/constants */}
-              <ResizableTableHeader columnId="selection" label="" width={getColumnWidth('selection')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.maxWidth}>
+              {isColumnVisible('selection') && <ResizableTableHeader columnId="selection" label="" width={getColumnWidth('selection')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.SELECTION.maxWidth}>
                 <input type="checkbox" checked={studies.length > 0 && selectedStudies.length === studies.length} onChange={(e) => onSelectAll?.(e.target.checked)} className="w-3.5 h-3.5 rounded border-white/30" />
-              </ResizableTableHeader>
+              </ResizableTableHeader>}
 
               {isColumnVisible('bharatPacsId') && <ResizableTableHeader columnId="bharatPacsId" label={<>BHARAT<br />PACS ID</>} width={getColumnWidth('bharatPacsId')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.BHARAT_PACS_ID.maxWidth} />}
               {(userRoles.includes('super_admin') || userRole === 'super_admin') && <ResizableTableHeader columnId="organization" label="ORGANIZATION" width={getColumnWidth('organization')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.ORGANIZATION.maxWidth} />}
               {isColumnVisible('centerName') && <ResizableTableHeader columnId="centerName" label={<>CENTER<br />NAME</>} width={getColumnWidth('centerName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
               {isColumnVisible('location') && <ResizableTableHeader columnId="location" label={<>Location<br />NAME</>} width={getColumnWidth('location')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
-              <ResizableTableHeader columnId="timeline" label="" width={getColumnWidth('timeline')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}><Clock className="w-4 h-4 mx-auto" /></ResizableTableHeader>
+              {isColumnVisible('timeline') && <ResizableTableHeader columnId="timeline" label="" width={getColumnWidth('timeline')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}><Clock className="w-4 h-4 mx-auto" /></ResizableTableHeader>}
               {isColumnVisible('patientName') && <ResizableTableHeader columnId="patientName" label={<>PT NAME</>} width={getColumnWidth('patientName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth} />}
               {isColumnVisible('ageGender') && <ResizableTableHeader columnId="ageGender" label={<>AGE/<br />SEX</>} width={getColumnWidth('ageGender')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth} />}
               {isColumnVisible('modality') && <ResizableTableHeader columnId="modality" label="MODALITY" width={getColumnWidth('modality')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth} />}
-              <ResizableTableHeader columnId="viewOnly" label="VIEW" width={getColumnWidth('viewOnly')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}><Eye className="w-4 h-4 mx-auto" /></ResizableTableHeader>
-              <ResizableTableHeader columnId="Reporting" label="Reporting" width={getColumnWidth('viewOnly')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}><Monitor className="w-4 h-4 mx-auto text-emerald-400" /></ResizableTableHeader>
-              {isColumnVisible('seriesCount') && <ResizableTableHeader columnId="studySeriesImages" label={<>SERIES/<br />IMAGES</>} width={getColumnWidth('studySeriesImages')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth} />}
+              {isColumnVisible('viewOnly') && <ResizableTableHeader columnId="viewOnly" label="VIEW" width={getColumnWidth('viewOnly')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.VIEW_ONLY.maxWidth}><Eye className="w-4 h-4 mx-auto" /></ResizableTableHeader>}
+              {isColumnVisible('reporting') && <ResizableTableHeader columnId="reporting" label="REPORTING" width={getColumnWidth('reporting')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.REPORTING.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.REPORTING.maxWidth}><Monitor className="w-4 h-4 mx-auto text-emerald-400" /></ResizableTableHeader>}
+              {isColumnVisible('studySeriesImages') && <ResizableTableHeader columnId="studySeriesImages" label={<>SERIES/<br />IMAGES</>} width={getColumnWidth('studySeriesImages')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_SERIES_IMAGES.maxWidth} />}
               {isColumnVisible('patientId') && <ResizableTableHeader columnId="patientId" label="PT ID" width={getColumnWidth('patientId')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_ID.maxWidth} />}
               {isColumnVisible('referralDoctor') && <ResizableTableHeader columnId="referralDoctor" label={<>REFERRAL<br />DOCTOR</>} width={getColumnWidth('referralDoctor')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.REFERRAL_DOCTOR.maxWidth} />}
               {isColumnVisible('clinicalHistory') && <ResizableTableHeader columnId="clinicalHistory" label={<>CLINICAL<br />HISTORY</>} width={getColumnWidth('clinicalHistory')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth} />}
-              {isColumnVisible('studyTime') && <ResizableTableHeader columnId="studyDateTime" label={<>STUDY<br />DATE/TIME</>} width={getColumnWidth('studyDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth} />}
-              {isColumnVisible('uploadTime') && <ResizableTableHeader columnId="uploadDateTime" label={<>UPLOAD<br />DATE/TIME</>} width={getColumnWidth('uploadDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth} />}
-              {isColumnVisible('radiologist') && <ResizableTableHeader columnId="assignedRadiologist" label="RADIOLOGIST" width={getColumnWidth('assignedRadiologist')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth} />}
+              {isColumnVisible('studyDateTime') && <ResizableTableHeader columnId="studyDateTime" label={<>STUDY<br />DATE/TIME</>} width={getColumnWidth('studyDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth} />}
+              {isColumnVisible('uploadDateTime') && <ResizableTableHeader columnId="uploadDateTime" label={<>UPLOAD<br />DATE/TIME</>} width={getColumnWidth('uploadDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth} />}
+              {isColumnVisible('assignedRadiologist') && <ResizableTableHeader columnId="assignedRadiologist" label="RADIOLOGIST" width={getColumnWidth('assignedRadiologist')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth} />}
               {isColumnVisible('studyLock') && <ResizableTableHeader columnId="studyLock" label={<>LOCK/<br />UNLOCK</>} width={getColumnWidth('studyLock')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth} />}
 
-              {isColumnVisible('studyLock') && <ResizableTableHeader columnId="status" label="STATUS" width={getColumnWidth('status')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth} />}
+              {isColumnVisible('status') && <ResizableTableHeader columnId="status" label="STATUS" width={getColumnWidth('status')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth} />}
 
 
 

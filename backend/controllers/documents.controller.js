@@ -20,11 +20,12 @@ export const getStudyReportingInfo = async (req, res) => {
                 }
             })
             .select(`
-                _id orthancStudyID studyInstanceUID accessionNumber workflowStatus 
-                modality modalitiesInStudy studyDescription examDescription 
-                seriesCount instanceCount studyDate studyTime createdAt 
-                patientId preProcessedDownload clinicalHistory referringPhysician 
+                _id orthancStudyID studyInstanceUID accessionNumber workflowStatus
+                modality modalitiesInStudy studyDescription examDescription
+                seriesCount instanceCount studyDate studyTime createdAt
+                patientId preProcessedDownload clinicalHistory referringPhysician
                 referringPhysicianName caseType assignment priority
+                patientInfo age gender
             `)
             .lean();
         
@@ -118,8 +119,8 @@ export const getStudyReportingInfo = async (req, res) => {
             patientId: study.patientId || patient.patientID || 'N/A',
             patientName: patientName,
             fullName: patientName,
-            age: patient.age || 'N/A',
-            gender: patient.gender || 'N/A',
+            age: patient.age || study.patientInfo?.age || study.age || 'N/A',
+            gender: patient.gender || study.patientInfo?.gender || study.gender || 'N/A',
             dateOfBirth: patient.dateOfBirth || 'N/A',
             clinicalHistory: clinicalHistory
         };

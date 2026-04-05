@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
-import { 
-  Globe, 
+import {
+  Globe,
   ChevronDown,
   Plus,
   Search,
@@ -13,7 +13,9 @@ import {
   Bell,
   Menu,
   X,
-  Copy
+  Copy,
+  Download,
+  Monitor
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
 import DoctorProfileModal from '../doctor/DoctorProfileModal';
@@ -46,6 +48,7 @@ const Navbar = ({
   const [showProfileModal, setShowProfileModal] = useState(false); // ✅ ADD
   const [showManualStudyModal, setShowManualStudyModal] = useState(false); // ✅ ADD
   const [showSettingsModal, setShowSettingsModal] = useState(false); // ✅ ADD
+  const [showRouterModal, setShowRouterModal] = useState(false);
 
   const orgDropdownRef = useRef(null);
   const profileDropdownRef = useRef(null);
@@ -167,6 +170,7 @@ const Navbar = ({
   // ✅ ADD: Settings access check (same logic as Search.jsx)
   const role = (currentUser?.role || '').toString().toLowerCase();
   const hasSettingsAccess = ['admin', 'super_admin', 'group_id'].includes(role);
+  const isLabStaff = currentUser?.role === 'lab_staff' || currentUser?.accountRoles?.includes('lab_staff');
 
   return (
     <>
@@ -253,6 +257,18 @@ const Navbar = ({
                 >
                   <Settings className="h-3 w-3" />
                   <span>Settings</span>
+                </button>
+              )}
+
+              {/* Router EXE Download - lab staff */}
+              {isLabStaff && (
+                <button
+                  onClick={() => setShowRouterModal(true)}
+                  className="hidden md:flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors border border-gray-200"
+                  title="Download Router EXE"
+                >
+                  <Download className="h-3 w-3" />
+                  <span>Router EXE</span>
                 </button>
               )}
 
@@ -433,6 +449,51 @@ const Navbar = ({
           onNavigate={(path) => { window.location.href = path; }}
           theme="default"
         />
+      )}
+
+      {/* Router EXE Download Modal */}
+      {showRouterModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowRouterModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl border border-gray-200 w-full max-w-sm mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 bg-gray-900 rounded-t-xl">
+              <div className="flex items-center gap-2">
+                <Monitor className="h-4 w-4 text-white" />
+                <h3 className="text-sm font-bold text-white uppercase">Download Router EXE</h3>
+              </div>
+              <button onClick={() => setShowRouterModal(false)} className="p-1 hover:bg-gray-700 rounded transition-colors">
+                <X className="h-4 w-4 text-white" />
+              </button>
+            </div>
+            <div className="p-5">
+              {(() => {
+                const ua = navigator.userAgent || '';
+                const is64 = /x86_64|x86-64|Win64|x64|amd64|WOW64/.test(ua);
+                return (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-200">
+                      <Monitor className="h-4 w-4 text-gray-600" />
+                      <div>
+                        <div className="text-[11px] text-gray-500 uppercase font-medium">Detected System</div>
+                        <div className="text-sm font-bold text-gray-900">{is64 ? '64-bit' : '32-bit'}</div>
+                      </div>
+                    </div>
+                    <a
+                      href={is64
+                        ? 'https://drive.google.com/file/d/17eF1dPEDNNR--qMKLeA2SVlmjmfMV1pv/view?usp=sharing'
+                        : 'https://drive.google.com/file/d/1wmHCoIwiAkuTEm8mZylTGN5Wo9XJHDRo/view?usp=sharing'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-colors shadow-sm"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download for {is64 ? '64-bit' : '32-bit'}
+                    </a>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
       )}
     </>
   );

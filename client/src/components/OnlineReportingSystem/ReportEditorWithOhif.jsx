@@ -118,6 +118,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
   const [showTableDialog, setShowTableDialog] = useState(false);
   const [tableDialogRows, setTableDialogRows] = useState(3);
   const [tableDialogCols, setTableDialogCols] = useState(3);
+  const [showLineSpacingMenu, setShowLineSpacingMenu] = useState(false);
 
   // When content prop changes, update the editor's view
   useEffect(() => {
@@ -172,29 +173,33 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     });
   };
 
-  // ✅ FIXED: Enhanced command wrapper with proper focus restoration
+  // ✅ FIXED: Enhanced command wrapper — focus first, then exec, don't force-restore range
   const applyCommand = (command, value = null) => {
-    // Save selection before executing command
-    const selection = window.getSelection();
-    const range = selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
-    
-    document.execCommand(command, false, value);
-    
-    // Restore focus and selection
     if (contentEditableRef.current) {
       contentEditableRef.current.focus();
-      if (range) {
-        try {
-          selection.removeAllRanges();
-          selection.addRange(range);
-        } catch (e) {
-          // Ignore errors
-        }
-      }
     }
-    
+
+    // Restore saved selection if browser lost it (e.g. toolbar click stole focus)
+    const sel = window.getSelection();
+    if ((!sel || sel.rangeCount === 0) && savedRangeRef.current) {
+      try {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      } catch {}
+    }
+
+    document.execCommand(command, false, value);
+
+    // Save the new selection position after command
+    saveSelection();
+
     // Update button states
     setTimeout(updateToolStates, 10);
+
+    // Trigger change
+    setTimeout(() => {
+      if (contentEditableRef.current) onChange(contentEditableRef.current.innerHTML);
+    }, 10);
   };
 
   // ✅ FIXED: Properly working font size change
@@ -347,6 +352,58 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     document.execCommand('insertHTML', false, tableHTML);
   };
 
+  // Apply line spacing to selected blocks or whole editor
+  const applyLineSpacing = (value) => {
+    setLineSpacing(value);
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !contentEditableRef.current) return;
+
+    const range = sel.getRangeAt(0);
+
+    // If nothing is selected (collapsed cursor), apply to the block the cursor is in
+    // If text is selected, apply to all block-level ancestors in the selection
+    const getBlockParent = (node) => {
+      let n = node.nodeType === 3 ? node.parentElement : node;
+      while (n && n !== contentEditableRef.current) {
+        const display = window.getComputedStyle(n).display;
+        if (display === 'block' || display === 'list-item' || n.tagName === 'P' || n.tagName === 'DIV' || n.tagName === 'LI' || n.tagName === 'H1' || n.tagName === 'H2' || n.tagName === 'H3') {
+          return n;
+        }
+        n = n.parentElement;
+      }
+      return contentEditableRef.current;
+    };
+
+    const blocks = new Set();
+
+    if (range.collapsed) {
+      // Cursor only — apply to current block
+      blocks.add(getBlockParent(range.startContainer));
+    } else {
+      // Walk through all nodes in the selection range
+      const walker = document.createTreeWalker(
+        range.commonAncestorContainer,
+        NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT,
+        { acceptNode: (node) => range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT }
+      );
+      let node = walker.currentNode;
+      while (node) {
+        blocks.add(getBlockParent(node));
+        node = walker.nextNode();
+      }
+    }
+
+    blocks.forEach((block) => {
+      if (block) block.style.lineHeight = value;
+    });
+
+    // Trigger content change
+    setTimeout(() => {
+      if (contentEditableRef.current) onChange(contentEditableRef.current.innerHTML);
+    }, 10);
+  };
+
   // Insert horizontal line
   const insertHorizontalLine = () => {
     document.execCommand('insertHTML', false, '<hr style="border: none; border-top: 1px solid #ddd; margin: 15px 0;">');
@@ -408,6 +465,12 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             e.preventDefault();
             setIsPreviewMode(!isPreviewMode);
             break;
+          case 'z':
+            // Let browser handle undo natively (don't preventDefault)
+            break;
+          case 'y':
+            // Let browser handle redo natively
+            break;
         }
       }
       
@@ -421,18 +484,18 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isPreviewMode, showFindReplace]);
 
-  // ✅ SUPER COMPACT: Tiny toolbar button
   const ToolbarButton = ({ onClick, active, children, tooltip, className = "", disabled = false }) => (
     <button
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={tooltip}
       disabled={disabled}
       className={`
-        flex items-center justify-center px-1.5 py-0.5 rounded text-[11px] font-medium
+        flex items-center justify-center w-7 h-7 rounded text-sm font-medium
         transition-all duration-100
-        ${active 
-          ? 'bg-blue-100 text-blue-700 border border-blue-300' 
-          : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+        ${active
+          ? 'bg-blue-100 text-blue-700 border border-blue-300'
+          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
         }
         ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
         ${className}
@@ -443,10 +506,9 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
   );
 
   const ToolbarSeparator = () => (
-    <div className="w-px h-4 bg-gray-300 mx-0.5"></div>
+    <div className="w-px h-5 bg-gray-300 mx-0.5"></div>
   );
 
-  // ✅ SUPER COMPACT: No labels, smaller gaps
   const ToolbarGroup = ({ children }) => (
     <div className="flex items-center gap-0.5 bg-gray-50 rounded p-0.5">
       {children}
@@ -464,12 +526,12 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
       }`}>
         
         {/* Ultra compact toolbar */}
-        <div className="px-2 py-1 flex flex-wrap items-center gap-1 text-[10px]">
+        <div className="px-2 py-1.5 flex flex-wrap items-center gap-1 text-[11px]">
           {/* Font Controls */}
           <select
             value={fontFamily}
             onChange={(e) => applyFontFamily(e.target.value)}
-            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-32"
+            className="px-1 py-1 bg-white border border-gray-300 rounded text-[11px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-36"
             title="Font"
           >
             <option value="Arial">Arial</option>
@@ -497,7 +559,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           <select
             value={fontSize}
             onChange={(e) => applyFontSize(e.target.value)}
-            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-12"
+            className="px-1 py-1 bg-white border border-gray-300 rounded text-[11px] focus:ring-1 focus:ring-blue-400 focus:border-blue-400 w-14"
             title="Size"
           >
             <option value="8pt">8</option>
@@ -513,30 +575,52 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
 
           <ToolbarSeparator />
 
+          {/* Undo / Redo */}
+          <ToolbarGroup>
+            <ToolbarButton onClick={() => applyCommand('undo')} tooltip="Undo (Ctrl+Z)">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a5 5 0 015 5v0a5 5 0 01-5 5H10M3 10l4-4M3 10l4 4" />
+              </svg>
+            </ToolbarButton>
+            <ToolbarButton onClick={() => applyCommand('redo')} tooltip="Redo (Ctrl+Y)">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 10H11a5 5 0 00-5 5v0a5 5 0 005 5h3M21 10l-4-4M21 10l-4 4" />
+              </svg>
+            </ToolbarButton>
+          </ToolbarGroup>
+
+          <ToolbarSeparator />
+
           {/* Format Buttons */}
           <ToolbarGroup>
-            <ToolbarButton 
-              onClick={() => applyCommand('bold')} 
+            <ToolbarButton
+              onClick={() => applyCommand('bold')}
               active={activeTools.bold}
               tooltip="Bold (Ctrl+B)"
             >
-              <strong className="font-bold">B</strong>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M13.5 15.5H10V12.5H13.5A1.5 1.5 0 1113.5 15.5M15 10.5A1.5 1.5 0 0013.5 9H10V12H13.5A1.5 1.5 0 0015 10.5M15.6 11.79C16.57 11.12 17.25 10.02 17.25 9C17.25 6.74 15.5 5 13.25 5H7V19H14.04C16.13 19 17.75 17.3 17.75 15.21C17.75 13.69 16.89 12.39 15.6 11.79Z" />
+              </svg>
             </ToolbarButton>
 
-            <ToolbarButton 
-              onClick={() => applyCommand('italic')} 
+            <ToolbarButton
+              onClick={() => applyCommand('italic')}
               active={activeTools.italic}
               tooltip="Italic (Ctrl+I)"
             >
-              <em className="italic">I</em>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M10 5V8H12.21L8.79 16H6V19H14V16H11.79L15.21 8H18V5H10Z" />
+              </svg>
             </ToolbarButton>
 
-            <ToolbarButton 
-              onClick={() => applyCommand('underline')} 
+            <ToolbarButton
+              onClick={() => applyCommand('underline')}
               active={activeTools.underline}
               tooltip="Underline (Ctrl+U)"
             >
-              <span className="underline">U</span>
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M5 21H19V19H5V21M12 17A6 6 0 006 11V3H8V11A4 4 0 0016 11V3H18V11A6 6 0 0012 17Z" />
+              </svg>
             </ToolbarButton>
           </ToolbarGroup>
 
@@ -548,8 +632,8 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
               tooltip="Text Color"
             >
               <div className="flex flex-col items-center">
-                <span className="font-bold text-[10px] leading-none">A</span>
-                <div className="w-3 h-0.5 rounded-sm bg-red-500 mt-px" />
+                <span className="font-bold text-[13px] leading-none">A</span>
+                <div className="w-4 h-1 rounded-sm bg-red-500 mt-px" />
               </div>
             </ToolbarButton>
             {showTextColorPicker && (
@@ -576,7 +660,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
               active={showHighlightPicker}
               tooltip="Highlight"
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z"/>
               </svg>
             </ToolbarButton>
@@ -606,7 +690,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             active={formatPainterActive}
             tooltip="Format Painter — select text, click to capture, then select target text"
           >
-            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
               <path d="M4 2a2 2 0 00-2 2v1h2V4h3v1h2V4a2 2 0 00-2-2H4zM2 7v2h7V7H2zm0 4v5a2 2 0 002 2h1a2 2 0 002-2v-5H2z"/>
             </svg>
           </ToolbarButton>
@@ -616,19 +700,19 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           {/* Alignment */}
           <ToolbarGroup>
             <ToolbarButton onClick={() => applyCommand('justifyLeft')} tooltip="Left">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1z"/>
               </svg>
             </ToolbarButton>
 
             <ToolbarButton onClick={() => applyCommand('justifyCenter')} tooltip="Center">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm-3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/>
               </svg>
             </ToolbarButton>
 
             <ToolbarButton onClick={() => applyCommand('justifyRight')} tooltip="Right">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M17 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1zm0 4a1 1 0 01-1 1H4a1 1 0 110-2h12a1 1 0 011 1zm0 4a1 1 0 01-1 1h-6a1 1 0 110-2h6a1 1 0 011 1z"/>
               </svg>
             </ToolbarButton>
@@ -639,13 +723,13 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           {/* Lists */}
           <ToolbarGroup>
             <ToolbarButton onClick={() => applyCommand('insertUnorderedList')} tooltip="Bullets">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M6 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm0 4a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zM3 7a1 1 0 100-2 1 1 0 000 2zm0 4a1 1 0 100-2 1 1 0 000 2z"/>
               </svg>
             </ToolbarButton>
 
             <ToolbarButton onClick={() => applyCommand('insertOrderedList')} tooltip="Numbering">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3 4a1 1 0 01.707-.293l2 2a1 1 0 11-1.414 1.414L3 5.414V4zm0 4a1 1 0 01.707-.293l2 2a1 1 0 11-1.414 1.414L3 9.414V8zM8 5a1 1 0 011-1h8a1 1 0 110 2H9a1 1 0 01-1-1zm0 4a1 1 0 011-1h8a1 1 0 110 2H9a1 1 0 01-1-1z"/>
               </svg>
             </ToolbarButton>
@@ -657,7 +741,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
           <ToolbarGroup>
             <div className="relative">
               <ToolbarButton onClick={() => setShowTableDialog(!showTableDialog)} active={showTableDialog} tooltip="Insert Table">
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
                 </svg>
               </ToolbarButton>
@@ -692,7 +776,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             </div>
 
             <ToolbarButton onClick={insertHorizontalLine} tooltip="Line">
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"/>
               </svg>
             </ToolbarButton>
@@ -707,7 +791,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
               active={showMarginControls}
               tooltip="Margins"
             >
-              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M4 2a2 2 0 00-2 2v12a2 2 0 002 2h12a2 2 0 002-2V4a2 2 0 00-2-2H4zm0 2h12v12H4V4z" clipRule="evenodd"/>
               </svg>
             </ToolbarButton>
@@ -758,18 +842,47 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
             )}
           </div>
 
-          {/* Line Spacing */}
-          <select
-            value={lineSpacing}
-            onChange={(e) => setLineSpacing(e.target.value)}
-            className="px-1 py-0.5 bg-white border border-gray-300 rounded text-[10px] focus:ring-1 focus:ring-blue-400 w-12"
-            title="Line Spacing"
-          >
-            <option value="1">1.0</option>
-            <option value="1.15">1.15</option>
-            <option value="1.5">1.5</option>
-            <option value="2">2.0</option>
-          </select>
+          {/* Line Spacing Dropdown */}
+          <div className="relative">
+            <ToolbarButton
+              onClick={() => setShowLineSpacingMenu(!showLineSpacingMenu)}
+              active={showLineSpacingMenu}
+              tooltip={`Line Spacing (${lineSpacing})`}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" d="M4 6h16M4 12h16M4 18h16" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 6v12M20 6l-1.5 1.5M20 6l1.5 1.5M20 18l-1.5-1.5M20 18l1.5-1.5" />
+              </svg>
+            </ToolbarButton>
+            {showLineSpacingMenu && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 py-1 w-36">
+                <div className="px-2 py-1 text-[9px] font-semibold text-gray-400 uppercase">Line Spacing</div>
+                {[
+                  { value: '1', label: 'Single (1.0)' },
+                  { value: '1.15', label: '1.15' },
+                  { value: '1.4', label: '1.4' },
+                  { value: '1.5', label: '1.5' },
+                  { value: '1.8', label: '1.8' },
+                  { value: '2', label: 'Double (2.0)' },
+                  { value: '2.5', label: '2.5' },
+                  { value: '3', label: 'Triple (3.0)' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { applyLineSpacing(opt.value); setShowLineSpacingMenu(false); }}
+                    className={`w-full px-3 py-1 text-left text-[11px] hover:bg-blue-50 flex items-center justify-between ${
+                      lineSpacing === opt.value ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
+                    }`}
+                  >
+                    <span>{opt.label}</span>
+                    {lineSpacing === opt.value && (
+                      <svg className="w-3 h-3 text-blue-600" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           <ToolbarSeparator />
 
@@ -829,7 +942,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
       <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ 
         background: darkMode ? '#2d2d30' : '#e1e1e1',
       }}>
-        <style dangerouslySetInnerHTML={{ __html: getDocumentStyles() }} />
+        <style key={`editor-styles-${lineSpacing}-${margins.top}-${margins.bottom}-${margins.left}-${margins.right}-${fontSize}-${fontFamily}-${containerWidth}`} dangerouslySetInnerHTML={{ __html: getDocumentStyles() }} />
         
         <div className="min-h-full py-4 px-2 flex justify-center">
           <div 
@@ -852,13 +965,18 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
                 ref={contentEditableRef}
                 contentEditable
                 className="report-editor ms-word-page"
+                style={{
+                  lineHeight: lineSpacing,
+                  padding: `${margins.top}cm ${margins.right}cm ${margins.bottom}cm ${margins.left}cm`,
+                  fontFamily: `${fontFamily}, sans-serif`,
+                  fontSize: fontSize
+                }}
                 onInput={handleContentChange}
                 onMouseUp={(e) => {
                   saveSelection();
                   if (formatPainterActive) applyStoredFormat();
                 }}
                 onKeyUp={saveSelection}
-                // onBlur={saveSelection}
                 suppressContentEditableWarning={true}
               />
             )}
@@ -892,6 +1010,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
       font-family: ${fontFamily}, sans-serif;
       font-size: ${fontSize};
+      line-height: ${lineSpacing};
       color: #000;
       outline: none;
       box-sizing: border-box;
@@ -942,6 +1061,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
       display: block;
       font-family: ${fontFamily}, sans-serif;
       font-size: ${fontSize};
+      line-height: ${lineSpacing};
       color: #000;
     }
 
@@ -1039,12 +1159,21 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     h2 { font-size: 14pt; }
     h3 { font-size: 12pt; }
   
-    ul, ol { 
-      padding-left: 24px; 
-      margin: 8px 0; 
+    ul, ol {
+      padding-left: 32px;
+      margin: 8px 0;
     }
-    li { 
-      margin: 4px 0; 
+    ul {
+      list-style-type: disc !important;
+    }
+    ol {
+      list-style-type: decimal !important;
+    }
+    ul ul { list-style-type: circle !important; }
+    ul ul ul { list-style-type: square !important; }
+    li {
+      margin: 4px 0;
+      display: list-item !important;
     }
     strong, b { font-weight: 700 !important; }
     em, i { font-style: italic !important; }

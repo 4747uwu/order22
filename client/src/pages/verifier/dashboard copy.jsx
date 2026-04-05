@@ -179,20 +179,22 @@ const VerifierDashboard = () => {
   const handleSearch = useCallback((searchParams) => {
     console.log('🔍 VERIFIER SEARCH: New search params:', searchParams);
     setSearchFilters(searchParams);
+    fetchStudies(searchParams);
     fetchAnalytics(searchParams);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics]);
 
   const handleFilterChange = useCallback((filters) => {
     console.log('🔍 VERIFIER FILTER CHANGE:', filters);
     setSearchFilters(filters);
+    fetchStudies(filters);
     fetchAnalytics(filters);
-  }, [fetchAnalytics]);
+  }, [fetchStudies, fetchAnalytics]);
   
   const handleViewChange = useCallback((view) => {
     console.log(`📊 VERIFIER TAB CHANGE: ${currentView} -> ${view}`);
     setCurrentView(view);
     setSelectedStudies([]);
-    
+
     setSearchFilters(prevFilters => {
       const preservedFilters = {
         dateFilter: prevFilters.dateFilter,
@@ -200,21 +202,30 @@ const VerifierDashboard = () => {
         customDateFrom: prevFilters.customDateFrom,
         customDateTo: prevFilters.customDateTo,
         modality: prevFilters.modality,
+        modalities: prevFilters.modalities,
         labId: prevFilters.labId,
+        labs: prevFilters.labs,
         priority: prevFilters.priority,
+        priorities: prevFilters.priorities,
         radiologist: prevFilters.radiologist,
+        radiologists: prevFilters.radiologists,
         limit: prevFilters.limit,
         category: view === 'all' ? undefined : view
       };
-      
+
       const cleanedFilters = Object.fromEntries(
-        Object.entries(preservedFilters).filter(([_, value]) => value !== undefined && value !== '')
+        Object.entries(preservedFilters).filter(([_, value]) => {
+          if (value === undefined || value === '') return false;
+          if (Array.isArray(value) && value.length === 0) return false;
+          return true;
+        })
       );
-      
+
+      fetchStudies(cleanedFilters);
       fetchAnalytics(cleanedFilters);
       return cleanedFilters;
     });
-  }, [currentView, fetchAnalytics]);
+  }, [currentView, fetchStudies, fetchAnalytics]);
 
   const handleSelectAll = useCallback((checked) => {
     setSelectedStudies(checked ? studies.map(study => study._id) : []);

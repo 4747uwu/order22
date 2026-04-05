@@ -94,27 +94,28 @@ const VerifierDashboard = () => {
 
   // ✅ SIMPLIFIED: Verifier-specific column configuration (kept for localStorage compatibility)
   const getDefaultColumnConfig = () => ({
-    checkbox: { visible: true, order: 1, label: 'Select' },
-    workflowStatus: { visible: true, order: 2, label: 'Status' },
-    patientId: { visible: true, order: 3, label: 'Patient ID' },
-    patientName: { visible: true, order: 4, label: 'Patient Name' },
-    ageGender: { visible: true, order: 5, label: 'Age/Sex' },
-    modality: { visible: true, order: 6, label: 'Modality' },
-    studyDate: { visible: true, order: 7, label: 'Study Date' },
-    reportedDate: { visible: true, order: 8, label: 'Report Date' },
-    reportedBy: { visible: true, order: 9, label: 'Reported By' },
-    verifiedDate: { visible: true, order: 10, label: 'Verified Date' },
-    verifiedBy: { visible: true, order: 11, label: 'Verified By' },
-    verificationStatus: { visible: true, order: 12, label: 'Verification' },
-    actions: { visible: true, order: 13, label: 'Actions' },
-    // Hidden columns
-    studyDescription: { visible: false, order: 14, label: 'Description' },
-    seriesCount: { visible: false, order: 15, label: 'Series' },
-    location: { visible: false, order: 16, label: 'Location' },
-    uploadDate: { visible: false, order: 17, label: 'Upload Date' },
-    accession: { visible: false, order: 18, label: 'Accession' },
-    seenBy: { visible: false, order: 19, label: 'Seen By' },
-    assignedDoctor: { visible: false, order: 20, label: 'Assignment' }
+    selection:           { visible: true,  order: 1,  label: 'Select' },
+    bharatPacsId:        { visible: true,  order: 2,  label: 'BP ID' },
+    centerName:          { visible: true,  order: 3,  label: 'Center' },
+    location:            { visible: false, order: 4,  label: 'Location' },
+    timeline:            { visible: true,  order: 5,  label: 'Timeline' },
+    patientName:         { visible: true,  order: 6,  label: 'Patient Name' },
+    patientId:           { visible: true,  order: 7,  label: 'Patient ID' },
+    ageGender:           { visible: true,  order: 8,  label: 'Age/Sex' },
+    modality:            { visible: true,  order: 9,  label: 'Modality' },
+    viewOnly:            { visible: true,  order: 10, label: 'View' },
+    studySeriesImages:   { visible: true,  order: 11, label: 'Series/Images' },
+    referralDoctor:      { visible: true,  order: 12, label: 'Referral Dr.' },
+    clinicalHistory:     { visible: true,  order: 13, label: 'History' },
+    studyDateTime:       { visible: true,  order: 14, label: 'Study Date/Time' },
+    uploadDateTime:      { visible: true,  order: 15, label: 'Upload Date/Time' },
+    assignedRadiologist: { visible: true,  order: 16, label: 'Radiologist' },
+    status:              { visible: true,  order: 17, label: 'Status' },
+    printCount:          { visible: false, order: 18, label: 'Print Report' },
+    rejectionReason:     { visible: false, order: 19, label: 'Reverted Reason' },
+    assignedVerifier:    { visible: true,  order: 20, label: 'Finalised By' },
+    verifiedDateTime:    { visible: true,  order: 21, label: 'Finalised Date/Time' },
+    actions:             { visible: true,  order: 22, label: 'Actions' },
   });
 
   const [columnConfig, setColumnConfig] = useState(() => {
@@ -122,6 +123,12 @@ const VerifierDashboard = () => {
       const saved = localStorage.getItem('verifierWorklistColumnConfig');
       if (saved) {
         const parsedConfig = JSON.parse(saved);
+        // Reset if stale legacy keys exist
+        if ('checkbox' in parsedConfig || 'workflowStatus' in parsedConfig || 'seriesCount' in parsedConfig || 'studyDate' in parsedConfig) {
+          console.warn('🔄 Migrating stale verifier column config — resetting');
+          localStorage.removeItem('verifierWorklistColumnConfig');
+          return getDefaultColumnConfig();
+        }
         return { ...getDefaultColumnConfig(), ...parsedConfig };
       }
     } catch (error) {

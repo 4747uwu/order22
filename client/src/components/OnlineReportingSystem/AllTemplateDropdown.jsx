@@ -9,7 +9,8 @@ import {
   Filter,
   X,
   Check,
-  Crown
+  Crown,
+  Shield
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -19,7 +20,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [stats, setStats] = useState({ globalCount: 0, personalCount: 0 });
+  const [stats, setStats] = useState({ superGlobalCount: 0, globalCount: 0, personalCount: 0 });
 
   const dropdownRef = useRef(null);
 
@@ -77,7 +78,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
   const handleTemplateSelect = (template) => {
     onTemplateSelect(template);
     setIsOpen(false);
-    const templateType = template.templateScope === 'global' ? 'Global' : 'Personal';
+    const templateType = template.templateScope === 'super_global' ? 'Super Global' : template.templateScope === 'global' ? 'Global' : 'Personal';
     // toast.success(`Applied ${templateType}: ${template.title}`, { duration: 1500 });
   };
 
@@ -92,7 +93,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const totalTemplates = stats.globalCount + stats.personalCount;
+  const totalTemplates = (stats.superGlobalCount || 0) + stats.globalCount + stats.personalCount;
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -140,8 +141,14 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
             </div>
 
             {/* ✅ COMPACT: Stats */}
-            {(stats.globalCount > 0 || stats.personalCount > 0) && (
+            {totalTemplates > 0 && (
               <div className="flex items-center gap-2 mb-1 text-xs">
+                {stats.superGlobalCount > 0 && (
+                  <div className="flex items-center gap-0.5">
+                    <Shield size={10} className="text-purple-600" />
+                    <span className="text-gray-600">{stats.superGlobalCount}</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-0.5">
                   <Crown size={10} className="text-amber-600" />
                   <span className="text-gray-600">{stats.globalCount}</span>
@@ -199,28 +206,82 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
               </div>
             ) : (
               Object.entries(templates).map(([category, categoryData]) => {
+                const hasSuperGlobal = categoryData.super_global && categoryData.super_global.length > 0;
                 const hasGlobal = categoryData.global && categoryData.global.length > 0;
                 const hasPersonal = categoryData.personal && categoryData.personal.length > 0;
 
-                if (!hasGlobal && !hasPersonal) return null;
+                if (!hasSuperGlobal && !hasGlobal && !hasPersonal) return null;
+
+                const totalInCategory = (categoryData.super_global?.length || 0) + (categoryData.global?.length || 0) + (categoryData.personal?.length || 0);
 
                 return (
                   <div key={category} className="border-b border-gray-100 last:border-b-0">
                     {/* ✅ COMPACT: Category Header */}
                     <div className="px-2 py-1 bg-gray-50 border-b border-gray-100">
                       <h4 className="text-xs font-medium text-gray-700 uppercase tracking-wide">
-                        {category} ({(categoryData.global?.length || 0) + (categoryData.personal?.length || 0)})
+                        {category} ({totalInCategory})
                       </h4>
                     </div>
 
-                    {/* ✅ COMPACT: Global Templates */}
+                    {/* ✅ Super Global Templates */}
+                    {hasSuperGlobal && (
+                      <>
+                        <div className="px-2 py-0.5 bg-purple-50 border-b border-purple-100">
+                          <div className="flex items-center gap-0.5">
+                            <Shield size={10} className="text-purple-600" />
+                            <span className="text-xs font-medium text-purple-800">
+                              Global ({categoryData.super_global.length})
+                            </span>
+                          </div>
+                        </div>
+                        {categoryData.super_global.map(template => (
+                          <button
+                            key={template._id}
+                            onClick={() => handleTemplateSelect(template)}
+                            className={`
+                              w-full px-2 py-1.5 text-left hover:bg-green-50 transition-colors group
+                              ${selectedTemplate?._id === template._id ? 'bg-green-50 border-r-2 border-green-500' : ''}
+                            `}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1 min-w-0 mr-1">
+                                <p className="text-xs font-medium text-gray-900 truncate group-hover:text-green-700">
+                                  {template.title}
+                                </p>
+                                {template.templateMetadata?.description && (
+                                  <p className="text-xs text-gray-500 truncate mt-0.5">
+                                    {template.templateMetadata.description}
+                                  </p>
+                                )}
+                                <div className="flex items-center gap-1 mt-1">
+                                  <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                    <Shield size={8} className="mr-0.5" />
+                                    Global
+                                  </span>
+                                  {template.templateMetadata?.isDefault && (
+                                    <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                      Default
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {selectedTemplate?._id === template._id && (
+                                <Check size={12} className="text-green-600 flex-shrink-0" />
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </>
+                    )}
+
+                    {/* ✅ COMPACT: Org Global Templates */}
                     {hasGlobal && (
                       <>
                         <div className="px-2 py-0.5 bg-amber-50 border-b border-amber-100">
                           <div className="flex items-center gap-0.5">
                             <Crown size={10} className="text-amber-600" />
                             <span className="text-xs font-medium text-amber-800">
-                              Global ({categoryData.global.length})
+                              Org Global ({categoryData.global.length})
                             </span>
                           </div>
                         </div>
@@ -246,7 +307,7 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
                                 <div className="flex items-center gap-1 mt-1">
                                   <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
                                     <Crown size={8} className="mr-0.5" />
-                                    Global
+                                    Org Global
                                   </span>
                                   {template.templateMetadata?.isDefault && (
                                     <span className="inline-flex items-center px-1 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -330,8 +391,8 @@ const AllTemplateDropdown = ({ onTemplateSelect, selectedTemplate }) => {
           {totalTemplates > 0 && (
             <div className="p-1 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 text-center">
               {totalTemplates} template{totalTemplates !== 1 ? 's' : ''}
-              {stats.globalCount > 0 && stats.personalCount > 0 &&
-                ` (${stats.globalCount} global, ${stats.personalCount} personal)`
+              {totalTemplates > 1 &&
+                ` (${stats.superGlobalCount ? `${stats.superGlobalCount} global, ` : ''}${stats.globalCount} org, ${stats.personalCount} personal)`
               }
             </div>
           )}

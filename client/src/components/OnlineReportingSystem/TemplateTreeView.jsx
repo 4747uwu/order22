@@ -3,88 +3,60 @@ import React, { useState, useEffect, useMemo } from 'react';
 const TemplateTreeView = ({ templates, selectedTemplate, onTemplateSelect, studyModality }) => {
   const [expandedCategories, setExpandedCategories] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
-  const [hoveredTemplate, setHoveredTemplate] = useState(null);
 
-  // Auto-expand categories when templates load
+  // Auto-expand matching modality or first category
   useEffect(() => {
     if (templates && Object.keys(templates).length > 0) {
-      console.log('🔍 TemplateTreeView received templates:', templates);
-      
-      // Auto-expand first category for better UX
-      const firstCategory = Object.keys(templates)[0];
-      if (firstCategory) {
-        setExpandedCategories(prev => ({ ...prev, [firstCategory]: true }));
-      }
+      const matchKey = studyModality && Object.keys(templates).find(k => k.toUpperCase().includes(studyModality.toUpperCase()));
+      setExpandedCategories(prev => ({ ...prev, [matchKey || Object.keys(templates)[0]]: true }));
     }
-  }, [templates]);
+  }, [templates, studyModality]);
 
-  // Filter templates based on search query
   const filteredTemplates = useMemo(() => {
     if (!templates || !searchQuery.trim()) return templates;
-    
+    const q = searchQuery.toLowerCase();
     const filtered = {};
-    Object.entries(templates).forEach(([category, categoryTemplates]) => {
-      if (Array.isArray(categoryTemplates)) {
-        const matchingTemplates = categoryTemplates.filter(template =>
-          template.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          category.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-        if (matchingTemplates.length > 0) {
-          filtered[category] = matchingTemplates;
-        }
-      }
+    Object.entries(templates).forEach(([category, list]) => {
+      if (!Array.isArray(list)) return;
+      const matches = list.filter(t => t.title.toLowerCase().includes(q) || category.toLowerCase().includes(q));
+      if (matches.length > 0) filtered[category] = matches;
     });
     return filtered;
   }, [templates, searchQuery]);
 
-  // Auto-expand categories when searching
+  // Expand all when searching
   useEffect(() => {
     if (searchQuery.trim() && filteredTemplates) {
-      const categoriesToExpand = {};
-      Object.keys(filteredTemplates).forEach(category => {
-        categoriesToExpand[category] = true;
-      });
-      setExpandedCategories(categoriesToExpand);
+      const expanded = {};
+      Object.keys(filteredTemplates).forEach(k => { expanded[k] = true; });
+      setExpandedCategories(expanded);
     }
   }, [searchQuery, filteredTemplates]);
 
-  const toggleCategory = (category) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [category]: !prev[category]
-    }));
-  };
+  const toggleCategory = (cat) => setExpandedCategories(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  const getTotalTemplatesCount = () => {
+  const totalCount = useMemo(() => {
     if (!filteredTemplates) return 0;
-    return Object.values(filteredTemplates).reduce((total, categoryTemplates) => {
-      return total + (Array.isArray(categoryTemplates) ? categoryTemplates.length : 0);
-    }, 0);
-  };
+    return Object.values(filteredTemplates).reduce((s, a) => s + (Array.isArray(a) ? a.length : 0), 0);
+  }, [filteredTemplates]);
 
-  // Better empty state check
   if (!templates || typeof templates !== 'object' || Object.keys(templates).length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center p-4 text-center h-full bg-white">
-        <div className="w-8 h-8 border border-gray-300 rounded flex items-center justify-center mb-2">
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-          </svg>
-        </div>
-        <p className="text-xs text-gray-500">
-          {templates === null ? 'Loading...' : 'No templates'}
-        </p>
+      <div className="flex flex-col items-center justify-center p-3 text-center h-full bg-white">
+        <svg className="w-5 h-5 text-gray-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p className="text-[10px] text-gray-400">{templates === null ? 'Loading...' : 'No templates'}</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      {/* Ultra Compact Header */}
-      <div className="px-2 py-1.5 bg-black flex items-center gap-2">
-        {/* Compact Search */}
+    <div className="h-full flex flex-col bg-white text-[11px]">
+      {/* Header */}
+      <div className="px-1.5 py-1 bg-gray-900 flex items-center gap-1.5">
         <div className="relative flex-1">
-          <svg className="absolute left-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="absolute left-1.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
           </svg>
           <input
@@ -92,134 +64,68 @@ const TemplateTreeView = ({ templates, selectedTemplate, onTemplateSelect, study
             placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-6 pr-6 py-1 text-xs bg-white border-0 rounded focus:outline-none focus:ring-1 focus:ring-gray-300"
+            className="w-full pl-5 pr-5 py-0.5 text-[10px] bg-white border-0 rounded focus:outline-none focus:ring-1 focus:ring-gray-400"
           />
           {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-1.5 top-1/2 transform -translate-y-1/2"
-            >
-              <svg className="h-2.5 w-2.5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
+            <button onClick={() => setSearchQuery('')} className="absolute right-1 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+              <svg className="h-2.5 w-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           )}
         </div>
-
-        {/* Count Badge */}
-        <div className="bg-white px-2 py-0.5 rounded-full">
-          <span className="text-xs font-medium text-black">{getTotalTemplatesCount()}</span>
-        </div>
+        <span className="bg-white text-gray-900 text-[9px] font-bold px-1.5 rounded-full">{totalCount}</span>
       </div>
 
-      {/* Tree Content */}
+      {/* Tree */}
       <div className="flex-1 overflow-y-auto">
         {searchQuery && Object.keys(filteredTemplates).length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-4 text-center">
-            <svg className="w-4 h-4 text-gray-300 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <p className="text-xs text-gray-400">No results</p>
-          </div>
+          <div className="p-3 text-center text-[10px] text-gray-400">No results</div>
         ) : (
-          <div className="py-0.5">
-            {Object.entries(filteredTemplates).map(([category, categoryTemplates], categoryIndex) => (
+          Object.entries(filteredTemplates).map(([category, categoryTemplates]) => {
+            if (!Array.isArray(categoryTemplates)) return null;
+            const isExpanded = expandedCategories[category];
+            return (
               <div key={category}>
-                {/* Category Header */}
+                {/* Category row */}
                 <button
                   onClick={() => toggleCategory(category)}
-                  className="flex items-center w-full px-2 py-1.5 text-left hover:bg-gray-50 transition-colors duration-100"
+                  className="flex items-center w-full px-2 py-1 text-left hover:bg-gray-50 transition-colors"
                 >
-                  <div className="flex items-center flex-1 min-w-0">
-                    {/* Expand Arrow */}
-                    <div className="w-3 h-3 mr-2 flex items-center justify-center">
-                      <svg 
-                        className={`w-2.5 h-2.5 text-gray-500 transition-transform duration-150 ${
-                          expandedCategories[category] ? 'rotate-90' : ''
-                        }`} 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
-                    
-                    {/* Category Name & Count */}
-                    <div className="flex items-center justify-between w-full">
-                      <span className="text-xs font-semibold text-black truncate">{category}</span>
-                      <span className="ml-2 text-xs text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                        {Array.isArray(categoryTemplates) ? categoryTemplates.length : 0}
-                      </span>
-                    </div>
-                  </div>
+                  <svg className={`w-2.5 h-2.5 text-gray-400 mr-1.5 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                  <span className="text-[11px] font-semibold text-gray-800 flex-1 truncate">{category}</span>
+                  <span className="text-[9px] text-gray-400 bg-gray-100 px-1.5 rounded ml-1">{categoryTemplates.length}</span>
                 </button>
-                
-                {/* Templates */}
-                {expandedCategories[category] && Array.isArray(categoryTemplates) && (
-                  <div>
-                    {categoryTemplates.map((template, templateIndex) => (
-                      <button
-                        key={template.id}
-                        onClick={() => onTemplateSelect(template.id)}
-                        onMouseEnter={() => setHoveredTemplate(template.id)}
-                        onMouseLeave={() => setHoveredTemplate(null)}
-                        className={`flex items-center w-full px-2 py-1.5 text-left transition-all duration-100 ${
-                          selectedTemplate?._id === template.id || selectedTemplate?.id === template.id
-                            ? 'bg-gray-100 border-r-2 border-black'
-                            : hoveredTemplate === template.id
-                            ? 'bg-gray-50'
-                            : 'hover:bg-gray-25'
-                        }`}
-                      >
-                        {/* Tree Structure */}
-                        <div className="flex items-center mr-2">
-                          {/* Vertical Line */}
-                          <div className="w-3 flex justify-center">
-                            <div className={`w-px h-5 ${
-                              templateIndex === categoryTemplates.length - 1 ? 'bg-transparent' : 'bg-gray-200'
-                            }`} />
-                          </div>
-                          
-                          {/* Horizontal Line */}
-                          <div className="w-1.5 h-px bg-gray-200" />
-                          
-                          {/* Dot Indicator */}
-                          <div className={`w-1 h-1 rounded-full ml-1.5 ${
-                            selectedTemplate?._id === template.id || selectedTemplate?.id === template.id
-                              ? 'bg-black'
-                              : hoveredTemplate === template.id
-                              ? 'bg-gray-500'
-                              : 'bg-gray-300'
-                          }`} />
-                        </div>
-                        
-                        {/* Template Name */}
-                        <div className="flex-1 min-w-0">
-                          <span className={`text-xs truncate block ${
-                            selectedTemplate?._id === template.id || selectedTemplate?.id === template.id
-                              ? 'text-black font-medium'
-                              : 'text-gray-700'
-                          }`}>
-                            {template.title}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
+
+                {/* Template items */}
+                {isExpanded && categoryTemplates.map((template) => {
+                  const isActive = selectedTemplate?._id === template.id || selectedTemplate?.id === template.id;
+                  return (
+                    <button
+                      key={template.id}
+                      onClick={() => onTemplateSelect(template.id)}
+                      className={`flex items-center w-full pl-6 pr-2 py-1 text-left transition-colors ${
+                        isActive ? 'bg-blue-50 border-r-2 border-blue-500' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className={`w-1 h-1 rounded-full mr-2 ${isActive ? 'bg-blue-500' : 'bg-gray-300'}`} />
+                      <span className={`text-[11px] truncate ${isActive ? 'text-blue-700 font-medium' : 'text-gray-600'}`}>
+                        {template.title}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
       </div>
 
-      {/* Minimal Selection Indicator */}
+      {/* Selection indicator */}
       {selectedTemplate && (
         <div className="px-2 py-1 bg-gray-50 border-t border-gray-100">
-          <div className="text-xs text-gray-600 truncate font-medium">
-            {selectedTemplate.title}
-          </div>
+          <p className="text-[10px] text-gray-500 truncate font-medium">{selectedTemplate.title}</p>
         </div>
       )}
     </div>

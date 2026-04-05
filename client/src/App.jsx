@@ -5,6 +5,7 @@ import { useAuth } from './hooks/useAuth';
 import ToastConfig from './config/toastConfig';
 import LoginPage from './pages/Login';
 import SuperAdminDashboard from './pages/superadmin/Dashboard';
+import SuperAdminGlobalTemplates from './pages/superadmin/GlobalTemplates';
 import AdminDashboard from './pages/admin/Dashboard';
 import AssignerDashboard from './pages/assigner/Dashboard';
 import LabDashboard from './pages/lab/Dashboard';
@@ -111,6 +112,15 @@ const AppRoutes = () => {
         element={
           <ProtectedRoute allowedRoles={['super_admin']}>
             <SuperAdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/superadmin/templates"
+        element={
+          <ProtectedRoute allowedRoles={['super_admin']}>
+            <SuperAdminGlobalTemplates />
           </ProtectedRoute>
         }
       />

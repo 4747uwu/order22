@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   X, RefreshCw, FileWarning, AlertCircle,
-  Calendar, Clock, User, MessageSquare, ChevronDown, ChevronUp, Loader2
+  Calendar, Clock, User, MessageSquare, ChevronDown, ChevronUp, Loader2, Eye
 } from 'lucide-react';
 import api from '../../services/api';
 
@@ -160,12 +160,56 @@ const TimelineCard = ({ group, isLast }) => {
   );
 };
 
+// ── Duration formatter ──
+const formatDuration = (seconds) => {
+  if (seconds == null) return 'In progress…';
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m < 60) return `${m}m ${s}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+};
+
+// ── View log card ──
+const ViewLogCard = ({ log }) => {
+  const { date, time } = formatDate(log.openedAt);
+  const closedInfo = log.closedAt ? formatDate(log.closedAt) : null;
+
+  return (
+    <div className="flex gap-3 py-2.5 px-3 rounded-lg bg-neutral-50 border border-neutral-200/60">
+      <div className="flex-shrink-0 pt-1">
+        <Eye className="w-3.5 h-3.5 text-blue-400" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] font-semibold text-black">{log.userName || 'Unknown'}</span>
+          <span className="text-[10px] text-neutral-400 font-mono shrink-0">{date} · {time}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-100 capitalize">{log.mode}</span>
+          <span className="text-[9px] text-neutral-400 capitalize">{log.userRole?.replace(/_/g, ' ')}</span>
+        </div>
+        <div className="flex items-center gap-2 mt-1 text-[10px] text-neutral-500">
+          <Clock className="w-2.5 h-2.5" />
+          <span className="font-medium">{formatDuration(log.durationSeconds)}</span>
+          {closedInfo && (
+            <span className="text-neutral-400">· closed {closedInfo.time}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Main Modal ──
 const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
   const [grouped, setGrouped] = useState([]);
+  const [viewHistory, setViewHistory] = useState([]);
   const [totalRaw, setTotalRaw] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('status');
 
   useEffect(() => {
     if (!isOpen || !studyId) return;
@@ -178,6 +222,7 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
           const visible = raw.filter(entry => !isHiddenTimelineStatus(entry.status));
           setTotalRaw(visible.length);
           setGrouped(groupTimelineByStatus(visible));
+          setViewHistory(response.data.viewHistory || []);
         } else {
           setError('Failed to load timeline');
         }
@@ -210,6 +255,27 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-0 px-5 border-b border-neutral-100 shrink-0">
+          {[
+            { key: 'status', label: 'Status Timeline', count: grouped.length },
+            { key: 'views', label: 'View History', count: viewHistory.length }
+          ].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`px-3 py-2 text-[11px] font-semibold border-b-2 transition-all ${
+                activeTab === tab.key
+                  ? 'text-black border-black'
+                  : 'text-neutral-400 border-transparent hover:text-neutral-600'
+              }`}
+            >
+              {tab.label}
+              {!loading && <span className="ml-1.5 text-[9px] px-1.5 py-0.5 rounded-full bg-neutral-100 font-bold">{tab.count}</span>}
+            </button>
+          ))}
+        </div>
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {loading ? (
@@ -222,24 +288,39 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
               <AlertCircle className="w-6 h-6 text-neutral-300 mb-2" />
               <span className="text-[12px] text-neutral-500">{error}</span>
             </div>
-          ) : grouped.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16">
-              <FileWarning className="w-6 h-6 text-neutral-300 mb-2" />
-              <span className="text-[12px] text-neutral-400">No timeline data</span>
-            </div>
-          ) : (
-            <div>
-              {grouped.map((group, i) => (
-                <TimelineCard key={group.status + i} group={group} isLast={i === grouped.length - 1} />
-              ))}
-              {/* Origin dot */}
-              <div className="flex items-center gap-3">
-                <div className="w-5 flex justify-center">
-                  <div className="w-2 h-2 rounded-full bg-neutral-300 ring-2 ring-white" />
-                </div>
-                <span className="text-[10px] text-neutral-400 italic">Study origin</span>
+          ) : activeTab === 'status' ? (
+            grouped.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <FileWarning className="w-6 h-6 text-neutral-300 mb-2" />
+                <span className="text-[12px] text-neutral-400">No timeline data</span>
               </div>
-            </div>
+            ) : (
+              <div>
+                {grouped.map((group, i) => (
+                  <TimelineCard key={group.status + i} group={group} isLast={i === grouped.length - 1} />
+                ))}
+                {/* Origin dot */}
+                <div className="flex items-center gap-3">
+                  <div className="w-5 flex justify-center">
+                    <div className="w-2 h-2 rounded-full bg-neutral-300 ring-2 ring-white" />
+                  </div>
+                  <span className="text-[10px] text-neutral-400 italic">Study origin</span>
+                </div>
+              </div>
+            )
+          ) : (
+            viewHistory.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16">
+                <Eye className="w-6 h-6 text-neutral-300 mb-2" />
+                <span className="text-[12px] text-neutral-400">No viewing history</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {viewHistory.map((log) => (
+                  <ViewLogCard key={log._id} log={log} />
+                ))}
+              </div>
+            )
           )}
         </div>
 
@@ -249,6 +330,8 @@ const ActionTimeline = ({ isOpen, onClose, studyId, studyData }) => {
             <span><span className="text-black font-semibold">{grouped.length}</span> statuses</span>
             <span>·</span>
             <span><span className="text-black font-semibold">{totalRaw}</span> events</span>
+            <span>·</span>
+            <span><span className="text-black font-semibold">{viewHistory.length}</span> views</span>
           </div>
           <button onClick={onClose}
             className="px-3 h-7 text-[11px] font-semibold text-neutral-600 border border-neutral-200 rounded-lg hover:bg-neutral-50 transition-all">

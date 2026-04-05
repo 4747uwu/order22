@@ -8,6 +8,7 @@ import {
     deleteOrganization,
     getOrganizationStats
 } from '../controllers/superadmin.controller.js';
+import HTMLTemplateController from '../controllers/html.controller.js';
 
 const router = express.Router();
 
@@ -22,5 +23,11 @@ router.get('/organizations/:id', getOrganizationById);
 router.post('/organizations', createOrganization);
 router.put('/organizations/:id', updateOrganization);
 router.delete('/organizations/:id', deleteOrganization);
+
+// Super Global Template routes
+router.get('/templates', HTMLTemplateController.getSuperGlobalTemplates);
+router.post('/templates', HTMLTemplateController.createSuperGlobalTemplate);
+router.put('/templates/:templateId', HTMLTemplateController.updateSuperGlobalTemplate);
+router.delete('/templates/:templateId', HTMLTemplateController.deleteSuperGlobalTemplate);
 
 export default router;

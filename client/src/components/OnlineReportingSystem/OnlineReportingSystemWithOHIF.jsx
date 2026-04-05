@@ -4,7 +4,8 @@ import api from '../../services/api';
 import toast, { Toaster } from 'react-hot-toast';
 import ReportEditor from './ReportEditorWithOhif';
 import DoctorTemplateDropdown from './DoctorTemplateDropdown';
-import AllTemplateDropdown from './AllTemplateDropdown';
+import OrgTemplateDropdown from './OrgTemplateDropdown';
+import GlobalTemplateDropdown from './GlobalTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
 import TemplateSearchPanel from './TemplateSearchPanel.jsx';
 // also add BookOpen to the lucide-react import line:
@@ -865,9 +866,10 @@ const OnlineReportingSystemWithOHIF = () => {
                 <>
                   {!isVerifierMode ? (
                     <>
-                      {/* Templates */}
+                      {/* Templates: Mine | Organisation | Global */}
                       <DoctorTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null} />
-                      <AllTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate} />
+                      <OrgTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'global' ? selectedTemplate : null} />
+                      <GlobalTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'super_global' ? selectedTemplate : null} />
 
                       <div className="h-4 w-px bg-gray-200"></div>
 
