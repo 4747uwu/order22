@@ -56,35 +56,12 @@ const SettingsModal = ({ isOpen, onClose, onNavigate, theme = 'default' }) => {
             onClick: () => { onNavigate('/admin/user-management'); onClose(); }
         });
     }
-    if (canCreateDoctor) {
-        settingsOptions.push({
-            id: 'create-doctor', label: 'Create Doctor',
-            description: 'Add a new doctor account',
-            icon: UserPlus,
-            onClick: () => { onNavigate('/admin/create-doctor'); onClose(); }
-        });
-    }
     if (canCreateLab) {
-        settingsOptions.push({
-            id: 'create-lab', label: 'Create Lab / Center',
-            description: 'Register a new laboratory',
-            icon: Building,
-            onClick: () => { onNavigate('/admin/create-lab'); onClose(); }
-        });
-
         settingsOptions.push({
             id: 'tat-report', label: 'TAT Report',
             description: 'View status-history based turnaround times',
             icon: Clock3,
             onClick: () => { onNavigate('/admin/tat-report'); onClose(); }
-        });
-    }
-    if (canCreateUser && !canManageUsers) {
-        settingsOptions.push({
-            id: 'create-user', label: 'Create User',
-            description: 'Add a new user account',
-            icon: Users,
-            onClick: () => { onNavigate('/admin/create-user'); onClose(); }
         });
     }
 

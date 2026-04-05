@@ -1436,14 +1436,14 @@ const StudyRow = ({
       {/* 14 & 15. DATES */}
       {isColumnVisible('studyDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('studyDateTime')}px` }}>
-          <div className="text-[9px] sm:text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.studyDate)}</div>
-          <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{formatTime(study.studyTime) || '-'}</div>
+          <div className="text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.studyDate)}</div>
+          <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{formatTime(study.studyTime) || '-'}</div>
         </td>
       )}
       {isColumnVisible('uploadDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('uploadDateTime')}px` }}>
-          <div className="text-[9px] sm:text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.uploadDate || study.createdAt)}</div>
-          <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
+          <div className="text-[10px] font-medium text-slate-800 whitespace-nowrap">{formatDate(study.uploadDate || study.createdAt)}</div>
+          <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
         </td>
       )}
 
@@ -1457,7 +1457,7 @@ const StudyRow = ({
 
           {/* ✅ Show assignedAt time under input */}
           {isAssigned && assignedDoctor?.assignedAt && (
-            <div className="mt-0.5 text-[8px] text-slate-500 whitespace-nowrap">
+            <div className="mt-0.5 text-[9px] text-slate-500 whitespace-nowrap">
               🕐 {new Date(assignedDoctor.assignedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(assignedDoctor.assignedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
             </div>
           )}
@@ -1489,7 +1489,7 @@ const StudyRow = ({
                 {study.studyLock?.lockedByName || study.lockedBy || '-'}
               </div>
               {(study.studyLock?.lockedAt || study.lockedAt) && (
-                <div className="text-[7px] text-slate-500 whitespace-nowrap">
+                <div className="text-[9px] text-slate-500 whitespace-nowrap">
                   {new Date(study.studyLock?.lockedAt || study.lockedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}{' '}
                   {new Date(study.studyLock?.lockedAt || study.lockedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                 </div>
@@ -1506,9 +1506,9 @@ const StudyRow = ({
             <span className={`inline-block px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-medium whitespace-normal break-words leading-tight ${getStatusColor(study.workflowStatus)}`}>
               {study.caseStatusCategory || formatWorkflowStatus(study.workflowStatus)}
             </span>
-            <span className="text-[9px] sm:text-[10px] text-slate-600 whitespace-normal break-words leading-tight">
+            {/* <span className="text-[9px] sm:text-[10px] text-slate-600 whitespace-normal break-words leading-tight">
               {study.workflowStatus ? formatWorkflowStatus(study.workflowStatus) : '-'}
-            </span>
+            </span> */}
 
             {/* ✅ Show when this status happened from statusHistory */}
             {(() => {
@@ -1517,7 +1517,7 @@ const StudyRow = ({
                 : null;
               if (!latestHistory?.changedAt) return null;
               return (
-                <div className="text-[7px] text-slate-400 whitespace-nowrap" title={latestHistory.note || ''}>
+                <div className="text-[9px] text-slate-400 whitespace-nowrap" title={latestHistory.note || ''}>
                   {new Date(latestHistory.changedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}{' '}
                   {new Date(latestHistory.changedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                 </div>
@@ -1553,11 +1553,11 @@ const StudyRow = ({
                     }`}>
                     {study.lastDownload.downloadType?.toUpperCase() || 'DL'}
                   </span>
-                  <div className="text-[7px] text-slate-500 whitespace-nowrap">
+                  <div className="text-[9px] text-slate-500 whitespace-nowrap">
                     {new Date(study.lastDownload.downloadedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}{' '}
                     {new Date(study.lastDownload.downloadedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
                   </div>
-                  <div className="text-[7px] text-slate-400 truncate max-w-[70px]" title={study.lastDownload.downloadedByName}>
+                  <div className="text-[9px] text-slate-400 truncate max-w-[70px]" title={study.lastDownload.downloadedByName}>
                     {study.lastDownload.downloadedByName}
                   </div>
                 </div>
@@ -1657,8 +1657,8 @@ const StudyRow = ({
       )}
       {isColumnVisible('verifiedDateTime') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('verifiedDateTime')}px` }}>
-          <div className="text-[9px] font-medium text-slate-800 whitespace-nowrap">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
-          <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'UTC' }); } catch { return '-'; } })()}</div>
+          <div className="text-[10px] font-medium text-slate-800 whitespace-nowrap">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return '-'; } })()}</div>
+          <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{(() => { const ts = study.reportInfo?.verificationInfo?.verifiedAt || study.verifiedAt; if (!ts) return '-'; try { return new Date(ts).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false }); } catch { return '-'; } })()}</div>
         </td>
       )}
 
