@@ -585,7 +585,7 @@ const OnlineReportingSystemWithOHIF = () => {
           }))
         });
         if (response.data.success) {
-          toast.success(`${reports.length} reports finalized!`, { icon: '🎉' });
+          // reports finalized
           setTimeout(() => handleBackToWorklist(), 3000);
         } else throw new Error(response.data.message);
       } else {
@@ -602,7 +602,7 @@ const OnlineReportingSystemWithOHIF = () => {
           capturedImages: capturedImages.map(img => ({ ...img, capturedBy: currentUser._id }))
         });
         if (response.data.success) {
-          toast.success(`Report finalized as ${exportFormat.toUpperCase()}! Closing...`, { icon: '🎉' });
+          // report finalized
           setTimeout(() => window.close(), 2500); // ✅ close tab
         } else throw new Error(response.data.message);
       }
@@ -656,7 +656,7 @@ const OnlineReportingSystemWithOHIF = () => {
       }
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: true, verificationNotes: 'Verified via OHIF', corrections: [], verificationTimeMinutes: 0 });
       if (response.data.success) {
-        toast.success('Report verified! Closing tab...', { icon: '✅' });
+        // report verified
         setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
       } else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to verify: ${error.message}`); } finally { setVerifying(false); }
@@ -670,7 +670,7 @@ const OnlineReportingSystemWithOHIF = () => {
     try {
       const response = await api.post(`/verifier/studies/${studyId}/verify`, { approved: false, verificationNotes: reason, rejectionReason: reason, corrections: [], verificationTimeMinutes: 0 });
       if (response.data.success) {
-        toast.success('Report Reverted! Closing tab...', { icon: '❌' });
+        // report reverted
         setTimeout(() => window.close(), 2500); // ✅ close tab instead of navigate
       } else throw new Error(response.data.message);
     } catch (error) { toast.error(`Failed to Revert: ${error.message}`); } finally { setRejecting(false); }
@@ -800,31 +800,6 @@ const OnlineReportingSystemWithOHIF = () => {
   return (
     <>
       <div className="h-screen w-full bg-gray-50 flex flex-col overflow-hidden border-b-4 border-blue-600">
-
-        {/* ✅ Single Toaster - bottom-left */}
-        <Toaster
-          position="bottom-left"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              fontSize: '12px',
-              maxWidth: '320px',
-              padding: '8px 12px',
-              borderRadius: '6px'
-            },
-            success: {
-              duration: 2500,
-              style: { background: '#10b981', color: '#fff' }
-            },
-            error: {
-              duration: 3000,
-              style: { background: '#ef4444', color: '#fff' }
-            },
-            loading: {
-              style: { background: '#3b82f6', color: '#fff' }
-            }
-          }}
-        />
 
         {/* ── Navbar ── */}
         <div className="flex-shrink-0 bg-white border-b border-gray-200 shadow-sm z-50">

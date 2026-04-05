@@ -1021,17 +1021,19 @@ export const getCategoryValues = async (req, res) => {
                 ],
             }),
 
-            // ── PENDING: exactly matches case 'pending' ─────────────────────
+            // ── PENDING: includes reverted cases ─────────────────────
             DicomStudy.countDocuments({
                 ...queryFilters,
-                workflowStatus: { 
+                workflowStatus: {
                     $in: [
-                        'new_study_received', 
-                        'history_created', 
-                        'assigned_to_doctor', 
+                        'new_study_received',
+                        'history_created',
+                        'assigned_to_doctor',
                         'doctor_opened_report',
-                        'verification_pending', // ✅ ADD THIS
-                    ] 
+                        'verification_pending',
+                        'revert_to_radiologist',
+                        'report_rejected',
+                    ]
                 },
             }),
         ]);
@@ -1136,17 +1138,17 @@ export const getStudiesByCategory = async (req, res) => {
                 break;
 
             case 'pending':
-                // ✅ PENDING: includes verification_pending
-                queryFilters.workflowStatus = { 
+                queryFilters.workflowStatus = {
                     $in: [
-                        'new_study_received', 
-                        'history_created', 
-                        'assigned_to_doctor', 
+                        'new_study_received',
+                        'history_created',
+                        'assigned_to_doctor',
                         'doctor_opened_report',
-                        'verification_pending', // ✅ ADD THIS
-                    ] 
+                        'verification_pending',
+                        'revert_to_radiologist',
+                        'report_rejected',
+                    ]
                 };
-                console.log('📋 [PENDING] Filtering: new_study_received, history_created, assigned_to_doctor, doctor_opened_report, verification_pending');
                 break;
 
             case 'draft':

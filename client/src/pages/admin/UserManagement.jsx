@@ -26,7 +26,8 @@ import {
     Shield,
     Columns3,
     Link2,
-    ChevronRight
+    ChevronRight,
+    ArrowLeft
 } from 'lucide-react';
 import ColumnSelector from '../../components/common/ColumnSelector';
 import { getDefaultColumnsForRole } from '../../constants/worklistColumns';
@@ -528,7 +529,7 @@ const UserManagement = ({ isEmbedded = false }) => {
         // ✅ Remove min-h-screen + bg when embedded
         <div className={isEmbedded ? '' : 'min-h-screen bg-gray-50'}>
             {/* ✅ Only show Navbar when NOT embedded */}
-            {!isEmbedded && <Navbar title="User Management" />}
+            {!isEmbedded && <Navbar title="User Management" additionalActions={[{ label: 'Back', icon: ArrowLeft, onClick: () => navigate(-1), variant: 'secondary', tooltip: 'Back to dashboard' }]} />}
 
             <div className={isEmbedded ? 'px-4 py-4' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
                 {/* Header Section */}

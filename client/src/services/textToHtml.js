@@ -227,27 +227,9 @@ class RadiologyReportEngine {
   }
 
   /**
-   * 🎯 Apply medical term emphasis - conservative
+   * 🎯 Apply medical term emphasis - DISABLED (no auto-bolding)
    */
   static applyMedicalEmphasis(text) {
-    // Critical terms
-    this.MEDICAL_TERMS.critical.forEach(term => {
-      const regex = new RegExp(`\\b(${term})\\b`, 'gi');
-      text = text.replace(regex, '<strong style="color: #d32f2f;">$1</strong>');
-    });
-
-    // Normal findings (bold, black)
-    this.MEDICAL_TERMS.normal.forEach(term => {
-      const regex = new RegExp(`\\b(${term})\\b`, 'gi');
-      text = text.replace(regex, '<strong>$1</strong>');
-    });
-
-    // Negative findings (bold, black)
-    this.MEDICAL_TERMS.negative.forEach(term => {
-      const regex = new RegExp(`(${term})`, 'gi');
-      text = text.replace(regex, '<strong>$1</strong>');
-    });
-
     return text;
   }
 

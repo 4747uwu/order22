@@ -25,7 +25,8 @@ import {
   Code,
   Type,
   Zap,
-  Building2
+  Building2,
+  ArrowLeft
 } from 'lucide-react';
 
 const AdminTemplates = () => {
@@ -356,6 +357,13 @@ const AdminTemplates = () => {
   };
 
   const additionalActions = [
+    {
+      label: 'Back',
+      icon: ArrowLeft,
+      onClick: () => navigate(-1),
+      variant: 'secondary',
+      tooltip: 'Back to dashboard'
+    },
     {
       label: 'Create Template',
       icon: Plus,

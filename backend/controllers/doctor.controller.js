@@ -431,16 +431,16 @@ export const getValues = async (req, res) => {
         console.log(`🔍 Doctor dashboard query filters:`, JSON.stringify(queryFilters, null, 2));
 
                 const statusCategories = {
-            // Assigned but not started reporting
             pending: [
                 'new_study_received',
                 'pending_assignment',
                 'assigned_to_doctor',
-                'doctor_opened_report',    // ✅ MOVED: Opening report is still pending actual work
+                'doctor_opened_report',
                 'report_in_progress',
                 'history_created',
-                'history_updated'
-                                               // ✅ MOVED: In progress is pre-draft state
+                'history_updated',
+                'revert_to_radiologist',
+                'report_rejected',
             ],
             
             // Draft saved (not finalized yet)
@@ -796,8 +796,10 @@ export const getPendingStudies = async (req, res) => {
             'new_study_received',
             'pending_assignment',
             'assigned_to_doctor',
-            'doctor_opened_report',    // ✅ ADDED
-            'report_in_progress'       // ✅ ADDED
+            'doctor_opened_report',
+            'report_in_progress',
+            'revert_to_radiologist',
+            'report_rejected',
         ];
 
         const queryFilters = buildDoctorBaseQuery(req, user, pendingStatuses);
