@@ -479,8 +479,8 @@ const Navbar = ({
                     </div>
                     <a
                       href={is64
-                        ? 'https://drive.google.com/file/d/17eF1dPEDNNR--qMKLeA2SVlmjmfMV1pv/view?usp=sharing'
-                        : 'https://drive.google.com/file/d/1wmHCoIwiAkuTEm8mZylTGN5Wo9XJHDRo/view?usp=sharing'}
+                        ? 'https://drive.google.com/file/d/1GCh8jB9sKjMs-EA_v8QNbV92uE9Ttnrs/view?usp=sharing'
+                        : 'https://drive.google.com/file/d/1pOcKSekcLBSmE5vAx5U-q1h1JqfVn1tc/view?usp=sharing'}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-900 text-white rounded-lg text-xs font-bold uppercase hover:bg-black transition-colors shadow-sm"
