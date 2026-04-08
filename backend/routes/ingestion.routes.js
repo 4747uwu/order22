@@ -474,27 +474,37 @@ async function findOrCreatePatientFromTags(tags, organization) {
     return unknownPatient;
   }
 
+  // MRN value used for lookup/storage. PatientID stays as the original DICOM PatientID;
+  // only the MRN gets a name suffix appended on collision.
+  let mrnValue = patientIdDicom;
+
   // Look for patient within organization scope
-  let patient = await Patient.findOne({ 
-    mrn: patientIdDicom,
-    organization: organization._id 
+  let patient = await Patient.findOne({
+    mrn: mrnValue,
+    organization: organization._id
   });
 
   // If patient exists but name doesn't match, create a new unique patient
   if (patient && patient.patientNameRaw && nameInfo.formattedForDisplay) {
     const existingName = patient.patientNameRaw.trim().toUpperCase();
     const newName = nameInfo.formattedForDisplay.trim().toUpperCase();
-    
+
     if (existingName !== newName) {
       console.log(`⚠️ Patient MRN collision detected!`);
-      console.log(`   - MRN: ${patientIdDicom}`);
+      console.log(`   - MRN: ${mrnValue}`);
       console.log(`   - Existing: ${patient.patientNameRaw}`);
       console.log(`   - New Study: ${nameInfo.formattedForDisplay}`);
-      console.log(`   - Creating separate patient record with modified MRN`);
-      
-      // Create new patient with modified MRN to avoid collision
-      patient = null; // Force creation of new patient below
-      patientIdDicom = `${patientIdDicom}_${nameInfo.lastName || Date.now()}`;
+      console.log(`   - Creating separate patient record with modified MRN (patientID unchanged)`);
+
+      // Append the raw DICOM name to the MRN to create a unique MRN for this patient.
+      // patientID itself is left untouched so it still equals the original DICOM PatientID.
+      mrnValue = `${patientIdDicom}_${tags.PatientName || nameInfo.lastName || Date.now()}`;
+
+      // Re-check: this name-suffixed MRN may already exist from a prior ingestion
+      patient = await Patient.findOne({
+        mrn: mrnValue,
+        organization: organization._id
+      });
     }
   }
 
@@ -502,7 +512,7 @@ async function findOrCreatePatientFromTags(tags, organization) {
     patient = new Patient({
       organization: organization._id,
       organizationIdentifier: organization.identifier,
-      mrn: patientIdDicom || `ANON_${Date.now()}`,
+      mrn: mrnValue || `ANON_${Date.now()}`,
       patientID: patientIdDicom || `ANON_${Date.now()}`,
       // ✅ CRITICAL FIX: Save the original DICOM format name as patientNameRaw
       patientNameRaw: tags.PatientName || nameInfo.formattedForDisplay,  // ✅ USE ORIGINAL FIRST
@@ -521,7 +531,7 @@ async function findOrCreatePatientFromTags(tags, organization) {
     });
     
     await patient.save();
-    console.log(`👤 Created patient in ${organization.name}: ${tags.PatientName} (${patientIdDicom})`);
+    console.log(`👤 Created patient in ${organization.name}: ${tags.PatientName} (patientID=${patientIdDicom}, mrn=${mrnValue})`);
   } else {
     // ✅ CRITICAL FIX: Update to use original DICOM name if it's different
     if (patient.patientNameRaw !== tags.PatientName && tags.PatientName) {
