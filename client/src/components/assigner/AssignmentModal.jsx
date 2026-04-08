@@ -145,6 +145,9 @@ const AssignmentModalContent = ({
                     <div className="flex items-center gap-1.5">
                       <div className={`text-[10px] font-bold truncate uppercase ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
                         {radiologist.fullName || radiologist.email.split('@')[0]}
+                        {radiologist.email && (
+                          <span className="ml-1 text-gray-500">({radiologist.email.split('@')[0]})</span>
+                        )}
                       </div>
                       
                       {/* Compact Badges */}
