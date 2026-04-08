@@ -158,6 +158,155 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     updateToolStates();
   };
 
+  // ✅ PASTE SANITIZER
+  // Word, Google Docs, Outlook and web pages all paste hostile HTML: outer
+  // wrapper divs with inline font-size/line-height, mso-* styles, and
+  // <br>-only "lines". Left untouched, that breaks per-line tools later
+  // (line-spacing applies to the whole template, font-size loses to inline
+  // styles, etc.). We sanitize on paste so the rest of the editor sees a
+  // clean tree of <p> blocks.
+  const sanitizePastedHtml = (rawHtml) => {
+    const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
+    const body = doc.body;
+    if (!body) return '';
+
+    // Remove Word/Office artifacts entirely
+    body.querySelectorAll('o\\:p, style, meta, link, script, title, xml').forEach((el) => el.remove());
+
+    // Strip all <!--[if ...]>...<![endif]--> conditional comments via innerHTML scrub
+    body.innerHTML = body.innerHTML.replace(/<!--[\s\S]*?-->/g, '');
+
+    // Allowed inline style properties — anything else (font-size, line-height,
+    // margin, font-family, color from outer wrappers, mso-*) gets removed.
+    const ALLOWED_STYLE_PROPS = new Set(['text-align', 'font-weight', 'font-style', 'text-decoration']);
+
+    body.querySelectorAll('*').forEach((el) => {
+      // Drop class and id (Mso*, docs-internal-guid-*, etc.)
+      el.removeAttribute('class');
+      el.removeAttribute('id');
+      el.removeAttribute('lang');
+      el.removeAttribute('dir');
+      el.removeAttribute('align');
+
+      const style = el.getAttribute('style');
+      if (style) {
+        const kept = style
+          .split(';')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .filter((decl) => {
+            const prop = decl.split(':')[0]?.trim().toLowerCase();
+            return prop && ALLOWED_STYLE_PROPS.has(prop);
+          })
+          .join('; ');
+        if (kept) el.setAttribute('style', kept);
+        else el.removeAttribute('style');
+      }
+    });
+
+    // Convert <br>-separated content inside a block into real <p> blocks.
+    // Only do this for block containers that have <br> children — we don't
+    // want to mangle a <p> that happens to use a single <br> for a soft wrap.
+    body.querySelectorAll('div, section, article').forEach((container) => {
+      const brs = container.querySelectorAll(':scope > br');
+      if (brs.length === 0) return;
+
+      const newChildren = [];
+      let buffer = [];
+      const flush = () => {
+        if (buffer.length === 0) return;
+        const p = doc.createElement('p');
+        buffer.forEach((n) => p.appendChild(n));
+        newChildren.push(p);
+        buffer = [];
+      };
+      Array.from(container.childNodes).forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'BR') {
+          flush();
+        } else {
+          buffer.push(node);
+        }
+      });
+      flush();
+      container.innerHTML = '';
+      newChildren.forEach((p) => container.appendChild(p));
+    });
+
+    // Unwrap pure-wrapper <div>/<span> that hold no semantics — promote
+    // their children up so the paste isn't trapped in one giant container.
+    const unwrapAll = (selector) => {
+      let changed = true;
+      while (changed) {
+        changed = false;
+        body.querySelectorAll(selector).forEach((el) => {
+          if (!el.getAttribute('style')) {
+            const parent = el.parentNode;
+            while (el.firstChild) parent.insertBefore(el.firstChild, el);
+            parent.removeChild(el);
+            changed = true;
+          }
+        });
+      }
+    };
+    unwrapAll('div:not([style])');
+    unwrapAll('span:not([style])');
+
+    return body.innerHTML;
+  };
+
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const cd = e.clipboardData;
+    if (!cd) return;
+
+    const html = cd.getData('text/html');
+    const text = cd.getData('text/plain');
+
+    let cleanHtml;
+    if (html && html.trim()) {
+      cleanHtml = sanitizePastedHtml(html);
+    } else if (text) {
+      // Plain-text paste: split on newlines into <p> blocks so per-line tools
+      // work afterwards.
+      const escape = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      cleanHtml = text
+        .split(/\r?\n/)
+        .map((line) => `<p>${escape(line) || '<br>'}</p>`)
+        .join('');
+    } else {
+      return;
+    }
+
+    // Insert at the current selection inside the editor
+    contentEditableRef.current?.focus();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
+
+    const temp = document.createElement('div');
+    temp.innerHTML = cleanHtml;
+    const frag = document.createDocumentFragment();
+    let lastNode = null;
+    while (temp.firstChild) {
+      lastNode = temp.firstChild;
+      frag.appendChild(temp.firstChild);
+    }
+    range.insertNode(frag);
+
+    if (lastNode) {
+      const newRange = document.createRange();
+      newRange.setStartAfter(lastNode);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+
+    setTimeout(() => {
+      if (contentEditableRef.current) onChange(contentEditableRef.current.innerHTML);
+    }, 10);
+  };
+
   // ✅ FIXED: Update active tool states properly
   const updateToolStates = () => {
     const selection = window.getSelection();
@@ -202,10 +351,10 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     }, 10);
   };
 
-  // ✅ FIXED: Properly working font size change
+  // ✅ FIXED: Properly working font size change across multi-line / multi-block selections
   const applyFontSize = (size) => {
     setFontSize(size);
-    
+
     const selection = window.getSelection();
     if (!selection.rangeCount) {
       contentEditableRef.current?.focus();
@@ -213,43 +362,106 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     }
 
     const range = selection.getRangeAt(0);
-    
-    // ✅ If text is selected, wrap it in a span with the font size
-    if (!range.collapsed) {
-      try {
+
+    if (range.collapsed) {
+      contentEditableRef.current?.focus();
+      return;
+    }
+
+    const root = contentEditableRef.current;
+    if (!root) return;
+
+    try {
+      // 1. Collect every text node that intersects the selection.
+      //    Wrapping a multi-block fragment in a single <span> produces invalid
+      //    HTML (block elements inside an inline) and the size silently fails
+      //    on the inner blocks — which is exactly the "only line spacing
+      //    changes" symptom. Walking text nodes one-by-one avoids that.
+      const textNodes = [];
+      const walker = document.createTreeWalker(
+        range.commonAncestorContainer.nodeType === Node.TEXT_NODE
+          ? range.commonAncestorContainer.parentNode
+          : range.commonAncestorContainer,
+        NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: (node) => {
+            if (!node.nodeValue || !node.nodeValue.length) return NodeFilter.FILTER_REJECT;
+            if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+          }
+        }
+      );
+      let n = walker.nextNode();
+      while (n) {
+        textNodes.push(n);
+        n = walker.nextNode();
+      }
+      // Edge case: selection entirely within a single text node and the
+      // walker started past it.
+      if (textNodes.length === 0 && range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+        textNodes.push(range.startContainer);
+      }
+
+      const startContainer = range.startContainer;
+      const endContainer = range.endContainer;
+      const startOffset = range.startOffset;
+      const endOffset = range.endOffset;
+
+      const wrappedSpans = [];
+
+      // 2. For each text node, slice the portion inside the selection
+      //    (handling partial start/end nodes) and wrap it in a span.fontSize.
+      //    Also strip any inherited font-size from ancestor spans on that
+      //    portion so the new size actually wins.
+      textNodes.forEach((textNode) => {
+        let node = textNode;
+        if (node === startContainer && startOffset > 0) {
+          node = node.splitText(startOffset);
+          // After split, end offset on the same node needs adjusting
+          if (textNode === endContainer) {
+            // endOffset was relative to the original node
+            const newEndOffset = endOffset - startOffset;
+            if (newEndOffset < node.nodeValue.length) {
+              node.splitText(newEndOffset);
+            }
+          }
+        } else if (node === endContainer && endOffset < node.nodeValue.length) {
+          node.splitText(endOffset);
+        }
+
+        if (!node.nodeValue || !node.nodeValue.length) return;
+
         const span = document.createElement('span');
         span.style.fontSize = size;
-        
-        // Extract the selected content
-        const fragment = range.extractContents();
-        span.appendChild(fragment);
-        
-        // Insert the styled span
-        range.insertNode(span);
-        
-        // Restore selection
-        selection.removeAllRanges();
-        const newRange = document.createRange();
-        newRange.selectNodeContents(span);
-        selection.addRange(newRange);
-        
-      } catch (e) {
-        console.error('Error applying font size:', e);
-        // Fallback to execCommand
-        document.execCommand('fontSize', false, '7');
-        const fontElements = contentEditableRef.current.querySelectorAll('font[size="7"]');
-        fontElements.forEach(el => {
-          const span = document.createElement('span');
-          span.style.fontSize = size;
-          span.innerHTML = el.innerHTML;
-          el.parentNode.replaceChild(span, el);
+        node.parentNode.insertBefore(span, node);
+        span.appendChild(node);
+        wrappedSpans.push(span);
+      });
+
+      // 3. Neutralize any descendant spans inside the wrapped regions that
+      //    still carry an explicit font-size from a previous edit — they would
+      //    otherwise win via specificity and you'd see "no change".
+      wrappedSpans.forEach((wrapper) => {
+        wrapper.querySelectorAll('span[style*="font-size"]').forEach((inner) => {
+          inner.style.fontSize = '';
+          if (!inner.getAttribute('style')) inner.removeAttribute('style');
         });
+      });
+
+      // 4. Restore a selection that spans the wrapped region.
+      if (wrappedSpans.length > 0) {
+        const newRange = document.createRange();
+        newRange.setStartBefore(wrappedSpans[0]);
+        newRange.setEndAfter(wrappedSpans[wrappedSpans.length - 1]);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
       }
+    } catch (e) {
+      console.error('Error applying font size:', e);
     }
-    
+
     contentEditableRef.current?.focus();
-    
-    // Trigger content change
+
     setTimeout(() => {
       if (contentEditableRef.current) {
         onChange(contentEditableRef.current.innerHTML);
@@ -395,7 +607,12 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
     }
 
     blocks.forEach((block) => {
-      if (block) block.style.lineHeight = value;
+      // Safety: never set line-height on the editor root itself — that
+      // silently re-styles the entire template. This happens when pasted
+      // content has no inner block elements and getBlockParent climbs all
+      // the way up.
+      if (!block || block === contentEditableRef.current) return;
+      block.style.lineHeight = value;
     });
 
     // Trigger content change
@@ -972,6 +1189,7 @@ const ReportEditor = React.forwardRef(({ content, onChange, containerWidth = 100
                   fontSize: fontSize
                 }}
                 onInput={handleContentChange}
+                onPaste={handlePaste}
                 onMouseUp={(e) => {
                   saveSelection();
                   if (formatPainterActive) applyStoredFormat();
