@@ -446,7 +446,7 @@ async function findOrCreateOrganizationFromTags(tags) {
 
 // 🔧 UPDATED: Modified to work with organization context
 async function findOrCreatePatientFromTags(tags, organization) {
-  const patientIdDicom = tags.PatientID;
+  let patientIdDicom = tags.PatientID;
   const nameInfo = processDicomPersonName(tags.PatientName);
   const patientSex = tags.PatientSex;
   const patientBirthDate = tags.PatientBirthDate;
