@@ -40,7 +40,8 @@ const AssignmentModalContent = ({
     const term = searchTerm.toLowerCase().trim();
     if (!term) return availableAssignees.radiologists;
     return availableAssignees.radiologists.filter(r =>
-      r.email.toLowerCase().includes(term) ||
+      r.username?.toLowerCase().includes(term) ||
+      r.email?.toLowerCase().includes(term) ||
       r.fullName?.toLowerCase().includes(term) ||
       (r.firstName && r.lastName && `${r.firstName} ${r.lastName}`.toLowerCase().includes(term))
     );
@@ -144,10 +145,7 @@ const AssignmentModalContent = ({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <div className={`text-[10px] font-bold truncate uppercase ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}>
-                        {radiologist.fullName || radiologist.email.split('@')[0]}
-                        {radiologist.email && (
-                          <span className="ml-1 text-gray-500">({radiologist.email.split('@')[0]})</span>
-                        )}
+                        {radiologist.username || radiologist.fullName || radiologist.email?.split('@')[0]}
                       </div>
                       
                       {/* Compact Badges */}
@@ -155,8 +153,8 @@ const AssignmentModalContent = ({
                       {isSelected && !isAssigned && <span className="px-1 py-0.5 bg-green-100 text-green-700 text-[7px] font-bold rounded uppercase">Add</span>}
                     </div>
                     
-                    {radiologist.email && radiologist.fullName && (
-                      <div className="text-[8px] text-gray-500 truncate">{radiologist.email}</div>
+                    {radiologist.fullName && (
+                      <div className="text-[8px] text-gray-500 truncate">{radiologist.fullName}</div>
                     )}
                     
                     {hasWorkload && (

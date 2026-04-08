@@ -316,6 +316,7 @@ const buildStudyAggregationPipeline = (queryFilters, skip, limit) => {
     // User fields we need from referenced collections
     const USER_FIELDS = {
         fullName: 1, firstName: 1, lastName: 1,
+        username: 1,
         email: 1, role: 1, organizationIdentifier: 1,
     };
 

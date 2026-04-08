@@ -25,14 +25,15 @@ export const getRadiologistsForFilter = async (req, res) => {
         }
 
         const radiologists = await User.find(query)
-            .select('_id fullName email')
-            .sort({ fullName: 1 });
+            .select('_id fullName username email')
+            .sort({ username: 1 });
 
         res.json({
             success: true,
             data: radiologists.map(r => ({
                 value: r._id.toString(),
-                label: r.fullName,
+                label: r.username || r.fullName,
+                fullName: r.fullName,
                 email: r.email
             }))
         });

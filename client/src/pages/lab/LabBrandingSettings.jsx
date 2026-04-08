@@ -58,8 +58,8 @@ const LabBrandingSettings = () => {
     showHeader: true,
     showFooter: true,
     paperSettings: {
-      paperWidth: 816,
-      paperHeight: 1056,
+      paperWidth: 794,    // A4 width in pixels (210mm * 96/25.4)
+      paperHeight: 1123,  // A4 height in pixels (297mm * 96/25.4)
       marginTop: 96,
       marginBottom: 96,
       marginLeft: 96,
@@ -73,13 +73,13 @@ const LabBrandingSettings = () => {
   // Get lab ID from user context
   const labId = currentUser?.labIdentifier || currentUser?.lab?._id;
 
-  // ✅ Letter Paper constants
+  // ✅ A4 Paper constants
   const LETTER_CONSTANTS = {
-    WIDTH_PX: 816,
-    HEIGHT_PX: 1056,
+    WIDTH_PX: 794,     // 210mm * 96 / 25.4 = 794px (A4 width)
+    HEIGHT_PX: 1123,   // 297mm * 96 / 25.4 = 1123px (A4 height)
     SCALE_FACTOR: 0.8,
     MARGIN_PX: 96,
-    FIXED_HEIGHT: 1056 * 0.8
+    FIXED_HEIGHT: 1123 * 0.8
   };
 
   const getDisplayDimensions = () => {
@@ -702,17 +702,17 @@ const saveAllChanges = async () => {
         )}
       </div>
 
-      {/* ✅ MAIN CONTENT - Letter Paper Preview */}
+      {/* ✅ MAIN CONTENT - A4 Paper Preview */}
       <div className="flex-1 flex flex-col">
         <div className="bg-white border-b border-gray-200 px-4 py-2">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-gray-900">{currentUser?.lab?.name || 'Your Lab'}</h2>
-              <p className="text-xs text-gray-600">Letter Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
+              <p className="text-xs text-gray-600">A4 Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
             </div>
 
             <div className="flex items-center gap-3 text-xs text-gray-600">
-              <span>📐 816×1056px (Letter 8.5"×11")</span>
+              <span>📐 794×1123px (A4 210×297mm)</span>
               <span className={`${headerSizeMatch ? 'text-green-600 font-semibold' : ''}`}>
                 📏 Header: {headerHeight}px {headerSizeMatch && <span className="text-green-600">✅</span>}
               </span>
@@ -1034,11 +1034,11 @@ const saveAllChanges = async () => {
                   </h3>
                   <p className="text-sm text-gray-600 mt-1">
                     <span className="font-bold text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                      Letter Paper Requirements
-                    </span> • Min Width: <span className="font-bold text-blue-600">624px</span> • Target Height: <span className="font-bold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px</span>
+                      A4 Paper Requirements
+                    </span> • Min Width: <span className="font-bold text-blue-600">602px</span> • Target Height: <span className="font-bold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px</span>
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    📏 Content area: 624px wide (8.5" - 2" margins) • Drag to select crop area • Adjust corners to resize
+                    📏 Content area: 602px wide (A4 210mm − 2" margins) • Drag to select crop area • Adjust corners to resize
                   </p>
                 </div>
 
@@ -1079,8 +1079,8 @@ const saveAllChanges = async () => {
                     onComplete={(c) => setCompletedCrop(c)}
                     aspect={undefined}
                     minHeight={30}
-                    minWidth={624}
-                    maxWidth={816}
+                    minWidth={602}
+                    maxWidth={794}
                   >
                     <img
                       ref={imgRef}

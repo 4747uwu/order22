@@ -87,7 +87,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       if (study.categoryTracking?.assigned?.assignedTo) {
         const assignee = study.categoryTracking.assigned.assignedTo;
         return {
-          radiologistName: (assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
+          radiologistName: (assignee.username || assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
           radiologistEmail: assignee.email,
           radiologistRole: assignee.role
         };
@@ -98,12 +98,12 @@ export const formatStudyForWorklist = (rawStudy) => {
         const latestAssignment = study.assignment
           .filter(a => a.assignedTo)
           .sort((a, b) => new Date(b.assignedAt) - new Date(a.assignedAt))[0];
-        
+
         if (latestAssignment?.assignedTo) {
           const assignee = latestAssignment.assignedTo;
           if (typeof assignee === 'object') {
             return {
-              radiologistName: (assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
+              radiologistName: (assignee.username || assignee.fullName || `${assignee.firstName} ${assignee.lastName}`).toUpperCase(),
               radiologistEmail: assignee.email,
               radiologistRole: assignee.role
             };
@@ -115,7 +115,7 @@ export const formatStudyForWorklist = (rawStudy) => {
       if (study.currentReportStatus?.lastReportedBy) {
         const reporter = study.currentReportStatus.lastReportedBy;
         return {
-          radiologistName: (reporter.fullName || `${reporter.firstName} ${reporter.lastName}`).toUpperCase(),
+          radiologistName: (reporter.username || reporter.fullName || `${reporter.firstName} ${reporter.lastName}`).toUpperCase(),
           radiologistEmail: reporter.email,
           radiologistRole: reporter.role
         };
@@ -476,7 +476,7 @@ const formatAssignmentInfo = (assignmentArray) => {
     if (typeof assignedTo === 'object' && assignedTo._id) {
       doctorInfo = {
         id: assignedTo._id.toString(),
-        name: (assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim()).toUpperCase(),
+        name: (assignedTo.username || assignedTo.fullName || `${assignedTo.firstName || ''} ${assignedTo.lastName || ''}`.trim()).toUpperCase(),
         email: assignedTo.email,
         role: assignedTo.role
       };

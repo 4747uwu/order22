@@ -79,7 +79,9 @@ const formatAssignmentInfo = (study, userMap) => {
         isAssigned: true,
         assignedTo: assignedToUser ? {
             _id: assignedToUser._id,
-            name: assignedToUser.fullName || assignedToUser.firstName + ' ' + assignedToUser.lastName,
+            name: assignedToUser.username || assignedToUser.fullName || (assignedToUser.firstName + ' ' + assignedToUser.lastName),
+            username: assignedToUser.username,
+            fullName: assignedToUser.fullName,
             email: assignedToUser.email,
             role: assignedToUser.role
         } : null,

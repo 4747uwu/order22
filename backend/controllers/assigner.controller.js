@@ -168,7 +168,7 @@ export const getAvailableAssignees = async (req, res) => {
             role: 'radiologist',
             isActive: true
         })
-        .select('_id fullName email activityStats')
+        .select('_id fullName username email activityStats')
         .lean();
 
         const verifiers = await User.find({
