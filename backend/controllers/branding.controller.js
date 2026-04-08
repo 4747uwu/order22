@@ -330,6 +330,54 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
     }
 };
 
+// ✅ UPDATE PAPER SETTINGS (paper size, margins, header/footer heights)
+export const updatePaperSettings = async (req, res) => {
+    try {
+        const { labId } = req.params;
+        const { paperSettings } = req.body;
+
+        if (!paperSettings || typeof paperSettings !== 'object') {
+            return res.status(400).json({
+                success: false,
+                message: 'paperSettings object is required'
+            });
+        }
+
+        const lab = await Lab.findOneAndUpdate(
+            {
+                _id: labId,
+                organizationIdentifier: req.user.organizationIdentifier
+            },
+            {
+                $set: { 'reportBranding.paperSettings': paperSettings }
+            },
+            { new: true }
+        ).select('reportBranding');
+
+        if (!lab) {
+            return res.status(404).json({
+                success: false,
+                message: 'Laboratory not found'
+            });
+        }
+
+        console.log('✅ Paper settings updated:', { labId, paperSettings });
+
+        res.json({
+            success: true,
+            message: 'Paper settings updated successfully',
+            data: lab.reportBranding
+        });
+
+    } catch (error) {
+        console.error('❌ Update paper settings error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to update paper settings'
+        });
+    }
+};
+
 // ✅ TOGGLE BRANDING VISIBILITY
 export const toggleBrandingVisibility = async (req, res) => {
     try {
@@ -557,6 +605,7 @@ export default {
     uploadOwnLabBrandingImage,
     toggleBrandingVisibility,
     toggleOwnLabBrandingVisibility,
+    updatePaperSettings,
     deleteBrandingImage,
     deleteOwnLabBrandingImage
 };
