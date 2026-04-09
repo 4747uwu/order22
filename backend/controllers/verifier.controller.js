@@ -1,7 +1,9 @@
 import mongoose from 'mongoose';
 import DicomStudy from '../models/dicomStudyModel.js';
+import Report from '../models/reportModel.js';
 import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
+import Organization from '../models/organisation.js';
 import Verifier from '../models/verifierModel.js';
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -1366,10 +1368,9 @@ export const updateReportDuringVerification = async (req, res) => {
                 workflowStatus: study.workflowStatus
             });
 
-            // ✅ STEP 2: Find THE MOST RECENT finalized report for this study
-            const Report = mongoose.model('Report');
-            
-            // If reportId provided, target that specific report; otherwise fall back to most recent finalized
+            // ✅ STEP 2: Find the target report
+            // If reportId provided → target that specific report
+            // If reportId is null/absent → this is a NEW report, skip fallback to avoid overwriting existing ones
             let existingReport = null;
             if (reportId && mongoose.Types.ObjectId.isValid(reportId)) {
                 existingReport = await Report.findOne({
@@ -1377,136 +1378,251 @@ export const updateReportDuringVerification = async (req, res) => {
                     dicomStudy: studyId
                 }).session(session);
                 console.log('🎯 [Verifier Update] Targeted report by ID:', reportId, '→ found:', !!existingReport);
-            }
-            if (!existingReport) {
-                existingReport = await Report.findOne({
-                    dicomStudy: studyId,
-                    reportStatus: { $in: ['finalized', 'verified'] }
-                })
-                .sort({ createdAt: -1 })
-                .session(session);
-                console.log('🔍 [Verifier Update] Fallback to most recent finalized/verified report:', existingReport?._id);
+
+                // Only fall back to most recent if a specific reportId was given but not found
+                if (!existingReport) {
+                    existingReport = await Report.findOne({
+                        dicomStudy: studyId,
+                        reportStatus: { $in: ['finalized', 'verified'] }
+                    })
+                    .sort({ createdAt: -1 })
+                    .session(session);
+                    console.log('🔍 [Verifier Update] Fallback to most recent finalized/verified report:', existingReport?._id);
+                }
+            } else {
+                console.log('📝 [Verifier Update] No reportId provided — will create a new report');
             }
 
+            const now = new Date();
+            const plainText = htmlContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+            let savedReport;
+
             if (!existingReport) {
-                await session.abortTransaction();
-                console.error('❌ [Verifier Update] No finalized report found for study:', studyId);
-                return res.status(404).json({
-                    success: false,
-                    message: 'No finalized report found to update. Please finalize a report first.'
+                // ✅ NEW: Create a new report during verification (verifier adding additional report)
+                console.log('📝 [Verifier Update] No existing report found — creating NEW report for study:', studyId);
+
+                const organization = await Organization.findOne({
+                    identifier: user.organizationIdentifier
+                }).session(session);
+
+                // Determine the doctor from assignment
+                let doctorId = user._id;
+                let doctorName = user.fullName;
+                if (study.assignment && study.assignment.length > 0) {
+                    const latestAssignment = study.assignment[study.assignment.length - 1];
+                    if (latestAssignment.assignedTo) {
+                        const assignedDoctor = await User.findById(latestAssignment.assignedTo).select('fullName').session(session);
+                        if (assignedDoctor) {
+                            doctorId = latestAssignment.assignedTo;
+                            doctorName = assignedDoctor.fullName;
+                        }
+                    }
+                }
+
+                const referringPhysicianData = study.referringPhysician || study.referringPhysicianName || 'N/A';
+                const referringPhysicianName = typeof referringPhysicianData === 'string'
+                    ? referringPhysicianData
+                    : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
+                    ? referringPhysicianData.name
+                    : 'N/A';
+
+                const newReport = new Report({
+                    reportId: `RPT_${studyId}_${Date.now()}`,
+                    organizationIdentifier: user.organizationIdentifier,
+                    organization: organization?._id,
+                    patient: study.patient?._id || study.patient,
+                    patientId: study.patientId,
+                    dicomStudy: studyId,
+                    studyInstanceUID: study.studyInstanceUID || study.orthancStudyID || studyId.toString(),
+                    orthancStudyID: study.orthancStudyID,
+                    accessionNumber: study.accessionNumber,
+                    createdBy: user._id,
+                    doctorId: doctorId,
+                    verifierId: user._id,
+                    reportContent: {
+                        htmlContent: htmlContent,
+                        plainTextContent: plainText,
+                        templateInfo: templateInfo || { templateId: templateId || null, templateName: 'Verifier Report', templateCategory: 'General', templateTitle: 'Verifier Report' },
+                        statistics: {
+                            wordCount: plainText ? plainText.split(/\s+/).length : 0,
+                            characterCount: plainText ? plainText.length : 0,
+                            pageCount: Math.ceil((plainText?.length || 0) / 2500) || 1
+                        }
+                    },
+                    reportType: 'finalized',
+                    reportStatus: 'finalized',
+                    patientInfo: {
+                        fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                        patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
+                        age: study.patientInfo?.age || study.patient?.age || 'N/A',
+                        gender: study.patientInfo?.gender || study.patient?.gender || 'N/A',
+                        clinicalHistory: study.clinicalHistory?.clinicalHistory || 'N/A'
+                    },
+                    studyInfo: {
+                        studyDate: study.studyDate,
+                        modality: study.modality || study.modalitiesInStudy?.join(', '),
+                        examDescription: study.examDescription || study.studyDescription,
+                        institutionName: study.institutionName,
+                        referringPhysician: {
+                            name: referringPhysicianName,
+                            institution: typeof study.referringPhysician === 'object' ? study.referringPhysician?.institution || '' : '',
+                            contactInfo: typeof study.referringPhysician === 'object' ? study.referringPhysician?.contactInfo || '' : ''
+                        },
+                        seriesCount: study.seriesCount,
+                        instanceCount: study.instanceCount
+                    },
+                    workflowInfo: {
+                        finalizedAt: now,
+                        statusHistory: [{
+                            status: 'finalized',
+                            changedAt: now,
+                            changedBy: user._id,
+                            notes: 'New report created by verifier during verification',
+                            userRole: 'verifier'
+                        }]
+                    },
+                    verificationInfo: {
+                        verificationHistory: [{
+                            action: 'report_added_by_verifier',
+                            performedBy: user._id,
+                            performedAt: now,
+                            notes: verificationNotes || 'New report added during verification'
+                        }]
+                    },
+                    auditInfo: {
+                        accessLog: [{
+                            accessedBy: user._id,
+                            accessedAt: now,
+                            accessType: 'create',
+                            ipAddress: req.ip || 'unknown',
+                            userAgent: req.headers['user-agent'] || 'unknown'
+                        }],
+                        lastAccessedAt: now,
+                        accessCount: 1
+                    },
+                    systemInfo: { dataSource: 'online_reporting_system' }
+                });
+
+                savedReport = await newReport.save({ session });
+
+                // Track in study's modernReports
+                if (!study.reportInfo) study.reportInfo = {};
+                if (!study.reportInfo.modernReports) study.reportInfo.modernReports = [];
+                study.reportInfo.modernReports.push({
+                    reportId: savedReport._id,
+                    reportType: 'finalized',
+                    createdAt: now
+                });
+
+                console.log('✅ [Verifier Update] NEW report CREATED:', {
+                    reportId: savedReport._id.toString(),
+                    contentLength: savedReport.reportContent?.htmlContent?.length || 0,
+                    createdBy: user.fullName
+                });
+            } else {
+                // ✅ UPDATE EXISTING REPORT
+                console.log('📄 [Verifier Update] Found existing finalized report to UPDATE:', {
+                    reportId: existingReport._id,
+                    reportObjectId: existingReport._id.toString(),
+                    currentStatus: existingReport.reportStatus,
+                    reportOrg: existingReport.organizationIdentifier,
+                    originalContent: existingReport.reportContent?.htmlContent?.length || 0,
+                    createdAt: existingReport.createdAt,
+                    createdBy: existingReport.createdBy
+                });
+
+                // Update content
+                existingReport.reportContent.htmlContent = htmlContent;
+                existingReport.reportContent.plainTextContent = plainText;
+
+                // Update template info if provided
+                if (templateInfo) {
+                    existingReport.reportContent.templateInfo = {
+                        templateId: templateInfo.templateId || templateId,
+                        templateName: templateInfo.templateName,
+                        templateCategory: templateInfo.templateCategory,
+                        templateTitle: templateInfo.templateTitle
+                    };
+                }
+
+                // Update statistics
+                existingReport.reportContent.statistics = {
+                    wordCount: plainText ? plainText.split(/\s+/).length : 0,
+                    characterCount: plainText ? plainText.length : 0,
+                    pageCount: Math.ceil((plainText?.length || 0) / 2500) || 1
+                };
+
+                // Keep status as finalized
+                existingReport.reportStatus = 'finalized';
+                existingReport.reportType = 'finalized';
+
+                // Update workflow history
+                if (!existingReport.workflowInfo) {
+                    existingReport.workflowInfo = { statusHistory: [] };
+                }
+                if (!existingReport.workflowInfo.statusHistory) {
+                    existingReport.workflowInfo.statusHistory = [];
+                }
+
+                existingReport.workflowInfo.statusHistory.push({
+                    status: 'finalized',
+                    changedAt: now,
+                    changedBy: user._id,
+                    notes: verificationNotes || 'Report content updated by verifier during verification process',
+                    userRole: 'verifier'
+                });
+
+                // Update verification history
+                if (!existingReport.verificationInfo) {
+                    existingReport.verificationInfo = { verificationHistory: [] };
+                }
+                if (!existingReport.verificationInfo.verificationHistory) {
+                    existingReport.verificationInfo.verificationHistory = [];
+                }
+
+                existingReport.verificationInfo.verificationHistory.push({
+                    action: 'corrections_requested',
+                    performedBy: user._id,
+                    performedAt: now,
+                    notes: verificationNotes || 'Report content updated during verification'
+                });
+
+                // Update verifier ID if not already set
+                if (!existingReport.verifierId) {
+                    existingReport.verifierId = user._id;
+                }
+
+                // Update audit info
+                if (!existingReport.auditInfo) {
+                    existingReport.auditInfo = { accessLog: [] };
+                }
+                if (!existingReport.auditInfo.accessLog) {
+                    existingReport.auditInfo.accessLog = [];
+                }
+
+                existingReport.auditInfo.accessLog.push({
+                    accessedBy: user._id,
+                    accessedAt: now,
+                    accessType: 'edit',
+                    ipAddress: req.ip || 'unknown',
+                    userAgent: req.headers['user-agent'] || 'unknown'
+                });
+
+                existingReport.auditInfo.lastAccessedAt = now;
+                existingReport.auditInfo.accessCount = (existingReport.auditInfo.accessCount || 0) + 1;
+                existingReport.updatedAt = now;
+
+                console.log('💾 [Verifier Update] Saving EXISTING report (ID: ' + existingReport._id + ')...');
+                savedReport = await existingReport.save({ session });
+
+                console.log('✅ [Verifier Update] Report UPDATED successfully (same ID):', {
+                    reportId: savedReport._id.toString(),
+                    sameIdConfirmed: savedReport._id.toString() === existingReport._id.toString(),
+                    newContentLength: savedReport.reportContent?.htmlContent?.length || 0,
+                    statusMaintained: savedReport.reportStatus,
+                    updatedAt: savedReport.updatedAt
                 });
             }
-
-            console.log('📄 [Verifier Update] Found existing finalized report to UPDATE:', {
-                reportId: existingReport._id,
-                reportObjectId: existingReport._id.toString(),
-                currentStatus: existingReport.reportStatus,
-                reportOrg: existingReport.organizationIdentifier,
-                originalContent: existingReport.reportContent?.htmlContent?.length || 0,
-                createdAt: existingReport.createdAt,
-                createdBy: existingReport.createdBy
-            });
-
-            // ✅ STEP 3: UPDATE THE EXISTING REPORT (DO NOT CREATE NEW)
-            const now = new Date();
-
-            // Update content
-            existingReport.reportContent.htmlContent = htmlContent;
-            
-            // Update plain text
-            const plainText = htmlContent.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
-            existingReport.reportContent.plainTextContent = plainText;
-
-            // Update template info if provided
-            if (templateInfo) {
-                existingReport.reportContent.templateInfo = {
-                    templateId: templateInfo.templateId || templateId,
-                    templateName: templateInfo.templateName,
-                    templateCategory: templateInfo.templateCategory,
-                    templateTitle: templateInfo.templateTitle
-                };
-            }
-
-            // Update statistics
-            existingReport.reportContent.statistics = {
-                wordCount: plainText ? plainText.split(/\s+/).length : 0,
-                characterCount: plainText ? plainText.length : 0,
-                pageCount: Math.ceil((plainText?.length || 0) / 2500) || 1
-            };
-
-            // ✅ CRITICAL: Keep status as finalized (DO NOT change)
-            existingReport.reportStatus = 'finalized';
-            existingReport.reportType = 'finalized';
-
-            // ✅ Update workflow history
-            if (!existingReport.workflowInfo) {
-                existingReport.workflowInfo = { statusHistory: [] };
-            }
-            if (!existingReport.workflowInfo.statusHistory) {
-                existingReport.workflowInfo.statusHistory = [];
-            }
-
-            existingReport.workflowInfo.statusHistory.push({
-                status: 'finalized',
-                changedAt: now,
-                changedBy: user._id,
-                notes: verificationNotes || 'Report content updated by verifier during verification process',
-                userRole: 'verifier'
-            });
-
-            // ✅ Update verification history
-            if (!existingReport.verificationInfo) {
-                existingReport.verificationInfo = { verificationHistory: [] };
-            }
-            if (!existingReport.verificationInfo.verificationHistory) {
-                existingReport.verificationInfo.verificationHistory = [];
-            }
-
-            existingReport.verificationInfo.verificationHistory.push({
-                action: 'corrections_requested',
-                performedBy: user._id,
-                performedAt: now,
-                notes: verificationNotes || 'Report content updated during verification'
-            });
-
-            // Update verifier ID if not already set
-            if (!existingReport.verifierId) {
-                existingReport.verifierId = user._id;
-            }
-
-            // Update audit info
-            if (!existingReport.auditInfo) {
-                existingReport.auditInfo = { accessLog: [] };
-            }
-            if (!existingReport.auditInfo.accessLog) {
-                existingReport.auditInfo.accessLog = [];
-            }
-
-            existingReport.auditInfo.accessLog.push({
-                accessedBy: user._id,
-                accessedAt: now,
-                accessType: 'edit',
-                ipAddress: req.ip || 'unknown',
-                userAgent: req.headers['user-agent'] || 'unknown'
-            });
-
-            existingReport.auditInfo.lastAccessedAt = now;
-            existingReport.auditInfo.accessCount = (existingReport.auditInfo.accessCount || 0) + 1;
-
-            // Update timestamps
-            existingReport.updatedAt = now;
-
-            // ✅ CRITICAL: Use save() on the EXISTING document (not create)
-            console.log('💾 [Verifier Update] Saving EXISTING report (ID: ' + existingReport._id + ')...');
-            const savedReport = await existingReport.save({ session });
-
-            console.log('✅ [Verifier Update] Report UPDATED successfully (same ID):', {
-                reportId: savedReport._id.toString(),
-                sameIdConfirmed: savedReport._id.toString() === existingReport._id.toString(),
-                newContentLength: savedReport.reportContent?.htmlContent?.length || 0,
-                statusMaintained: savedReport.reportStatus,
-                updatedAt: savedReport.updatedAt
-            });
 
             // ✅ STEP 4: Update study metadata
             study.reportInfo = study.reportInfo || {};

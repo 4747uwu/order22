@@ -1061,6 +1061,7 @@ async function processStableStudy(job) {
         bharatPacsId:           dicomStudyDoc.bharatPacsId,
         patient:                dicomStudyDoc.patient,
         patientId:              dicomStudyDoc.patientId,
+        patientInfo:            dicomStudyDoc.patientInfo,  // ✅ Preserve patient info set during manual upload
         workflowStatus:         dicomStudyDoc.workflowStatus, // ✅ Never overwrite
       };
 
@@ -1068,18 +1069,23 @@ async function processStableStudy(job) {
         seriesCount:            studyData.seriesCount,
         instanceCount:          studyData.instanceCount,
         seriesImages:           studyData.seriesImages,
-        orthancStudyID:         studyData.orthancStudyID,   // ✅ ADD THIS - was missing entirely!
+        orthancStudyID:         studyData.orthancStudyID,
         modalitiesInStudy:      studyData.modalitiesInStudy,
         examDescription:        studyData.examDescription,
         studyDate:              studyData.studyDate,
         studyTime:              studyData.studyTime,
         accessionNumber:        studyData.accessionNumber,
-        referringPhysicianName: studyData.referringPhysicianName,
-        physicians:             studyData.physicians,
         storageInfo:            studyData.storageInfo,
-        patientInfo:            studyData.patientInfo,
+        // ✅ patientInfo is now in preserveOnUpdate — not overwritten here
         institutionName:        studyData.institutionName,
       };
+
+      // ✅ Only overwrite referringPhysicianName/physicians if DICOM tags have actual values
+      // (otherwise empty DICOM tags would wipe out manually entered data)
+      if (studyData.referringPhysicianName?.trim()) {
+        allowedUpdates.referringPhysicianName = studyData.referringPhysicianName;
+        allowedUpdates.physicians = studyData.physicians;
+      }
 
       Object.assign(dicomStudyDoc, allowedUpdates, preserveOnUpdate);
 

@@ -76,7 +76,12 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         '--patientid--': report.patientInfo?.patientId || report.patient?.patientId || '[Patient ID]',
         '--accessionno--': report.accessionNumber || report.dicomStudy?.accessionNumber || '[Accession Number]',
         '--agegender--': `${report.patientInfo?.age || report.patient?.age || '[Age]'} / ${report.patientInfo?.gender || report.patient?.gender || '[Gender]'}`,
-        '--referredby--': report.studyInfo?.referringPhysician?.name || report.dicomStudy?.referringPhysician || '[Referring Physician]',
+        '--referredby--': (
+            (report.studyInfo?.referringPhysician?.name && report.studyInfo.referringPhysician.name !== 'N/A' ? report.studyInfo.referringPhysician.name : null) ||
+            (report.dicomStudy?.referringPhysician?.name?.trim()) ||
+            report.dicomStudy?.referringPhysicianName?.trim() ||
+            '[Referring Physician]'
+        ),
         '--reporteddate--': report.studyInfo?.studyDate
   ? new Date(report.studyInfo.studyDate).toLocaleDateString('en-GB')
   : new Date().toLocaleDateString('en-GB'),
@@ -85,6 +90,8 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         '--clinicalhistory--': report.patientInfo?.clinicalHistory || '[Clinical History]',
         '--Content--': htmlContent
     };
+
+    console.log('🔍 Placeholder values:', placeholders);
 
     // if (doctorData) {
     //     placeholders['--drname--'] = doctorData.fullName;
@@ -170,7 +177,7 @@ const fetchReportsForStudy = async (studyId) => {
         .populate('patient', 'fullName patientId age gender')
         .populate({
             path: 'dicomStudy',
-            select: 'accessionNumber modality studyDate referringPhysician sourceLab _id',
+            select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id',
             populate: { path: 'sourceLab', model: 'Lab' }
         })
         .populate('doctorId', 'fullName email')
@@ -254,7 +261,7 @@ class ReportDownloadController {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -317,7 +324,7 @@ if (downloaderRoles.includes('lab_staff')) {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -416,7 +423,7 @@ if (downloaderRoles.includes('lab_staff')) {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -499,7 +506,7 @@ if (downloaderRoles.includes('lab_staff')) {
                 .populate('patient', 'fullName patientId age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician sourceLab _id workflowStatus bharatPacsId',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id workflowStatus bharatPacsId',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');

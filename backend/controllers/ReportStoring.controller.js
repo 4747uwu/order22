@@ -127,14 +127,12 @@ export const storeDraftReport = async (req, res) => {
                 clinicalHistory: study.clinicalHistory?.clinicalHistory || study.patient?.clinicalHistory || 'N/A'
             };
 
-            const referringPhysicianData = study.referringPhysician || 
-                                          study.referringPhysicianName || 
-                                          'N/A';
-            const referringPhysicianName = typeof referringPhysicianData === 'string' 
-                ? referringPhysicianData
-                : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
-                ? referringPhysicianData.name
-                : 'N/A';
+            const referringPhysicianName = (
+                (typeof study.referringPhysician === 'object' && study.referringPhysician?.name?.trim()) ||
+                (typeof study.referringPhysician === 'string' && study.referringPhysician.trim()) ||
+                study.referringPhysicianName?.trim() ||
+                'N/A'
+            );
 
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
@@ -395,14 +393,12 @@ export const storeFinalizedReport = async (req, res) => {
                                study.patient?.clinicalHistory || 'N/A'
             };
 
-            const referringPhysicianData = study.referringPhysician || 
-                                          study.referringPhysicianName || 
-                                          'N/A';
-            const referringPhysicianName = typeof referringPhysicianData === 'string' 
-                ? referringPhysicianData
-                : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
-                ? referringPhysicianData.name
-                : 'N/A';
+            const referringPhysicianName = (
+                (typeof study.referringPhysician === 'object' && study.referringPhysician?.name?.trim()) ||
+                (typeof study.referringPhysician === 'string' && study.referringPhysician.trim()) ||
+                study.referringPhysicianName?.trim() ||
+                'N/A'
+            );
 
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
@@ -686,14 +682,12 @@ export const storeMultipleReports = async (req, res) => {
                                study.patient?.clinicalHistory || 'N/A'
             };
 
-           const referringPhysicianData = study.referringPhysician || 
-                              study.referringPhysicianName || 
-                              'N/A';
-            const referringPhysicianName = typeof referringPhysicianData === 'string' 
-                ? referringPhysicianData
-                : typeof referringPhysicianData === 'object' && referringPhysicianData?.name
-                ? referringPhysicianData.name
-                : 'N/A';
+            const referringPhysicianName = (
+                (typeof study.referringPhysician === 'object' && study.referringPhysician?.name?.trim()) ||
+                (typeof study.referringPhysician === 'string' && study.referringPhysician.trim()) ||
+                study.referringPhysicianName?.trim() ||
+                'N/A'
+            );
 
             // ✅ FILENAME: Use doctor name (not admin)
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')

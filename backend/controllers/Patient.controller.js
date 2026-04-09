@@ -130,9 +130,27 @@ export const updateStudyDetails = async (req, res) => {
             updateData['clinicalHistory.lastModifiedFrom'] = 'admin_panel';
 
             if (isHistoryChanging) {
-                console.log(`📝 Clinical history is being updated - changing workflow to history_created`);
-                updateData.currentCategory = 'HISTORY_CREATED';
-                updateData.workflowStatus = 'history_created';
+                // ✅ Only change workflow/category if study is NOT already assigned
+                const isAlreadyAssigned = study.assignment && study.assignment.length > 0;
+                const advancedStatuses = [
+                    'assigned_to_doctor', 'assignment_accepted', 'doctor_opened_report',
+                    'report_in_progress', 'report_drafted', 'draft_saved',
+                    'verification_pending', 'verification_in_progress',
+                    'report_finalized', 'report_completed', 'final_report_downloaded',
+                    'report_reprint_needed', 'report_verified', 'report_rejected',
+                    'revert_to_radiologist', 'archived'
+                ];
+                const isInAdvancedState = advancedStatuses.includes(study.workflowStatus);
+
+                if (!isAlreadyAssigned && !isInAdvancedState) {
+                    console.log(`📝 Clinical history is being updated - changing workflow to history_created`);
+                    updateData.currentCategory = 'HISTORY_CREATED';
+                    updateData.workflowStatus = 'history_created';
+                    changes.clinicalHistoryWorkflowChanged = true;
+                } else {
+                    console.log(`📝 Clinical history updated but study is already assigned/advanced (${study.workflowStatus}) - keeping current workflow`);
+                }
+
                 updateData['categoryTracking.historyCreated.lastUpdatedAt'] = new Date();
                 updateData['categoryTracking.historyCreated.lastUpdatedBy'] = user._id;
                 updateData['categoryTracking.historyCreated.isComplete'] = true;
@@ -155,13 +173,13 @@ export const updateStudyDetails = async (req, res) => {
                 $set: updateData,
                 $push: {
                     statusHistory: {
-                        status: changes.clinicalHistoryUpdated ? 'history_created' : 'study_details_updated',
+                        status: changes.clinicalHistoryWorkflowChanged ? 'history_created' : 'study_details_updated',
                         changedAt: new Date(),
                         changedBy: user._id,
-                        note: `Study details updated by ${user.fullName || user.email}${priorityChanges.length > 0 ? ` (${priorityChanges.join(', ')})` : ''}${changes.clinicalHistoryUpdated ? ' - Clinical history updated' : ''}`
+                        note: `Study details updated by ${user.fullName || user.email}${priorityChanges.length > 0 ? ` (${priorityChanges.join(', ')})` : ''}${changes.clinicalHistoryUpdated ? ' - Clinical history updated' : ''}${changes.clinicalHistoryUpdated && !changes.clinicalHistoryWorkflowChanged ? ' (workflow preserved - study already assigned)' : ''}`
                     },
                     actionLog: {
-                        actionType: changes.clinicalHistoryUpdated
+                        actionType: changes.clinicalHistoryWorkflowChanged
                             ? ACTION_TYPES.HISTORY_CREATED
                             : changes.priority
                                 ? ACTION_TYPES.PRIORITY_CHANGED

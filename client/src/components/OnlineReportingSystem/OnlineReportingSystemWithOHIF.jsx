@@ -900,6 +900,23 @@ const OnlineReportingSystemWithOHIF = () => {
                     /* Verifier Mode */
                     <>
                       <span className="text-[9px] font-bold text-purple-600 uppercase tracking-wider">Verifier</span>
+
+                      {/* ✅ Templates for verifier to use when adding new reports */}
+                      <DoctorTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'doctor_specific' ? selectedTemplate : null} />
+                      <OrgTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'global' ? selectedTemplate : null} />
+                      <GlobalTemplateDropdown onTemplateSelect={handleTemplateSelect} selectedTemplate={selectedTemplate?.templateScope === 'super_global' ? selectedTemplate : null} />
+
+                      <div className="h-4 w-px bg-gray-200"></div>
+
+                      {/* ✅ Capture viewport for verifier */}
+                      <button onClick={handleAttachOhifImage} className="relative flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors" title="Capture viewport">
+                        <Camera className="w-2.5 h-2.5" />
+                        <span>Capture</span>
+                        {capturedImages.length > 0 && (
+                          <span className="absolute -top-1 -right-1 min-w-[14px] h-3.5 px-0.5 text-[8px] font-bold text-white bg-emerald-500 rounded-full flex items-center justify-center border border-white">{capturedImages.length}</span>
+                        )}
+                      </button>
+
                       <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-1 py-0.5 text-[10px] bg-white text-gray-700 border border-gray-200 rounded cursor-pointer focus:outline-none">
                         {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
