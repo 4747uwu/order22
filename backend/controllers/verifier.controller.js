@@ -1451,6 +1451,11 @@ export const updateReportDuringVerification = async (req, res) => {
                     },
                     reportType: 'finalized',
                     reportStatus: 'finalized',
+                    exportInfo: {
+                        format: 'docx',
+                        fileName: (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
+                            .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '')
+                    },
                     patientInfo: {
                         fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                         patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
