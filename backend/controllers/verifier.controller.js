@@ -1483,7 +1483,7 @@ export const updateReportDuringVerification = async (req, res) => {
                     },
                     verificationInfo: {
                         verificationHistory: [{
-                            action: 'report_added_by_verifier',
+                            action: 'corrections_requested',
                             performedBy: user._id,
                             performedAt: now,
                             notes: verificationNotes || 'New report added during verification'
@@ -1493,7 +1493,7 @@ export const updateReportDuringVerification = async (req, res) => {
                         accessLog: [{
                             accessedBy: user._id,
                             accessedAt: now,
-                            accessType: 'create',
+                            accessType: 'edit',
                             ipAddress: req.ip || 'unknown',
                             userAgent: req.headers['user-agent'] || 'unknown'
                         }],

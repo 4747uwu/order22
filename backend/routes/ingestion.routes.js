@@ -1100,6 +1100,9 @@ async function processStableStudy(job) {
         lab:      preserveOnUpdate.sourceLab,
         location: preserveOnUpdate.labLocation,
         bpId:     preserveOnUpdate.bharatPacsId,
+        patientName: preserveOnUpdate.patientInfo?.patientName,
+        patientId:   preserveOnUpdate.patientId,
+        workflowStatus: preserveOnUpdate.workflowStatus,
       });
 
       // ✅ LOG what is being saved
