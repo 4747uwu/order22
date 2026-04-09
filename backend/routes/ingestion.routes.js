@@ -484,16 +484,28 @@ async function findOrCreatePatientFromTags(tags, organization) {
     organization: organization._id
   });
 
-  // If patient exists but name doesn't match, create a new unique patient
-  if (patient && patient.patientNameRaw && nameInfo.formattedForDisplay) {
-    const existingName = patient.patientNameRaw.trim().toUpperCase();
-    const newName = nameInfo.formattedForDisplay.trim().toUpperCase();
+  // If patient exists, check whether it's genuinely the same person or a
+  // collision (different patient sharing the same hospital MRN). Compare
+  // name, gender, and DOB — if ANY differ, treat it as a new patient.
+  if (patient) {
+    const existingName = (patient.patientNameRaw || '').trim().toUpperCase();
+    const newName = (nameInfo.formattedForDisplay || tags.PatientName || '').trim().toUpperCase();
+    const existingGender = (patient.gender || '').trim().toUpperCase();
+    const newGender = (patientSex || '').trim().toUpperCase();
+    const existingDob = (patient.dateOfBirth || '').trim();
+    const newDob = patientBirthDate ? formatDicomDateToISO(patientBirthDate)?.toISOString?.()?.split('T')[0] || '' : '';
 
-    if (existingName !== newName) {
+    const nameMatch = !newName || !existingName || existingName === newName;
+    const genderMatch = !newGender || !existingGender || existingGender === newGender;
+    const dobMatch = !newDob || !existingDob || existingDob.includes(newDob) || newDob.includes(existingDob);
+
+    const isSamePatient = nameMatch && genderMatch && dobMatch;
+
+    if (!isSamePatient) {
       console.log(`⚠️ Patient MRN collision detected!`);
       console.log(`   - MRN: ${mrnValue}`);
-      console.log(`   - Existing: ${patient.patientNameRaw}`);
-      console.log(`   - New Study: ${nameInfo.formattedForDisplay}`);
+      console.log(`   - Existing: ${patient.patientNameRaw} | ${patient.gender} | DOB:${patient.dateOfBirth}`);
+      console.log(`   - New Study: ${newName} | ${newGender} | DOB:${newDob}`);
       console.log(`   - Creating separate patient record with modified MRN (patientID unchanged)`);
 
       // Append the raw DICOM name to the MRN to create a unique MRN for this patient.
@@ -505,6 +517,8 @@ async function findOrCreatePatientFromTags(tags, organization) {
         mrn: mrnValue,
         organization: organization._id
       });
+    } else {
+      console.log(`👤 Reusing existing patient: ${patient.patientNameRaw} (MRN: ${mrnValue})`);
     }
   }
 
