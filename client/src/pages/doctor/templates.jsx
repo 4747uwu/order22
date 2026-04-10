@@ -3,7 +3,7 @@ import { useAuth } from '../../hooks/useAuth';
 import Navbar from '../../components/common/Navbar';
 import api from '../../services/api';
 import TextToHtmlService from '../../services/textToHtml.js';
-import ReportEditor from '../../components/OnlineReportingSystem/ReportEditorWithOhif';
+import RichTextEditor from '../../components/common/RichTextEditor';
 import {
   Plus, Search, Trash2, Eye, Globe, User, FileText,
   Tag, X, Save, Code, Type, Loader2, ChevronLeft, ChevronRight, Pencil
@@ -575,9 +575,11 @@ const DoctorTemplates = () => {
                     <div className={`${showPreview ? 'w-1/2' : 'w-full'} p-3 overflow-y-auto`}>
                       {inputMode === 'text' ? (
                         <div className="h-full flex flex-col">
-                          <ReportEditor
-                            content={formData.htmlContent}
+                          <RichTextEditor
+                            value={formData.htmlContent}
                             onChange={(html) => handleFormChange('htmlContent', html)}
+                            placeholder="Start typing your template content..."
+                            minHeight="300px"
                           />
                         </div>
                       ) : (
