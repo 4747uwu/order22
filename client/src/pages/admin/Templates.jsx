@@ -532,196 +532,95 @@ const AdminTemplates = () => {
 
       {/* Create/Edit Modal */}
       {(showCreateModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-600 to-teal-700">
-              <div className="flex items-center gap-3">
-                <Building2 className="w-6 h-6 text-white" />
-                <h2 className="text-xl font-bold text-white">
-                  {showEditModal ? 'Edit Global Template' : 'Create Global Template'}
-                </h2>
-              </div>
-              <button
-                onClick={() => {
-                  setShowCreateModal(false);
-                  setShowEditModal(false);
-                }}
-                className="text-white hover:text-gray-200 transition-colors"
-              >
-                <X className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          {/* Header bar */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-teal-600 to-teal-700 shrink-0">
+            <div className="flex items-center gap-3">
+              <Building2 className="w-5 h-5 text-white" />
+              <h2 className="text-base font-bold text-white">
+                {showEditModal ? 'Edit Global Template' : 'Create Global Template'}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <button type="button"
+                onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                className="px-3 py-1 text-[11px] font-semibold text-teal-100 border border-teal-400 rounded hover:bg-teal-500 transition-all">
+                Cancel
+              </button>
+              <button type="button" onClick={handleSubmitTemplate}
+                className="flex items-center gap-1.5 px-4 py-1 text-[11px] font-bold text-teal-700 bg-white rounded hover:bg-teal-50 transition-all">
+                <Save className="w-3.5 h-3.5" />
+                {showEditModal ? 'Update' : 'Create'}
+              </button>
+              <button onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                className="ml-2 text-white hover:text-gray-200">
+                <X className="w-5 h-5" />
               </button>
             </div>
+          </div>
 
-            {/* Modal Body */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <form onSubmit={handleSubmitTemplate} className="space-y-3">
-                {/* Basic Info — single row */}
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
-                    <input
-                      type="text"
-                      value={formData.title}
-                      onChange={(e) => handleFormChange('title', e.target.value)}
-                      className={`w-full h-8 px-2.5 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
-                        formErrors.title ? 'border-red-400' : 'border-gray-200'
-                      }`}
-                      placeholder="e.g., CT Head Standard Report"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) => handleFormChange('category', e.target.value)}
-                      className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none ${
-                        formErrors.category ? 'border-red-400' : 'border-gray-200'
-                      }`}
-                    >
-                      {categoryOptions.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Description + Tags — single row */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
-                    <input
-                      type="text"
-                      value={formData.description}
-                      onChange={(e) => handleFormChange('description', e.target.value)}
-                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
-                      placeholder="Brief description"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
-                    <input
-                      type="text"
-                      value={formData.tags.join(', ')}
-                      onChange={(e) => handleTagsChange(e.target.value)}
-                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
-                      placeholder="head, CT, routine"
-                    />
-                  </div>
-                </div>
-
-                {/* Input Mode + Conversion Options — inline row */}
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex bg-gray-100 rounded-lg p-0.5">
-                    <button type="button" onClick={() => handleInputModeChange('text')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
-                        inputMode === 'text' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                      }`}>
-                      <Type className="w-3.5 h-3.5" /> Text
-                    </button>
-                    <button type="button" onClick={() => handleInputModeChange('html')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
-                        inputMode === 'html' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                      }`}>
-                      <Code className="w-3.5 h-3.5" /> HTML
-                    </button>
-                  </div>
-
-                  {inputMode === 'text' && (
-                    <span className="text-[10px] text-gray-400 italic">WYSIWYG editor — format text directly</span>
-                  )}
-                </div>
-
-                {/* Content Editor */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
-                    <div className="flex items-center gap-1.5">
-                      {inputMode === 'html' && (
-                        showTableDialog ? (
-                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
-                            <span className="text-[10px] text-gray-500">R:</span>
-                            <input type="number" min="1" max="20" value={tableRows}
-                              onChange={e => setTableRows(e.target.value)}
-                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                            <span className="text-[10px] text-gray-500">C:</span>
-                            <input type="number" min="1" max="10" value={tableCols}
-                              onChange={e => setTableCols(e.target.value)}
-                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                            <button type="button" onClick={() => {
-                              insertTableToContent();
-                              setShowTableDialog(false);
-                            }}
-                              className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">Insert</button>
-                            <button type="button" onClick={() => setShowTableDialog(false)}
-                              className="px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">✕</button>
-                          </div>
-                        ) : (
-                          <button type="button" onClick={() => setShowTableDialog(true)}
-                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
-                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-                            </svg>
-                            Table
-                          </button>
-                        )
-                      )}
-                      {previewHtml && (
-                        <button type="button" onClick={() => setShowPreview(!showPreview)}
-                          className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg transition-all ${
-                            showPreview ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          }`}>
-                          <Eye className="w-3 h-3" /> {showPreview ? 'Hide' : 'Preview'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className={`flex gap-3 ${showPreview ? '' : ''}`}>
-                    <div className={showPreview ? 'w-1/2' : 'w-full'}>
-                      {inputMode === 'text' ? (
-                        <div style={{ height: '400px' }}>
-                          <ReportEditor
-                            content={formData.htmlContent}
-                            onChange={(html) => handleFormChange('htmlContent', html)}
-                          />
-                        </div>
-                      ) : (
-                        <textarea
-                          value={formData.htmlContent}
-                          onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                          rows={10}
-                          className={`w-full px-3 py-2 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
-                            formErrors.content ? 'border-red-400' : 'border-gray-200'
-                          }`}
-                          placeholder="Enter HTML content..."
-                        />
-                      )}
-                    </div>
-                    {showPreview && (
-                      <div className="w-1/2 border border-gray-200 rounded-lg p-3 bg-gray-50/50 overflow-y-auto" style={{maxHeight: '300px'}}>
-                        <div className="prose max-w-none text-[11pt]" dangerouslySetInnerHTML={{ __html: previewHtml || formData.htmlContent || '<p style="color:#aaa">No preview</p>' }} />
-                      </div>
-                    )}
-                  </div>
-                  {formErrors.content && <p className="text-[10px] text-red-500 mt-0.5">{formErrors.content}</p>}
-                </div>
-
-                {/* Form Actions */}
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
-                  <button type="button"
-                    onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                    className="px-3 h-8 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-                    Cancel
-                  </button>
-                  <button type="submit"
-                    className="flex items-center gap-1.5 px-4 h-8 text-[12px] font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all">
-                    <Save className="w-3.5 h-3.5" />
-                    {showEditModal ? 'Update' : 'Create'}
-                  </button>
-                </div>
-              </form>
+          {/* Compact meta fields */}
+          <div className="shrink-0 px-4 py-2 border-b border-gray-100 bg-gray-50">
+            <div className="flex items-end gap-3 flex-wrap">
+              <div className="flex-1 min-w-[200px]">
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Title *</label>
+                <input type="text" value={formData.title}
+                  onChange={(e) => handleFormChange('title', e.target.value)}
+                  className={`w-full h-7 px-2 text-[12px] border rounded focus:ring-1 focus:ring-teal-400 outline-none ${formErrors.title ? 'border-red-400' : 'border-gray-200'}`}
+                  placeholder="e.g., CT Head Standard Report" />
+              </div>
+              <div className="w-36">
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Category *</label>
+                <select value={formData.category} onChange={(e) => handleFormChange('category', e.target.value)}
+                  className={`w-full h-7 px-1.5 text-[12px] border rounded focus:ring-1 focus:ring-teal-400 outline-none ${formErrors.category ? 'border-red-400' : 'border-gray-200'}`}>
+                  {categoryOptions.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div className="flex-1 min-w-[150px]">
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Description</label>
+                <input type="text" value={formData.description}
+                  onChange={(e) => handleFormChange('description', e.target.value)}
+                  className="w-full h-7 px-2 text-[12px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-400 outline-none"
+                  placeholder="Brief description" />
+              </div>
+              <div className="w-40">
+                <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-0.5">Tags</label>
+                <input type="text" value={formData.tags.join(', ')}
+                  onChange={(e) => handleTagsChange(e.target.value)}
+                  className="w-full h-7 px-2 text-[12px] border border-gray-200 rounded focus:ring-1 focus:ring-teal-400 outline-none"
+                  placeholder="head, CT, routine" />
+              </div>
+              <div className="flex bg-gray-100 rounded p-0.5">
+                <button type="button" onClick={() => handleInputModeChange('text')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-all ${inputMode === 'text' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  <Type className="w-3 h-3" /> Text
+                </button>
+                <button type="button" onClick={() => handleInputModeChange('html')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-semibold transition-all ${inputMode === 'html' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  <Code className="w-3 h-3" /> HTML
+                </button>
+              </div>
             </div>
+            {(formErrors.title || formErrors.category || formErrors.content) && (
+              <p className="text-[10px] text-red-500 mt-1">{formErrors.title || formErrors.category || formErrors.content}</p>
+            )}
+          </div>
+
+          {/* Editor fills remaining space */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {inputMode === 'text' ? (
+              <ReportEditor
+                content={formData.htmlContent}
+                onChange={(html) => handleFormChange('htmlContent', html)}
+              />
+            ) : (
+              <textarea
+                value={formData.htmlContent}
+                onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                className={`w-full h-full px-4 py-3 text-[12px] border-0 font-mono resize-none focus:outline-none ${formErrors.content ? 'bg-red-50' : ''}`}
+                placeholder="Enter HTML content..."
+              />
+            )}
           </div>
         </div>
       )}

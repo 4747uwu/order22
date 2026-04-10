@@ -1235,6 +1235,32 @@ const StudyRow = ({
         </td>
       )}
 
+      {/* RADIOLOGIST (moved before patient name) */}
+      {isColumnVisible('assignedRadiologist') && (
+        <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
+          <div className="relative">
+            <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search..."} disabled={isLocked} className={`w-full px-1.5 py-1 text-[10px] sm:text-xs border rounded focus:ring-1 focus:ring-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium' : 'bg-white border-slate-200'}`} />
+            {isLocked && <Lock className="w-3 h-3 text-rose-600 absolute right-1.5 top-1.5" />}
+          </div>
+
+          {isAssigned && assignedDoctor?.assignedAt && (
+            <div className="mt-0.5 text-[9px] text-slate-500 whitespace-nowrap">
+              🕐 {new Date(assignedDoctor.assignedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(assignedDoctor.assignedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
+            </div>
+          )}
+
+          {isAssigned && assignedDoctor && (
+            <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
+              {isAssignedStatus && !isReportCompleted && elapsedTime ? (
+                <div className="flex items-center gap-1 px-1 py-0.5 bg-amber-50 border border-amber-200 rounded text-[8px] sm:text-[9px] font-mono font-bold text-amber-700">
+                  <Clock className="w-2.5 h-2.5 animate-pulse" /> {elapsedTime}
+                </div>
+              ) : null}
+            </div>
+          )}
+        </td>
+      )}
+
       {/* 6. PATIENT NAME / UHID */}
       {isColumnVisible('patientName') && (
         <td
@@ -1455,34 +1481,6 @@ const StudyRow = ({
           <div className="text-[9px] text-slate-500 whitespace-nowrap mt-0.5">{study.uploadTime ? study.uploadTime.split(',')[2]?.trim() || study.uploadTime : formatTime(study.uploadDate || study.createdAt)}</div>
         </td>
       )}
-
-      {/* 16. RADIOLOGIST */}
-      {isColumnVisible('assignedRadiologist') && (
-        <td className="px-1.5 py-2 sm:px-2 border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('assignedRadiologist')}px` }}>
-          <div className="relative">
-            <input ref={assignInputRef} type="text" value={assignInputValue} onChange={(e) => setAssignInputValue(e.target.value)} onFocus={handleAssignInputFocus} onBlur={() => { setTimeout(() => { if (!showAssignmentModal) { setInputFocused(false); setAssignInputValue(isAssigned && study.radiologist ? study.radiologist : ''); } }, 200); }} placeholder={isLocked ? "🔒 Locked" : "Search..."} disabled={isLocked} className={`w-full px-1.5 py-1 text-[10px] sm:text-xs border rounded focus:ring-1 focus:ring-gray-900 transition-all ${isLocked ? 'bg-slate-200 cursor-not-allowed text-slate-500 border-gray-400' : isAssigned && !inputFocused ? 'bg-gray-200 border-gray-400 text-gray-900 font-medium' : 'bg-white border-slate-200'}`} />
-            {isLocked && <Lock className="w-3 h-3 text-rose-600 absolute right-1.5 top-1.5" />}
-          </div>
-
-          {/* ✅ Show assignedAt time under input */}
-          {isAssigned && assignedDoctor?.assignedAt && (
-            <div className="mt-0.5 text-[9px] text-slate-500 whitespace-nowrap">
-              🕐 {new Date(assignedDoctor.assignedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} {new Date(assignedDoctor.assignedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })}
-            </div>
-          )}
-
-          {isAssigned && assignedDoctor && (
-            <div className="mt-1 flex flex-wrap items-center justify-between gap-1">
-              {isAssignedStatus && !isReportCompleted && elapsedTime ? (
-                <div className="flex items-center gap-1 px-1 py-0.5 bg-amber-50 border border-amber-200 rounded text-[8px] sm:text-[9px] font-mono font-bold text-amber-700">
-                  <Clock className="w-2.5 h-2.5 animate-pulse" /> {elapsedTime}
-                </div>
-              ) : null}
-            </div>
-          )}
-        </td>
-      )}
-
 
       {/* 17. LOCK/UNLOCK */}
       {isColumnVisible('studyLock') && (
@@ -2167,6 +2165,7 @@ const WorklistTable = ({
               {isColumnVisible('centerName') && <ResizableTableHeader columnId="centerName" label={<>CENTER<br />NAME</>} width={getColumnWidth('centerName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
               {isColumnVisible('location') && <ResizableTableHeader columnId="location" label={<>Location<br />NAME</>} width={getColumnWidth('location')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CENTER_NAME.maxWidth} />}
               {isColumnVisible('timeline') && <ResizableTableHeader columnId="timeline" label="" width={getColumnWidth('timeline')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.TIMELINE.maxWidth}><Clock className="w-4 h-4 mx-auto" /></ResizableTableHeader>}
+              {isColumnVisible('assignedRadiologist') && <ResizableTableHeader columnId="assignedRadiologist" label="RADIOLOGIST" width={getColumnWidth('assignedRadiologist')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth} />}
               {isColumnVisible('patientName') && <ResizableTableHeader columnId="patientName" label={<>PT NAME</>} width={getColumnWidth('patientName')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.PATIENT_NAME.maxWidth} />}
               {isColumnVisible('ageGender') && <ResizableTableHeader columnId="ageGender" label={<>AGE/<br />SEX</>} width={getColumnWidth('ageGender')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.AGE_GENDER.maxWidth} />}
               {isColumnVisible('modality') && <ResizableTableHeader columnId="modality" label="MODALITY" width={getColumnWidth('modality')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.MODALITY.maxWidth} />}
@@ -2178,7 +2177,6 @@ const WorklistTable = ({
               {isColumnVisible('clinicalHistory') && <ResizableTableHeader columnId="clinicalHistory" label={<>CLINICAL<br />HISTORY</>} width={getColumnWidth('clinicalHistory')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.CLINICAL_HISTORY.maxWidth} />}
               {isColumnVisible('studyDateTime') && <ResizableTableHeader columnId="studyDateTime" label={<>STUDY<br />DATE/TIME</>} width={getColumnWidth('studyDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_DATE_TIME.maxWidth} />}
               {isColumnVisible('uploadDateTime') && <ResizableTableHeader columnId="uploadDateTime" label={<>UPLOAD<br />DATE/TIME</>} width={getColumnWidth('uploadDateTime')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.UPLOAD_DATE_TIME.maxWidth} />}
-              {isColumnVisible('assignedRadiologist') && <ResizableTableHeader columnId="assignedRadiologist" label="RADIOLOGIST" width={getColumnWidth('assignedRadiologist')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.ASSIGNED_RADIOLOGIST.maxWidth} />}
               {isColumnVisible('studyLock') && <ResizableTableHeader columnId="studyLock" label={<>LOCK/<br />UNLOCK</>} width={getColumnWidth('studyLock')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STUDY_LOCK.maxWidth} />}
 
               {isColumnVisible('status') && <ResizableTableHeader columnId="status" label="STATUS" width={getColumnWidth('status')} onResize={handleColumnResize} minWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.minWidth} maxWidth={UNIFIED_WORKLIST_COLUMNS.STATUS.maxWidth} />}
