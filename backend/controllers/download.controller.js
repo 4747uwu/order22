@@ -25,11 +25,55 @@ export const getCloudflareZipUrl = async (req, res) => {
             });
         }
 
-        if (study.preProcessedDownload?.zipStatus !== 'completed' || !study.preProcessedDownload?.zipUrl) {
+        const ppd = study.preProcessedDownload;
+
+        if (ppd?.zipStatus !== 'completed' && !ppd?.zipKey) {
             return res.status(404).json({
                 success: false,
                 message: 'ZIP file not available. Please create it first.',
-                zipStatus: study.preProcessedDownload?.zipStatus || 'not_created'
+                zipStatus: ppd?.zipStatus || 'not_created'
+            });
+        }
+
+        let zipUrl = ppd?.zipUrl;
+        let zipExpiresAt = ppd?.zipExpiresAt;
+
+        // ✅ Auto-refresh expired presigned URL using stored zipKey
+        const isExpired = !zipUrl || (zipExpiresAt && new Date(zipExpiresAt) <= new Date());
+        if (isExpired && ppd?.zipKey) {
+            console.log(`🔄 ZIP URL expired for study ${studyId}, regenerating from key: ${ppd.zipKey}`);
+            try {
+                const { getPresignedUrl } = await import('../config/cloudflare-r2.js');
+                zipUrl = await getPresignedUrl(ppd.zipKey);
+                zipExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+                // Persist refreshed URL
+                await DicomStudy.updateOne(
+                    { _id: studyId },
+                    {
+                        $set: {
+                            'preProcessedDownload.zipUrl': zipUrl,
+                            'preProcessedDownload.zipExpiresAt': zipExpiresAt,
+                            'preProcessedDownload.zipStatus': 'completed'
+                        }
+                    }
+                );
+                console.log(`✅ Refreshed presigned URL for study ${studyId}`);
+            } catch (refreshError) {
+                console.error(`❌ Failed to refresh URL for study ${studyId}:`, refreshError.message);
+                return res.status(410).json({
+                    success: false,
+                    message: 'ZIP file has expired and could not be refreshed',
+                    error: refreshError.message
+                });
+            }
+        }
+
+        if (!zipUrl) {
+            return res.status(404).json({
+                success: false,
+                message: 'ZIP URL not available',
+                zipStatus: ppd?.zipStatus || 'unknown'
             });
         }
 
@@ -44,10 +88,10 @@ export const getCloudflareZipUrl = async (req, res) => {
         res.json({
             success: true,
             data: {
-                zipUrl: study.preProcessedDownload.zipUrl,
-                zipSizeMB: study.preProcessedDownload.zipSizeMB,
-                createdAt: study.preProcessedDownload.zipCreatedAt,
-                expiresAt: study.preProcessedDownload.zipExpiresAt
+                zipUrl,
+                zipSizeMB: ppd?.zipSizeMB,
+                createdAt: ppd?.zipCreatedAt,
+                expiresAt: zipExpiresAt
             }
         });
 

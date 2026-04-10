@@ -18,7 +18,7 @@ import RevertModal from '../../../components/RevertModal.jsx';
 import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
 import useWebSocket from '../../../hooks/useWebSocket';
-import { navigateWithRestore } from '../../../utils/backupRestoreHelper';
+import { isStudyOlderThan, checkAndRestoreStudy } from '../../../utils/backupRestoreHelper';
 import sessionManager from '../../../services/sessionManager.jsx';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
 import { useStudyShare } from '../../../hooks/useStudyShare';
@@ -933,12 +933,25 @@ const StudyRow = ({
 
   const handleOHIFReporting = async () => {
     setRestoringStudy(true);
-    try {
-      const currentUser = sessionManager.getCurrentUser();
-      const accountRoles = currentUser?.accountRoles || [currentUser?.role];
-      const isRadiologist = accountRoles.includes('radiologist');
-      const isVerifier = accountRoles.includes('verifier');
 
+    const currentUser = sessionManager.getCurrentUser();
+    const accountRoles = currentUser?.accountRoles || [currentUser?.role];
+    const isRadiologist = accountRoles.includes('radiologist');
+    const isVerifier = accountRoles.includes('verifier');
+
+    const queryParams = new URLSearchParams({ openOHIF: 'true', ...(isVerifier && { verifierMode: 'true', action: 'verify' }) });
+    const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
+
+    // Open the window IMMEDIATELY (synchronous, in click handler) so the
+    // browser doesn't block it as a popup. Show a loading page while restore runs.
+    const newWindow = window.open('about:blank', '_blank');
+    if (newWindow) {
+      newWindow.document.title = 'Loading study...';
+      newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:18px;color:#666">Loading study, please wait...</div>';
+    }
+
+    try {
+      // Lock study if radiologist
       if (isRadiologist && !isVerifier) {
         try {
           setTogglingLock(true);
@@ -956,37 +969,33 @@ const StudyRow = ({
         }
       }
 
-      const queryParams = new URLSearchParams({ openOHIF: 'true', ...(isVerifier && { verifierMode: 'true', action: 'verify' }) });
-      const reportingUrl = `/online-reporting/${study._id}?${queryParams.toString()}`;
-
-      await navigateWithRestore(
-        (path) => window.open(path, '_blank'), reportingUrl, study,
-        {
-          daysThreshold: 10,
-          onRestoreStart: (study) => toast.loading(`Restoring study from backup...`, { id: `restore-${study._id}` }),
-          onRestoreComplete: (data) => toast.success(`Study restored`, { id: `restore-${study._id}` }),
-          onRestoreError: (error) => toast.error(`Restore failed`, { id: `restore-${study._id}` })
+      // Restore if needed (the window is already open, so no popup block)
+      const needsRestore = isStudyOlderThan(study.studyDate, 10);
+      if (needsRestore) {
+        toast.loading('Restoring study from backup...', { id: `restore-${study._id}` });
+        const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
+        if (result.restored) {
+          toast.success('Study restored', { id: `restore-${study._id}` });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else if (result.error) {
+          toast.error(`Restore failed: ${result.error}`, { id: `restore-${study._id}` });
         }
-      );
-    } catch (error) {
-      const currentUser = sessionManager.getCurrentUser();
-      const accountRoles = currentUser?.accountRoles || [currentUser?.role];
-      const isRadiologist = accountRoles.includes('radiologist');
+      }
 
+      // Navigate the already-open window to the reporting URL
+      if (newWindow && !newWindow.closed) {
+        newWindow.location.href = reportingUrl;
+      }
+    } catch (error) {
       if (error.response?.status === 423 && !isRadiologist) {
-        const lockedBy = error.response.data.lockedBy || 'another user';
-        toast.error(`Study is locked by ${lockedBy}`, { duration: 5000, icon: '🔒', style: { border: '1px solid #ef4444' } });
+        toast.error(`Study is locked by ${error.response.data.lockedBy || 'another user'}`, { duration: 5000, icon: '🔒' });
       } else if (error.response?.status !== 423) {
         toast.error(error.response?.data?.message || 'Failed to open study', { duration: 4000, icon: '❌' });
       }
-
-      const queryParams = new URLSearchParams({
-        openOHIF: 'true',
-        viewer: selectedViewer,
-        ...(isVerifier && { verifierMode: 'true', action: 'verify' })
-      });
-
-      window.open(`/online-reporting/${study._id}?${queryParams.toString()}`, '_blank');
+      // Navigate anyway on error
+      if (newWindow && !newWindow.closed) {
+        newWindow.location.href = reportingUrl;
+      }
     } finally {
       setTogglingLock(false);
       setRestoringStudy(false);

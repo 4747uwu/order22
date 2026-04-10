@@ -6,7 +6,7 @@ import api from '../../services/api';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/common/Navbar';
 import TextToHtmlService from '../../services/textToHtml';
-import RichTextEditor from '../../components/common/RichTextEditor';
+import ReportEditor from '../../components/OnlineReportingSystem/ReportEditorWithOhif';
 import {
   Plus,
   Search,
@@ -680,12 +680,12 @@ const AdminTemplates = () => {
                   <div className={`flex gap-3 ${showPreview ? '' : ''}`}>
                     <div className={showPreview ? 'w-1/2' : 'w-full'}>
                       {inputMode === 'text' ? (
-                        <RichTextEditor
-                          value={formData.htmlContent}
-                          onChange={(html) => handleFormChange('htmlContent', html)}
-                          placeholder="Start typing your template content..."
-                          minHeight="260px"
-                        />
+                        <div style={{ height: '400px' }}>
+                          <ReportEditor
+                            content={formData.htmlContent}
+                            onChange={(html) => handleFormChange('htmlContent', html)}
+                          />
+                        </div>
                       ) : (
                         <textarea
                           value={formData.htmlContent}

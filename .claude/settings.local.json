@@ -11,7 +11,9 @@
       "Bash(node -e \"const m = require\\('@tiptap/starter-kit'\\); console.log\\(Object.keys\\(m\\)\\)\")",
       "Bash(node -e 'const m = require\\('\\\\''__TRACKED_VAR__'\\\\''\\); console.log\\(Object.keys\\(m\\)\\)')",
       "Bash(node -e \"const m = require\\('@tiptap/extension-text-style'\\); console.log\\(typeof m.LineHeight\\)\")",
-      "Bash(node -e \"const m = require\\('@tiptap/extension-text-style'\\); const lh = m.LineHeight; console.log\\('name:', lh.name\\); console.log\\('type:', lh.type\\); console.log\\('keys:', Object.keys\\(lh.config || {}\\)\\)\")"
+      "Bash(node -e \"const m = require\\('@tiptap/extension-text-style'\\); const lh = m.LineHeight; console.log\\('name:', lh.name\\); console.log\\('type:', lh.type\\); console.log\\('keys:', Object.keys\\(lh.config || {}\\)\\)\")",
+      "Bash(grep -n \"getPresignedUrl\\\\|presignedUrl\" d:/website/devops/order2/backend/controllers/*.js)",
+      "Bash(xargs grep:*)"
     ]
   }
 }
