@@ -600,26 +600,44 @@ const AdminTemplates = () => {
                   <Code className="w-3 h-3" /> HTML
                 </button>
               </div>
+              <button type="button" onClick={() => setShowPreview(!showPreview)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded text-[10px] font-bold transition-all ${showPreview ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+                <Eye className="w-3 h-3" /> {showPreview ? 'Hide Preview' : 'Preview'}
+              </button>
             </div>
             {(formErrors.title || formErrors.category || formErrors.content) && (
               <p className="text-[10px] text-red-500 mt-1">{formErrors.title || formErrors.category || formErrors.content}</p>
             )}
           </div>
 
-          {/* Editor fills remaining space */}
-          <div className="flex-1 min-h-0 overflow-hidden">
-            {inputMode === 'text' ? (
-              <ReportEditor
-                content={formData.htmlContent}
-                onChange={(html) => handleFormChange('htmlContent', html)}
-              />
-            ) : (
-              <textarea
-                value={formData.htmlContent}
-                onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                className={`w-full h-full px-4 py-3 text-[12px] border-0 font-mono resize-none focus:outline-none ${formErrors.content ? 'bg-red-50' : ''}`}
-                placeholder="Enter HTML content..."
-              />
+          {/* Editor + optional preview side-by-side */}
+          <div className="flex-1 min-h-0 flex overflow-hidden">
+            {/* Editor pane */}
+            <div className={`${showPreview ? 'w-1/2 border-r border-gray-200' : 'w-full'} min-h-0 overflow-hidden`}>
+              {inputMode === 'text' ? (
+                <ReportEditor
+                  content={formData.htmlContent}
+                  onChange={(html) => handleFormChange('htmlContent', html)}
+                />
+              ) : (
+                <textarea
+                  value={formData.htmlContent}
+                  onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                  className={`w-full h-full px-4 py-3 text-[12px] border-0 font-mono resize-none focus:outline-none ${formErrors.content ? 'bg-red-50' : ''}`}
+                  placeholder="Enter HTML content..."
+                />
+              )}
+            </div>
+
+            {/* Preview pane */}
+            {showPreview && (
+              <div className="w-1/2 overflow-y-auto bg-gray-50 p-4">
+                <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-2">Live Preview</div>
+                <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm prose max-w-none"
+                  style={{ fontSize: '11pt', fontFamily: 'Comic Sans MS, sans-serif', lineHeight: '1.4', minHeight: '400px' }}
+                  dangerouslySetInnerHTML={{ __html: formData.htmlContent || '<p style="color:#ccc">Start typing to see preview...</p>' }}
+                />
+              </div>
             )}
           </div>
         </div>
