@@ -1,12 +1,12 @@
 // client/src/pages/admin/Templates.jsx
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import Navbar from '../../components/common/Navbar';
 import TextToHtmlService from '../../services/textToHtml';
-import ReportEditor, { preprocessContent } from '../../components/OnlineReportingSystem/ReportEditorWithOhif';
+import RichTextEditor from '../../components/common/RichTextEditor';
 import {
   Plus,
   Search,
@@ -155,31 +155,27 @@ const AdminTemplates = () => {
   }, []);
 
   const handleEditTemplate = useCallback((template) => {
-    // ✅ Pre-process the template HTML so Word-style bullets (·, •, ▪ …)
-    // get converted to real <ul><li> before the editor ever mounts.
-    const processedHtml = preprocessContent(template.htmlContent || '');
-
     setSelectedTemplate(template);
     setFormData({
       title: template.title,
       category: template.category,
-      htmlContent: processedHtml,
+      htmlContent: template.htmlContent,
       description: template.templateMetadata?.description || '',
       tags: template.templateMetadata?.tags || [],
       isDefault: template.templateMetadata?.isDefault || false
     });
-
+    
     // Try to convert HTML back to plain text for editing
     try {
-      const plainText = TextToHtmlService.htmlToText(processedHtml);
+      const plainText = TextToHtmlService.htmlToText(template.htmlContent);
       setPlainTextContent(plainText);
       setInputMode('text');
     } catch (error) {
       console.error('Error converting HTML to text:', error);
       setInputMode('html');
     }
-
-    setPreviewHtml(processedHtml);
+    
+    setPreviewHtml(template.htmlContent);
     setShowPreview(false);
     setFormErrors({});
     setShowEditModal(true);
@@ -202,70 +198,34 @@ const AdminTemplates = () => {
     }
   };
 
-  // ✅ Auto text-to-HTML conversion (debounced, loop-safe)
-  //
-  // Tracks the last HTML we produced so we don't re-convert our own output.
-  // Only runs when:
-  //   - In text mode
-  //   - Content exists
-  //   - Content does NOT already have rich formatting (headers/lists/bold etc.)
-  //     — so we don't clobber a user's manual edits
-  //   - Content differs from what we last converted (prevents loop)
-  const lastConvertedHtmlRef = useRef(null);
-
-  const hasRichFormatting = (html) => {
-    if (!html) return false;
-    return /<\s*(h[1-6]|ul|ol|strong|b|em|i|u|table|blockquote)\b/i.test(html);
-  };
-
-  const getPlainText = useCallback((html) => {
-    if (!html) return '';
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    return (tmp.textContent || tmp.innerText || '').trim();
-  }, []);
-
-  useEffect(() => {
-    if (inputMode !== 'text') return;
-    const currentHtml = formData.htmlContent || '';
-    if (!currentHtml.trim()) return;
-
-    // Already in the "converted" state — don't re-run
-    if (currentHtml === lastConvertedHtmlRef.current) return;
-
-    // User already added rich formatting — don't overwrite their work
-    if (hasRichFormatting(currentHtml)) {
-      lastConvertedHtmlRef.current = currentHtml;
+  // Convert text to HTML in real-time
+  const handleTextToHtml = useCallback(() => {
+    if (!plainTextContent.trim()) {
+      toast.error('Please enter some text content');
       return;
     }
 
-    const plain = getPlainText(currentHtml);
-    if (!plain) return;
+    try {
+      const htmlContent = TextToHtmlService.convertToHtml(plainTextContent, conversionOptions);
+      setPreviewHtml(htmlContent);
+      setFormData(prev => ({ ...prev, htmlContent }));
+      setShowPreview(true);
+    } catch (error) {
+      console.error('Error converting text to HTML:', error);
+      toast.error('Failed to convert text to HTML');
+    }
+  }, [plainTextContent, conversionOptions]);
 
-    const timeoutId = setTimeout(() => {
-      try {
-        const converted = TextToHtmlService.convertToHtml(plain, conversionOptions);
-        if (converted && converted !== currentHtml) {
-          lastConvertedHtmlRef.current = converted;
-          setFormData(prev => ({ ...prev, htmlContent: converted }));
-          setPreviewHtml(converted);
-        }
-      } catch (error) {
-        console.error('Auto text-to-HTML conversion failed:', error);
-      }
-    }, 1000);
+  // Auto-convert on text change (debounced)
+  useEffect(() => {
+    if (inputMode === 'text' && plainTextContent.trim()) {
+      const timeoutId = setTimeout(() => {
+        handleTextToHtml();
+      }, 1000);
 
-    return () => clearTimeout(timeoutId);
-  }, [formData.htmlContent, conversionOptions, inputMode, getPlainText]);
-
-  // ✅ Strip HTML tags to get plain text for validation
-  // (so a template with just "<p></p>" or "<div><br></div>" is treated as empty)
-  const getPlainTextFromHtml = (html) => {
-    if (!html) return '';
-    const tmp = document.createElement('div');
-    tmp.innerHTML = html;
-    return (tmp.textContent || tmp.innerText || '').trim();
-  };
+      return () => clearTimeout(timeoutId);
+    }
+  }, [plainTextContent, conversionOptions, inputMode, handleTextToHtml]);
 
   const validateForm = () => {
     const errors = {};
@@ -278,12 +238,10 @@ const AdminTemplates = () => {
       errors.category = 'Category is required';
     }
 
-    // ✅ FIX: Always validate against formData.htmlContent (which is what
-    // ReportEditor and HTML textarea both write to). Ignore plainTextContent —
-    // it's a dead legacy state that's never updated when typing in ReportEditor.
-    const plainText = getPlainTextFromHtml(formData.htmlContent);
-    if (!plainText) {
+    if (inputMode === 'text' && !plainTextContent.trim()) {
       errors.content = 'Template content is required';
+    } else if (inputMode === 'html' && !formData.htmlContent.trim()) {
+      errors.content = 'HTML content is required';
     }
 
     setFormErrors(errors);
@@ -298,13 +256,11 @@ const AdminTemplates = () => {
       return;
     }
 
-    // ✅ FIX: Use formData.htmlContent directly. In text mode ReportEditor
-    // already produces clean HTML; in HTML mode the textarea writes HTML
-    // directly. The old code re-converted from plainTextContent which was
-    // always empty → blank templates on submit.
-    // Text-to-HTML conversion is still available via handleInputModeChange
-    // when the user toggles between modes with legacy plain-text content.
-    const finalHtmlContent = formData.htmlContent;
+    // Final conversion if in text mode
+    let finalHtmlContent = formData.htmlContent;
+    if (inputMode === 'text') {
+      finalHtmlContent = TextToHtmlService.convertToHtml(plainTextContent, conversionOptions);
+    }
 
     const templateData = {
       title: formData.title.trim(),
@@ -577,7 +533,7 @@ const AdminTemplates = () => {
       {/* Create/Edit Modal */}
       {(showCreateModal || showEditModal) && (
         <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl w-[97vw] h-[96vh] max-w-none overflow-hidden flex flex-col">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-600 to-teal-700">
               <div className="flex items-center gap-3">
@@ -597,129 +553,175 @@ const AdminTemplates = () => {
               </button>
             </div>
 
-            {/* Modal Body — Two-column: form (left) + editor (right) */}
-            <form onSubmit={handleSubmitTemplate} className="flex-1 flex min-h-0 overflow-hidden">
-
-              {/* LEFT: Form fields */}
-              <div className="w-[340px] shrink-0 border-r border-gray-200 bg-gray-50/50 overflow-y-auto p-4 space-y-3">
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
-                  <input
-                    type="text"
-                    value={formData.title}
-                    onChange={(e) => handleFormChange('title', e.target.value)}
-                    className={`w-full h-8 px-2.5 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
-                      formErrors.title ? 'border-red-400' : 'border-gray-200'
-                    }`}
-                    placeholder="e.g., CT Head Standard Report"
-                  />
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4">
+              <form onSubmit={handleSubmitTemplate} className="space-y-3">
+                {/* Basic Info — single row */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="col-span-2">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
+                    <input
+                      type="text"
+                      value={formData.title}
+                      onChange={(e) => handleFormChange('title', e.target.value)}
+                      className={`w-full h-8 px-2.5 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                        formErrors.title ? 'border-red-400' : 'border-gray-200'
+                      }`}
+                      placeholder="e.g., CT Head Standard Report"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
+                    <select
+                      value={formData.category}
+                      onChange={(e) => handleFormChange('category', e.target.value)}
+                      className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none ${
+                        formErrors.category ? 'border-red-400' : 'border-gray-200'
+                      }`}
+                    >
+                      {categoryOptions.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
-                  <select
-                    value={formData.category}
-                    onChange={(e) => handleFormChange('category', e.target.value)}
-                    className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none ${
-                      formErrors.category ? 'border-red-400' : 'border-gray-200'
-                    }`}
-                  >
-                    {categoryOptions.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
+                {/* Description + Tags — single row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
+                    <input
+                      type="text"
+                      value={formData.description}
+                      onChange={(e) => handleFormChange('description', e.target.value)}
+                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                      placeholder="Brief description"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
+                    <input
+                      type="text"
+                      value={formData.tags.join(', ')}
+                      onChange={(e) => handleTagsChange(e.target.value)}
+                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                      placeholder="head, CT, routine"
+                    />
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => handleFormChange('description', e.target.value)}
-                    rows={3}
-                    className="w-full px-2.5 py-1.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none resize-none"
-                    placeholder="Brief description"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
-                  <input
-                    type="text"
-                    value={formData.tags.join(', ')}
-                    onChange={(e) => handleTagsChange(e.target.value)}
-                    className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
-                    placeholder="head, CT, routine"
-                  />
-                  <p className="text-[9px] text-gray-400 mt-0.5">Comma-separated</p>
-                </div>
-
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Input Mode</label>
+                {/* Input Mode + Conversion Options — inline row */}
+                <div className="flex items-center gap-3 flex-wrap">
                   <div className="flex bg-gray-100 rounded-lg p-0.5">
                     <button type="button" onClick={() => handleInputModeChange('text')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
                         inputMode === 'text' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}>
                       <Type className="w-3.5 h-3.5" /> Text
                     </button>
                     <button type="button" onClick={() => handleInputModeChange('html')}
-                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
                         inputMode === 'html' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
                       }`}>
                       <Code className="w-3.5 h-3.5" /> HTML
                     </button>
                   </div>
-                  <p className="text-[9px] text-gray-400 mt-0.5 italic">
-                    {inputMode === 'text' ? 'WYSIWYG editor' : 'Raw HTML textarea'}
-                  </p>
-                </div>
 
-                {formErrors.content && (
-                  <div className="bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
-                    <p className="text-[10px] text-red-600 font-semibold">{formErrors.content}</p>
-                  </div>
-                )}
-
-                {/* Form Actions */}
-                <div className="pt-3 border-t border-gray-200 flex flex-col gap-2">
-                  <button type="submit"
-                    className="w-full flex items-center justify-center gap-1.5 px-4 h-9 text-[12px] font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all">
-                    <Save className="w-3.5 h-3.5" />
-                    {showEditModal ? 'Update Template' : 'Create Template'}
-                  </button>
-                  <button type="button"
-                    onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                    className="w-full px-3 h-9 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-
-              {/* RIGHT: Editor fills remaining space */}
-              <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-white">
-                <div className="px-4 py-2 border-b border-gray-200 bg-gray-50/50 shrink-0">
-                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {inputMode === 'text' ? (
-                    <ReportEditor
-                      content={formData.htmlContent}
-                      onChange={(html) => handleFormChange('htmlContent', html)}
-                    />
-                  ) : (
-                    <textarea
-                      value={formData.htmlContent}
-                      onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                      className={`w-full h-full px-4 py-3 text-[12px] border-0 font-mono resize-none focus:outline-none ${
-                        formErrors.content ? 'bg-red-50' : ''
-                      }`}
-                      placeholder="Enter HTML content..."
-                    />
+                  {inputMode === 'text' && (
+                    <span className="text-[10px] text-gray-400 italic">WYSIWYG editor — format text directly</span>
                   )}
                 </div>
-              </div>
 
-            </form>
+                {/* Content Editor */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
+                    <div className="flex items-center gap-1.5">
+                      {inputMode === 'html' && (
+                        showTableDialog ? (
+                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-0.5">
+                            <span className="text-[10px] text-gray-500">R:</span>
+                            <input type="number" min="1" max="20" value={tableRows}
+                              onChange={e => setTableRows(e.target.value)}
+                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <span className="text-[10px] text-gray-500">C:</span>
+                            <input type="number" min="1" max="10" value={tableCols}
+                              onChange={e => setTableCols(e.target.value)}
+                              className="w-8 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <button type="button" onClick={() => {
+                              insertTableToContent();
+                              setShowTableDialog(false);
+                            }}
+                              className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">Insert</button>
+                            <button type="button" onClick={() => setShowTableDialog(false)}
+                              className="px-1 py-0.5 text-[10px] text-gray-500 hover:text-gray-700">✕</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setShowTableDialog(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                            </svg>
+                            Table
+                          </button>
+                        )
+                      )}
+                      {previewHtml && (
+                        <button type="button" onClick={() => setShowPreview(!showPreview)}
+                          className={`flex items-center gap-1 px-2 py-1 text-[10px] font-semibold rounded-lg transition-all ${
+                            showPreview ? 'bg-teal-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}>
+                          <Eye className="w-3 h-3" /> {showPreview ? 'Hide' : 'Preview'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className={`flex gap-3 ${showPreview ? '' : ''}`}>
+                    <div className={showPreview ? 'w-1/2' : 'w-full'}>
+                      {inputMode === 'text' ? (
+                        <RichTextEditor
+                          value={formData.htmlContent}
+                          onChange={(html) => handleFormChange('htmlContent', html)}
+                          placeholder="Start typing your template content..."
+                          minHeight="260px"
+                        />
+                      ) : (
+                        <textarea
+                          value={formData.htmlContent}
+                          onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                          rows={10}
+                          className={`w-full px-3 py-2 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                            formErrors.content ? 'border-red-400' : 'border-gray-200'
+                          }`}
+                          placeholder="Enter HTML content..."
+                        />
+                      )}
+                    </div>
+                    {showPreview && (
+                      <div className="w-1/2 border border-gray-200 rounded-lg p-3 bg-gray-50/50 overflow-y-auto" style={{maxHeight: '300px'}}>
+                        <div className="prose max-w-none text-[11pt]" dangerouslySetInnerHTML={{ __html: previewHtml || formData.htmlContent || '<p style="color:#aaa">No preview</p>' }} />
+                      </div>
+                    )}
+                  </div>
+                  {formErrors.content && <p className="text-[10px] text-red-500 mt-0.5">{formErrors.content}</p>}
+                </div>
+
+                {/* Form Actions */}
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+                  <button type="button"
+                    onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                    className="px-3 h-8 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+                    Cancel
+                  </button>
+                  <button type="submit"
+                    className="flex items-center gap-1.5 px-4 h-8 text-[12px] font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all">
+                    <Save className="w-3.5 h-3.5" />
+                    {showEditModal ? 'Update' : 'Create'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       )}
