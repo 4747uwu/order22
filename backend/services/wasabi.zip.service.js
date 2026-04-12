@@ -174,7 +174,7 @@ class CloudflareR2ZipService {
                 'preProcessedDownload.zipSizeMB': zipSizeMB,
                 'preProcessedDownload.zipCreatedAt': new Date(),
                 'preProcessedDownload.zipStatus': 'completed',
-                'preProcessedDownload.zipExpiresAt': new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days (R2 has generous limits)
+                'preProcessedDownload.zipExpiresAt': new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days — matches presigned URL max expiry in cloudflare-r2.js
                 'preProcessedDownload.zipBucket': this.zipBucket,
                 'preProcessedDownload.zipKey': r2Result.key,
                 'preProcessedDownload.zipMetadata': {

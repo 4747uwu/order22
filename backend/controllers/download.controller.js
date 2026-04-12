@@ -38,8 +38,18 @@ export const getCloudflareZipUrl = async (req, res) => {
         let zipUrl = ppd?.zipUrl;
         let zipExpiresAt = ppd?.zipExpiresAt;
 
-        // ✅ Auto-refresh expired presigned URL using stored zipKey
-        const isExpired = !zipUrl || (zipExpiresAt && new Date(zipExpiresAt) <= new Date());
+        // ✅ Auto-refresh expired presigned URL using stored zipKey.
+        // Presigned URLs have a hard 7-day max (from cloudflare-r2.js).
+        // The DB's zipExpiresAt may be wrong (old studies stored 90 days).
+        // So we check zipCreatedAt as the authoritative source of truth:
+        //   if the ZIP was created > 6 days ago, the URL is definitely dead.
+        const now = new Date();
+        const sixDaysMs = 6 * 24 * 60 * 60 * 1000;
+        const createdTooLongAgo = ppd?.zipCreatedAt && (now - new Date(ppd.zipCreatedAt)) > sixDaysMs;
+        const isExpired = !zipUrl
+            || (zipExpiresAt && new Date(zipExpiresAt) <= now)
+            || createdTooLongAgo;
+
         if (isExpired && ppd?.zipKey) {
             console.log(`🔄 ZIP URL expired for study ${studyId}, regenerating from key: ${ppd.zipKey}`);
             try {
@@ -47,13 +57,15 @@ export const getCloudflareZipUrl = async (req, res) => {
                 zipUrl = await getPresignedUrl(ppd.zipKey);
                 zipExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
-                // Persist refreshed URL
+                // Persist refreshed URL + reset creation time so the 6-day
+                // check measures from this refresh, not the original upload
                 await DicomStudy.updateOne(
                     { _id: studyId },
                     {
                         $set: {
                             'preProcessedDownload.zipUrl': zipUrl,
                             'preProcessedDownload.zipExpiresAt': zipExpiresAt,
+                            'preProcessedDownload.zipCreatedAt': new Date(),
                             'preProcessedDownload.zipStatus': 'completed'
                         }
                     }
