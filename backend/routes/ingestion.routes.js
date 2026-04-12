@@ -956,7 +956,11 @@ async function processStableStudy(job) {
       ? formatDicomDateToISO(tags.StudyDate)
       : new Date(); // 🔧 Direct fallback to current date
     
-    const studyDescription = tags.StudyDescription || 'No Description';
+    // ✅ Fallback chain: StudyDescription → BodyPartExamined (e.g. "LSPINE") → Modality → default
+    const studyDescription = tags.StudyDescription
+      || (tags.BodyPartExamined ? `${tags.BodyPartExamined}${tags.Modality ? ' ' + tags.Modality : ''}` : null)
+      || (tags.Modality && tags.Modality !== 'NOT_FOUND' ? `${tags.Modality} Study` : null)
+      || 'No Description';
     const accessionNumber = tags.AccessionNumber || `ACC_${Date.now()}`;
     const referringPhysicianName = tags.ReferringPhysicianName || '';
     const institutionName = tags.InstitutionName || '';
