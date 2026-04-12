@@ -1061,8 +1061,32 @@ async function processStableStudy(job) {
         bharatPacsId:           dicomStudyDoc.bharatPacsId,
         patient:                dicomStudyDoc.patient,
         patientId:              dicomStudyDoc.patientId,
-        patientInfo:            dicomStudyDoc.patientInfo,  // ✅ Preserve patient info set during manual upload
-        workflowStatus:         dicomStudyDoc.workflowStatus, // ✅ Never overwrite
+        patientInfo:            dicomStudyDoc.patientInfo,
+        workflowStatus:         dicomStudyDoc.workflowStatus,
+        // ✅ Preserve exam description if it was manually edited (not the default)
+        ...(dicomStudyDoc.examDescription && dicomStudyDoc.examDescription !== 'No Description'
+          ? { examDescription: dicomStudyDoc.examDescription }
+          : {}),
+        // ✅ Preserve assignment info so re-notifications don't wipe assigned doctors
+        ...(dicomStudyDoc.assignment?.length > 0
+          ? { assignment: dicomStudyDoc.assignment }
+          : {}),
+        // ✅ Preserve clinical history if it was manually entered
+        ...(dicomStudyDoc.clinicalHistory?.clinicalHistory
+          ? { clinicalHistory: dicomStudyDoc.clinicalHistory }
+          : {}),
+        // ✅ Preserve priority if it was changed from default
+        ...(dicomStudyDoc.priority && dicomStudyDoc.priority !== 'NORMAL'
+          ? { priority: dicomStudyDoc.priority }
+          : {}),
+        // ✅ Preserve report info
+        ...(dicomStudyDoc.reportInfo?.reportedBy
+          ? { reportInfo: dicomStudyDoc.reportInfo }
+          : {}),
+        // ✅ Preserve study lock
+        ...(dicomStudyDoc.studyLock?.isLocked
+          ? { studyLock: dicomStudyDoc.studyLock }
+          : {}),
       };
 
       const allowedUpdates = {
@@ -1076,7 +1100,6 @@ async function processStableStudy(job) {
         studyTime:              studyData.studyTime,
         accessionNumber:        studyData.accessionNumber,
         storageInfo:            studyData.storageInfo,
-        // ✅ patientInfo is now in preserveOnUpdate — not overwritten here
         institutionName:        studyData.institutionName,
       };
 
@@ -1103,6 +1126,11 @@ async function processStableStudy(job) {
         patientName: preserveOnUpdate.patientInfo?.patientName,
         patientId:   preserveOnUpdate.patientId,
         workflowStatus: preserveOnUpdate.workflowStatus,
+        examDescription: preserveOnUpdate.examDescription || '(using DICOM)',
+        assignmentCount: preserveOnUpdate.assignment?.length || 0,
+        priority: preserveOnUpdate.priority || '(using default)',
+        hasReport: !!preserveOnUpdate.reportInfo,
+        isLocked: !!preserveOnUpdate.studyLock,
       });
 
       // ✅ LOG what is being saved
