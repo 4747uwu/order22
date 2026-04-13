@@ -63,17 +63,36 @@ export const storeDraftReport = async (req, res) => {
                 });
             }
 
-            // ✅ FIX: Reject draft save if study already completed/verified
-            const LOCKED_STATUSES = ['report_completed', 'verification_pending', 'final_report_downloaded'];
+            // ✅ FIX: Reject draft save if study already completed/verified.
+            // Also check if the specific report being saved is already finalized
+            // (catches the race where finalize completed between the auto-save
+            // request being sent and arriving at the server).
+            const LOCKED_STATUSES = ['report_completed', 'verification_pending', 'final_report_downloaded', 'report_verified'];
             const isAutoSave = req.body.isAutoSave === true;
-            if (isAutoSave && LOCKED_STATUSES.includes(study.workflowStatus)) {
-                await session.abortTransaction();
-                console.log(`⚠️ [Draft Store] Auto-save rejected — study status is locked: ${study.workflowStatus}`);
-                return res.status(200).json({
-                    success: false,
-                    message: `Auto-save skipped — study already in ${study.workflowStatus} state`,
-                    skipped: true
-                });
+            if (isAutoSave) {
+                if (LOCKED_STATUSES.includes(study.workflowStatus)) {
+                    await session.abortTransaction();
+                    console.log(`⚠️ [Draft Store] Auto-save rejected — study status is locked: ${study.workflowStatus}`);
+                    return res.status(200).json({
+                        success: false,
+                        message: `Auto-save skipped — study already in ${study.workflowStatus} state`,
+                        skipped: true
+                    });
+                }
+                // Also check if the target report is already finalized
+                const existingReportId = req.body.existingReportId;
+                if (existingReportId && mongoose.Types.ObjectId.isValid(existingReportId)) {
+                    const targetReport = await Report.findById(existingReportId).session(session);
+                    if (targetReport && targetReport.reportStatus === 'finalized') {
+                        await session.abortTransaction();
+                        console.log(`⚠️ [Draft Store] Auto-save rejected — report ${existingReportId} already finalized`);
+                        return res.status(200).json({
+                            success: false,
+                            message: 'Auto-save skipped — report already finalized',
+                            skipped: true
+                        });
+                    }
+                }
             }
 
             if (!study.organizationIdentifier) {
@@ -313,7 +332,7 @@ const determineDoctorForReport = async (currentUser, study, session) => {
 export const storeFinalizedReport = async (req, res) => {
     try {
         const { studyId } = req.params;
-        const { templateName, placeholders, htmlContent, templateId, templateInfo, format = 'docx', capturedImages = [] } = req.body;
+        const { templateName, placeholders, htmlContent, templateId, templateInfo, format = 'docx', capturedImages = [], existingReportId } = req.body;
 
         const currentUser = req.user;
 
@@ -374,10 +393,21 @@ export const storeFinalizedReport = async (req, res) => {
                 console.log('🖨️ [Finalize Store] Study was previously downloaded — setting reprintNeeded = true');
             }
 
-            let existingReport = await Report.findOne({
-                dicomStudy: studyId,
-                doctorId: doctorId
-            }).sort({ createdAt: -1 }).session(session);
+            // ✅ FIX: Use existingReportId from frontend if available (points to
+            // the exact draft that was auto-saved). Without this, the generic
+            // query below might find the wrong draft or a stale record, causing
+            // reports to "disappear" or retain draft filenames after finalize.
+            let existingReport = null;
+            if (existingReportId && mongoose.Types.ObjectId.isValid(existingReportId)) {
+                existingReport = await Report.findById(existingReportId).session(session);
+                console.log(`✅ [Finalize Store] Using existingReportId=${existingReportId} → found=${!!existingReport}`);
+            }
+            if (!existingReport) {
+                existingReport = await Report.findOne({
+                    dicomStudy: studyId,
+                    doctorId: doctorId
+                }).sort({ createdAt: -1 }).session(session);
+            }
 
             const now = new Date();
 
@@ -385,11 +415,11 @@ export const storeFinalizedReport = async (req, res) => {
                 fullName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 patientName: study.patientInfo?.patientName || study.patient?.fullName || 'Unknown Patient',
                 age: study.patientInfo?.age || study.patient?.age || 'N/A',
-                gender: study.patient?.gender || 
-                       study.patientInfo?.gender || 
+                gender: study.patient?.gender ||
+                       study.patientInfo?.gender ||
                        placeholders?.['--agegender--']?.split(' / ')[1] || 'N/A',
                 dateOfBirth: study.patient?.dateOfBirth,
-                clinicalHistory: study.clinicalHistory?.clinicalHistory || 
+                clinicalHistory: study.clinicalHistory?.clinicalHistory ||
                                study.patient?.clinicalHistory || 'N/A'
             };
 
@@ -400,10 +430,12 @@ export const storeFinalizedReport = async (req, res) => {
                 'N/A'
             );
 
-            // ✅ FILENAME: Use doctor name (not admin)
+            // ✅ FIX: Use a proper finalized filename — never carry over the
+            // draft name. The old code set fileName to just the patient name
+            // without extension or status, so the draft filename persisted.
             const patientNameForFilename = (study.patientInfo?.patientName || study.patient?.fullName || 'unknown_patient')
                 .toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
-            const fileName = patientNameForFilename;
+            const fileName = `${patientNameForFilename}_final_${Date.now()}.${format || 'docx'}`;
 
             const reportData = {
                 reportId: existingReport?.reportId || `RPT_${studyId}_${Date.now()}`,
@@ -706,10 +738,13 @@ export const storeMultipleReports = async (req, res) => {
                     console.log(`🔍 [Multi-Report] Report ${reportNumber}: existingReportId=${reportData.existingReportId} → found=${!!existingReport}`);
                 }
 
-                const fileNameForReport = existingReport?.exportInfo?.fileName ||
-                    (reports.length > 1
-                        ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
-                        : `${patientNameForFilename}_final_${Date.now()}.docx`);
+                // ✅ FIX: Always generate a proper finalized filename.
+                // The old code used existingReport.exportInfo.fileName which
+                // carried the draft/autosave name (e.g. _autosave_123.docx),
+                // causing finalized reports to show "draft" in their name.
+                const fileNameForReport = reports.length > 1
+                    ? `${patientNameForFilename}_report_${reportNumber}_${Date.now()}.docx`
+                    : `${patientNameForFilename}_final_${Date.now()}.docx`;
 
                 const reportFields = {
                     reportId: existingReport?.reportId || `RPT_${studyId}_${reportNumber}_${Date.now()}`,

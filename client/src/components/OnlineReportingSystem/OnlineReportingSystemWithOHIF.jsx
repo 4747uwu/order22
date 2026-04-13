@@ -590,11 +590,19 @@ const OnlineReportingSystemWithOHIF = () => {
         } else throw new Error(response.data.message);
       } else {
         // ✅ SINGLE endpoint
+        // ✅ FIX: Send existingReportId so backend updates the draft instead of
+        // creating a new record (which caused draft filenames to persist and
+        // reports to appear duplicated/missing).
+        const existingId = reports[activeReportIndex]?.existingReportId
+          || reportData.existingReport?.id
+          || null;
+
         const response = await api.post(`/reports/studies/${studyId}/store-finalized`, {
           templateName: `${currentUser.email.split('@')[0]}_final_${Date.now()}.${exportFormat}`,
           placeholders: buildPlaceholders(reportContent),
           htmlContent: reportContent,
           format: exportFormat,
+          existingReportId: existingId,
           templateId: selectedTemplate?._id,
           templateInfo: selectedTemplate
             ? { templateId: selectedTemplate._id, templateName: selectedTemplate.title, templateCategory: selectedTemplate.category, templateTitle: selectedTemplate.title }
@@ -685,7 +693,15 @@ const OnlineReportingSystemWithOHIF = () => {
 
 
   // ✅ ADD: Auto-save handler — must be defined BEFORE the useEffect that uses it
+  // ✅ FIX: Check isFinalizedRef at the START of the async function, not just
+  // at the interval level. This catches in-flight auto-saves that were
+  // scheduled before finalize but execute after it.
   const handleAutoSave = useCallback(async () => {
+    if (isFinalizedRef.current) {
+      console.log('⏹️ [AutoSave] Blocked — report already finalized');
+      return;
+    }
+
     const currentContent = reports[activeReportIndex]?.content || '';
     const textContent = currentContent.replace(/<[^>]*>/g, '').trim();
 
@@ -892,8 +908,8 @@ const OnlineReportingSystemWithOHIF = () => {
                       </button>
 
                       {/* Finalize */}
-                      <button onClick={handleFinalizeReport} disabled={finalizing || !reportContent.trim()} className="flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-500 shadow-sm shadow-green-600/20 disabled:opacity-40 transition-all whitespace-nowrap">
-                        {finalizing ? <div className="animate-spin rounded-full h-2.5 w-2.5 border border-white border-t-transparent" /> : <><CheckCircle className="w-2.5 h-2.5" /><span>Final{reports.length > 1 ? ` (${reports.length})` : ''}</span></>}
+                      <button onClick={handleFinalizeReport} disabled={finalizing || saving || autoSaveStatus === 'saving' || !reportContent.trim()} className="flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-semibold bg-green-600 text-white rounded hover:bg-green-500 shadow-sm shadow-green-600/20 disabled:opacity-40 transition-all whitespace-nowrap" title={saving || autoSaveStatus === 'saving' ? 'Wait for save to complete...' : ''}>
+                        {finalizing ? <div className="animate-spin rounded-full h-2.5 w-2.5 border border-white border-t-transparent" /> : <><CheckCircle className="w-2.5 h-2.5" /><span>{saving || autoSaveStatus === 'saving' ? 'Saving...' : `Final${reports.length > 1 ? ` (${reports.length})` : ''}`}</span></>}
                       </button>
                     </>
                   ) : (
