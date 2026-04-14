@@ -634,9 +634,12 @@ export const verifyReport = async (req, res) => {
 
             // ✅ STEP 2: Update Report model with verification info
             const Report = mongoose.model('Report');
+            // ✅ FIX: Include 'report_drafted' and 'in_progress' — auto-save
+            // creates reports with reportStatus='report_drafted', and without
+            // this they're invisible to the verifier, causing "missing reports".
             const reports = await Report.find({
                 dicomStudy: studyId,
-                reportStatus: { $in: ['finalized', 'draft'] }
+                reportStatus: { $in: ['finalized', 'draft', 'report_drafted', 'in_progress'] }
             }).session(session);
 
             if (reports.length > 0) {
@@ -1130,15 +1133,15 @@ export const getReportForVerification = async (req, res) => {
 
         // ✅ STEP 4: Try to get report from modern Report collection first
         const Report = mongoose.model('Report');
+        // ✅ FIX: Include 'report_drafted' so auto-saved reports are visible
         let report = await Report.findOne({
             dicomStudy: studyId,
-            reportStatus: { $in: ['finalized', 'draft'] },
+            reportStatus: { $in: ['finalized', 'draft', 'report_drafted', 'in_progress'] },
             organizationIdentifier: user.organizationIdentifier
         })
-        .sort({ 
-            // Prioritize finalized reports for verification
-            reportStatus: 1, // 'draft' < 'finalized' alphabetically
-            createdAt: -1 
+        .sort({
+            reportStatus: 1,
+            createdAt: -1
         })
         .populate('doctorId', 'fullName email')
         .lean();
@@ -1383,7 +1386,7 @@ export const updateReportDuringVerification = async (req, res) => {
                 if (!existingReport) {
                     existingReport = await Report.findOne({
                         dicomStudy: studyId,
-                        reportStatus: { $in: ['finalized', 'verified'] }
+                        reportStatus: { $in: ['finalized', 'verified', 'draft', 'report_drafted'] }
                     })
                     .sort({ createdAt: -1 })
                     .session(session);
@@ -1775,7 +1778,7 @@ export const bulkVerifyReports = async (req, res) => {
                 const Report = mongoose.model('Report');
                 const reports = await Report.find({
                     dicomStudy: studyId,
-                    reportStatus: { $in: ['finalized', 'draft'] }
+                    reportStatus: { $in: ['finalized', 'draft', 'report_drafted', 'in_progress'] }
                 }).session(session);
 
                 for (const report of reports) {

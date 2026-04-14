@@ -13,7 +13,10 @@
       "Bash(node -e \"const m = require\\('@tiptap/extension-text-style'\\); console.log\\(typeof m.LineHeight\\)\")",
       "Bash(node -e \"const m = require\\('@tiptap/extension-text-style'\\); const lh = m.LineHeight; console.log\\('name:', lh.name\\); console.log\\('type:', lh.type\\); console.log\\('keys:', Object.keys\\(lh.config || {}\\)\\)\")",
       "Bash(grep -n \"getPresignedUrl\\\\|presignedUrl\" d:/website/devops/order2/backend/controllers/*.js)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(node -e \"console.log\\(require\\('pdfjs-dist/package.json'\\).version\\)\")",
+      "Bash(node -e \"console.log\\(require\\('d:/website/devops/order2/client/node_modules/pdfjs-dist/package.json'\\).version\\)\")",
+      "Bash(curl -sI \"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.6.205/pdf.worker.min.mjs\")"
     ]
   }
 }

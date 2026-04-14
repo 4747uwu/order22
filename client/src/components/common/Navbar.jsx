@@ -355,6 +355,14 @@ const Navbar = ({
                         <Settings className="h-3.5 w-3.5" />
                         <span>Account Settings</span>
                       </button>
+
+                      <button
+                        onClick={() => { window.location.reload(true); }}
+                        className="w-full text-left px-3 py-2 text-xs text-blue-600 hover:bg-blue-50 transition-colors flex items-center space-x-2"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        <span>Hard Refresh</span>
+                      </button>
                     </div>
 
                     <div className="border-t border-gray-200 py-1">

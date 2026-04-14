@@ -740,10 +740,10 @@ export const getValues = async (req, res) => {
         const statusCategories = {
             pending: [
                 'new_study_received', 'pending_assignment', 'assigned_to_doctor',
-                'doctor_opened_report', 'report_in_progress',
+                'doctor_opened_report', 'report_in_progress', 'report_drafted',
                 'report_downloaded_radiologist', 'report_downloaded', 'verification_pending',
             ],
-            inprogress: ['report_finalized', 'report_drafted', 'report_uploaded', 'report_verified'],
+            inprogress: ['report_finalized', 'report_uploaded', 'report_verified'],
             completed:  ['final_report_downloaded'],
         };
 
@@ -1145,6 +1145,7 @@ export const getStudiesByCategory = async (req, res) => {
                         'history_created',
                         'assigned_to_doctor',
                         'doctor_opened_report',
+                        'report_drafted',
                         'verification_pending',
                         'revert_to_radiologist',
                         'report_rejected',

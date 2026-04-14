@@ -1,8 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Upload, FileText, Download, Trash2, Eye, File, Image, X, Loader, Lock } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import sessionManager from '../../services/sessionManager';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+// PDF.js worker — use the bundled worker from node_modules (CDN doesn't have v5.6.205)
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+
+// ── Thumbnail cache: avoid re-fetching presigned URLs / rendered pages
+const thumbnailCache = new Map();
 
 export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = null }) => {
     const [documents, setDocuments] = useState([]);
@@ -88,6 +96,94 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
         return <File className="w-3.5 h-3.5" />;
     };
 
+    // ── Thumbnail component — large preview for images AND PDFs ─────────────
+    const THUMB_W = 'w-full max-w-[280px]';
+    const THUMB_H = 'h-72';   // ~288px tall
+
+    const DocThumbnail = ({ doc }) => {
+        const [thumbUrl, setThumbUrl] = useState(null);
+        const [thumbError, setThumbError] = useState(false);
+        const canvasRef = useRef(null);
+
+        useEffect(() => {
+            const isImage = doc?.contentType?.startsWith('image/');
+            const isPdf = doc?.contentType === 'application/pdf';
+            if (!isImage && !isPdf) return;
+
+            // Check cache first
+            const cached = thumbnailCache.get(doc._id);
+            if (cached) { setThumbUrl(cached); return; }
+
+            let cancelled = false;
+
+            api.get(`/documents/${doc._id}/url?action=view`)
+                .then(async (res) => {
+                    if (cancelled) return;
+                    const url = res.data.data.url;
+
+                    if (isImage) {
+                        thumbnailCache.set(doc._id, url);
+                        setThumbUrl(url);
+                    } else if (isPdf) {
+                        // Render first page of the PDF onto a canvas, then convert to dataURL
+                        try {
+                            const pdf = await pdfjsLib.getDocument(url).promise;
+                            const page = await pdf.getPage(1);
+                            const viewport = page.getViewport({ scale: 1.0 });
+
+                            const canvas = document.createElement('canvas');
+                            canvas.width = viewport.width;
+                            canvas.height = viewport.height;
+                            const ctx = canvas.getContext('2d');
+
+                            await page.render({ canvasContext: ctx, viewport }).promise;
+
+                            const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+                            thumbnailCache.set(doc._id, dataUrl);
+                            if (!cancelled) setThumbUrl(dataUrl);
+                        } catch (e) {
+                            console.warn('[PDF Thumbnail] Failed:', e.message);
+                            if (!cancelled) setThumbError(true);
+                        }
+                    }
+                })
+                .catch(() => { if (!cancelled) setThumbError(true); });
+
+            return () => { cancelled = true; };
+        }, [doc._id, doc.contentType]);
+
+        const placeholder = (icon, bgClass = 'bg-gray-100') => (
+            <div className={`${THUMB_W} ${THUMB_H} ${bgClass} rounded-lg flex items-center justify-center`}>
+                {icon}
+            </div>
+        );
+
+        // Image thumbnail
+        if (doc.contentType?.startsWith('image/')) {
+            if (thumbError) return placeholder(<Image className="w-8 h-8 text-gray-300" />);
+            if (!thumbUrl) return placeholder(<Loader className="w-5 h-5 text-gray-300 animate-spin" />, 'bg-gray-50 animate-pulse');
+            return (
+                <img src={thumbUrl} alt=""
+                    className={`${THUMB_W} ${THUMB_H} rounded-lg object-contain bg-gray-50 border border-gray-200 cursor-pointer hover:opacity-90 hover:shadow-lg transition-all`}
+                    onClick={() => handlePreview(doc)} />
+            );
+        }
+
+        // PDF thumbnail (rendered first page)
+        if (doc.contentType === 'application/pdf') {
+            if (thumbError) return placeholder(<FileText className="w-10 h-10 text-red-300" />, 'bg-red-50 border border-red-100');
+            if (!thumbUrl) return placeholder(<Loader className="w-5 h-5 text-red-300 animate-spin" />, 'bg-red-50 animate-pulse border border-red-100');
+            return (
+                <img src={thumbUrl} alt="PDF page 1"
+                    className={`${THUMB_W} ${THUMB_H} rounded-lg object-contain bg-white border border-gray-200 cursor-pointer hover:opacity-90 hover:shadow-lg transition-all`}
+                    onClick={() => handlePreview(doc)} />
+            );
+        }
+
+        // Other files
+        return placeholder(<File className="w-10 h-10 text-gray-300" />, 'bg-gray-50 border border-gray-100');
+    };
+
     const handlePreview = async (doc) => {
         try {
             setPreviewLoading(true);
@@ -136,7 +232,7 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
         >
             <div 
                 className="bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden border border-gray-300"
-                style={{ width: '880px', maxHeight: '80vh' }}
+                style={{ width: '95vw', maxWidth: '1200px', height: '90vh' }}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header - Super Compact */}
@@ -191,24 +287,36 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
                         ) : documents.length === 0 ? (
                             <div className="text-center py-6 text-gray-300 text-[10px] font-bold uppercase border border-dashed rounded bg-white">No attachments</div>
                         ) : (
-                            <div className="grid grid-cols-1 gap-1">
+                            <div className="grid grid-cols-2 gap-3">
                                 {documents.map((doc) => (
-                                    <div key={doc._id} className="flex items-center justify-between px-3 py-1.5 bg-white border border-gray-100 rounded hover:border-blue-300 transition-all group shadow-sm">
-                                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                                            <div className="text-gray-400">{getFileIcon(doc.contentType)}</div>
+                                    <div key={doc._id} className="bg-white border border-gray-100 rounded-lg hover:border-blue-300 hover:shadow-md transition-all group shadow-sm overflow-hidden">
+                                        {/* Thumbnail */}
+                                        <div className="flex justify-center bg-gray-50 p-2">
+                                            <DocThumbnail doc={doc} />
+                                        </div>
+                                        {/* Info + actions */}
+                                        <div className="px-3 py-2 border-t border-gray-100">
                                             <p className="text-[10px] font-bold text-gray-700 truncate uppercase" title={doc.fileName}>{doc.fileName}</p>
-                                            <div className="flex items-center gap-2 text-[9px] text-gray-400 font-bold border-l pl-2 border-gray-100">
+                                            <div className="flex items-center gap-2 text-[9px] text-gray-400 font-bold mt-0.5">
                                                 <span>{formatFileSize(doc.fileSize)}</span>
                                                 <span className="w-0.5 h-0.5 bg-gray-300 rounded-full" />
                                                 <span>{new Date(doc.uploadedAt).toLocaleDateString()}</span>
+                                                <span className="w-0.5 h-0.5 bg-gray-300 rounded-full" />
+                                                <span className="text-gray-300">{doc.contentType?.split('/')[1]?.toUpperCase() || 'FILE'}</span>
                                             </div>
-                                        </div>
-                                        <div className="flex items-center gap-1">
-                                            <button onClick={() => handlePreview(doc)} className="p-1 text-blue-600 hover:bg-blue-50 rounded" title="View"><Eye className="w-3.5 h-3.5" /></button>
-                                            <button onClick={() => api.get(`/documents/${doc._id}/url?action=download`).then(res => window.open(res.data.data.url))} className="p-1 text-green-600 hover:bg-green-50 rounded" title="Download"><Download className="w-3.5 h-3.5" /></button>
-                                            {canManageDocs && (
-                                                <button onClick={() => handleDelete(doc._id)} className="p-1 text-red-500 hover:bg-red-50 rounded" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                                            )}
+                                            <div className="flex items-center gap-1 mt-1.5">
+                                                <button onClick={() => handlePreview(doc)} className="flex-1 flex items-center justify-center gap-1 py-1 text-[9px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded transition-colors">
+                                                    <Eye className="w-3 h-3" /> View
+                                                </button>
+                                                <button onClick={() => api.get(`/documents/${doc._id}/url?action=download`).then(res => window.open(res.data.data.url))} className="flex-1 flex items-center justify-center gap-1 py-1 text-[9px] font-bold text-green-600 bg-green-50 hover:bg-green-100 rounded transition-colors">
+                                                    <Download className="w-3 h-3" /> Download
+                                                </button>
+                                                {canManageDocs && (
+                                                    <button onClick={() => handleDelete(doc._id)} className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors">
+                                                        <Trash2 className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}

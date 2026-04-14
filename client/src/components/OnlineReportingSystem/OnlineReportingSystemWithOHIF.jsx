@@ -9,7 +9,8 @@ import GlobalTemplateDropdown from './GlobalTemplateDropdown';
 import sessionManager from '../../services/sessionManager';
 import TemplateSearchPanel from './TemplateSearchPanel.jsx';
 // also add BookOpen to the lucide-react import line:
-import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2, BookOpen, Save, Pencil } from 'lucide-react';
+import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft, Plus, Layers, Trash2, BookOpen, Save, Pencil, Upload } from 'lucide-react';
+import mammoth from 'mammoth';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
 import { StudyDocumentsManager } from '../StudyDocuments/StudyDocumentsManager';
@@ -495,6 +496,63 @@ const OnlineReportingSystemWithOHIF = () => {
     '--Content--': content
   });
 
+  // ── Word file upload → extract HTML → load into editor ─────────────────────
+  const wordUploadRef = useRef(null);
+
+  const handleWordUpload = useCallback(async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = [
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/msword',
+    ];
+    const isDocx = validTypes.includes(file.type) || file.name.endsWith('.docx') || file.name.endsWith('.doc');
+    if (!isDocx) {
+      toast.error('Please upload a .docx or .doc file');
+      e.target.value = '';
+      return;
+    }
+
+    const toastId = toast.loading('Extracting Word document...');
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const result = await mammoth.convertToHtml(
+        { arrayBuffer },
+        {
+          styleMap: [
+            "p[style-name='Heading 1'] => h1",
+            "p[style-name='Heading 2'] => h2",
+            "p[style-name='Heading 3'] => h3",
+          ],
+        }
+      );
+
+      if (result.value) {
+        // Update the active report with the extracted HTML
+        setReports(prev => prev.map((r, i) =>
+          i === activeReportIndex ? { ...r, content: result.value } : r
+        ));
+        toast.success(`Imported "${file.name}" successfully`, { id: toastId });
+
+        if (result.messages?.length > 0) {
+          const warnings = result.messages.filter(m => m.type === 'warning');
+          if (warnings.length > 0) {
+            console.warn('[Word Import] Warnings:', warnings.map(m => m.message));
+          }
+        }
+      } else {
+        toast.error('No content found in the document', { id: toastId });
+      }
+    } catch (error) {
+      console.error('[Word Import] Failed:', error);
+      toast.error(`Failed to extract Word content: ${error.message}`, { id: toastId });
+    } finally {
+      e.target.value = ''; // Reset input so same file can be re-uploaded
+    }
+  }, [activeReportIndex]);
+
   const handleSaveDraft = async () => {
     if (!reportContent.trim()) { toast.error('Cannot save an empty draft.'); return; }
     setSaving(true);
@@ -901,6 +959,13 @@ const OnlineReportingSystemWithOHIF = () => {
                         {autoSaveStatus === 'error' && <XCircle className="w-3 h-3 text-red-400" />}
                         {autoSaveStatus === 'idle' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
                       </div>
+
+                      {/* Word Upload */}
+                      <input ref={wordUploadRef} type="file" accept=".docx,.doc" onChange={handleWordUpload} className="hidden" />
+                      <button onClick={() => wordUploadRef.current?.click()} className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 transition-colors" title="Import Word document (.docx)">
+                        <Upload className="w-2.5 h-2.5" />
+                        <span>Word</span>
+                      </button>
 
                       {/* Save */}
                       <button onClick={handleSaveDraft} disabled={saving || !reportContent.trim()} className="px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors">
