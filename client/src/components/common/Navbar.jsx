@@ -15,7 +15,9 @@ import {
   X,
   Copy,
   Download,
-  Monitor
+  Monitor,
+  Sun,
+  Moon
 } from 'lucide-react';
 import StudyCopyModal from '../StudyCopy/StudyCopyModal';
 import DoctorProfileModal from '../doctor/DoctorProfileModal';
@@ -42,6 +44,19 @@ const Navbar = ({
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [isDark, setIsDark] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = localStorage.getItem('theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isDark) root.classList.add('dark');
+    else root.classList.remove('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
@@ -303,7 +318,16 @@ const Navbar = ({
               )}
 
               {/* Organization Selector */}
-              
+
+              {/* Dark Mode Toggle */}
+              <button
+                onClick={() => setIsDark(v => !v)}
+                title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md border border-slate-200"
+              >
+                {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+              </button>
+
               {/* Profile Dropdown */}
               <div className="relative" ref={profileDropdownRef}>
                 <button
