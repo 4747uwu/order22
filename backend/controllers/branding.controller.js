@@ -334,12 +334,32 @@ export const uploadOwnLabBrandingImage = async (req, res) => {
 export const updatePaperSettings = async (req, res) => {
     try {
         const { labId } = req.params;
-        const { paperSettings } = req.body;
+        const { paperSettings, headerTemplate } = req.body;
 
-        if (!paperSettings || typeof paperSettings !== 'object') {
+        const updateFields = {};
+
+        if (paperSettings && typeof paperSettings === 'object') {
+            updateFields['reportBranding.paperSettings'] = paperSettings;
+        }
+
+        // ✅ Allow updating headerTemplate independently or together with paperSettings
+        if (headerTemplate !== undefined) {
+            const validTemplates = ['', 'sb', 'sb-3', '6cellnl', 'singleborder', '4col1', '4col2', '4col5'];
+                        // enum: ['', 'sb', 'sb-3', '6cellnl', 'singleborder', '4col1', '4col2', '4col5']
+
+            if (!validTemplates.includes(headerTemplate)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Invalid headerTemplate. Must be one of: ${validTemplates.join(', ')}`
+                });
+            }
+            updateFields['reportBranding.headerTemplate'] = headerTemplate;
+        }
+
+        if (Object.keys(updateFields).length === 0) {
             return res.status(400).json({
                 success: false,
-                message: 'paperSettings object is required'
+                message: 'paperSettings or headerTemplate is required'
             });
         }
 
@@ -348,9 +368,7 @@ export const updatePaperSettings = async (req, res) => {
                 _id: labId,
                 organizationIdentifier: req.user.organizationIdentifier
             },
-            {
-                $set: { 'reportBranding.paperSettings': paperSettings }
-            },
+            { $set: updateFields },
             { new: true }
         ).select('reportBranding');
 

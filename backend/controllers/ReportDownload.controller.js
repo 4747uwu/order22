@@ -24,7 +24,7 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
     // Lab branding
     const labBranding = report.dicomStudy?.sourceLab?.reportBranding || null;
 
-    // ✅ DETERMINE TEMPLATE NAME based on header/footer availability
+    // ✅ DETERMINE TEMPLATE NAME based on header/footer availability + header template style
     let hasHeaderFooter = false;
     if (labBranding) {
         const hasHeader = labBranding.showHeader !== false && labBranding.headerImage?.url;
@@ -32,25 +32,29 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         hasHeaderFooter = hasHeader || hasFooter;
     }
 
-    let templateName = 'MyReport.docx';
-    
+    // ✅ Get the lab's header template preference (e.g., 'sb', '4col1', '4col2', '4col5', or '' for default)
+    const headerTemplateSuffix = labBranding?.headerTemplate || '';
+
+    // ✅ Build template name following the pattern:
+    //    MyReport{headerTemplate}{imageCount}.docx          (with branding)
+    //    MyReportNoHeader{headerTemplate}{imageCount}.docx  (without branding)
+    //
+    // Examples:
+    //    Default + no images + branding    → MyReport.docx
+    //    Default + 2 images + branding     → MyReport2.docx
+    //    sb + 3 images + branding          → MyReportsb3.docx
+    //    4col1 + 0 images + no branding   → MyReportNoHeader4col1.docx
+    //    4col2 + 4 images + no branding   → MyReportNoHeader4col24.docx
+    const clampedImageCount = Math.min(imageCount, 5); // Max 5 image slots
+    const imageSuffix = clampedImageCount > 0 ? String(clampedImageCount) : '';
+
+    let templateName;
     if (!hasHeaderFooter) {
-        // ✅ No header/footer: use MyReportNoHeader template with image count increment
-        templateName = 'MyReportNoHeader.docx';
-        if (imageCount > 0 && imageCount <= 5) {
-            templateName = `MyReportNoHeader${imageCount}.docx`;
-        } else if (imageCount > 5) {
-            templateName = 'MyReportNoHeader5.docx';
-        }
-        console.log(`📄 Using NoHeader template (no branding): ${templateName}`);
+        templateName = `MyReportNoHeader${headerTemplateSuffix}${imageSuffix}.docx`;
+        console.log(`📄 Using NoHeader template: ${templateName} (style: ${headerTemplateSuffix || 'default'}, images: ${imageCount})`);
     } else {
-        // ✅ Has header/footer: use standard MyReport template with image count increment
-        if (imageCount > 0 && imageCount <= 5) {
-            templateName = `MyReport${imageCount}.docx`;
-        } else if (imageCount > 5) {
-            templateName = 'MyReport5.docx';
-        }
-        console.log(`📄 Using standard template (with branding): ${templateName}`);
+        templateName = `MyReport${headerTemplateSuffix}${imageSuffix}.docx`;
+        console.log(`📄 Using standard template: ${templateName} (style: ${headerTemplateSuffix || 'default'}, images: ${imageCount})`);
     }
 
     // Doctor data
@@ -71,9 +75,21 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         } catch (e) { console.warn('⚠️ Failed to fetch doctor data'); }
     }
 
+    // ✅ Patient ID extraction — Report.patientInfo has NO patientId field,
+    // and Patient model uses `patientID` (capital D). Also check DicomStudy
+    // which stores it in both patientInfo.patientID AND the top-level patientId.
+    const patientIdValue = (
+        report.dicomStudy?.patientInfo?.patientID ||
+        report.dicomStudy?.patientId ||
+        report.patient?.patientID ||
+        ''
+    );
+
     const placeholders = {
-        '--name--': report.patientInfo?.fullName || report.patient?.fullName || '[Patient Name]',
-        '--patientid--': report.patientInfo?.patientId || report.patient?.patientId || '[Patient ID]',
+        '--name--': report.patientInfo?.fullName || report.dicomStudy?.patientInfo?.patientName || report.patient?.patientNameRaw || report.patient?.fullName || '[Patient Name]',
+        '--patientid--': patientIdValue || '[Patient ID]',
+        // ✅ --uid-- is the accession number (used by some templates as "UID" field)
+        '--uid--': report.accessionNumber || report.dicomStudy?.accessionNumber || '',
         '--accessionno--': report.accessionNumber || report.dicomStudy?.accessionNumber || '[Accession Number]',
         '--agegender--': `${report.patientInfo?.age || report.patient?.age || '[Age]'} / ${report.patientInfo?.gender || report.patient?.gender || '[Gender]'}`,
         '--referredby--': (
@@ -88,6 +104,10 @@ const buildDocxPayload = async (report, outputFormat = 'pdf') => {
         '--studydate--': report.studyInfo?.studyDate ? new Date(report.studyInfo.studyDate).toLocaleDateString() : '[Study Date]',
         '--modality--': report.studyInfo?.modality || report.dicomStudy?.modality || '[Modality]',
         '--clinicalhistory--': report.patientInfo?.clinicalHistory || '[Clinical History]',
+        // ✅ SB template needs --center-- (lab/institution name)
+        '--center--': report.dicomStudy?.sourceLab?.name || report.studyInfo?.institutionName || report.dicomStudy?.institutionName || '[Center]',
+        // ✅ 4col1 template needs --studydescription-- (exam description)
+        '--studydescription--': report.studyInfo?.examDescription || report.dicomStudy?.examDescription || '[Study Description]',
         '--Content--': htmlContent
     };
 
@@ -174,10 +194,10 @@ const fetchReportsForStudy = async (studyId) => {
         dicomStudy: studyId,
         reportStatus: { $in: ['finalized', 'verified', 'approved'] }
     })
-        .populate('patient', 'fullName patientId age gender')
+        .populate('patient', 'fullName patientNameRaw patientID age gender')
         .populate({
             path: 'dicomStudy',
-            select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id',
+            select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName physicians patientInfo patientId examDescription institutionName sourceLab _id',
             populate: { path: 'sourceLab', model: 'Lab' }
         })
         .populate('doctorId', 'fullName email')
@@ -258,10 +278,10 @@ class ReportDownloadController {
             }
 
             const report = await Report.findById(reportId)
-                .populate('patient', 'fullName patientId age gender')
+                .populate('patient', 'fullName patientNameRaw patientID age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName physicians patientInfo patientId examDescription institutionName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -321,10 +341,10 @@ if (downloaderRoles.includes('lab_staff')) {
             }
 
             const report = await Report.findById(reportId)
-                .populate('patient', 'fullName patientId age gender')
+                .populate('patient', 'fullName patientNameRaw patientID age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName physicians patientInfo patientId examDescription institutionName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -420,10 +440,10 @@ if (downloaderRoles.includes('lab_staff')) {
             }
 
             const report = await Report.findById(reportId)
-                .populate('patient', 'fullName patientId age gender')
+                .populate('patient', 'fullName patientNameRaw patientID age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id bharatPacsId workflowStatus',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName physicians patientInfo patientId examDescription institutionName sourceLab _id bharatPacsId workflowStatus',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');
@@ -503,10 +523,10 @@ if (downloaderRoles.includes('lab_staff')) {
             }
 
             const report = await Report.findById(reportId)
-                .populate('patient', 'fullName patientId age gender')
+                .populate('patient', 'fullName patientNameRaw patientID age gender')
                 .populate({
                     path: 'dicomStudy',
-                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName sourceLab _id workflowStatus bharatPacsId',
+                    select: 'accessionNumber modality studyDate referringPhysician referringPhysicianName physicians patientInfo patientId examDescription institutionName sourceLab _id workflowStatus bharatPacsId',
                     populate: { path: 'sourceLab', model: 'Lab' }
                 })
                 .populate('doctorId', 'fullName email');

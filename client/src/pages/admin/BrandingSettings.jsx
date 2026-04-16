@@ -24,6 +24,9 @@ const BrandingSettings = () => {
   // ✅ NEW: Input field states for manual entry
   const [headerInput, setHeaderInput] = useState('120');
   const [footerInput, setFooterInput] = useState('80');
+
+  // ✅ Header template style preference
+  const [headerTemplate, setHeaderTemplate] = useState('');
   
   // ✅ NEW: React Image Crop states - NO MORE CUSTOM CANVAS FLICKERING!
   const [showCropModal, setShowCropModal] = useState(false);
@@ -177,17 +180,18 @@ const BrandingSettings = () => {
         }));
 
         if (fetchedData.paperSettings) {
-          // Convert from mm to pixels if data is in mm
-          const headerPx = fetchedData.paperSettings.headerHeight > 50 
-            ? fetchedData.paperSettings.headerHeight 
+          const headerPx = fetchedData.paperSettings.headerHeight > 50
+            ? fetchedData.paperSettings.headerHeight
             : Math.round(fetchedData.paperSettings.headerHeight * 96 / 25.4);
-          const footerPx = fetchedData.paperSettings.footerHeight > 50 
-            ? fetchedData.paperSettings.footerHeight 
+          const footerPx = fetchedData.paperSettings.footerHeight > 50
+            ? fetchedData.paperSettings.footerHeight
             : Math.round(fetchedData.paperSettings.footerHeight * 96 / 25.4);
-            
+
           setHeaderHeight(headerPx || 120);
           setFooterHeight(footerPx || 80);
         }
+        // Load saved header template preference
+        setHeaderTemplate(fetchedData.headerTemplate || '');
       }
     } catch (error) {
       console.error('Error fetching branding data:', error);
@@ -299,6 +303,19 @@ const BrandingSettings = () => {
       });
     } catch (error) {
       console.error('Error updating paper settings:', error);
+    }
+  };
+
+  // ✅ Save header template preference
+  const handleHeaderTemplateChange = async (value) => {
+    setHeaderTemplate(value);
+    if (!selectedLab) return;
+    try {
+      await api.patch(`/branding/labs/${selectedLab}/branding/settings`, { headerTemplate: value });
+      toast.success(`Report template set to "${value || 'Default'}"`, { duration: 2000 });
+    } catch (error) {
+      console.error('Error saving header template:', error);
+      toast.error('Failed to save template preference');
     }
   };
 
@@ -683,6 +700,26 @@ const BrandingSettings = () => {
             </div>
             
             <p className="text-blue-500 text-xs italic mt-1">Range: 20-400px</p>
+          </div>
+
+          {/* ✅ Header Template Selector */}
+          <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs space-y-2">
+            <div className="text-purple-700 font-medium">Report Template Style</div>
+            <select
+              value={headerTemplate}
+              onChange={(e) => handleHeaderTemplateChange(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-purple-300 rounded focus:ring-1 focus:ring-purple-500 focus:border-transparent"
+            >
+              <option value="">Default (Standard)</option>
+              <option value="sb">SB</option>
+              <option value="sb-3">SB-3</option>
+              <option value="6cellnl">6-Cell NL</option>
+              <option value="singleborder">Single Border</option>
+              <option value="4col1">4-Column Style 1</option>
+              <option value="4col2">4-Column Style 2</option>
+              <option value="4col5">4-Column Style 5</option>
+            </select>
+            <p className="text-purple-400 text-xs italic">Determines the DOCX template used for report downloads</p>
           </div>
 
           <div className="relative">

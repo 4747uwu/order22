@@ -12,6 +12,7 @@ const LabBrandingSettings = () => {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [headerTemplate, setHeaderTemplate] = useState('');
 
   // ✅ Header/footer heights in PIXELS
   const [headerHeight, setHeaderHeight] = useState(120);
@@ -58,8 +59,8 @@ const LabBrandingSettings = () => {
     showHeader: true,
     showFooter: true,
     paperSettings: {
-      paperWidth: 794,    // A4 width in pixels (210mm * 96/25.4)
-      paperHeight: 1123,  // A4 height in pixels (297mm * 96/25.4)
+      paperWidth: 816,
+      paperHeight: 1056,
       marginTop: 96,
       marginBottom: 96,
       marginLeft: 96,
@@ -73,13 +74,13 @@ const LabBrandingSettings = () => {
   // Get lab ID from user context
   const labId = currentUser?.labIdentifier || currentUser?.lab?._id;
 
-  // ✅ A4 Paper constants
+  // ✅ Letter Paper constants
   const LETTER_CONSTANTS = {
-    WIDTH_PX: 794,     // 210mm * 96 / 25.4 = 794px (A4 width)
-    HEIGHT_PX: 1123,   // 297mm * 96 / 25.4 = 1123px (A4 height)
+    WIDTH_PX: 816,
+    HEIGHT_PX: 1056,
     SCALE_FACTOR: 0.8,
     MARGIN_PX: 96,
-    FIXED_HEIGHT: 1123 * 0.8
+    FIXED_HEIGHT: 1056 * 0.8
   };
 
   const getDisplayDimensions = () => {
@@ -159,6 +160,7 @@ const LabBrandingSettings = () => {
           setHeaderHeight(headerPx || 120);
           setFooterHeight(footerPx || 80);
         }
+        setHeaderTemplate(fetchedData.headerTemplate || '');
       }
     } catch (error) {
       console.error('Error fetching branding data:', error);
@@ -257,6 +259,19 @@ const LabBrandingSettings = () => {
       });
     } catch (error) {
       console.error('Error updating paper settings:', error);
+    }
+  };
+
+  // ✅ Save header template preference
+  const handleHeaderTemplateChange = async (value) => {
+    setHeaderTemplate(value);
+    if (!labId) return;
+    try {
+      await api.patch(`/branding/labs/${labId}/branding/settings`, { headerTemplate: value });
+      toast.success(`Report template set to "${value || 'Default'}"`, { duration: 2000 });
+    } catch (error) {
+      console.error('Error saving header template:', error);
+      toast.error('Failed to save template preference');
     }
   };
 
@@ -668,6 +683,26 @@ const saveAllChanges = async () => {
 
             <p className="text-blue-500 text-xs italic mt-1">Range: 20-400px</p>
           </div>
+
+          {/* ✅ Report Template Style */}
+          <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded text-xs space-y-2">
+            <div className="text-purple-700 font-medium">Report Template Style</div>
+            <select
+              value={headerTemplate}
+              onChange={(e) => handleHeaderTemplateChange(e.target.value)}
+              className="w-full px-2 py-1.5 text-sm border border-purple-300 rounded focus:ring-1 focus:ring-purple-500 focus:border-transparent"
+            >
+              <option value="">Default (Standard)</option>
+              <option value="sb">SB</option>
+              <option value="sb-3">SB-3</option>
+              <option value="6cellnl">6-Cell NL</option>
+              <option value="singleborder">Single Border</option>
+              <option value="4col1">4-Column Style 1</option>
+              <option value="4col2">4-Column Style 2</option>
+              <option value="4col5">4-Column Style 5</option>
+            </select>
+            <p className="text-purple-400 text-xs italic">Determines the DOCX template used for report downloads</p>
+          </div>
         </div>
 
         {/* ✅ Save/Discard Actions */}
@@ -702,17 +737,17 @@ const saveAllChanges = async () => {
         )}
       </div>
 
-      {/* ✅ MAIN CONTENT - A4 Paper Preview */}
+      {/* ✅ MAIN CONTENT - Letter Paper Preview */}
       <div className="flex-1 flex flex-col">
         <div className="bg-white border-b border-gray-200 px-4 py-2">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-gray-900">{currentUser?.lab?.name || 'Your Lab'}</h2>
-              <p className="text-xs text-gray-600">A4 Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
+              <p className="text-xs text-gray-600">Letter Paper Preview ({displayDims.paperWidth.toFixed(0)}×{displayDims.paperHeight.toFixed(0)}px display)</p>
             </div>
 
             <div className="flex items-center gap-3 text-xs text-gray-600">
-              <span>📐 794×1123px (A4 210×297mm)</span>
+              <span>📐 816×1056px (Letter 8.5"×11")</span>
               <span className={`${headerSizeMatch ? 'text-green-600 font-semibold' : ''}`}>
                 📏 Header: {headerHeight}px {headerSizeMatch && <span className="text-green-600">✅</span>}
               </span>
@@ -1034,11 +1069,11 @@ const saveAllChanges = async () => {
                   </h3>
                   <p className="text-sm text-gray-600 mt-1">
                     <span className="font-bold text-purple-600 bg-purple-100 px-2 py-1 rounded">
-                      A4 Paper Requirements
-                    </span> • Min Width: <span className="font-bold text-blue-600">602px</span> • Target Height: <span className="font-bold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px</span>
+                      Letter Paper Requirements
+                    </span> • Min Width: <span className="font-bold text-blue-600">624px</span> • Target Height: <span className="font-bold text-purple-600">{cropType === 'header' ? headerHeight : footerHeight}px</span>
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    📏 Content area: 602px wide (A4 210mm − 2" margins) • Drag to select crop area • Adjust corners to resize
+                    📏 Content area: 624px wide (8.5" - 2" margins) • Drag to select crop area • Adjust corners to resize
                   </p>
                 </div>
 
@@ -1079,8 +1114,8 @@ const saveAllChanges = async () => {
                     onComplete={(c) => setCompletedCrop(c)}
                     aspect={undefined}
                     minHeight={30}
-                    minWidth={602}
-                    maxWidth={794}
+                    minWidth={624}
+                    maxWidth={816}
                   >
                     <img
                       ref={imgRef}

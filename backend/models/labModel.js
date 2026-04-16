@@ -153,6 +153,14 @@ const LabSchema = new mongoose.Schema({
         },
         showHeader: { type: Boolean, default: true },
         showFooter: { type: Boolean, default: true },
+        // ✅ Header template style — determines which DOCX template is used
+        // for report generation. Empty string = default (no prefix).
+        // Options: '' (default), 'sb', '4col1', '4col2', '4col5'
+        headerTemplate: {
+            type: String,
+            default: '',
+            enum: ['', 'sb', 'sb-3', '6cellnl', 'singleborder', '4col1', '4col2', '4col5']
+        },
         // ✅ NEW: A4 Paper Dimensions & Header/Footer Heights (in mm)
         paperSettings: {
             paperWidth: { type: Number, default: 210 }, // A4 width in mm

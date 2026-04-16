@@ -34,13 +34,13 @@ const upload = multer({
 router.get('/labs/:labId/branding', protect, getLabBranding);
 router.post('/labs/:labId/branding/upload', protect, upload.single('image'), uploadBrandingImage);
 router.patch('/labs/:labId/branding/toggle', protect, toggleBrandingVisibility);
+router.delete('/labs/:labId/branding/delete', protect, deleteBrandingImage);
 router.patch('/labs/:labId/branding/settings', protect, updatePaperSettings);
-router.delete('/labs/:labId/branding/:type', protect, deleteBrandingImage);
 
 // ✅ LAB STAFF ROUTES - Manage own lab branding only
 router.get('/my-lab/branding', protect, getOwnLabBranding);
 router.post('/my-lab/branding/upload', protect, upload.single('image'), uploadOwnLabBrandingImage);
 router.patch('/my-lab/branding/toggle', protect, toggleOwnLabBrandingVisibility);
-router.delete('/my-lab/branding/:type', protect, deleteOwnLabBrandingImage);
+router.delete('/my-lab/branding/delete', protect, deleteOwnLabBrandingImage);
 
 export default router;
