@@ -1,10 +1,36 @@
 import mongoose from 'mongoose';
 import Report from '../models/reportModel.js';
-import DicomStudy from '../models/dicomStudyModel.js';
+import DicomStudy, { ACTION_TYPES } from '../models/dicomStudyModel.js';
 import Patient from '../models/patientModel.js';
 import User from '../models/userModel.js';
 import Organization from '../models/organisation.js';
 import { updateWorkflowStatus } from '../utils/workflowStatusManager.js';
+
+// ── Legacy actionLog sanitizer ───────────────────────────────────
+// Some historical writes (e.g. studyCopy.controller.js via $push)
+// stored the enum KEY ('STUDY_COPIED') instead of the VALUE
+// ('study_copied'). Mongoose validation now rejects those on save.
+// Normalize any such entries before we try to save the study.
+const ACTION_TYPE_VALUES = new Set(Object.values(ACTION_TYPES));
+const ACTION_TYPE_KEY_TO_VALUE = Object.fromEntries(
+    Object.entries(ACTION_TYPES).map(([k, v]) => [k, v])
+);
+
+const sanitizeActionLog = (study) => {
+    if (!Array.isArray(study?.actionLog)) return;
+    for (const entry of study.actionLog) {
+        if (!entry || !entry.actionType) continue;
+        if (ACTION_TYPE_VALUES.has(entry.actionType)) continue;
+        // Upper-case key written by mistake → map to its value
+        if (ACTION_TYPE_KEY_TO_VALUE[entry.actionType]) {
+            entry.actionType = ACTION_TYPE_KEY_TO_VALUE[entry.actionType];
+            continue;
+        }
+        // Last-ditch: lowercase it and see if that matches
+        const lowered = String(entry.actionType).toLowerCase();
+        if (ACTION_TYPE_VALUES.has(lowered)) entry.actionType = lowered;
+    }
+};
 export const storeDraftReport = async (req, res) => {
     try {
         const { studyId } = req.params;
@@ -246,6 +272,7 @@ export const storeDraftReport = async (req, res) => {
                 note: `Draft report ${existingReport ? 'updated' : 'created'} by ${currentUser.fullName} for ${doctorName}`
             });
 
+            sanitizeActionLog(study);
             await study.save({ session });
             await session.commitTransaction();
 
@@ -560,6 +587,7 @@ export const storeFinalizedReport = async (req, res) => {
                 note: `Report finalized by ${doctorName}${requiresVerification ? ' - sent for verification' : wasPreviouslyDownloaded ? ' - reprint needed' : ' - completed'}`
             });
 
+            sanitizeActionLog(study);
             await study.save({ session });
             await session.commitTransaction();
 
@@ -870,6 +898,7 @@ export const storeMultipleReports = async (req, res) => {
                 note: `${savedReports.length} report(s) ${isDraftOperation ? 'drafted' : requiresVerification ? 'sent for verification' : wasPreviouslyDownloaded ? 'reprint needed' : 'finalized'} by ${doctorName}`
             });
 
+            sanitizeActionLog(study);
             await study.save({ session });
             await session.commitTransaction();
 
@@ -1197,6 +1226,7 @@ const updateStudyReportStatus = async (study, report, session) => {
         }
 
         // ✅ CRITICAL FIX: Save the study with session
+        sanitizeActionLog(study);
         await study.save({ session });
         
         console.log('✅ [Helper] Study report status updated and saved:', {

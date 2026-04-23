@@ -300,7 +300,7 @@ export const copyStudyToOrganization = async (req, res) => {
                     copiedBy: user._id
                 },
                 actionLog: {
-                    actionType: 'STUDY_COPIED',
+                    actionType: ACTION_TYPES.STUDY_COPIED,
                     actionCategory: 'administrative',
                     performedBy: user._id,
                     performedByName: user.fullName,
