@@ -17,6 +17,7 @@ import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColu
 import RevertModal from '../../../components/RevertModal.jsx';
 import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
+import { sanitizeStudyInstanceUID } from '../../../utils/studyInstanceUID.js';
 import useWebSocket from '../../../hooks/useWebSocket';
 import { isStudyOlderThan, checkAndRestoreStudy } from '../../../utils/backupRestoreHelper';
 import sessionManager from '../../../services/sessionManager.jsx';
@@ -36,7 +37,8 @@ const ShareModal = ({ study, isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
-  const studyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
+  const rawStudyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
+  const studyInstanceUID = sanitizeStudyInstanceUID(rawStudyInstanceUID);
   const viewerUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`;
 
   const handleCopy = () => {
@@ -914,6 +916,9 @@ const StudyRow = ({
       if (Array.isArray(studyInstanceUID) && studyInstanceUID.length) studyUIDs = studyInstanceUID.join(',');
       else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
       else studyUIDs = String(src._id || '');
+
+      // Strip `_COPY_<timestamp>` suffix added when a study is copied cross-org
+      studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
 
       const OHIF_VIEWERS = {
         viewer1: 'https://viewer.bharatpacs.com/viewer',

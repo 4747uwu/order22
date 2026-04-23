@@ -142,23 +142,30 @@ export const storeDraftReport = async (req, res) => {
             const { doctorId, doctorName } = await determineDoctorForReport(currentUser, study, session);
 
             // ✅ FIX: Priority order for finding existing report:
-            // 1. Use existingReportId if provided (auto-save/manual save after first save)
-            // 2. Find by studyId + doctorId (first save)
+            // 1. Use existingReportId if provided (manual save after first save, or auto-save with known id)
+            // 2. Fallback findOne by studyId+doctorId is DISABLED for auto-saves —
+            //    it was the mechanism that merged two unrelated null-id reports
+            //    into one document. Auto-saves with no id must always create a
+            //    new doc; the frontend will then send that id on subsequent saves.
             let existingReport = null;
-            
+
             if (existingReportId && mongoose.Types.ObjectId.isValid(existingReportId)) {
                 existingReport = await Report.findById(existingReportId).session(session);
                 console.log('🔍 [Draft Store] Using existingReportId:', existingReportId, '→ found:', !!existingReport);
             }
-            
-            if (!existingReport) {
-                // ✅ Find ONE existing draft for this study+doctor (not multiple)
+
+            if (!existingReport && !isAutoSave) {
+                // Only fall back to the generic lookup for explicit (manual) saves.
+                // Never for auto-saves — otherwise two concurrent null-id
+                // auto-saves for different reports can collapse into one doc.
                 existingReport = await Report.findOne({
                     dicomStudy: studyId,
                     doctorId: doctorId,
-                    reportStatus: { $in: ['draft', 'report_drafted'] } // Only find drafts, not finalized
+                    reportStatus: { $in: ['draft', 'report_drafted'] }
                 }).sort({ createdAt: -1 }).session(session);
-                console.log('🔍 [Draft Store] Fallback search → found:', !!existingReport, existingReport?._id);
+                console.log('🔍 [Draft Store] Manual-save fallback → found:', !!existingReport, existingReport?._id);
+            } else if (!existingReport && isAutoSave) {
+                console.log('🔍 [Draft Store] Auto-save with no id → will create a new draft');
             }
 
             const now = new Date();
@@ -677,6 +684,24 @@ export const storeMultipleReports = async (req, res) => {
             });
         }
 
+        // ✅ GUARD: Reject payloads where two reports carry the same existingReportId.
+        // Without this, the upsert loop below runs Object.assign + save() into the
+        // same Report document twice, silently collapsing two reports into one.
+        const seenIds = new Set();
+        for (let i = 0; i < reports.length; i++) {
+            const id = reports[i].existingReportId;
+            if (!id) continue;
+            if (seenIds.has(id)) {
+                console.error(`❌ [Multi-Report] Duplicate existingReportId in payload: ${id} (report ${i + 1})`);
+                return res.status(400).json({
+                    success: false,
+                    message: `Duplicate existingReportId detected (report ${i + 1}). Refresh the page and try again.`,
+                    duplicateId: id
+                });
+            }
+            seenIds.add(id);
+        }
+
         const session = await mongoose.startSession();
         session.startTransaction();
 
@@ -847,7 +872,14 @@ export const storeMultipleReports = async (req, res) => {
                 savedReports.push(savedReport);
             }
 
-            await updateStudyReportStatus(study, savedReports[savedReports.length - 1], session);
+            // ✅ Track every saved report on the study, not just the last one.
+            // The helper pushes one entry into study.reports[] and
+            // study.reportInfo.modernReports[] per call, so looping it keeps
+            // those arrays aligned with what actually exists in the Report
+            // collection.
+            for (const saved of savedReports) {
+                await updateStudyReportStatus(study, saved, session);
+            }
 
             // Check if this is a draft save or a finalized save
             const isDraftOperation = reports.every(r => r.reportStatus === 'draft' || r.reportType === 'draft');
@@ -1173,13 +1205,21 @@ const updateStudyReportStatus = async (study, report, session) => {
     try {
         console.log('🔄 [Helper] Updating study report status for study:', study._id);
         
-        // Update current report status
+        // ✅ FIX: reportCount was incrementing on every save including updates,
+        // so a single report auto-saved 4 times showed reportCount=4 while
+        // reports.length=1. Compute from the actual reports array instead.
+        const existingIndex = (study.reports || []).findIndex(
+            r => r.reportId?.toString() === report._id.toString()
+        );
+        const willAddNewEntry = existingIndex === -1;
+        const projectedCount = (study.reports?.length || 0) + (willAddNewEntry ? 1 : 0);
+
         study.currentReportStatus = {
             hasReports: true,
             latestReportId: report._id,
             latestReportStatus: report.reportStatus,
             latestReportType: report.reportType,
-            reportCount: (study.currentReportStatus?.reportCount || 0) + 1,
+            reportCount: projectedCount,
             lastReportedAt: new Date(),
             lastReportedBy: report.doctorId
         };

@@ -13,6 +13,7 @@ import { CheckCircle, XCircle, Edit, Camera, FileText, ChevronRight, ChevronLeft
 import mammoth from 'mammoth';
 import useWebSocket from '../../hooks/useWebSocket';
 import { useAuth } from '../../hooks/useAuth'; // ✅ ADD this import at top
+import { sanitizeStudyInstanceUID } from '../../utils/studyInstanceUID.js';
 import { StudyDocumentsManager } from '../StudyDocuments/StudyDocumentsManager';
 
 const OnlineReportingSystemWithOHIF = () => {
@@ -314,6 +315,9 @@ const OnlineReportingSystemWithOHIF = () => {
 
           const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
           let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
+
+          // Strip `_COPY_<timestamp>` suffix added when a study is copied cross-org
+          studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
 
           if (studyUIDs) {
             // Apply conditional formatting
@@ -828,29 +832,22 @@ const OnlineReportingSystemWithOHIF = () => {
     }
   }, [reports, activeReportIndex, saving, finalizing, isVerifierMode, studyId, selectedTemplate, reportData, buildPlaceholders]);
 
-  // ✅ ADD: Start/stop auto-save interval when report panel opens/closes
+  // ❌ AUTO-SAVE DISABLED — was causing reports to silently overwrite each
+  // other when users switched/added reports during an in-flight save.
+  // The race: handleAutoSave captures activeReportIndex at request time,
+  // but writes the returned reportId back using activeReportIndex at
+  // RESPONSE time. If the user switched reports in between, the returned
+  // id landed on the wrong report, giving two reports the same id, which
+  // the storeMultipleReports upsert loop then silently merged.
+  // Re-enable only after refactoring handleAutoSave to snapshot the target
+  // index into a local before the await, and matching on that local when
+  // applying the response.
   useEffect(() => {
-    // Clear any existing interval first
     if (autoSaveIntervalRef.current) {
       clearInterval(autoSaveIntervalRef.current);
       autoSaveIntervalRef.current = null;
     }
-
-    if (isReportOpen && !isVerifierMode) {
-      console.log('⏱️ [AutoSave] Starting auto-save interval (every 10s)');
-      autoSaveIntervalRef.current = setInterval(handleAutoSave, 10000);
-    } else {
-      console.log('⏹️ [AutoSave] Auto-save stopped');
-    }
-
-    // Cleanup on unmount or dependency change
-    return () => {
-      if (autoSaveIntervalRef.current) {
-        clearInterval(autoSaveIntervalRef.current);
-        autoSaveIntervalRef.current = null;
-      }
-    };
-  }, [isReportOpen, isVerifierMode, handleAutoSave]); // ✅ handleAutoSave in deps so it uses fresh state
+  }, [isReportOpen, isVerifierMode]);
 
   // ✅ ADD: Cleanup on unmount
   useEffect(() => {
@@ -952,12 +949,10 @@ const OnlineReportingSystemWithOHIF = () => {
 
                       <div className="h-4 w-px bg-gray-200"></div>
 
-                      {/* Auto-save: just icon — spinner or tick */}
-                      <div className="w-4 h-4 flex items-center justify-center" title={autoSaveStatus === 'saving' ? 'Auto-saving…' : autoSaveStatus === 'saved' ? 'Auto-saved' : autoSaveStatus === 'error' ? 'Auto-save failed' : 'Auto-save on'}>
-                        {autoSaveStatus === 'saving' && <div className="animate-spin rounded-full h-2.5 w-2.5 border-2 border-blue-500 border-t-transparent" />}
-                        {autoSaveStatus === 'saved' && <CheckCircle className="w-3 h-3 text-emerald-500" />}
-                        {autoSaveStatus === 'error' && <XCircle className="w-3 h-3 text-red-400" />}
-                        {autoSaveStatus === 'idle' && <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />}
+                      {/* Auto-save indicator removed — auto-save is disabled.
+                          Users must click Save explicitly. A small dot keeps the layout stable. */}
+                      <div className="w-4 h-4 flex items-center justify-center" title="Manual save only — click Save to persist changes">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
                       </div>
 
                       {/* Word Upload */}
