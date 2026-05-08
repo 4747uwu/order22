@@ -360,7 +360,7 @@ const UserManagement = ({ isEmbedded = false }) => {
 
     const handleDeleteUser = async () => {
         try {
-            await api.delete(`admin/manage-users/${deleteModal.user._id}`);
+            await api.delete(`admin/manage-users/${deleteModal.user._id}`, { data: { confirmDelete: true } });
             toast.success('User deleted successfully');
             setDeleteModal({ show: false, user: null });
             fetchOrganizationUsers();

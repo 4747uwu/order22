@@ -1,0 +1,1375 @@
+import express from 'express';
+import axios from 'axios';
+import mongoose from 'mongoose';
+import Redis from 'ioredis';
+import websocketService from '../config/webSocket.js';
+// 🔧 FIXED: Import the correct service name
+import CloudflareR2ZipService from '../services/wasabi.zip.service.js';
+import { recordStudyAction, updateCategoryTracking, ACTION_TYPES } from '../utils/RecordAction.js';
+
+// Import Mongoose Models
+import DicomStudy from '../models/dicomStudyModel.js';
+import Patient from '../models/patientModel.js';
+import Lab from '../models/labModel.js';
+import Organization from '../models/organisation.js';
+
+const router = express.Router();
+
+// --- Configuration ---
+// const ORTHANC_BASE_URL = 'http://localhost:8045';
+const ORTHANC_BASE_URL = 'http://orthanc-server:8042';
+
+const ORTHANC_USERNAME = process.env.ORTHANC_USERNAME || 'alice';
+const ORTHANC_PASSWORD = process.env.ORTHANC_PASSWORD || 'alicePassword';
+const orthancAuth = 'Basic ' + Buffer.from(ORTHANC_USERNAME + ':' + ORTHANC_PASSWORD).toString('base64');
+
+// --- Redis Setup ---
+const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
+const redis = new Redis(REDIS_URL, {
+  maxRetriesPerRequest: 3,
+  retryDelayOnFailover: 100,
+  tls: {},
+  lazyConnect: true,
+});
+
+// --- Simple Job Queue for Stable Studies ---
+class StableStudyQueue {
+  constructor() {
+    this.jobs = new Map();
+    this.processing = new Set();
+    this.nextJobId = 1;
+    this.isProcessing = false;
+    this.concurrency = 10; // Process max 10 stable studies simultaneously
+  }
+
+  async add(jobData) {
+    const jobId = this.nextJobId++;
+    const job = {
+      id: jobId,
+      type: 'process-stable-study',
+      data: jobData,
+      status: 'waiting',
+      createdAt: new Date(),
+      progress: 0,
+      result: null,
+      error: null
+    };
+    
+    this.jobs.set(jobId, job);
+    console.log(`📝 Stable Study Job ${jobId} queued`);
+    
+    if (!this.isProcessing) {
+      this.startProcessing();
+    }
+    
+    return job;
+  }
+
+  async startProcessing() {
+    if (this.isProcessing) return;
+    this.isProcessing = true;
+    
+    console.log('🚀 Stable Study Queue processor started');
+    
+    while (this.getWaitingJobs().length > 0 || this.processing.size > 0) {
+      while (this.processing.size < this.concurrency && this.getWaitingJobs().length > 0) {
+        const waitingJobs = this.getWaitingJobs();
+        if (waitingJobs.length > 0) {
+          const job = waitingJobs[0];
+          this.processJob(job);
+        }
+      }
+      
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    this.isProcessing = false;
+    console.log('⏹️ Stable Study Queue processor stopped');
+  }
+
+  async processJob(job) {
+    this.processing.add(job.id);
+    job.status = 'active';
+    
+    console.log(`🚀 Processing Stable Study Job ${job.id}`);
+    
+    try {
+      job.result = await processStableStudy(job);
+      job.status = 'completed';
+      console.log(`✅ Stable Study Job ${job.id} completed successfully`);
+      
+    } catch (error) {
+      job.error = error.message;
+      job.status = 'failed';
+      console.error(`❌ Stable Study Job ${job.id} failed:`, error.message);
+      console.error(`❌ Stack:`, error.stack);
+    } finally {
+      this.processing.delete(job.id);
+    }
+  }
+
+  getWaitingJobs() {
+    return Array.from(this.jobs.values()).filter(job => job.status === 'waiting');
+  }
+
+  getJob(jobId) {
+    return this.jobs.get(jobId);
+  }
+
+  getJobByRequestId(requestId) {
+    return Array.from(this.jobs.values()).find(job => job.data.requestId === requestId);
+  }
+}
+
+const jobQueue = new StableStudyQueue();
+
+// --- Helper Functions ---
+
+function processDicomPersonName(dicomNameField) {
+  if (!dicomNameField || typeof dicomNameField !== 'string') {
+    return {
+      fullName: 'Unknown Patient',
+      firstName: '',
+      lastName: 'Unknown',
+      middleName: '',
+      namePrefix: '',
+      nameSuffix: '',
+      originalDicomFormat: dicomNameField || '',
+      formattedForDisplay: 'Unknown Patient'
+    };
+  }
+
+  const nameString = dicomNameField.trim();
+  
+  // Handle empty or whitespace-only names
+  if (nameString === '' || nameString === '^' || nameString === '^^^') {
+    return {
+      fullName: 'Anonymous Patient',
+      firstName: '',
+      lastName: 'Anonymous',
+      middleName: '',
+      namePrefix: '',
+      nameSuffix: '',
+      originalDicomFormat: nameString,
+      formattedForDisplay: 'Anonymous Patient'
+    };
+  }
+
+  // Split by ^ (DICOM person name format: Family^Given^Middle^Prefix^Suffix)
+  const parts = nameString.split('^');
+  const familyName = (parts[0] || '').trim();
+  const givenName = (parts[1] || '').trim();
+  const middleName = (parts[2] || '').trim();
+  const namePrefix = (parts[3] || '').trim();
+  const nameSuffix = (parts[4] || '').trim();
+
+  // Create display name
+  const nameParts = [];
+  if (namePrefix) nameParts.push(namePrefix);
+  if (givenName) nameParts.push(givenName);
+  if (middleName) nameParts.push(middleName);
+  if (familyName) nameParts.push(familyName);
+  if (nameSuffix) nameParts.push(nameSuffix);
+
+  const displayName = nameParts.length > 0 ? nameParts.join(' ') : 'Unknown Patient';
+
+  return {
+    fullName: displayName,
+    firstName: givenName,
+    lastName: familyName,
+    middleName: middleName,
+    namePrefix: namePrefix,
+    nameSuffix: nameSuffix,
+    originalDicomFormat: nameString,
+    formattedForDisplay: displayName
+  };
+}
+
+// 🔧 ENHANCED: Fix DICOM date parsing with better fallbacks
+function formatDicomDateToISO(dicomDate) {
+  if (!dicomDate || typeof dicomDate !== 'string') {
+    console.warn(`⚠️ Invalid DICOM date provided:`, dicomDate, typeof dicomDate);
+    return new Date(); // Return current date as fallback
+  }
+  
+  // Handle different DICOM date formats
+  let cleanDate = dicomDate.trim();
+  
+  // Handle YYYYMMDD format (standard DICOM)
+  if (cleanDate.length === 8 && /^\d{8}$/.test(cleanDate)) {
+    try {
+      const year = cleanDate.substring(0, 4);
+      const month = cleanDate.substring(4, 6);
+      const day = cleanDate.substring(6, 8);
+      
+      // Validate date components
+      const yearNum = parseInt(year);
+      const monthNum = parseInt(month);
+      const dayNum = parseInt(day);
+      
+      if (yearNum >= 1900 && yearNum <= 2100 && monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+        const dateObj = new Date(`${year}-${month}-${day}T00:00:00.000Z`);
+        console.log(`✅ Parsed DICOM date ${dicomDate} to ISO: ${dateObj.toISOString()}`);
+        return dateObj;
+      } else {
+        console.warn(`⚠️ Invalid date components - Y:${yearNum} M:${monthNum} D:${dayNum}`);
+        return new Date();
+      }
+    } catch (error) {
+      console.warn('⚠️ Error parsing DICOM date:', dicomDate, error.message);
+      return new Date();
+    }
+  }
+  
+  // Handle other ISO-like formats (YYYY-MM-DD)
+  if (/^\d{4}-\d{2}-\d{2}/.test(cleanDate)) {
+    try {
+      const parsed = new Date(cleanDate);
+      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900) {
+        console.log(`✅ Parsed ISO format date ${cleanDate} to: ${parsed.toISOString()}`);
+        return parsed;
+      }
+    } catch (error) {
+      console.warn('⚠️ Error parsing ISO date:', cleanDate, error.message);
+    }
+  }
+  
+  // Try generic Date parsing as last resort
+  try {
+    const parsed = new Date(cleanDate);
+    if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 1900 && parsed.getFullYear() < 2100) {
+      console.log(`✅ Parsed generic date ${cleanDate} to: ${parsed.toISOString()}`);
+      return parsed;
+    }
+  } catch (error) {
+    console.warn('⚠️ Error in generic date parsing:', cleanDate, error.message);
+  }
+  
+  // Final fallback - return current date
+  console.warn(`⚠️ Could not parse date "${cleanDate}" - using current date as fallback`);
+  return new Date();
+}
+
+// Lookup-only — never auto-creates. Returns the matching active org or null.
+// We reject ingestion if no match is found rather than polluting the DB with
+// auto-created "Test Organization" / "Emergency" placeholders.
+async function findOrganizationFromTags(tags) {
+  const organizationTags = ["0021,0010", "0043,0010"];
+
+  console.log(`[Organization] 🏢 Checking organization tags...`);
+  console.log(`[Organization] 📋 Available organization tags:`, {
+    "0021,0010": tags["0021,0010"] || 'NOT_FOUND',
+    "0043,0010": tags["0043,0010"] || 'NOT_FOUND'
+  });
+
+  for (const tag of organizationTags) {
+    const tagValue = tags[tag];
+    if (!tagValue || !tagValue.trim() || tagValue === 'xcenticlab') {
+      console.log(`[Organization] 📋 Tag [${tag}] is empty or default: ${tagValue || 'EMPTY'}`);
+      continue;
+    }
+
+    const orgIdentifier = tagValue.trim();
+    try {
+      const org = await Organization.findOne({
+        identifier: { $regex: new RegExp(`^${escapeRegex(orgIdentifier)}$`, 'i') },
+        status: 'active'
+      });
+      if (org) {
+        console.log(`[Organization] ✅ Matched existing org: ${org.name} (${org.identifier})`);
+        return org;
+      }
+      console.warn(`[Organization] ⚠️ No active organization with identifier "${orgIdentifier}" — will not auto-create`);
+    } catch (e) {
+      console.error(`[Organization] ❌ Lookup error for "${orgIdentifier}":`, e.message);
+    }
+  }
+
+  return null;
+}
+
+// 🔧 UPDATED: Modified to work with organization context
+async function findOrCreatePatientFromTags(tags, organization) {
+  let patientIdDicom = tags.PatientID;
+  const nameInfo = processDicomPersonName(tags.PatientName);
+  const patientSex = tags.PatientSex;
+  const patientBirthDate = tags.PatientBirthDate;
+
+  if (!patientIdDicom && !nameInfo.fullName) {
+    let unknownPatient = await Patient.findOne({ 
+      mrn: 'UNKNOWN_STABLE_STUDY',
+      organization: organization._id 
+    });
+    
+    if (!unknownPatient) {
+      unknownPatient = await Patient.create({
+        organization: organization._id,
+        organizationIdentifier: organization.identifier,
+        mrn: 'UNKNOWN_STABLE_STUDY',
+        patientID: 'UNKNOWN_PATIENT',
+        patientNameRaw: 'Unknown Patient (Stable Study)',
+        firstName: '',
+        lastName: '',
+        gender: patientSex || '',
+        dateOfBirth: patientBirthDate || '',
+        isAnonymous: true
+      });
+    }
+    return unknownPatient;
+  }
+
+  // MRN value used for lookup/storage. PatientID stays as the original DICOM PatientID;
+  // only the MRN gets a name suffix appended on collision.
+  let mrnValue = patientIdDicom;
+
+  // Look for patient within organization scope
+  let patient = await Patient.findOne({
+    mrn: mrnValue,
+    organization: organization._id
+  });
+
+  // If patient exists, check whether it's genuinely the same person or a
+  // collision (different patient sharing the same hospital MRN). Compare
+  // name, gender, and DOB — if ANY differ, treat it as a new patient.
+  if (patient) {
+    const existingName = (patient.patientNameRaw || '').trim().toUpperCase();
+    const newName = (nameInfo.formattedForDisplay || tags.PatientName || '').trim().toUpperCase();
+    const existingGender = (patient.gender || '').trim().toUpperCase();
+    const newGender = (patientSex || '').trim().toUpperCase();
+    const existingDob = (patient.dateOfBirth || '').trim();
+    const newDob = patientBirthDate ? formatDicomDateToISO(patientBirthDate)?.toISOString?.()?.split('T')[0] || '' : '';
+
+    const nameMatch = !newName || !existingName || existingName === newName;
+    const genderMatch = !newGender || !existingGender || existingGender === newGender;
+    const dobMatch = !newDob || !existingDob || existingDob.includes(newDob) || newDob.includes(existingDob);
+
+    const isSamePatient = nameMatch && genderMatch && dobMatch;
+
+    if (!isSamePatient) {
+      console.log(`⚠️ Patient MRN collision detected!`);
+      console.log(`   - MRN: ${mrnValue}`);
+      console.log(`   - Existing: ${patient.patientNameRaw} | ${patient.gender} | DOB:${patient.dateOfBirth}`);
+      console.log(`   - New Study: ${newName} | ${newGender} | DOB:${newDob}`);
+      console.log(`   - Creating separate patient record with modified MRN (patientID unchanged)`);
+
+      // Append the raw DICOM name to the MRN to create a unique MRN for this patient.
+      // patientID itself is left untouched so it still equals the original DICOM PatientID.
+      mrnValue = `${patientIdDicom}_${tags.PatientName || nameInfo.lastName || Date.now()}`;
+
+      // Re-check: this name-suffixed MRN may already exist from a prior ingestion
+      patient = await Patient.findOne({
+        mrn: mrnValue,
+        organization: organization._id
+      });
+    } else {
+      console.log(`👤 Reusing existing patient: ${patient.patientNameRaw} (MRN: ${mrnValue})`);
+    }
+  }
+
+  if (!patient) {
+    patient = new Patient({
+      organization: organization._id,
+      organizationIdentifier: organization.identifier,
+      mrn: mrnValue || `ANON_${Date.now()}`,
+      patientID: patientIdDicom || `ANON_${Date.now()}`,
+      // ✅ CRITICAL FIX: Save the original DICOM format name as patientNameRaw
+      patientNameRaw: tags.PatientName || nameInfo.formattedForDisplay,  // ✅ USE ORIGINAL FIRST
+      firstName: nameInfo.firstName,
+      lastName: nameInfo.lastName,
+      ageString: tags.PatientAge || 'N/A',  
+      computed: {
+        fullName: nameInfo.formattedForDisplay,  // Keep parsed version for display
+        namePrefix: nameInfo.namePrefix,
+        nameSuffix: nameInfo.nameSuffix,
+        originalDicomName: nameInfo.originalDicomFormat,
+        originalRawDicomName: tags.PatientName  // ✅ PRESERVE ORIGINAL
+      },
+      gender: patientSex || '',
+      dateOfBirth: patientBirthDate ? formatDicomDateToISO(patientBirthDate) : ''
+    });
+    
+    await patient.save();
+    console.log(`👤 Created patient in ${organization.name}: ${tags.PatientName} (patientID=${patientIdDicom}, mrn=${mrnValue})`);
+  } else {
+    // ✅ CRITICAL FIX: Update to use original DICOM name if it's different
+    if (patient.patientNameRaw !== tags.PatientName && tags.PatientName) {
+      console.log(`🔄 Updating patient name to original DICOM format: "${tags.PatientName}"`);
+      
+      patient.patientNameRaw = tags.PatientName;  // ✅ USE ORIGINAL
+      
+      if (!patient.computed) patient.computed = {};
+      patient.computed.fullName = nameInfo.formattedForDisplay;
+      patient.computed.originalDicomName = nameInfo.originalDicomFormat;
+      patient.computed.originalRawDicomName = tags.PatientName;  // ✅ PRESERVE ORIGINAL
+      
+      await patient.save();
+    }
+  }
+  
+  return patient;
+}
+
+// Lookup-only — never auto-creates. Returns { lab, labLocation } when matched
+// against an existing lab in the given organization, or { lab: null } so the
+// caller can reject the study instead of creating "Unknown Lab" placeholders.
+async function findSourceLab(tags, organization) {
+  const labTags = ["0013,0010", "0015,0010"];
+
+  console.log(`[Lab] 🔬 Checking lab tags for organization ${organization.name}...`);
+  console.log(`[Lab] 📋 Available lab tags:`, {
+    "0013,0010": tags["0013,0010"] || 'NOT_FOUND',
+    "0015,0010": tags["0015,0010"] || 'NOT_FOUND'
+  });
+
+  for (const tag of labTags) {
+    if (!tags[tag] || !tags[tag].trim()) continue;
+
+    const labIdentifierFromTag = tags[tag].trim().toUpperCase();
+    try {
+      const lab = await Lab.findOne({
+        identifier: labIdentifierFromTag,
+        organization: organization._id
+      });
+
+      if (lab) {
+        let labLocation = '';
+        if (lab.address) {
+          const parts = [
+            lab.address.street, lab.address.city, lab.address.state,
+            lab.address.zipCode, lab.address.country
+          ].filter(p => p && p.trim());
+          labLocation = parts.join(', ');
+        }
+        console.log(`[Lab] ✅ Matched existing lab: ${lab.name} (${lab.identifier})`);
+        return { lab, labLocation };
+      }
+      console.warn(`[Lab] ⚠️ No lab "${labIdentifierFromTag}" in org ${organization.identifier} — will not auto-create`);
+    } catch (e) {
+      console.error(`[Lab] ❌ Lookup error for "${labIdentifierFromTag}":`, e.message);
+    }
+  }
+
+  return { lab: null, labLocation: '' };
+}
+
+function escapeRegex(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// --- Main Processing Function ---
+async function processStableStudy(job) {
+  const { orthancStudyId, requestId } = job.data;
+  const startTime = Date.now();
+  
+  try {
+    console.log(`[StableStudy] 🚀 Processing stable study: ${orthancStudyId}`);
+    job.progress = 10;
+    
+    // 🔧 STEP 1: Get study-level info to extract StudyInstanceUID
+    const studyInfoUrl = `${ORTHANC_BASE_URL}/studies/${orthancStudyId}`;
+    console.log(`[StableStudy] 🌐 Fetching study info from: ${studyInfoUrl}`);
+    
+    const studyInfoResponse = await axios.get(studyInfoUrl, {
+      headers: { 'Authorization': orthancAuth },
+      timeout: 10000
+    });
+    
+    const studyInfo = studyInfoResponse.data;
+    const studyInstanceUID = studyInfo.MainDicomTags?.StudyInstanceUID || orthancStudyId;
+    
+    console.log(`[StableStudy] 📊 Study Instance UID: ${studyInstanceUID}`);
+    
+    job.progress = 20;
+    
+    // 🔧 STEP 2: Get series info
+    const seriesUrl = `${ORTHANC_BASE_URL}/studies/${orthancStudyId}/series`;
+    console.log(`[StableStudy] 🌐 Fetching series from: ${seriesUrl}`);
+    
+    const seriesResponse = await axios.get(seriesUrl, {
+      headers: { 'Authorization': orthancAuth },
+      timeout: 10000
+    });
+    
+    const allSeries = seriesResponse.data;
+    console.log(`[StableStudy] 📊 Found ${allSeries.length} series`);
+    
+    job.progress = 30;
+    
+    // 🔧 OPTIMIZED: Extract modalities and counts from series data
+    const modalitiesSet = new Set();
+    let totalInstances = 0;
+    let firstInstanceId = null;
+    
+    // Process all series to get modalities and instance counts
+    for (const series of allSeries) {
+      const seriesModality = series.MainDicomTags?.Modality;
+      if (seriesModality) {
+        modalitiesSet.add(seriesModality);
+      }
+      
+      const instanceCount = series.Instances?.length || 0;
+      totalInstances += instanceCount;
+      
+      if (!firstInstanceId && series.Instances && series.Instances.length > 0) {
+        firstInstanceId = series.Instances[0];
+      }
+    }
+    
+    console.log(`[StableStudy] 📊 Optimized counts - Series: ${allSeries.length}, Total Instances: ${totalInstances}`);
+    console.log(`[StableStudy] 📊 Modalities found: ${Array.from(modalitiesSet).join(', ')}`);
+    
+    job.progress = 50;
+    
+    // 🔧 OPTIMIZED: Single API call to get tags from first instance only
+    let tags = {};
+    
+    if (firstInstanceId) {
+      console.log(`[StableStudy] 🔍 Getting tags from single instance: ${firstInstanceId}`);
+      
+      try {
+        const metadataUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/tags`;
+        const metadataResponse = await axios.get(metadataUrl, {
+          headers: { 'Authorization': orthancAuth },
+          timeout: 8000
+        });
+        
+        const rawTags = metadataResponse.data;
+        
+        // Extract all necessary tags in one pass
+        tags = {};
+        for (const [tagKey, tagData] of Object.entries(rawTags)) {
+          if (tagData && typeof tagData === 'object' && tagData.Value !== undefined) {
+            tags[tagKey] = tagData.Value;
+          } else if (typeof tagData === 'string') {
+            tags[tagKey] = tagData;
+          }
+        }
+        
+        // ✅ FIX: Map ALL common DICOM fields including StudyDate and StudyDescription
+        tags.PatientName = rawTags["0010,0010"]?.Value || tags.PatientName;
+        tags.PatientID = rawTags["0010,0020"]?.Value || tags.PatientID;
+        tags.PatientSex = rawTags["0010,0040"]?.Value || tags.PatientSex;
+        tags.PatientBirthDate = rawTags["0010,0030"]?.Value || tags.PatientBirthDate;
+        tags.PatientAge = rawTags["0010,1010"]?.Value || tags.PatientAge;
+        
+        // 🔧 THESE WERE MISSING IN YOUR CURRENT ingestion.routes.js:
+        tags.StudyDate = rawTags["0008,0020"]?.Value || tags.StudyDate;        // ✅ ADD THIS
+        tags.StudyTime = rawTags["0008,0030"]?.Value || tags.StudyTime;        // ✅ ADD THIS
+        tags.StudyDescription = rawTags["0008,1030"]?.Value || tags.StudyDescription; // ✅ ADD THIS
+        tags.AccessionNumber = rawTags["0008,0050"]?.Value || tags.AccessionNumber;   // ✅ ADD THIS
+        tags.InstitutionName = rawTags["0008,0080"]?.Value || tags.InstitutionName;   // ✅ ADD THIS
+        tags.ReferringPhysicianName = rawTags["0008,0090"]?.Value || tags.ReferringPhysicianName; // ✅ ADD THIS
+        tags.Modality = rawTags["0008,0060"]?.Value || tags.Modality;          // ✅ ADD THIS
+        
+        // Extract private tags for organization and lab identification
+        tags["0013,0010"] = rawTags["0013,0010"]?.Value || null;
+        tags["0015,0010"] = rawTags["0015,0010"]?.Value || null;
+        tags["0021,0010"] = rawTags["0021,0010"]?.Value || null;
+        tags["0043,0010"] = rawTags["0043,0010"]?.Value || null;
+        
+        console.log(`[StableStudy] ✅ Extracted DICOM tags:`, {
+          PatientName: tags.PatientName || 'NOT_FOUND',
+          PatientID: tags.PatientID || 'NOT_FOUND',
+          StudyDate: tags.StudyDate || 'NOT_FOUND',      // Will now show actual date
+          StudyTime: tags.StudyTime || 'NOT_FOUND',
+          StudyDescription: tags.StudyDescription || 'NOT_FOUND',
+          AccessionNumber: tags.AccessionNumber || 'NOT_FOUND',
+          InstitutionName: tags.InstitutionName || 'NOT_FOUND',
+          Modality: tags.Modality || 'NOT_FOUND',
+          LabTags: {
+            "0013,0010": tags["0013,0010"],
+            "0015,0010": tags["0015,0010"]
+          },
+          OrganizationTags: {
+            "0021,0010": tags["0021,0010"],
+            "0043,0010": tags["0043,0010"]
+          }
+        });
+        
+      } catch (metadataError) {
+        console.warn(`[StableStudy] ⚠️ Could not get instance metadata:`, metadataError.message);
+        
+        // Fallback: Try simplified-tags
+        try {
+          const simplifiedUrl = `${ORTHANC_BASE_URL}/instances/${firstInstanceId}/simplified-tags`;
+          const simplifiedResponse = await axios.get(simplifiedUrl, {
+            headers: { 'Authorization': orthancAuth },
+            timeout: 8000
+          });
+          
+          tags = { ...simplifiedResponse.data };
+          console.log(`[StableStudy] ✅ Got simplified metadata as fallback`);
+          console.log(`[StableStudy] 📋 Simplified tags keys:`, Object.keys(tags));
+        } catch (simplifiedError) {
+          console.warn(`[StableStudy] ⚠️ Simplified tags also failed:`, simplifiedError.message);
+        }
+      }
+    } else {
+      console.warn(`[StableStudy] ⚠️ No instances found in any series, using empty tags`);
+      tags = {};
+    }
+    
+    // Fallback for empty modalities
+    if (modalitiesSet.size === 0) {
+      modalitiesSet.add(tags.Modality || 'OT');
+    }
+    
+    job.progress = 60;
+    
+    // 🆕 STEP 2.5: Check if study already exists in database
+    console.log(`[StableStudy] 🔍 Checking if study already exists with StudyInstanceUID: ${studyInstanceUID}`);
+    const existingStudy = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
+    
+    let organizationRecord, patientRecord, labRecord, labLocation;
+    let preservedFields = {};
+    
+    if (existingStudy) {
+      console.log(`[StableStudy] ✅ Found existing study in database: ${existingStudy._id}`);
+      console.log(`[StableStudy] 🔒 Preserving critical fields:`);
+      console.log(`  - Organization: ${existingStudy.organizationIdentifier}`);
+      console.log(`  - Source Lab: ${existingStudy.sourceLab}`);
+      console.log(`  - Identifier: ${existingStudy.identifier}`);
+
+      // Preserve critical fields from existing study
+      preservedFields = {
+        organization: existingStudy.organization,
+        organizationIdentifier: existingStudy.organizationIdentifier,
+        sourceLab: existingStudy.sourceLab,
+        identifier: existingStudy.identifier
+      };
+
+      // Load the preserved organization and lab — REJECT if either is missing.
+      // We never auto-create or fall back to placeholders.
+      organizationRecord = await Organization.findById(existingStudy.organization);
+      if (!organizationRecord) {
+        throw new Error(`REJECTED: Existing study ${existingStudy._id} references organization ${existingStudy.organization} which no longer exists. Manual cleanup required.`);
+      }
+
+      labRecord = await Lab.findById(existingStudy.sourceLab);
+      if (!labRecord) {
+        throw new Error(`REJECTED: Existing study ${existingStudy._id} references source lab ${existingStudy.sourceLab} which no longer exists. Manual cleanup required.`);
+      }
+
+      // Extract location from preserved lab
+      labLocation = '';
+      if (labRecord.address) {
+        const addressParts = [];
+        if (labRecord.address.street) addressParts.push(labRecord.address.street);
+        if (labRecord.address.city) addressParts.push(labRecord.address.city);
+        if (labRecord.address.state) addressParts.push(labRecord.address.state);
+        if (labRecord.address.zipCode) addressParts.push(labRecord.address.zipCode);
+        if (labRecord.address.country) addressParts.push(labRecord.address.country);
+        labLocation = addressParts.join(', ');
+      }
+
+      // Get patient from existing study or create new
+      patientRecord = await Patient.findById(existingStudy.patient);
+      if (!patientRecord) {
+        console.warn(`[StableStudy] ⚠️ Patient not found, creating from DICOM tags`);
+        patientRecord = await findOrCreatePatientFromTags(tags, organizationRecord);
+      }
+
+    } else {
+      console.log(`[StableStudy] 🆕 New study — validating organization & lab from DICOM tags`);
+
+      // ── STEP A: Validate ORG before doing any DB writes ────────────
+      organizationRecord = await findOrganizationFromTags(tags);
+      if (!organizationRecord) {
+        throw new Error(
+          `REJECTED: No matching active organization in DICOM tags. ` +
+          `Tag [0021,0010]="${tags["0021,0010"] || 'EMPTY'}", ` +
+          `Tag [0043,0010]="${tags["0043,0010"] || 'EMPTY'}". ` +
+          `Register the organization first before sending studies.`
+        );
+      }
+      console.log(`[StableStudy] 🏢 Organization: ${organizationRecord.name} (${organizationRecord.identifier})`);
+
+      // ── STEP B: Validate LAB next, still before any DB writes ──────
+      const labResult = await findSourceLab(tags, organizationRecord);
+      if (!labResult.lab) {
+        throw new Error(
+          `REJECTED: No matching lab found in organization ${organizationRecord.identifier}. ` +
+          `Tag [0013,0010]="${tags["0013,0010"] || 'EMPTY'}", ` +
+          `Tag [0015,0010]="${tags["0015,0010"] || 'EMPTY'}". ` +
+          `Register the lab under this organization first before sending studies.`
+        );
+      }
+      labRecord = labResult.lab;
+      labLocation = labResult.labLocation;
+      console.log(`[StableStudy] 🔬 Lab: ${labRecord.name} (${labRecord.identifier})`);
+
+      job.progress = 70;
+
+      // ── STEP C: Only NOW create/find the patient — both org & lab valid
+      patientRecord = await findOrCreatePatientFromTags(tags, organizationRecord);
+    }
+    
+    job.progress = 75;
+    
+    // Extract all study information from tags with better fallbacks
+    const studyDate = tags.StudyDate 
+      ? formatDicomDateToISO(tags.StudyDate)
+      : new Date(); // 🔧 Direct fallback to current date
+    
+    // ✅ Fallback chain: StudyDescription → BodyPartExamined (e.g. "LSPINE") → Modality → default
+    const studyDescription = tags.StudyDescription
+      || (tags.BodyPartExamined ? `${tags.BodyPartExamined}${tags.Modality ? ' ' + tags.Modality : ''}` : null)
+      || (tags.Modality && tags.Modality !== 'NOT_FOUND' ? `${tags.Modality} Study` : null)
+      || 'No Description';
+    const accessionNumber = tags.AccessionNumber || `ACC_${Date.now()}`;
+    const referringPhysicianName = tags.ReferringPhysicianName || '';
+    const institutionName = tags.InstitutionName || '';
+    
+    console.log(`[StableStudy] 📊 Study Details:`, {
+      studyDate: studyDate ? studyDate.toISOString() : 'INVALID',
+      studyTime: tags.StudyTime || 'NOT_FOUND',
+      description: studyDescription,
+      accessionNumber: accessionNumber,
+      physician: referringPhysicianName,
+      institution: institutionName,
+      dicomStudyDateRaw: tags.StudyDate || 'NOT_FOUND'
+    });
+    
+    job.progress = 80;
+    
+    // Prepare study data
+    const studyData = {
+      organization: organizationRecord._id,
+      organizationIdentifier: organizationRecord.identifier,
+      studyInstanceUID: studyInstanceUID,
+      orthancStudyID: orthancStudyId,   // ✅ FIX: was orthancStudyId (lowercase d)
+      accessionNumber: accessionNumber,
+      patient: patientRecord._id,
+      patientId: patientRecord.patientID,
+      sourceLab: labRecord._id,
+      labLocation: labLocation,
+      seriesCount: allSeries.length,
+      instanceCount: totalInstances,
+      seriesImages: `${allSeries.length}/${totalInstances}`,
+      
+      // ✅ FIX: Correct field names matching DicomStudy model
+      studyDate: studyDate,                              // ✅ studyDate
+      studyTime: tags.StudyTime || '',                   // ✅ studyTime
+      examDescription: studyDescription,                 // ✅ examDescription (NOT StudyDescription)
+      modalitiesInStudy: Array.from(modalitiesSet),      // ✅ modalitiesInStudy
+      institutionName: institutionName,
+      workflowStatus: 'new_study_received',
+      
+      patientInfo: {
+        patientID: patientRecord.patientID,
+        patientName: patientRecord.patientNameRaw,
+        age: tags.PatientAge || patientRecord.age || 'N/A',
+        gender: patientRecord.gender || '',
+        dateOfBirth: tags.PatientBirthDate || ''
+      },
+      referringPhysicianName: referringPhysicianName,
+      physicians: {
+        referring: {
+          name: referringPhysicianName,
+          email: '',
+          mobile: tags.ReferringPhysicianTelephoneNumbers || '',
+          institution: tags.ReferringPhysicianAddress || ''
+        },
+        requesting: {
+          name: tags.RequestingPhysician || '',
+          email: '',
+          mobile: '',
+          institution: tags.RequestingService || ''
+        }
+      },
+      technologist: {
+        name: tags.OperatorName || tags.PerformingPhysicianName || '',
+        mobile: '',
+        comments: '',
+        reasonToSend: tags.ReasonForStudy || tags.RequestedProcedureDescription || ''
+      },
+      studyPriority: tags.StudyPriorityID || 'SELECT',
+      caseType: tags.RequestPriority || 'routine',
+      equipment: {
+        manufacturer: tags.Manufacturer || '',
+        model: tags.ManufacturerModelName || '',
+        stationName: tags.StationName || '',
+        softwareVersion: tags.SoftwareVersions || ''
+      },
+      protocolName: tags.ProtocolName || '',
+      bodyPartExamined: tags.BodyPartExamined || '',
+      contrastBolusAgent: tags.ContrastBolusAgent || '',
+      acquisitionDate: tags.AcquisitionDate || '',
+      acquisitionTime: tags.AcquisitionTime || '',
+      studyComments: tags.StudyComments || '',
+      storageInfo: {
+        type: 'orthanc',
+        orthancStudyId: orthancStudyId,
+        studyInstanceUID: studyInstanceUID,
+        receivedAt: new Date(),
+        isStableStudy: true,
+        instancesFound: totalInstances,
+      }
+    };
+
+    let dicomStudyDoc = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
+
+    if (dicomStudyDoc) {
+      console.log(`[StableStudy] 📝 Updating existing study - PRESERVING org/lab/location`);
+
+      const preserveOnUpdate = {
+        organization:           dicomStudyDoc.organization,
+        organizationIdentifier: dicomStudyDoc.organizationIdentifier,
+        sourceLab:              dicomStudyDoc.sourceLab,
+        labLocation:            dicomStudyDoc.labLocation,
+        bharatPacsId:           dicomStudyDoc.bharatPacsId,
+        patient:                dicomStudyDoc.patient,
+        patientId:              dicomStudyDoc.patientId,
+        patientInfo:            dicomStudyDoc.patientInfo,
+        workflowStatus:         dicomStudyDoc.workflowStatus,
+        // ✅ Preserve exam description if it was manually edited (not the default)
+        ...(dicomStudyDoc.examDescription && dicomStudyDoc.examDescription !== 'No Description'
+          ? { examDescription: dicomStudyDoc.examDescription }
+          : {}),
+        // ✅ Preserve assignment info so re-notifications don't wipe assigned doctors
+        ...(dicomStudyDoc.assignment?.length > 0
+          ? { assignment: dicomStudyDoc.assignment }
+          : {}),
+        // ✅ Preserve clinical history if it was manually entered
+        ...(dicomStudyDoc.clinicalHistory?.clinicalHistory
+          ? { clinicalHistory: dicomStudyDoc.clinicalHistory }
+          : {}),
+        // ✅ Preserve priority if it was changed from default
+        ...(dicomStudyDoc.priority && dicomStudyDoc.priority !== 'NORMAL'
+          ? { priority: dicomStudyDoc.priority }
+          : {}),
+        // ✅ Preserve report info
+        ...(dicomStudyDoc.reportInfo?.reportedBy
+          ? { reportInfo: dicomStudyDoc.reportInfo }
+          : {}),
+        // ✅ Preserve study lock
+        ...(dicomStudyDoc.studyLock?.isLocked
+          ? { studyLock: dicomStudyDoc.studyLock }
+          : {}),
+      };
+
+      const allowedUpdates = {
+        seriesCount:            studyData.seriesCount,
+        instanceCount:          studyData.instanceCount,
+        seriesImages:           studyData.seriesImages,
+        orthancStudyID:         studyData.orthancStudyID,
+        modalitiesInStudy:      studyData.modalitiesInStudy,
+        examDescription:        studyData.examDescription,
+        studyDate:              studyData.studyDate,
+        studyTime:              studyData.studyTime,
+        accessionNumber:        studyData.accessionNumber,
+        storageInfo:            studyData.storageInfo,
+        institutionName:        studyData.institutionName,
+      };
+
+      // ✅ Only overwrite referringPhysicianName/physicians if DICOM tags have actual values
+      // (otherwise empty DICOM tags would wipe out manually entered data)
+      if (studyData.referringPhysicianName?.trim()) {
+        allowedUpdates.referringPhysicianName = studyData.referringPhysicianName;
+        allowedUpdates.physicians = studyData.physicians;
+      }
+
+      Object.assign(dicomStudyDoc, allowedUpdates, preserveOnUpdate);
+
+      dicomStudyDoc.statusHistory.push({
+        status: dicomStudyDoc.workflowStatus,
+        changedAt: new Date(),
+        note: `Re-notification: ${allSeries.length} series, ${totalInstances} instances. Date: ${studyDate.toISOString()}`
+      });
+
+      console.log(`[StableStudy] 🔒 Preserved:`, {
+        org:      preserveOnUpdate.organizationIdentifier,
+        lab:      preserveOnUpdate.sourceLab,
+        location: preserveOnUpdate.labLocation,
+        bpId:     preserveOnUpdate.bharatPacsId,
+        patientName: preserveOnUpdate.patientInfo?.patientName,
+        patientId:   preserveOnUpdate.patientId,
+        workflowStatus: preserveOnUpdate.workflowStatus,
+        examDescription: preserveOnUpdate.examDescription || '(using DICOM)',
+        assignmentCount: preserveOnUpdate.assignment?.length || 0,
+        priority: preserveOnUpdate.priority || '(using default)',
+        hasReport: !!preserveOnUpdate.reportInfo,
+        isLocked: !!preserveOnUpdate.studyLock,
+      });
+
+      // ✅ LOG what is being saved
+      console.log(`[StableStudy] 💾 Saving:`, {
+        examDescription: allowedUpdates.examDescription,
+        studyDate:       allowedUpdates.studyDate?.toISOString(),
+        modalitiesInStudy: allowedUpdates.modalitiesInStudy
+      });
+
+    } else {
+      console.log(`[StableStudy] 🆕 Creating new study with UID: ${studyInstanceUID}`);
+      dicomStudyDoc = new DicomStudy({
+        ...studyData,
+        statusHistory: [{
+          status: studyData.workflowStatus,
+          changedAt: new Date(),
+          note: `Study created: ${allSeries.length} series, ${totalInstances} instances. UID: ${studyInstanceUID}`
+        }]
+      });
+    }
+
+    await dicomStudyDoc.save();
+    console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
+    
+    job.progress = 90;
+    
+    // Create ZIP file and upload to R2
+    // 🔧 CRITICAL: ALWAYS create ZIP regardless of study existence or instance count
+console.log(`[StableStudy] 📦 Queuing ZIP creation for study: ${orthancStudyId}`);
+
+try {
+    const zipJob = await CloudflareR2ZipService.addZipJob({
+        orthancStudyId: orthancStudyId,
+        studyDatabaseId: dicomStudyDoc._id,
+        studyInstanceUID: dicomStudyDoc.studyInstanceUID || orthancStudyId,
+        instanceCount: totalInstances,
+        seriesCount: allSeries.length
+    });
+    
+    console.log(`[StableStudy] 📦 ZIP Job ${zipJob.id} queued for study: ${orthancStudyId}`);
+} catch (zipError) {
+    console.error(`[StableStudy] ❌ Failed to queue ZIP job:`, zipError.message);
+    // Don't fail the study processing if ZIP queueing fails
+}
+    
+    job.progress = 100;
+    job.status = 'completed';
+    job.result = {
+      success: true,
+      studyId: dicomStudyDoc._id.toString(),
+      studyInstanceUID: studyInstanceUID,
+      action: existingStudy ? 'updated' : 'created',
+      preservedFields: existingStudy ? Object.keys(preservedFields) : [],
+      patient: {
+        id: patientRecord._id.toString(),
+        name: patientRecord.patientNameRaw || patientRecord.computed?.fullName,
+        mrn: patientRecord.mrn
+      },
+      organization: {
+        id: organizationRecord._id.toString(),
+        name: organizationRecord.name,
+        identifier: organizationRecord.identifier
+      },
+      lab: {
+        id: labRecord._id.toString(),
+        name: labRecord.name,
+        identifier: labRecord.identifier
+      },
+      processingTime: Date.now() - startTime
+    };
+    
+    console.log(`[StableStudy] ✅ Study processed successfully in ${Date.now() - startTime}ms`);
+    console.log(`[StableStudy] 📊 Final Result:`, job.result);
+    
+    return job.result;
+    
+  } catch (error) {
+    console.error(`[StableStudy] ❌ Error processing stable study:`, error);
+    job.status = 'failed';
+    job.error = error.message;
+    job.result = {
+      success: false,
+      error: error.message,
+      processingTime: Date.now() - startTime
+    };
+    throw error;
+  }
+}
+
+// --- Redis Connection Setup ---
+redis.on('connect', () => {
+  console.log('✅ Redis connected successfully');
+});
+
+redis.on('ready', () => {
+  console.log('✅ Redis is ready for operations');
+});
+
+redis.on('error', (error) => {
+  console.error('❌ Redis connection error:', error.message);
+});
+
+// Test Redis connection
+console.log('🧪 Testing Redis connection...');
+redis.ping()
+  .then(() => {
+    console.log('✅ Redis ping successful');
+    return redis.set('startup-test', 'stable-study-system');
+  })
+  .then(() => {
+    console.log('✅ Redis write test successful');
+    return redis.get('startup-test');
+  })
+  .then((value) => {
+    console.log('✅ Redis read test successful, value:', value);
+    return redis.del('startup-test');
+  })
+  .then(() => {
+    console.log('✅ All Redis tests passed');
+  })
+  .catch(error => {
+    console.error('❌ Redis test failed:', error.message);
+  });
+
+// --- Routes ---
+
+// Test connection route
+router.get('/test-connection', async (req, res) => {
+  try {
+    // Test Redis
+    await redis.set('test-key', `test-${Date.now()}`);
+    const redisResult = await redis.get('test-key');
+    await redis.del('test-key');
+    
+    // Test Orthanc
+    const orthancResponse = await axios.get(`${ORTHANC_BASE_URL}/system`, {
+      headers: { 'Authorization': orthancAuth },
+      timeout: 5000
+    });
+    
+    res.json({
+      redis: 'working',
+      redisValue: redisResult,
+      orthanc: 'working',
+      orthancVersion: orthancResponse.data.Version,
+      queue: 'working',
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('Connection test failed:', error);
+    res.status(500).json({
+      error: error.message
+    });
+  }
+});
+
+// Main stable study route
+router.post('/stable-study', async (req, res) => {
+  console.log('[StableStudy] 📋 Received stable study notification');
+  console.log('[StableStudy] 📋 Body type:', typeof req.body);
+  console.log('[StableStudy] 📋 Body content:', req.body);
+  
+  let orthancStudyId = null; 
+  try {
+    // Extract Orthanc study ID from request
+    if (typeof req.body === 'string') {
+      orthancStudyId = req.body.trim();
+      console.log('[StableStudy] 📋 Extracted from string:', orthancStudyId);
+    } else if (req.body && typeof req.body === 'object') {
+      // Handle the case where body is an object like { '9442d79e-...': '' }
+      const keys = Object.keys(req.body);
+      if (keys.length > 0) {
+        orthancStudyId = keys[0]; // Take the first key as the study ID
+        console.log('[StableStudy] 📋 Extracted from object key:', orthancStudyId);
+      } else if (req.body.studyId) {
+        orthancStudyId = req.body.studyId;
+        console.log('[StableStudy] 📋 Extracted from studyId field:', orthancStudyId);
+      } else if (req.body.ID) {
+        orthancStudyId = req.body.ID;
+        console.log('[StableStudy] 📋 Extracted from ID field:', orthancStudyId);
+      }
+    }
+    
+    console.log('[StableStudy] 📋 Final extracted ID:', orthancStudyId);
+    
+    if (!orthancStudyId || orthancStudyId.trim() === '') {
+      console.error('[StableStudy] ❌ No valid Orthanc Study ID found');
+      return res.status(400).json({ 
+        error: 'Invalid or missing Orthanc Study ID',
+        receivedBody: req.body,
+        bodyType: typeof req.body,
+        keys: typeof req.body === 'object' ? Object.keys(req.body) : 'N/A'
+      });
+    }
+    
+    // Clean the study ID
+    orthancStudyId = orthancStudyId.trim();
+    console.log('[StableStudy] 📋 Using study ID:', orthancStudyId);
+    
+    const requestId = `stable_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    console.log('[StableStudy] 📋 Generated request ID:', requestId);
+    
+    // Add job to process the complete stable study
+    const job = await jobQueue.add({
+      orthancStudyId: orthancStudyId,
+      requestId: requestId,
+      submittedAt: new Date(),
+      originalBody: req.body
+    });
+    
+    console.log(`[StableStudy] ✅ Job ${job.id} queued for stable study: ${orthancStudyId}`);
+    
+    // Immediate response
+    res.status(202).json({
+      message: 'Stable study queued for processing with multi-tenant support',
+      jobId: job.id,
+      requestId: requestId,
+      orthancStudyId: orthancStudyId,
+      status: 'queued',
+      checkStatusUrl: `/orthanc/job-status/${requestId}`
+    });
+    
+  } catch (error) {
+    console.error('[StableStudy] ❌ Error in route handler:', error);
+    console.error('[StableStudy] ❌ Error stack:', error.stack);
+    res.status(500).json({
+      message: 'Error queuing stable study for processing',
+      error: error.message,
+      receivedBody: req.body,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Job status route
+router.get('/job-status/:requestId', async (req, res) => {
+  const { requestId } = req.params;
+  
+  try {
+    // Check Redis first
+    const resultData = await redis.get(`job:result:${requestId}`);
+    
+    if (resultData) {
+      const result = JSON.parse(resultData);
+      res.json({
+        status: result.success ? 'completed' : 'failed',
+        result: result,
+        requestId: requestId
+      });
+    } else {
+      // Check in-memory queue
+      const job = jobQueue.getJobByRequestId(requestId);
+      
+      if (job) {
+        res.json({
+          status: job.status,
+          progress: job.progress,
+          requestId: requestId,
+          jobId: job.id,
+          createdAt: job.createdAt,
+          error: job.error
+        });
+      } else {
+        res.status(404).json({
+          status: 'not_found',
+          message: 'Job not found or expired',
+          requestId: requestId
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error checking job status:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Error checking job status',
+      error: error.message
+    });
+  }
+});
+
+// 🆕 NEW: Manual ZIP creation endpoint
+router.post('/create-zip/:orthancStudyId', async (req, res) => {
+    try {
+        const { orthancStudyId } = req.params;
+        
+        console.log(`[Manual ZIP] 📦 Manual ZIP creation requested for: ${orthancStudyId}`);
+        
+        // Find study in database
+        const study = await DicomStudy.findOne({ orthancStudyID: orthancStudyId });
+        
+        if (!study) {
+            return res.status(404).json({
+                success: false,
+                message: 'Study not found in database'
+            });
+        }
+        
+        // Check if ZIP is already being processed or completed
+        if (study.preProcessedDownload?.zipStatus === 'processing') {
+            return res.json({
+                success: false,
+                message: 'ZIP creation already in progress',
+                status: 'processing',
+                jobId: study.preProcessedDownload.zipJobId
+            });
+        }
+        
+        if (study.preProcessedDownload?.zipStatus === 'completed' && study.preProcessedDownload?.zipUrl) {
+            return res.json({
+                success: true,
+                message: 'ZIP already exists',
+                status: 'completed',
+                zipUrl: study.preProcessedDownload.zipUrl,
+                zipSizeMB: study.preProcessedDownload.zipSizeMB,
+                createdAt: study.preProcessedDownload.zipCreatedAt
+            });
+        }
+        
+        // Queue new ZIP creation job
+        const zipJob = await CloudflareR2ZipService.addZipJob({
+            orthancStudyId: orthancStudyId,
+            studyDatabaseId: study._id,
+            studyInstanceUID: study.studyInstanceUID || orthancStudyId,
+            instanceCount: study.instanceCount || 0,
+            seriesCount: study.seriesCount || 0
+        });
+        
+        res.json({
+            success: true,
+            message: 'ZIP creation queued',
+            jobId: zipJob.id,
+            status: 'queued',
+            checkStatusUrl: `/orthanc/zip-status/${zipJob.id}`
+        });
+        
+    } catch (error) {
+        console.error('[Manual ZIP] ❌ Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to queue ZIP creation',
+            error: error.message
+        });
+    }
+});
+
+// 🆕 NEW: ZIP job status endpoint
+router.get('/zip-status/:jobId', async (req, res) => {
+    try {
+        const { jobId } = req.params;
+        const job = CloudflareR2ZipService.getJob(parseInt(jobId));
+        
+        if (!job) {
+            return res.status(404).json({
+                success: false,
+                message: 'ZIP job not found'
+            });
+        }
+        
+        res.json({
+            success: true,
+            jobId: job.id,
+            status: job.status,
+            progress: job.progress,
+            createdAt: job.createdAt,
+            result: job.result,
+            error: job.error
+        });
+        
+    } catch (error) {
+        console.error('[ZIP Status] ❌ Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to get ZIP status',
+            error: error.message
+        });
+    }
+});
+
+// 🆕 NEW: Initialize R2 bucket on startup
+router.get('/init-r2', async (req, res) => {
+    try {
+        await CloudflareR2ZipService.ensureR2Bucket();
+        res.json({
+            success: true,
+            message: 'R2 bucket initialized successfully'
+        });
+    } catch (error) {
+        console.error('[R2 Init] ❌ Error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to initialize R2 bucket',
+            error: error.message
+        });
+    }
+});
+
+// 🔒 NEW: Lightweight instance-received endpoint with memory lock protection
+// This endpoint is called by the Lua script when the FIRST image arrives in a study.
+// The Lua script uses a memory-locked table to ensure this is only called once per study,
+// preventing API spam (2,400 images = 2,400 potential calls → 1 call instead)
+router.post('/instance-received', async (req, res) => {
+  console.log('[InstanceReceived] 📥 Received instance notification');
+  console.log('[InstanceReceived] 📋 Body:', req.body);
+  
+  try {
+    let studyUID = null;
+    
+    // Extract StudyInstanceUID from request
+    // Lua sends it as raw string body via HttpPost
+    if (typeof req.body === 'string') {
+      studyUID = req.body.trim();
+      console.log('[InstanceReceived] 📋 Extracted from string body:', studyUID);
+    } else if (req.body && typeof req.body === 'object') {
+      // Handle JSON object format
+      studyUID = req.body.studyUID || req.body.StudyInstanceUID || req.body.study_uid;
+      if (studyUID && typeof studyUID === 'string') {
+        studyUID = studyUID.trim();
+      }
+      console.log('[InstanceReceived] 📋 Extracted from JSON body:', studyUID);
+    }
+    
+    if (!studyUID) {
+      console.error('[InstanceReceived] ❌ No StudyInstanceUID found in request');
+      return res.status(400).json({
+        success: false,
+        error: 'Missing StudyInstanceUID',
+        receivedBody: req.body
+      });
+    }
+    
+    console.log('[InstanceReceived] 🔍 Looking up study with UID:', studyUID);
+    
+    // Lightweight upsert: find existing study OR mark as pending
+    // We're not modifying the full study here, just tracking that images are arriving
+    const result = await DicomStudy.findOneAndUpdate(
+      { studyUID: studyUID }, // Match by Study Instance UID
+      {
+        $set: {
+          uploadPending: true, // Mark as pending upload
+          lastInstanceReceivedAt: new Date(),
+          uploadSource: 'orthanc'
+        },
+        $inc: { 
+          instanceNotificationCount: 1 // Track how many times Lua called us (should be 1 due to memory lock)
+        }
+      },
+      {
+        upsert: true, // Create if doesn't exist
+        new: true,
+        lean: false // Return full document
+      }
+    );
+    
+    console.log('[InstanceReceived] ✅ Study upserted:', {
+      studyUID: studyUID,
+      uploadPending: result.uploadPending,
+      instanceNotificationCount: result.instanceNotificationCount,
+      createdAt: result.createdAt,
+      lastInstanceReceivedAt: result.lastInstanceReceivedAt
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Instance notification recorded',
+      studyUID: studyUID,
+      uploadPending: result.uploadPending,
+      instanceNotificationCount: result.instanceNotificationCount
+    });
+    
+  } catch (error) {
+    console.error('[InstanceReceived] ❌ Error processing instance notification:', error.message);
+    console.error('[InstanceReceived] ❌ Stack:', error.stack);
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process instance notification',
+      message: error.message
+    });
+  }
+});
+
+export default router;

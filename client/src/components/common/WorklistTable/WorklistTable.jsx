@@ -34,19 +34,40 @@ import CompareStudiesModal from './CompareStudiesModal';
 
 const ShareModal = ({ study, isOpen, onClose }) => {
   const [copied, setCopied] = useState(false);
+  const [phone, setPhone] = useState('');
+  const [shareType, setShareType] = useState('ohif'); // 'ohif' or 'report'
 
   if (!isOpen) return null;
 
   const rawStudyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
   const studyInstanceUID = sanitizeStudyInstanceUID(rawStudyInstanceUID);
   const viewerUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`;
+  const qrLink = `${window.location.origin}/qr/${study?._id}`;
+  
+  const patientName = study?.patientName || study?.patientInfo?.patientName || 'Patient';
+  const hasCompletedReport = ['report_verified', 'report_completed', 'final_report_downloaded', 'archived'].includes(study?.workflowStatus) || study?.reportInfo?.reportId;
+
+  const linkToShare = shareType === 'ohif' ? viewerUrl : qrLink;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(viewerUrl).then(() => {
+    navigator.clipboard.writeText(linkToShare).then(() => {
       setCopied(true);
-      toast.success('Viewer link copied!');
+      toast.success('Link copied!');
       setTimeout(() => setCopied(false), 3000);
     }).catch(() => toast.error('Failed to copy'));
+  };
+
+  const handleWhatsAppShare = () => {
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.length < 10) {
+      toast.error('Invalid phone number');
+      return;
+    }
+    const finalPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const documentType = shareType === 'ohif' ? 'radiology images' : 'radiology report and images';
+    const message = `Hello, your ${documentType} for ${patientName} is ready. View here: ${linkToShare}`;
+    
+    window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   return (
@@ -59,9 +80,9 @@ const ShareModal = ({ study, isOpen, onClose }) => {
           <div className="flex items-center gap-2">
             <Share2 className="w-4 h-4 text-sky-400" />
             <div>
-              <h2 className="text-xs font-bold uppercase">Share Study</h2>
+              <h2 className="text-xs font-bold uppercase">Share via WhatsApp</h2>
               <p className="text-[9px] text-gray-400 mt-0.5">
-                {study?.bharatPacsId} · {study?.patientName || study?.patientInfo?.patientName}
+                {study?.bharatPacsId} · {patientName}
               </p>
             </div>
           </div>
@@ -71,15 +92,43 @@ const ShareModal = ({ study, isOpen, onClose }) => {
         </div>
 
         {/* Body */}
-        <div className="p-4 space-y-3">
+        <div className="p-4 space-y-4">
+          
+          {/* Link Type Selection */}
+          <div className="flex bg-gray-100 p-1 rounded-lg">
+            <button
+              onClick={() => setShareType('ohif')}
+              className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
+                shareType === 'ohif' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              👁️ Images Only
+            </button>
+            <button
+              onClick={() => setShareType('report')}
+              className={`flex-1 py-1.5 text-[10px] font-bold uppercase rounded-md transition-all ${
+                shareType === 'report' ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              📄 Report + Images
+            </button>
+          </div>
+
+          {!hasCompletedReport && shareType === 'report' && (
+            <div className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-lg border border-amber-200 font-medium">
+              ⚠️ The report for this study may not be finalized yet. Sharing this link allows the patient to access the report once it is ready.
+            </div>
+          )}
+
+          {/* Copy Link Field */}
           <div>
             <label className="block text-[9px] font-bold uppercase text-gray-500 mb-1">
-              👁️ View-Only OHIF Link
+              Link URL
             </label>
             <div className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
               <input
                 readOnly
-                value={viewerUrl}
+                value={linkToShare}
                 className="flex-1 text-[9px] font-mono bg-transparent text-gray-700 truncate outline-none"
               />
               <button
@@ -98,9 +147,39 @@ const ShareModal = ({ study, isOpen, onClose }) => {
             </div>
           </div>
 
-          <p className="text-[8px] text-gray-400 text-center">
-            Anyone with this link can view the study images in the OHIF viewer.
-          </p>
+          <div className="border-t border-gray-100 my-2"></div>
+
+          {/* WhatsApp Direct Share */}
+          <div>
+            <label className="block text-[9px] font-bold uppercase text-gray-500 mb-1">
+              📱 Send via WhatsApp
+            </label>
+            <div className="flex gap-2">
+              <div className="flex-1 flex items-center bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
+                <span className="pl-3 text-[11px] text-gray-500 font-bold border-r border-gray-200 pr-2 py-2">
+                  +91
+                </span>
+                <input
+                  type="text"
+                  placeholder="Phone number"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className="flex-1 w-full bg-transparent px-2 py-2 text-[11px] font-bold text-gray-800 outline-none"
+                  maxLength={15}
+                />
+              </div>
+              <button
+                onClick={handleWhatsAppShare}
+                className="flex items-center gap-1.5 bg-[#25D366] hover:bg-[#1DA851] text-white px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-colors"
+              >
+                <MessageSquare className="w-3.5 h-3.5" /> Send
+              </button>
+            </div>
+            <p className="text-[8px] text-gray-400 mt-2 text-center">
+              A pre-filled WhatsApp message will open in a new tab.
+            </p>
+          </div>
+
         </div>
       </div>
     </div>
@@ -1432,8 +1511,23 @@ const StudyRow = ({
       {/* 10. SERIES/IMAGES */}
       {isColumnVisible('studySeriesImages') && (
         <td className="px-1.5 py-2 sm:px-2 text-center border-r border-b border-slate-200 align-middle" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-          <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
-          <div className="text-[10px] sm:text-xs font-semibold text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+          {study.workflowStatus === 'upload_pending' ? (
+            <div className="flex flex-col items-center gap-1">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+                UPLOAD PENDING
+              </span>
+              <div className="text-[10px] sm:text-xs font-semibold text-amber-700 whitespace-nowrap">
+                {study.seriesImages && study.seriesImages !== '0/0'
+                  ? `Uploading ${study.seriesImages}`
+                  : 'Awaiting files'}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
+              <div className="text-[10px] sm:text-xs font-semibold text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+            </>
+          )}
         </td>
       )}
 

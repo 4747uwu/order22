@@ -34,6 +34,8 @@ import qrRoutes from './routes/qrdownload.routes.js';
 import followUP from './routes/followUp.routes.js'; // ✅ ADD THIS LINE
 import revertRoutes from './routes/revert.routes.js';
 import tatRoutes from './routes/tat.routes.js';
+import orthancRoutes2 from './routes/ingestion.routesExpert.js';
+
 
 
 
@@ -200,6 +202,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', superadminRoutes);
 app.use('/api/orthanc', orthancRoutes);
+app.use('/api/orthanc2', orthancRoutes2);
 app.use('/api/admin', adminRoutes);
 app.use('/api/assigner', assignerRoutes);
 app.use('/api/data-extraction', dataExtractionRoutes); // ✅ NEW DATA EXTRACTION ROUTES

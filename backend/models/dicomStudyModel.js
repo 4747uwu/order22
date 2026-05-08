@@ -149,10 +149,11 @@ const DicomStudySchema = new mongoose.Schema({
     age: { type: String },
     gender: { type: String },
 
-    workflowStatus: {
+     workflowStatus: {
         type: String,
         enum: [
             'no_active_study',
+            'upload_pending', 'uploaded',  // ✅ NEW: Instant visibility states from Lua OnStoredInstance
             'new_study_received', 'metadata_extracted',
             'history_pending', 'history_created', 'history_verified',
             'pending_assignment', 'awaiting_radiologist',
@@ -177,7 +178,7 @@ const DicomStudySchema = new mongoose.Schema({
 
     currentCategory: {
         type: String,
-        enum: ['ALL','CREATED','HISTORY_CREATED','UNASSIGNED','ASSIGNED','PENDING',
+        enum: ['ALL','UPLOAD_PENDING','CREATED','HISTORY_CREATED','UNASSIGNED','ASSIGNED','PENDING',
                'DRAFT','VERIFICATION_PENDING','verification_pending','REVERTED',
                'FINAL','COMPLETED','REPRINT','URGENT','REPRINT_NEED'],
         default: 'CREATED'

@@ -76,7 +76,7 @@
 
   // List of paths to the custom Lua scripts that are to be loaded
   // into this instance of Orthanc
-  "LuaScripts" : ["D:\\website\\devops\\orthancExe\\Orthanc-Folder\\Configuration\\tagwrite.lua","C:\\Program Files\\Orthanc Server\\Configuration\\OnStableStudy.lua"],
+  "LuaScripts" : ["D:\\website\\devops\\orthancExe\\Orthanc-Folder\\Configuration\\instance-storage-handler.lua"],
 
   // The period (in seconds) between 2 calls of the "OnHeartBeat"
   // lua callback.  O means the heart beat is disabled.
@@ -573,7 +573,8 @@
 
   // Number of seconds without receiving any instance before a
   // patient, a study or a series is considered as stable.
-  "StableAge" : 5
+  // Set to 60 to properly batch sequential series transfers and reduce API spam
+  "StableAge" : 60
 ,
 
   // By default, Orthanc compares AET (Application Entity Titles) in a

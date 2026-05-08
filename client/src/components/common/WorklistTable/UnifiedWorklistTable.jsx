@@ -1443,8 +1443,23 @@ const UnifiedStudyRow = ({
             {/* 12. SERIES/IMAGES */}
             {isColumnVisible('studySeriesImages') && (
                 <td className="px-3 py-3.5 text-center border-r border-b border-slate-200 align-center" style={{ width: `${getColumnWidth('studySeriesImages')}px` }}>
-                    <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
-                    <div className="text-xs font-medium text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+                    {study.workflowStatus === 'upload_pending' ? (
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wide bg-amber-100 text-amber-800 border border-amber-300">
+                                UPLOAD PENDING
+                            </span>
+                            <div className="text-[10px] sm:text-xs font-semibold text-amber-700 whitespace-nowrap">
+                                {study.seriesImages && study.seriesImages !== '0/0'
+                                    ? `Uploading ${study.seriesImages}`
+                                    : 'Awaiting files'}
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="text-[9px] sm:text-[10px] font-bold text-slate-900 break-words whitespace-normal leading-snug mb-0.5">{study.studyDescription || 'N/A'}</div>
+                            <div className="text-xs font-medium text-slate-800 whitespace-nowrap">S: {study.seriesCount || 0} / {study.instanceCount || 0}</div>
+                        </>
+                    )}
                 </td>
             )}
 

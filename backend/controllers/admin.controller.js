@@ -739,7 +739,7 @@ export const getValues = async (req, res) => {
 
         const statusCategories = {
             pending: [
-                'new_study_received', 'pending_assignment', 'assigned_to_doctor',
+                'new_study_received','upload_pending', 'pending_assignment', 'assigned_to_doctor',
                 'doctor_opened_report', 'report_in_progress', 'report_drafted',
                 'report_downloaded_radiologist', 'report_downloaded', 'verification_pending',
             ],
@@ -966,6 +966,7 @@ export const getCategoryValues = async (req, res) => {
         // ✅ MUST EXACTLY MATCH getStudiesByCategory switch cases
         const STATUS_TO_CATEGORY = {
             // case 'created' → workflowStatus = 'new_study_received'
+            upload_pending: 'upload_pending',
             new_study_received: 'created',
 
             // case 'history-created' → workflowStatus = 'history_created'
@@ -1041,6 +1042,8 @@ export const getCategoryValues = async (req, res) => {
 
         // ── Build counts from facet result ──────────────────────────────────
         const counts = {
+            upload_pending: 0,   // ✅ NEW
+
             created: 0,
             history_created: 0,
             assigned: 0,
@@ -1075,6 +1078,7 @@ export const getCategoryValues = async (req, res) => {
         return res.status(200).json({
             success: true,
             all:                  allCount,
+            upload_pending:       counts.upload_pending,
             created:              counts.created,
             history_created:      counts.history_created,
             unassigned:           unassignedCount,       // ✅ countDocuments exact match
@@ -1114,6 +1118,13 @@ export const getStudiesByCategory = async (req, res) => {
         const queryFilters = buildBaseQuery(req, user);
 
         switch (category) {
+            case 'upload-pending':
+                // ✅ UPLOAD-PENDING: upload_pending status
+                queryFilters.workflowStatus = 'upload_pending';
+                console.log('📋 [UPLOAD-PENDING] Filtering: upload_pending');
+                break;
+
+                
             case 'created':
                 // ✅ CREATED: Only new_study_received
                 queryFilters.workflowStatus = 'new_study_received';
