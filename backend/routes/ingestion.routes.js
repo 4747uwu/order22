@@ -1053,6 +1053,7 @@ async function processStableStudy(job) {
     };
 
     let dicomStudyDoc = await DicomStudy.findOne({ studyInstanceUID: studyInstanceUID });
+    let promotedFromUploadPending = false;
 
     if (dicomStudyDoc) {
       console.log(`[StableStudy] 📝 Updating existing study - PRESERVING org/lab/location`);
@@ -1108,6 +1109,11 @@ async function processStableStudy(job) {
           changedAt: new Date(),
           note: 'Promoted from upload_pending after stable study processing'
         });
+
+        // Mark that we promoted so we can run tracking/notifications after save
+        promotedFromUploadPending = true;
+        // Also update the currentCategory to CREATED for UI consistency
+        preserveOnUpdate.currentCategory = 'CREATED';
       }
 
       const allowedUpdates = {
@@ -1176,6 +1182,55 @@ async function processStableStudy(job) {
     await dicomStudyDoc.save();
     console.log(`[StableStudy] ✅ Study saved with ID: ${dicomStudyDoc._id}, UID: ${studyInstanceUID}`);
     
+    // If we promoted an upload_pending study, record action, update tracking, and notify clients
+    if (promotedFromUploadPending) {
+      try {
+        await recordStudyAction({
+          studyId: dicomStudyDoc._id,
+          actionType: ACTION_TYPES.STUDY_UPLOADED,
+          actionCategory: 'upload',
+          performedBy: new mongoose.Types.ObjectId('000000000000000000000000'),
+          performedByName: 'System',
+          performedByRole: 'system',
+          actionDetails: {
+            from: 'upload_pending',
+            to: 'new_study_received',
+            instances: dicomStudyDoc.instanceCount,
+            series: dicomStudyDoc.seriesCount
+          },
+          notes: 'Promoted from upload_pending after stable study processing',
+          ipAddress: 'orthanc-server'
+        });
+      } catch (recErr) {
+        console.warn('[StableStudy] ⚠️ recordStudyAction failed:', recErr.message);
+      }
+
+      try {
+        await updateCategoryTracking({
+          studyId: dicomStudyDoc._id,
+          category: 'created',
+          trackingData: {
+            uploadedAt: new Date(),
+            uploadedBy: new mongoose.Types.ObjectId('000000000000000000000000'),
+            uploadSource: 'orthanc',
+            instancesReceived: dicomStudyDoc.instanceCount,
+            seriesReceived: dicomStudyDoc.seriesCount
+          },
+          performedBy: new mongoose.Types.ObjectId('000000000000000000000000'),
+          performedByName: 'System',
+          performedByRole: 'system'
+        });
+      } catch (trackErr) {
+        console.warn('[StableStudy] ⚠️ updateCategoryTracking failed:', trackErr.message);
+      }
+
+      try {
+        await websocketService.notifySimpleNewStudy();
+      } catch (wsErr) {
+        console.warn('[StableStudy] ⚠️ websocket notify failed:', wsErr.message);
+      }
+    }
+
     job.progress = 90;
     
     // Create ZIP file and upload to R2
