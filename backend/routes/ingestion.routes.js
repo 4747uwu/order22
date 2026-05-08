@@ -1093,6 +1093,23 @@ async function processStableStudy(job) {
           : {}),
       };
 
+      // If an existing study was marked as 'upload_pending', promote it
+      // to a created/received state now that the stable-study processor
+      // is handling the fully uploaded study.
+      if (dicomStudyDoc.workflowStatus === 'upload_pending') {
+        console.log(`[StableStudy] 🔄 Promoting workflowStatus from upload_pending -> new_study_received for UID: ${studyInstanceUID}`);
+        // Update the preserved workflowStatus to the stable state
+        preserveOnUpdate.workflowStatus = 'new_study_received';
+
+        // Record this transition in the status history
+        dicomStudyDoc.statusHistory = dicomStudyDoc.statusHistory || [];
+        dicomStudyDoc.statusHistory.push({
+          status: 'new_study_received',
+          changedAt: new Date(),
+          note: 'Promoted from upload_pending after stable study processing'
+        });
+      }
+
       const allowedUpdates = {
         seriesCount:            studyData.seriesCount,
         instanceCount:          studyData.instanceCount,
