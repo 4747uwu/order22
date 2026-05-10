@@ -27,15 +27,15 @@ export const isStudyOlderThan = (studyDate, days = 10) => { // ✅ Changed back 
  */
 export const checkAndRestoreStudy = async (study, options = {}) => {
   const {
-    daysThreshold = 10, // ✅ Changed back to 10 days default
+    daysThreshold = 10,
     showNotifications = true,
-    onProgress = null
+    onProgress = null,
+    forceRestore = false, // skip age check when caller already confirmed study is missing
   } = options;
 
   try {
-    // Check if study is older than threshold
-    const needsRestore = isStudyOlderThan(study.studyDate, daysThreshold);
-    
+    const needsRestore = forceRestore || isStudyOlderThan(study.studyDate, daysThreshold);
+
     if (!needsRestore) {
       console.log(`✅ Study ${study.bharatPacsId || study._id} is recent, no restore needed`);
       return { needsRestore: false, restored: false };
@@ -167,9 +167,58 @@ export const getStudiesNeedingRestore = (studies, daysThreshold = 10) => {
   return studies.filter(study => isStudyOlderThan(study.studyDate, daysThreshold));
 };
 
+/**
+ * Determine the open strategy for a study based on its calendar date.
+ *
+ * - 'today'   : study date is the current calendar day → open directly, no checks
+ * - 'check'   : study is 1 or 2 calendar days old → ask Orthanc first, restore only if missing
+ * - 'restore' : study is 10+ calendar days old → restore immediately (existing behaviour)
+ * - 'pass'    : study is 3–9 calendar days old → open directly
+ */
+export const getStudyOpenStrategy = (studyDate) => {
+  if (!studyDate) {
+    console.log('🔍 [Strategy] No studyDate → pass');
+    return 'pass';
+  }
+
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const sd = new Date(studyDate);
+  const studyMidnight = new Date(sd.getFullYear(), sd.getMonth(), sd.getDate());
+
+  const diffDays = Math.round((todayMidnight - studyMidnight) / (1000 * 60 * 60 * 24));
+
+  let strategy;
+  if (diffDays <= 0) strategy = 'today';
+  else if (diffDays <= 2) strategy = 'check';
+  else if (diffDays >= 10) strategy = 'restore';
+  else strategy = 'pass';
+
+  console.log(`🔍 [Strategy] studyDate=${studyDate} | parsed=${sd.toISOString()} | diffDays=${diffDays} | strategy=${strategy}`);
+  return strategy;
+};
+
+/**
+ * Ask the backend whether a study is currently present on its Orthanc instance.
+ * Returns true if available, false if missing or on error (triggers restore on false).
+ */
+export const checkOrthancAvailability = async (studyId) => {
+  console.log(`📡 [AvailabilityCheck] Sending request for studyId=${studyId}`);
+  try {
+    const response = await api.get(`/backup/check-availability/${studyId}`);
+    console.log(`📡 [AvailabilityCheck] Response:`, response.data);
+    return response.data.available === true;
+  } catch (error) {
+    console.error('❌ [AvailabilityCheck] Request failed:', error);
+    return false;
+  }
+};
+
 export default {
   isStudyOlderThan,
   checkAndRestoreStudy,
   navigateWithRestore,
-  getStudiesNeedingRestore
+  getStudiesNeedingRestore,
+  getStudyOpenStrategy,
+  checkOrthancAvailability,
 };

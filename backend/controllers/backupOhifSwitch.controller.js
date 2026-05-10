@@ -13,10 +13,12 @@ const unlink = promisify(fs.unlink);
 const mkdir = promisify(fs.mkdir);
 
 // ✅ Configuration
-const BACKUP_ORTHANC_URL =  'http://orthanc-server:8042';
+const BACKUP_ORTHANC_URL =  'http://206.189.133.52:8042';
+// const BACKUP_ORTHANC_URL =  'http://orthanc-server:8042';
 const BACKUP_ORTHANC_USERNAME = process.env.BACKUP_ORTHANC_USERNAME || 'orthanc';
 const BACKUP_ORTHANC_PASSWORD = process.env.BACKUP_ORTHANC_PASSWORD || 'orthanc';
 const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' + BACKUP_ORTHANC_PASSWORD).toString('base64');
+
 
 // ✅ NEW: Use environment variable for shared temp directory
 const SHARED_TEMP_DIR = process.env.SHARED_TEMP_DIR || '/tmp/node/restore';
@@ -328,4 +330,59 @@ export const backupSwitch = async (req, res) => {
   }
 };
 
-export default { backupSwitch, restoreFromBackup };
+/**
+ * Check whether a study's DICOM data is currently accessible on Orthanc.
+ * Used by the frontend to decide whether a restore is actually needed.
+ */
+export const checkOrthancAvailability = async (req, res) => {
+  try {
+    const { studyId } = req.params;
+    console.log(`🔍 [AvailabilityCheck] Checking studyId=${studyId}`);
+
+    const study = await DicomStudy.findOne({
+      $or: [
+        { _id: mongoose.Types.ObjectId.isValid(studyId) ? studyId : undefined },
+        { orthancStudyID: studyId },
+        { studyInstanceUID: studyId },
+        { bharatPacsId: studyId },
+      ].filter(c => Object.values(c)[0] !== undefined)
+    });
+
+    if (!study) {
+      console.log(`❌ [AvailabilityCheck] Study not found in DB for id=${studyId}`);
+      return res.status(404).json({ success: false, available: false, error: 'Study not found' });
+    }
+
+    const orthancId = study.orthancStudyID;
+    console.log(`📋 [AvailabilityCheck] Found study: _id=${study._id} | orthancStudyID=${orthancId} | studyDate=${study.studyDate}`);
+
+    if (!orthancId) {
+      console.log(`⚠️ [AvailabilityCheck] No orthancStudyID stored → not available`);
+      return res.json({ success: true, available: false, reason: 'No Orthanc ID stored for study' });
+    }
+
+    const checkUrl = `${BACKUP_ORTHANC_URL}/studies/${orthancId}`;
+    console.log(`📡 [AvailabilityCheck] Querying Orthanc: ${checkUrl}`);
+
+    try {
+      const orthancRes = await axios.get(checkUrl, {
+        headers: { Authorization: backupOrthancAuth },
+        timeout: 6000,
+      });
+      console.log(`✅ [AvailabilityCheck] Study IS on Orthanc (status ${orthancRes.status})`);
+      return res.json({ success: true, available: true });
+    } catch (orthancErr) {
+      if (orthancErr.response?.status === 404) {
+        console.log(`❌ [AvailabilityCheck] Study NOT found on Orthanc (404)`);
+        return res.json({ success: true, available: false, reason: 'Not found on Orthanc' });
+      }
+      console.error(`❌ [AvailabilityCheck] Orthanc request failed: ${orthancErr.message}`);
+      throw orthancErr;
+    }
+  } catch (err) {
+    console.error('❌ [AvailabilityCheck] Error:', err.message);
+    return res.status(500).json({ success: false, available: false, error: err.message });
+  }
+};
+
+export default { backupSwitch, restoreFromBackup, checkOrthancAvailability };

@@ -19,7 +19,7 @@ import PrintModal from '../../../components/PrintModal.jsx';
 import { calculateElapsedTime } from '../../../utils/dateUtils.js';
 import { sanitizeStudyInstanceUID } from '../../../utils/studyInstanceUID.js';
 import useWebSocket from '../../../hooks/useWebSocket';
-import { isStudyOlderThan, checkAndRestoreStudy } from '../../../utils/backupRestoreHelper';
+import { checkAndRestoreStudy, getStudyOpenStrategy, checkOrthancAvailability } from '../../../utils/backupRestoreHelper';
 import sessionManager from '../../../services/sessionManager.jsx';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
 import { useStudyShare } from '../../../hooks/useStudyShare';
@@ -985,7 +985,7 @@ const StudyRow = ({
     }
   };
 
-  const handleViewOnlyClick = (e) => {
+  const handleViewOnlyClick = async (e) => {
     e.stopPropagation();
     try {
       const src = study || {};
@@ -996,7 +996,6 @@ const StudyRow = ({
       else if (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) studyUIDs = studyInstanceUID.trim();
       else studyUIDs = String(src._id || '');
 
-      // Strip `_COPY_<timestamp>` suffix added when a study is copied cross-org
       studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
 
       const OHIF_VIEWERS = {
@@ -1004,12 +1003,60 @@ const StudyRow = ({
         viewer2: 'https://viewer2.bharatpacs.com/viewer',
       };
 
-      // Determine format based on selectedViewer
       const finalUrl = selectedViewer === 'viewer2'
-        ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Viewer 2 format: /viewer/UID
-        : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Viewer 1 format: ?StudyInstanceUIDs=UID
+        ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}`
+        : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
 
-      window.open(finalUrl, '_blank');
+      const strategy = getStudyOpenStrategy(study.studyDate);
+
+      if (strategy === 'today' || strategy === 'pass') {
+        window.open(finalUrl, '_blank');
+      } else if (strategy === 'check') {
+        // Open a blank tab immediately to avoid popup blocker, then navigate after check
+        const newWindow = window.open('about:blank', '_blank');
+        if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Checking study availability...</div>';
+
+        const toastId = `avail-${study._id}`;
+        toast.loading('Checking study availability...', { id: toastId });
+
+        const available = await checkOrthancAvailability(study._id);
+        if (available) {
+          toast.dismiss(toastId);
+        } else {
+          toast.loading('Study not on server, restoring from backup...', { id: toastId });
+          const result = await checkAndRestoreStudy(study, { showNotifications: false, forceRestore: true });
+          if (result.restored) {
+            toast.success('Study restored', { id: toastId });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else if (result.error) {
+            toast.error(`Restore failed: ${result.error}`, { id: toastId });
+          } else {
+            toast.dismiss(toastId);
+          }
+        }
+
+        if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
+        else window.open(finalUrl, '_blank');
+      } else {
+        // strategy === 'restore': 10+ days old — restore immediately
+        const newWindow = window.open('about:blank', '_blank');
+        if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Restoring study, please wait...</div>';
+
+        const toastId = `restore-view-${study._id}`;
+        toast.loading('Restoring study from backup...', { id: toastId });
+        const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
+        if (result.restored) {
+          toast.success('Study restored', { id: toastId });
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        } else if (result.error) {
+          toast.error(`Restore failed: ${result.error}`, { id: toastId });
+        } else {
+          toast.dismiss(toastId);
+        }
+
+        if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
+        else window.open(finalUrl, '_blank');
+      }
     } catch (error) {
       window.open(`/ohif/viewer?StudyInstanceUIDs=${study?._id || ''}`, '_blank');
     }
@@ -1053,18 +1100,42 @@ const StudyRow = ({
         }
       }
 
-      // Restore if needed (the window is already open, so no popup block)
-      const needsRestore = isStudyOlderThan(study.studyDate, 10);
-      if (needsRestore) {
-        toast.loading('Restoring study from backup...', { id: `restore-${study._id}` });
+      // Smart restore: check strategy based on study date
+      const strategy = getStudyOpenStrategy(study.studyDate);
+      const restoreId = `restore-${study._id}`;
+
+      if (strategy === 'check') {
+        // Yesterday / day before: ask Orthanc first, restore only if missing
+        toast.loading('Checking study availability...', { id: restoreId });
+        const available = await checkOrthancAvailability(study._id);
+        if (!available) {
+          toast.loading('Study not on server, restoring from backup...', { id: restoreId });
+          const result = await checkAndRestoreStudy(study, { showNotifications: false, forceRestore: true });
+          if (result.restored) {
+            toast.success('Study restored', { id: restoreId });
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          } else if (result.error) {
+            toast.error(`Restore failed: ${result.error}`, { id: restoreId });
+          } else {
+            toast.dismiss(restoreId);
+          }
+        } else {
+          toast.dismiss(restoreId);
+        }
+      } else if (strategy === 'restore') {
+        // 10+ days old: restore immediately
+        toast.loading('Restoring study from backup...', { id: restoreId });
         const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
         if (result.restored) {
-          toast.success('Study restored', { id: `restore-${study._id}` });
+          toast.success('Study restored', { id: restoreId });
           await new Promise(resolve => setTimeout(resolve, 2000));
         } else if (result.error) {
-          toast.error(`Restore failed: ${result.error}`, { id: `restore-${study._id}` });
+          toast.error(`Restore failed: ${result.error}`, { id: restoreId });
+        } else {
+          toast.dismiss(restoreId);
         }
       }
+      // 'today' and 'pass': no restore needed
 
       // Navigate the already-open window to the reporting URL
       if (newWindow && !newWindow.closed) {
