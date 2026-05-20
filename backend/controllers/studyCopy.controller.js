@@ -5,6 +5,7 @@ import Patient from '../models/patientModel.js';
 import Document from '../models/documentModal.js';
 import Report from '../models/reportModel.js';
 import Organization from '../models/organisation.js';
+import Lab from '../models/labModel.js';
 import { wasabiS3Client, wasabiConfig } from '../config/wasabi-s3.js';
 import { CopyObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import crypto from 'crypto';
@@ -76,6 +77,27 @@ export const copyStudyToOrganization = async (req, res) => {
         // ✅ NOTE: Source study is left completely untouched.
         // The copy operation should never modify the original study's
         // workflow status, category, or assignments.
+
+        // Find a matching lab in the TARGET org so the destination verifier can see the study.
+        // Match by identifier first (most reliable), fall back to name.
+        let targetLabId = null;
+        if (sourceStudy.sourceLab) {
+            const sourceLabIdentifier = sourceStudy.sourceLab.identifier;
+            const sourceLabName = sourceStudy.sourceLab.name;
+            const matchingLab = await Lab.findOne({
+                organizationIdentifier: targetOrg.identifier,
+                ...(sourceLabIdentifier
+                    ? { identifier: sourceLabIdentifier }
+                    : { name: sourceLabName })
+            }).select('_id').lean();
+
+            if (matchingLab) {
+                targetLabId = matchingLab._id;
+                console.log(`🏥 [Copy] Matched source lab "${sourceLabIdentifier || sourceLabName}" to target lab ${matchingLab._id} in ${targetOrg.identifier}`);
+            } else {
+                console.log(`⚠️ [Copy] No matching lab found in ${targetOrg.identifier} for "${sourceLabIdentifier || sourceLabName}" — setting sourceLab=null (verifiers with labAccessMode='all' will see it)`);
+            }
+        }
 
         // Create or find patient in target organization
         const targetPatient = await Patient.findOneAndUpdate(
@@ -164,7 +186,6 @@ export const copyStudyToOrganization = async (req, res) => {
             currentCategory: 'CREATED',
             assignment: [],
             sourceLab: sourceStudy.sourceLab?._id || sourceStudy.sourceLab || null,
-
             // ✅ Copy uploaded reports and doctor reports inline
             uploadedReports: copyReports ? (sourceStudy.uploadedReports || []).map(report => ({
                 filename: report.filename,

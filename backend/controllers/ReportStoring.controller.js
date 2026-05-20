@@ -362,6 +362,132 @@ const determineDoctorForReport = async (currentUser, study, session) => {
     return { doctorId, doctorName };
 };
 
+/**
+ * Mirror finalized report(s) to the original study when this study is a copy.
+ * Runs fire-and-forget after the main transaction commits — failure here must
+ * never roll back or block the primary response.
+ */
+const mirrorReportToSourceStudy = async (copiedStudy, savedReports) => {
+    if (!copiedStudy.isCopiedStudy || !copiedStudy.copiedFrom?.studyId) return;
+
+    const reportsArray = Array.isArray(savedReports) ? savedReports : [savedReports];
+    console.log(`🔄 [Mirror] Mirroring ${reportsArray.length} report(s) from ${copiedStudy.bharatPacsId} → source study ${copiedStudy.copiedFrom.studyId}`);
+
+    try {
+        const originalStudy = await DicomStudy.findById(copiedStudy.copiedFrom.studyId)
+            .populate('sourceLab', 'name identifier settings.requireReportVerification');
+
+        if (!originalStudy) {
+            console.warn(`⚠️ [Mirror] Source study not found: ${copiedStudy.copiedFrom.studyId}`);
+            return;
+        }
+
+        const originalOrg = await Organization.findOne({ identifier: originalStudy.organizationIdentifier });
+        if (!originalOrg) {
+            console.warn(`⚠️ [Mirror] Original org not found: ${originalStudy.organizationIdentifier}`);
+            return;
+        }
+
+        const now = new Date();
+        const mirroredReportRefs = [];
+
+        for (const savedReport of reportsArray) {
+            const mirroredReport = new Report({
+                reportId: `MIRROR_${savedReport._id}_${Date.now()}`,
+                organizationIdentifier: originalStudy.organizationIdentifier,
+                organization: originalOrg._id,
+                patient: originalStudy.patient,
+                patientId: originalStudy.patientId,
+                dicomStudy: originalStudy._id,
+                studyInstanceUID: originalStudy.studyInstanceUID || originalStudy.orthancStudyID,
+                orthancStudyID: originalStudy.orthancStudyID,
+                accessionNumber: originalStudy.accessionNumber,
+                createdBy: savedReport.createdBy,
+                doctorId: savedReport.doctorId,
+                reportContent: savedReport.reportContent,
+                reportType: 'finalized',
+                reportStatus: 'finalized',
+                exportInfo: { ...savedReport.exportInfo },
+                patientInfo: savedReport.patientInfo,
+                studyInfo: savedReport.studyInfo,
+                workflowInfo: {
+                    draftedAt: savedReport.workflowInfo?.draftedAt || now,
+                    finalizedAt: now,
+                    statusHistory: [{
+                        status: 'finalized',
+                        changedAt: now,
+                        notes: `Mirrored from ${copiedStudy.organizationIdentifier} (${copiedStudy.bharatPacsId})`,
+                        userRole: 'system'
+                    }]
+                },
+                systemInfo: {
+                    dataSource: 'migrated_data',
+                    mirroredFrom: {
+                        copiedStudyId: copiedStudy._id,
+                        copiedStudyBharatPacsId: copiedStudy.bharatPacsId,
+                        organizationIdentifier: copiedStudy.organizationIdentifier,
+                        originalReportId: savedReport._id,
+                        mirroredAt: now
+                    }
+                }
+            });
+
+            await mirroredReport.save();
+
+            mirroredReportRefs.push({
+                reportId: mirroredReport._id,
+                reportType: 'finalized',
+                reportStatus: 'finalized',
+                createdAt: now,
+                fileName: mirroredReport.exportInfo?.fileName
+            });
+
+            console.log(`✅ [Mirror] ${savedReport._id} → ${mirroredReport._id} in ${originalStudy.organizationIdentifier}`);
+        }
+
+        const requiresVerification = originalStudy.sourceLab?.settings?.requireReportVerification;
+        const newStatus = requiresVerification ? 'verification_pending' : 'report_completed';
+        const newCategory = requiresVerification ? 'VERIFICATION_PENDING' : 'COMPLETED';
+
+        await DicomStudy.findByIdAndUpdate(originalStudy._id, {
+            $push: {
+                reports: { $each: mirroredReportRefs },
+                'reportInfo.modernReports': {
+                    $each: mirroredReportRefs.map(r => ({
+                        reportId: r.reportId,
+                        reportType: r.reportType,
+                        createdAt: r.createdAt
+                    }))
+                },
+                statusHistory: {
+                    status: newStatus,
+                    changedAt: now,
+                    note: `Report mirrored from ${copiedStudy.organizationIdentifier} (${copiedStudy.bharatPacsId})`
+                }
+            },
+            $set: {
+                workflowStatus: newStatus,
+                currentCategory: newCategory,
+                'currentReportStatus.hasReports': true,
+                'currentReportStatus.latestReportId': mirroredReportRefs[mirroredReportRefs.length - 1].reportId,
+                'currentReportStatus.latestReportStatus': 'finalized',
+                'currentReportStatus.latestReportType': 'finalized',
+                'reportInfo.finalizedAt': now,
+                ...(requiresVerification
+                    ? { 'reportInfo.sentForVerificationAt': now }
+                    : { 'reportInfo.completedAt': now, 'reportInfo.completedWithoutVerification': true }
+                )
+            }
+        });
+
+        console.log(`✅ [Mirror] Original study ${originalStudy.bharatPacsId || originalStudy._id} → ${newStatus}`);
+
+    } catch (err) {
+        console.error('❌ [Mirror] Failed to mirror report to source study:', err.message);
+        // intentionally not rethrowing — mirror failure must not affect the primary response
+    }
+};
+
 // ✅ UPDATED: storeFinalizedReport
 export const storeFinalizedReport = async (req, res) => {
     try {
@@ -597,6 +723,11 @@ export const storeFinalizedReport = async (req, res) => {
             sanitizeActionLog(study);
             await study.save({ session });
             await session.commitTransaction();
+
+            // Mirror to original study if this is a copied study (fire-and-forget)
+            if (study.isCopiedStudy) {
+                mirrorReportToSourceStudy(study, savedReport);
+            }
 
             res.status(200).json({
                 success: true,
@@ -933,6 +1064,11 @@ export const storeMultipleReports = async (req, res) => {
             sanitizeActionLog(study);
             await study.save({ session });
             await session.commitTransaction();
+
+            // Mirror to original study if this is a copied study and not a draft (fire-and-forget)
+            if (study.isCopiedStudy && !isDraftOperation) {
+                mirrorReportToSourceStudy(study, savedReports);
+            }
 
             res.status(200).json({
                 success: true,
