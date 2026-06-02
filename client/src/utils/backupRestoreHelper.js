@@ -177,8 +177,8 @@ export const getStudiesNeedingRestore = (studies, daysThreshold = 10) => {
  */
 export const getStudyOpenStrategy = (studyDate) => {
   if (!studyDate) {
-    console.log('🔍 [Strategy] No studyDate → pass');
-    return 'pass';
+    console.log('🔍 [Strategy] No studyDate → check');
+    return 'check';
   }
 
   const now = new Date();
@@ -188,11 +188,8 @@ export const getStudyOpenStrategy = (studyDate) => {
 
   const diffDays = Math.round((todayMidnight - studyMidnight) / (1000 * 60 * 60 * 24));
 
-  let strategy;
-  if (diffDays <= 0) strategy = 'today';
-  else if (diffDays <= 2) strategy = 'check';
-  else if (diffDays >= 10) strategy = 'restore';
-  else strategy = 'pass';
+  // 0-1 days old → open directly; 2+ days old → check Orthanc first, restore only if missing
+  const strategy = diffDays <= 1 ? 'today' : 'check';
 
   console.log(`🔍 [Strategy] studyDate=${studyDate} | parsed=${sd.toISOString()} | diffDays=${diffDays} | strategy=${strategy}`);
   return strategy;

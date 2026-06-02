@@ -1009,10 +1009,10 @@ const StudyRow = ({
 
       const strategy = getStudyOpenStrategy(study.studyDate);
 
-      if (strategy === 'today' || strategy === 'pass') {
+      if (strategy === 'today') {
         window.open(finalUrl, '_blank');
-      } else if (strategy === 'check') {
-        // Open a blank tab immediately to avoid popup blocker, then navigate after check
+      } else {
+        // Any study older than today: check Orthanc first, restore only if missing
         const newWindow = window.open('about:blank', '_blank');
         if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Checking study availability...</div>';
 
@@ -1033,25 +1033,6 @@ const StudyRow = ({
           } else {
             toast.dismiss(toastId);
           }
-        }
-
-        if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
-        else window.open(finalUrl, '_blank');
-      } else {
-        // strategy === 'restore': 10+ days old — restore immediately
-        const newWindow = window.open('about:blank', '_blank');
-        if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Restoring study, please wait...</div>';
-
-        const toastId = `restore-view-${study._id}`;
-        toast.loading('Restoring study from backup...', { id: toastId });
-        const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
-        if (result.restored) {
-          toast.success('Study restored', { id: toastId });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } else if (result.error) {
-          toast.error(`Restore failed: ${result.error}`, { id: toastId });
-        } else {
-          toast.dismiss(toastId);
         }
 
         if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
@@ -1105,7 +1086,7 @@ const StudyRow = ({
       const restoreId = `restore-${study._id}`;
 
       if (strategy === 'check') {
-        // Yesterday / day before: ask Orthanc first, restore only if missing
+        // Any study older than today: check Orthanc first, restore only if missing
         toast.loading('Checking study availability...', { id: restoreId });
         const available = await checkOrthancAvailability(study._id);
         if (!available) {
@@ -1122,20 +1103,8 @@ const StudyRow = ({
         } else {
           toast.dismiss(restoreId);
         }
-      } else if (strategy === 'restore') {
-        // 10+ days old: restore immediately
-        toast.loading('Restoring study from backup...', { id: restoreId });
-        const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
-        if (result.restored) {
-          toast.success('Study restored', { id: restoreId });
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        } else if (result.error) {
-          toast.error(`Restore failed: ${result.error}`, { id: restoreId });
-        } else {
-          toast.dismiss(restoreId);
-        }
       }
-      // 'today' and 'pass': no restore needed
+      // 'today': no check needed
 
       // Navigate the already-open window to the reporting URL
       if (newWindow && !newWindow.closed) {

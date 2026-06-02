@@ -16,7 +16,7 @@ import ResizableTableHeader from './ResizableTableHeader';
 import { UNIFIED_WORKLIST_COLUMNS } from '../../../constants/unifiedWorklistColumns';
 import PrintModal from '../../PrintModal';
 import sessionManager from '../../../services/sessionManager';
-import { navigateWithRestore, checkAndRestoreStudy, getStudyOpenStrategy, checkOrthancAvailability } from '../../../utils/backupRestoreHelper';
+import { checkAndRestoreStudy, getStudyOpenStrategy, checkOrthancAvailability } from '../../../utils/backupRestoreHelper';
 import { sanitizeStudyInstanceUID } from '../../../utils/studyInstanceUID.js';
 import useWebSocket from '../../../hooks/useWebSocket';
 import MultiAssignModal from '../../assigner/MultiAssignModal';
@@ -1021,9 +1021,10 @@ const UnifiedStudyRow = ({
 
             const strategy = getStudyOpenStrategy(study.studyDate);
 
-            if (strategy === 'today' || strategy === 'pass') {
+            if (strategy === 'today') {
                 window.open(finalUrl, '_blank');
-            } else if (strategy === 'check') {
+            } else {
+                // Any study older than today: check Orthanc first, restore only if missing
                 const newWindow = window.open('about:blank', '_blank');
                 if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Checking study availability...</div>';
 
@@ -1044,25 +1045,6 @@ const UnifiedStudyRow = ({
                     } else {
                         toast.dismiss(toastId);
                     }
-                }
-
-                if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
-                else window.open(finalUrl, '_blank');
-            } else {
-                // strategy === 'restore': 10+ days old
-                const newWindow = window.open('about:blank', '_blank');
-                if (newWindow) newWindow.document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;font-size:16px;color:#666">Restoring study, please wait...</div>';
-
-                const toastId = `restore-view-${study._id}`;
-                toast.loading('Restoring study from backup...', { id: toastId });
-                const result = await checkAndRestoreStudy(study, { daysThreshold: 10, showNotifications: false });
-                if (result.restored) {
-                    toast.success('Study restored', { id: toastId });
-                    await new Promise(resolve => setTimeout(resolve, 2000));
-                } else if (result.error) {
-                    toast.error(`Restore failed: ${result.error}`, { id: toastId });
-                } else {
-                    toast.dismiss(toastId);
                 }
 
                 if (newWindow && !newWindow.closed) newWindow.location.href = finalUrl;
@@ -1152,7 +1134,7 @@ const UnifiedStudyRow = ({
                 const restoreId = `restore-report-${study._id}`;
 
                 if (strategy === 'check') {
-                    // Yesterday / day before: check availability first
+                    // Any study older than today: check Orthanc first, restore only if missing
                     toast.loading('Checking study availability...', { id: restoreId });
                     const available = await checkOrthancAvailability(study._id);
                     if (!available) {
@@ -1170,21 +1152,8 @@ const UnifiedStudyRow = ({
                         toast.dismiss(restoreId);
                     }
                     window.open(reportingUrl, '_blank');
-                } else if (strategy === 'restore') {
-                    // 10+ days old: restore immediately
-                    await navigateWithRestore(
-                        (path) => window.open(path, '_blank'),
-                        reportingUrl,
-                        study,
-                        {
-                            daysThreshold: 10,
-                            onRestoreStart: (s) => toast.loading('Restoring study from backup...', { id: restoreId }),
-                            onRestoreComplete: (data) => toast.success(`Study restored (${data.fileSizeMB}MB)`, { id: restoreId }),
-                            onRestoreError: (err) => toast.error(`Restore failed: ${err}`, { id: restoreId }),
-                        }
-                    );
                 } else {
-                    // 'today' or 'pass': open directly
+                    // 'today': open directly
                     window.open(reportingUrl, '_blank');
                 }
             }
