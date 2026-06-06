@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test-waba.mjs)",
+      "Bash(Select-String -Path \"d:\\\\website\\\\devops\\\\order2\\\\client\\\\src\\\\components\\\\common\\\\WorklistTable\\\\WorklistTable.jsx\" -Pattern \"\\(Share2|Eye|handleViewOnly\\)\")",
+      "Bash(Select-Object -First 5)",
+      "Bash(Select-String -Path \"d:\\\\website\\\\devops\\\\order2\\\\client\\\\src\\\\components\\\\common\\\\WorklistTable\\\\UnifiedWorklistTable.jsx\" -Pattern \"\\(Share2|Eye|handleViewOnly\\)\")"
+    ]
+  }
+}

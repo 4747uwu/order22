@@ -30,6 +30,7 @@ import brandingRoutes from './routes/branding.routes.js';
 import compressionRoutes from './routes/compression.routes.js';
 import dicomRoutes from './routes/dicom.routes.js'; // ✅ ADD THIS LINE
 import backupRoutes from './routes/backup.routes.js';
+import wabaRoutes from './routes/waba.routes.js';
 import qrRoutes from './routes/qrdownload.routes.js';
 import followUP from './routes/followUp.routes.js'; // ✅ ADD THIS LINE
 import revertRoutes from './routes/revert.routes.js';
@@ -221,6 +222,7 @@ app.use('/api/study-notes', studyNotesRoutes); // ✅ ADD THIS LINE
 app.use('/api/branding', brandingRoutes);
 app.use('/api/dicom', dicomRoutes);
 app.use('/api/backup', backupRoutes);
+app.use('/api/waba', wabaRoutes);
 app.use('/api/qr', qrRoutes);
 app.use('/api/follow-up', followUP); // ✅ ADD THIS LINE
 app.use('/api/revert', revertRoutes);
