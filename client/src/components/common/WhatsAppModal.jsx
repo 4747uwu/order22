@@ -34,7 +34,7 @@ const WhatsAppModal = ({ study, onClose }) => {
   }, []);
 
   const patientName   = study.patientName || 'Patient';
-  const hospitalName  = study.organizationName || study.centerName || study.location || 'BharatPACS';
+  const hospitalName  = study.centerName || study.organizationName || study.location || 'BharatPACS';
   const studyDate     = formatStudyDate(study.studyDate);
   const studyUID      = study.studyInstanceUID || study.StudyInstanceUID || study.studyInstanceUid || '';
   const viewerUrl     = studyUID
