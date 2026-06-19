@@ -6,6 +6,7 @@ import {
     createOrganization,
     updateOrganization,
     deleteOrganization,
+    hardDeleteOrganization,
     getOrganizationStats
 } from '../controllers/superadmin.controller.js';
 import HTMLTemplateController from '../controllers/html.controller.js';
@@ -23,6 +24,7 @@ router.get('/organizations/:id', getOrganizationById);
 router.post('/organizations', createOrganization);
 router.put('/organizations/:id', updateOrganization);
 router.delete('/organizations/:id', deleteOrganization);
+router.delete('/organizations/:id/hard', hardDeleteOrganization);
 
 // Super Global Template routes
 router.get('/templates', HTMLTemplateController.getSuperGlobalTemplates);

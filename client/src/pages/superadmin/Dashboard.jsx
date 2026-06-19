@@ -207,17 +207,17 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  const handleDeleteOrganization = async (orgId, e) => {
+  const handleHardDeleteOrganization = async (org, e) => {
     e.stopPropagation();
-    
-    if (!confirm('Are you sure you want to permanently deactivate this organization? This will deactivate all associated users, labs, and doctors.')) return;
+
+    if (!confirm(`Permanently delete "${org.name}" and all its data? This cannot be undone.`)) return;
 
     try {
-      await api.delete(`/superadmin/organizations/${orgId}`);
+      await api.delete(`/superadmin/organizations/${org._id}/hard`);
       loadOrganizations();
       loadOrgStats();
     } catch (error) {
-      console.error('Failed to delete organization:', error);
+      console.error('Failed to hard delete organization:', error);
       alert(error.response?.data?.message || 'Failed to delete organization');
     }
   };
@@ -535,9 +535,9 @@ const SuperAdminDashboard = () => {
                             <Edit className="w-4 h-4" />
                           </button>
                           <button
-                            onClick={(e) => handleDeleteOrganization(org._id, e)}
+                            onClick={(e) => handleHardDeleteOrganization(org, e)}
                             className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Permanent Delete"
+                            title="Permanently delete organization and all data"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>

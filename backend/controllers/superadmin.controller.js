@@ -2,6 +2,8 @@ import Organization from '../models/organisation.js';
 import User from '../models/userModel.js';
 import Lab from '../models/labModel.js';
 import Doctor from '../models/doctorModel.js';
+import DicomStudy from '../models/dicomStudyModel.js';
+import Patient from '../models/patientModel.js';
 import generateToken from '../utils/generateToken.js';
 import bcrypt from 'bcryptjs';
 import mongoose from 'mongoose';
@@ -443,6 +445,61 @@ export const getOrganizationStats = async (req, res) => {
             success: false,
             message: 'Failed to fetch statistics'
         });
+    }
+};
+
+// Hard delete organization — permanently removes all associated data
+export const hardDeleteOrganization = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const { id } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid organization ID' });
+        }
+
+        const organization = await Organization.findById(id).session(session);
+        if (!organization) {
+            return res.status(404).json({ success: false, message: 'Organization not found' });
+        }
+
+        const orgId = organization._id;
+
+        // Count what we're about to delete so we can report it
+        const [userCount, labCount, doctorCount, studyCount, patientCount] = await Promise.all([
+            User.countDocuments({ organization: orgId }),
+            Lab.countDocuments({ organization: orgId }),
+            Doctor.countDocuments({ organization: orgId }),
+            DicomStudy.countDocuments({ organization: orgId }),
+            Patient.countDocuments({ organization: orgId }),
+        ]);
+
+        // Delete everything in dependency order
+        await DicomStudy.deleteMany({ organization: orgId }, { session });
+        await Patient.deleteMany({ organization: orgId }, { session });
+        await Doctor.deleteMany({ organization: orgId }, { session });
+        await Lab.deleteMany({ organization: orgId }, { session });
+        await User.deleteMany({ organization: orgId }, { session });
+        await Organization.findByIdAndDelete(orgId, { session });
+
+        await session.commitTransaction();
+
+        console.log(`[HardDelete] Permanently deleted org "${organization.name}" (${organization.identifier}): ${userCount} users, ${labCount} labs, ${doctorCount} doctors, ${studyCount} studies, ${patientCount} patients`);
+
+        res.json({
+            success: true,
+            message: `Organization "${organization.name}" permanently deleted`,
+            deleted: { users: userCount, labs: labCount, doctors: doctorCount, studies: studyCount, patients: patientCount }
+        });
+
+    } catch (error) {
+        await session.abortTransaction();
+        console.error('Hard delete organization error:', error);
+        res.status(500).json({ success: false, message: 'Failed to permanently delete organization' });
+    } finally {
+        session.endSession();
     }
 };
 

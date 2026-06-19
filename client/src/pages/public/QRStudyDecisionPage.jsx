@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import api from '../../services/api';
-import { Monitor, FileText, AlertCircle, Loader2, ChevronRight, Lock } from 'lucide-react';
+import { Monitor, FileText, AlertCircle, Loader2, ChevronRight, Lock, Clock } from 'lucide-react';
 
 const QRStudyDecisionPage = () => {
   const { studyId } = useParams();
@@ -64,6 +64,8 @@ const QRStudyDecisionPage = () => {
 
   // ── Main ──
   const initials = (data?.patientName || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const hasReport = !!data?.report?.downloadUrl;
+  const hasViewer = !!data?.viewer?.ohifUrl;
 
   return (
     <div className="min-h-[100dvh] bg-white flex flex-col items-center justify-center px-5 py-10">
@@ -84,7 +86,7 @@ const QRStudyDecisionPage = () => {
         <div className="space-y-2">
           <button
             onClick={openStudy}
-            disabled={!data?.viewer?.ohifUrl}
+            disabled={!hasViewer}
             className="group w-full flex items-center gap-3 px-4 h-14 bg-black text-white rounded-xl
               hover:bg-neutral-800 active:scale-[0.98] transition-all
               disabled:opacity-25 disabled:cursor-not-allowed disabled:active:scale-100"
@@ -99,18 +101,31 @@ const QRStudyDecisionPage = () => {
 
           <button
             onClick={openReport}
-            disabled={!data?.report?.downloadUrl}
+            disabled={!hasReport}
             className="group w-full flex items-center gap-3 px-4 h-14 bg-white text-black border border-neutral-200 rounded-xl
               hover:bg-neutral-50 hover:border-neutral-300 active:scale-[0.98] transition-all
-              disabled:opacity-25 disabled:cursor-not-allowed disabled:active:scale-100"
+              disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100"
           >
             <FileText className="w-[18px] h-[18px] shrink-0" />
             <div className="flex-1 text-left">
               <p className="text-[13px] font-semibold leading-tight">View Report</p>
-              <p className="text-[10px] text-neutral-400">Download PDF</p>
+              <p className="text-[10px] text-neutral-400">{hasReport ? 'Download PDF' : 'Not available yet'}</p>
             </div>
-            <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:translate-x-0.5 transition-transform shrink-0" />
+            {hasReport
+              ? <ChevronRight className="w-4 h-4 text-neutral-300 group-hover:translate-x-0.5 transition-transform shrink-0" />
+              : <Clock className="w-4 h-4 text-neutral-300 shrink-0" />
+            }
           </button>
+
+          {/* Report not ready notice */}
+          {!hasReport && (
+            <div className="flex items-start gap-2 px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-xl">
+              <Clock className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+              <p className="text-[11px] text-amber-700 leading-relaxed">
+                Your report is being prepared by the radiologist and will be available here once finalized.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

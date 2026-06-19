@@ -125,6 +125,20 @@ const jobQueue = new StableStudyQueue();
 
 // --- Helper Functions ---
 
+// Parse DICOM age format "022Y" → "22YRS", "006M" → "6MON", etc.
+function parseDicomAge(raw) {
+  if (!raw) return null;
+  const cleaned = String(raw).trim();
+  if (!cleaned || cleaned === 'N/A') return null;
+  const m = cleaned.match(/^(\d+)([YMWD])$/i);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const suffix = { Y: 'YRS', M: 'MON', W: 'WKS', D: 'DAYS' }[m[2].toUpperCase()] || '';
+    return `${n}${suffix}`;
+  }
+  return cleaned;
+}
+
 function processDicomPersonName(dicomNameField) {
   if (!dicomNameField || typeof dicomNameField !== 'string') {
     return {
@@ -1003,8 +1017,8 @@ async function processStableStudy(job) {
       patientInfo: {
         patientID: patientRecord.patientID,
         patientName: patientRecord.patientNameRaw,
-        age: tags.PatientAge || patientRecord.age || 'N/A',
-        gender: patientRecord.gender || '',
+        age: parseDicomAge(tags.PatientAge) || parseDicomAge(patientRecord.ageString) || 'N/A',
+        gender: tags.PatientSex || patientRecord.gender || '',
         dateOfBirth: tags.PatientBirthDate || ''
       },
       referringPhysicianName: referringPhysicianName,
@@ -1058,6 +1072,18 @@ async function processStableStudy(job) {
     if (dicomStudyDoc) {
       console.log(`[StableStudy] 📝 Updating existing study - PRESERVING org/lab/location`);
 
+      // Merge patientInfo: keep existing name/ID but fill in age/gender if they were N/A
+      const existingInfo = dicomStudyDoc.patientInfo || {};
+      const newAge    = studyData.patientInfo.age;
+      const newGender = studyData.patientInfo.gender;
+      const hasRealAge    = existingInfo.age    && existingInfo.age    !== 'N/A';
+      const hasRealGender = existingInfo.gender && existingInfo.gender !== 'N/A' && existingInfo.gender !== '';
+      const mergedPatientInfo = {
+        ...existingInfo,
+        ...((!hasRealAge    && newAge    && newAge    !== 'N/A') ? { age:    newAge    } : {}),
+        ...((!hasRealGender && newGender && newGender !== 'N/A') ? { gender: newGender } : {}),
+      };
+
       const preserveOnUpdate = {
         organization:           dicomStudyDoc.organization,
         organizationIdentifier: dicomStudyDoc.organizationIdentifier,
@@ -1066,7 +1092,7 @@ async function processStableStudy(job) {
         bharatPacsId:           dicomStudyDoc.bharatPacsId,
         patient:                dicomStudyDoc.patient,
         patientId:              dicomStudyDoc.patientId,
-        patientInfo:            dicomStudyDoc.patientInfo,
+        patientInfo:            mergedPatientInfo,
         workflowStatus:         dicomStudyDoc.workflowStatus,
         // ✅ Preserve exam description if it was manually edited (not the default)
         ...(dicomStudyDoc.examDescription && dicomStudyDoc.examDescription !== 'No Description'
