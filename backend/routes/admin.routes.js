@@ -207,7 +207,7 @@ router.put('/manage-users/:userId', protect,  async (req, res) => {
 const manualUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 500 * 1024 * 1024 // 200MB per file
+    fileSize: 2 * 1024 * 1024 * 1024 // 2GB per file
   },
   fileFilter: (req, file, cb) => {
     console.log('🔍 [Multer] Checking file:', {
@@ -247,7 +247,7 @@ const manualUpload = multer({
 // Route remains the same
 router.post('/create-manual-study', protect, manualUpload.fields([
   { name: 'images', maxCount: 50 },
-  { name: 'zipFile', maxCount: 5 }
+  { name: 'zipFile', maxCount: 10 }
 ]), createManualStudy);
 
 router.post('/upload-zip-url', protect, uploadZipFromUrl);

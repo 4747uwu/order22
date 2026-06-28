@@ -118,6 +118,23 @@ const OnlineReportingSystemWithOHIF = () => {
     setReports(prev => prev.map((r, i) => i === activeReportIndex ? { ...r, capturedImages: typeof images === 'function' ? images(r.capturedImages) : images } : r));
   };
 
+  const [showPatientDetails, setShowPatientDetails] = useState(false);
+
+  // ── Safe string helper: prevents "Objects are not valid as a React child" errors
+  // when API fields return objects instead of primitives
+  const safeStr = (val, fallback = 'N/A') => {
+    if (val === null || val === undefined) return fallback;
+    if (typeof val === 'string') return val || fallback;
+    if (typeof val === 'number') return String(val);
+    if (typeof val === 'object') {
+      // Try common field names that clinical history objects have
+      const s = val.clinicalHistory || val.previousInjury || val.previousSurgery ||
+                val.name || val.value || val.text || val.label || JSON.stringify(val);
+      return s ? String(s) : fallback;
+    }
+    return String(val) || fallback;
+  };
+
 
   //  const [saving, setSaving] = useState(false);
   // const [finalizing, setFinalizing] = useState(false);
@@ -878,15 +895,23 @@ const OnlineReportingSystemWithOHIF = () => {
 
             {/* LEFT — Patient Info (compact) */}
             <div className="flex items-center gap-2 min-w-0">
-              <span className="text-black font-bold text-[11px] tracking-wide truncate max-w-[220px]" title={patientData?.fullName || ''}>
-                {(patientData?.fullName || 'Loading...').toString().toUpperCase()}
+              <button
+                onClick={() => setShowPatientDetails(true)}
+                className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-blue-50 hover:text-blue-700 transition-colors group"
+                title="View patient details"
+              >
+                <span className="text-black font-bold text-[11px] tracking-wide truncate max-w-[220px] group-hover:text-blue-700" title={safeStr(patientData?.fullName, '')}>
+                  {safeStr(patientData?.fullName, 'Loading...').toUpperCase()}
+                </span>
+                {/* Bigger, clearly clickable ⓘ button */}
+                <span className="w-5 h-5 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 group-hover:bg-blue-600 group-hover:text-white text-[11px] font-bold transition-colors flex-shrink-0">i</span>
+              </button>
+              <span className="px-1 py-0.5 text-[9px] font-mono bg-gray-100 text-gray-500 rounded truncate max-w-[100px]" title={safeStr(studyData?.accessionNumber, studyId || '')}>
+                {safeStr(studyData?.accessionNumber, studyId ? String(studyId).substring(0, 8) : '')}
               </span>
-              <span className="px-1 py-0.5 text-[9px] font-mono bg-gray-100 text-gray-500 rounded truncate max-w-[100px]" title={studyData?.accessionNumber || studyId || ''}>
-                {studyData?.accessionNumber || (studyId ? `${String(studyId).substring(0, 8)}` : '')}
-              </span>
-              <span className="text-[9px] text-gray-500">{patientData?.age || studyData?.patientAge || 'N/A'}{(patientData?.gender || studyData?.patientSex) ? ` / ${patientData?.gender || studyData?.patientSex}` : ''}</span>
-              <span className="text-[9px] text-black truncate max-w-[300px]" title={reportData?.clinicalHistory || ''}>{reportData?.clinicalHistory || 'No clinical history'}</span>
-              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-50 text-emerald-600 rounded-full">{studyData?.modality || '—'}</span>
+              <span className="text-[9px] text-gray-500">{safeStr(patientData?.age || studyData?.patientAge, 'N/A')}{(patientData?.gender || studyData?.patientSex) ? ` / ${safeStr(patientData?.gender || studyData?.patientSex, '')}` : ''}</span>
+              <span className="text-[9px] text-black truncate max-w-[300px]" title={safeStr(reportData?.clinicalHistory, '')}>{safeStr(reportData?.clinicalHistory, 'No clinical history')}</span>
+              <span className="px-1.5 py-0.5 text-[9px] font-bold bg-emerald-50 text-emerald-600 rounded-full">{safeStr(studyData?.modality, '—')}</span>
               <span className="text-[9px] text-gray-500">{studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString() : ''}</span>
             </div>
 
@@ -1159,6 +1184,112 @@ const OnlineReportingSystemWithOHIF = () => {
         }
 
       </div >
+
+
+      {/* Patient Details Modal */}
+      {showPatientDetails && (
+        <div
+          className="fixed inset-0 z-[200000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowPatientDetails(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-gray-200 w-full max-w-lg overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 bg-gradient-to-r from-blue-600 to-blue-700">
+              <div>
+                <h2 className="text-lg font-bold text-white">Patient Details</h2>
+                <p className="text-blue-200 text-xs mt-0.5">Study Information</p>
+              </div>
+              <button
+                onClick={() => setShowPatientDetails(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="px-6 py-5 space-y-4">
+              {/* Patient Name */}
+              <div className="flex items-start gap-3 pb-4 border-b border-gray-100">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                  <span className="text-blue-600 font-bold text-sm">
+                    {safeStr(patientData?.fullName, 'U').charAt(0).toUpperCase()}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-gray-900">
+                    {safeStr(patientData?.fullName || patientData?.patientName, 'Unknown Patient')}
+                  </p>
+                  <p className="text-sm text-gray-500 mt-0.5">
+                    ID: {safeStr(patientData?.patientId || studyData?.patientId, 'N/A')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Age</p>
+                  <p className="text-base font-semibold text-gray-800">
+                    {safeStr(patientData?.age || studyData?.patientAge, 'N/A')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Gender</p>
+                  <p className="text-base font-semibold text-gray-800">
+                    {safeStr(patientData?.gender || studyData?.patientSex, 'N/A')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Modality</p>
+                  <p className="text-base font-bold text-emerald-600">
+                    {safeStr(studyData?.modality, 'N/A')}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Study Date</p>
+                  <p className="text-base font-semibold text-gray-800">
+                    {studyData?.studyDate ? new Date(studyData.studyDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A'}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Accession Number</p>
+                  <p className="text-base font-mono font-semibold text-gray-800">
+                    {safeStr(studyData?.accessionNumber, 'N/A')}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Referring Physician</p>
+                  <p className="text-base font-semibold text-gray-800">
+                    {safeStr(reportData?.referringPhysician, 'N/A')}
+                  </p>
+                </div>
+              </div>
+
+              {/* Clinical History */}
+              <div className="bg-amber-50 border border-amber-100 rounded-xl p-4">
+                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Clinical History</p>
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  {safeStr(reportData?.clinicalHistory, 'No clinical history available')}
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowPatientDetails(false)}
+                className="px-5 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       <StudyDocumentsManager

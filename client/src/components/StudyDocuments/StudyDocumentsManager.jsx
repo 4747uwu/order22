@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Upload, FileText, Download, Trash2, Eye, File, Image, X, Loader, Lock } from 'lucide-react';
+import { Upload, FileText, Download, Trash2, Eye, File, Image, X, Loader, Lock, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
 import sessionManager from '../../services/sessionManager';
@@ -20,6 +20,16 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
     const [previewBlobUrl, setPreviewBlobUrl] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [dragActive, setDragActive] = useState(false);
+    const [imageZoom, setImageZoom] = useState(1);
+    const [panOffset, setPanOffset] = useState({ x: 0, y: 0 });
+    const MIN_ZOOM = 0.5;
+    const MAX_ZOOM = 10;
+    const imageContainerRef = useRef(null);
+    // Refs mirror state so event handlers always read the latest values without stale closures
+    const zoomRef = useRef(1);
+    const panRef = useRef({ x: 0, y: 0 });
+    const isDragging = useRef(false);
+    const dragOrigin = useRef({ mx: 0, my: 0, px: 0, py: 0 });
 
     const currentUser = sessionManager.getCurrentUser();
     
@@ -213,6 +223,87 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
         }
         setPreviewDocument(null);
         setPreviewBlobUrl(null);
+        // Reset zoom + pan
+        zoomRef.current = 1;
+        panRef.current = { x: 0, y: 0 };
+        setImageZoom(1);
+        setPanOffset({ x: 0, y: 0 });
+    };
+
+    // — Sync helpers — update both ref (immediate) and state (re-render)
+    const applyZoomPan = (newZoom, newPan) => {
+        zoomRef.current = newZoom;
+        panRef.current = newPan;
+        setImageZoom(newZoom);
+        setPanOffset(newPan);
+    };
+
+    // Button zoom — multiplicative steps, pan stays proportional
+    const handleZoomIn = () => {
+        const z = Math.min(MAX_ZOOM, zoomRef.current * 1.3);
+        applyZoomPan(z, panRef.current);
+    };
+    const handleZoomOut = () => {
+        const z = Math.max(MIN_ZOOM, zoomRef.current / 1.3);
+        const pan = z <= 1 ? { x: 0, y: 0 } : panRef.current;
+        applyZoomPan(z, pan);
+    };
+    const handleZoomReset = () => applyZoomPan(1, { x: 0, y: 0 });
+
+    // — Non-passive wheel: zoom toward cursor (multiplicative = perceptually uniform) —
+    useEffect(() => {
+        const el = imageContainerRef.current;
+        if (!el || !previewDocument?.contentType?.startsWith('image/')) return;
+
+        const onWheel = (e) => {
+            e.preventDefault();
+            const rect = el.getBoundingClientRect();
+            // Mouse relative to container centre
+            const mx = e.clientX - rect.left - rect.width / 2;
+            const my = e.clientY - rect.top - rect.height / 2;
+
+            const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+            const prevZ = zoomRef.current;
+            const newZ  = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZ * factor));
+            const scale  = newZ / prevZ;
+
+            // Translate so the point under the cursor stays fixed
+            const prevPan = panRef.current;
+            const newPan  = newZ <= 1
+                ? { x: 0, y: 0 }
+                : { x: mx - (mx - prevPan.x) * scale,
+                    y: my - (my - prevPan.y) * scale };
+
+            zoomRef.current = newZ;
+            panRef.current  = newPan;
+            setImageZoom(newZ);
+            setPanOffset(newPan);
+        };
+
+        el.addEventListener('wheel', onWheel, { passive: false });
+        return () => el.removeEventListener('wheel', onWheel);
+    }, [previewDocument]);
+
+    // — Drag to pan —
+    const handleMouseDown = (e) => {
+        if (zoomRef.current <= 1) return;
+        isDragging.current = true;
+        dragOrigin.current = { mx: e.clientX, my: e.clientY, px: panRef.current.x, py: panRef.current.y };
+        e.currentTarget.style.cursor = 'grabbing';
+        e.preventDefault();
+    };
+    const handleMouseMove = (e) => {
+        if (!isDragging.current) return;
+        const dx = e.clientX - dragOrigin.current.mx;
+        const dy = e.clientY - dragOrigin.current.my;
+        const newPan = { x: dragOrigin.current.px + dx, y: dragOrigin.current.py + dy };
+        panRef.current = newPan;
+        setPanOffset(newPan);
+    };
+    const stopDragging = (e) => {
+        if (!isDragging.current) return;
+        isDragging.current = false;
+        if (e?.currentTarget) e.currentTarget.style.cursor = zoomRef.current > 1 ? 'grab' : 'zoom-in';
     };
 
     const formatFileSize = (bytes) => {
@@ -334,23 +425,104 @@ export const StudyDocumentsManager = ({ studyId, isOpen, onClose, studyMeta = nu
 
             {/* Preview Layer */}
             {previewDocument && (
-                <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-[1000000]">
-                    <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-                        <div className="px-4 py-2 bg-gray-900 text-white flex justify-between items-center">
-                            <span className="text-[10px] font-bold uppercase truncate">{previewDocument.fileName}</span>
-                            <button onClick={closePreview} className="p-1 hover:bg-red-500 rounded"><X className="w-4 h-4" /></button>
+                <div
+                    className="fixed inset-0 bg-black/95 flex items-center justify-center p-4 z-[1000000]"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div
+                        className="bg-white rounded-lg w-full max-w-6xl h-[90vh] flex flex-col overflow-hidden shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="px-4 py-2 bg-gray-900 text-white flex justify-between items-center gap-3">
+                            <span className="text-[10px] font-bold uppercase truncate flex-1">{previewDocument.fileName}</span>
+
+                            {/* Zoom controls — only for images */}
+                            {previewDocument.contentType?.startsWith('image/') && (
+                                <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                        onClick={handleZoomOut}
+                                        disabled={imageZoom <= MIN_ZOOM}
+                                        className="p-1 hover:bg-gray-700 rounded disabled:opacity-30 transition-colors"
+                                        title="Zoom out"
+                                    >
+                                        <ZoomOut className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={handleZoomReset}
+                                        className="px-2 py-0.5 text-[10px] font-mono hover:bg-gray-700 rounded transition-colors min-w-[44px] text-center"
+                                        title="Reset zoom"
+                                    >
+                                        {Math.round(imageZoom * 100)}%
+                                    </button>
+                                    <button
+                                        onClick={handleZoomIn}
+                                        disabled={imageZoom >= MAX_ZOOM}
+                                        className="p-1 hover:bg-gray-700 rounded disabled:opacity-30 transition-colors"
+                                        title="Zoom in"
+                                    >
+                                        <ZoomIn className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        onClick={handleZoomReset}
+                                        className="p-1 hover:bg-gray-700 rounded transition-colors"
+                                        title="Reset to fit"
+                                    >
+                                        <RotateCcw className="w-3 h-3" />
+                                    </button>
+                                    <div className="w-px h-4 bg-gray-700 mx-1" />
+                                </div>
+                            )}
+
+                            <button onClick={closePreview} className="p-1 hover:bg-red-500 rounded shrink-0"><X className="w-4 h-4" /></button>
                         </div>
-                        <div className="flex-1 bg-black flex items-center justify-center p-4 overflow-hidden">
+                        {/* Image viewer — transform-based zoom+pan, GPU-accelerated */}
+                        <div
+                            ref={imageContainerRef}
+                            className="flex-1 bg-black overflow-hidden select-none"
+                            style={{ cursor: imageZoom > 1 ? 'grab' : 'zoom-in' }}
+                            onMouseDown={handleMouseDown}
+                            onMouseMove={handleMouseMove}
+                            onMouseUp={stopDragging}
+                            onMouseLeave={stopDragging}
+                        >
                            {previewLoading ? (
-                               <Loader className="w-6 h-6 animate-spin text-white" />
+                               <div className="w-full h-full flex items-center justify-center">
+                                   <Loader className="w-6 h-6 animate-spin text-white" />
+                               </div>
                            ) : previewBlobUrl ? (
                                previewDocument.contentType?.startsWith('image/') ? (
-                                   <img src={previewBlobUrl} className="max-w-full max-h-full object-contain" alt="Preview" />
+                                   <div className="w-full h-full flex items-center justify-center">
+                                       <img
+                                           src={previewBlobUrl}
+                                           alt="Preview"
+                                           draggable={false}
+                                           style={{
+                                               display: 'block',
+                                               maxWidth: '100%',
+                                               maxHeight: '100%',
+                                               objectFit: 'contain',
+                                               // GPU-accelerated: no layout reflow, silky smooth
+                                               transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${imageZoom})`,
+                                               transformOrigin: 'center center',
+                                               // Transition only for button clicks; wheel/drag skip it via direct ref updates
+                                               transition: isDragging.current ? 'none' : 'transform 0.12s cubic-bezier(0.25,0.46,0.45,0.94)',
+                                               willChange: 'transform',
+                                               pointerEvents: 'none',
+                                               userSelect: 'none',
+                                           }}
+                                       />
+                                   </div>
                                ) : (
                                    <iframe src={previewBlobUrl} className="w-full h-full border-0 bg-white" title="PDF Viewer" />
                                )
                            ) : null}
                         </div>
+                        {/* Hint bar */}
+                        {previewDocument.contentType?.startsWith('image/') && !previewLoading && previewBlobUrl && (
+                            <div className="px-3 py-1 bg-gray-900 text-gray-500 text-[9px] text-center">
+                                Scroll to zoom toward cursor • Drag to pan • Buttons or % to reset
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

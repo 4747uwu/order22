@@ -139,7 +139,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
                             onUploadProgress: (progressEvent) => {
                                 setUploadProgress(Math.round((progressEvent.loaded * 100) / progressEvent.total));
                             },
-                            timeout: 600000 
+                            timeout: 3600000 // 60 minutes — allows ~2GB uploads on slower connections
                         });
 
                         setZipQueue(prev => prev.map(z => z.id === zipEntry.id ? { ...z, status: 'done', result: response.data } : z));
@@ -310,7 +310,7 @@ const ManualStudyCreator = ({ isOpen, onClose, onSuccess }) => {
 
                             {/* ZIP Dropzone */}
                             <div>
-                                <label className="block text-[8px] font-bold text-gray-800 mb-1 uppercase">Upload ZIP File(s) <span className="text-red-500">*</span> <span className="text-gray-500 font-medium">(MAX 500MB EA)</span></label>
+                                <label className="block text-[8px] font-bold text-gray-800 mb-1 uppercase">Upload ZIP File(s) <span className="text-red-500">*</span> <span className="text-gray-500 font-medium">(MAX 2GB EA)</span></label>
                                 <div className="border border-dashed border-gray-400 rounded p-4 text-center hover:border-gray-900 hover:bg-gray-50 transition-colors cursor-pointer bg-white">
                                     <input type="file" accept=".zip" multiple onChange={handleZipFileChange} className="hidden" id="zip-upload" />
                                     <label htmlFor="zip-upload" className="cursor-pointer block w-full h-full">

@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 import Navbar from '../../components/common/Navbar';
 import api from '../../services/api';
 import TextToHtmlService from '../../services/textToHtml.js';
-import RichTextEditor from '../../components/common/RichTextEditor';
+import ReportEditor, { preprocessContent } from '../../components/OnlineReportingSystem/ReportEditorWithOhif';
 import {
   Plus, Search, Trash2, Eye, Globe, User, FileText,
-  Tag, X, Save, Code, Type, Loader2, ChevronLeft, ChevronRight, Pencil
+  Tag, X, Save, Code, Type, Loader2, ChevronLeft, ChevronRight, Pencil, ArrowLeft, Building2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 const DoctorTemplates = () => {
   const { currentUser, currentOrganizationContext } = useAuth();
+  const navigate = useNavigate();
 
   const [templates, setTemplates] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -98,20 +100,23 @@ const DoctorTemplates = () => {
   }, []);
 
   const handleEditTemplate = useCallback((template) => {
+    // Pre-process the template HTML so Word-style bullets get converted to real <ul><li>
+    const processedHtml = preprocessContent(template.htmlContent || '');
+
     setSelectedTemplate(template);
     setFormData({
-      title: template.title, category: template.category, htmlContent: template.htmlContent,
+      title: template.title, category: template.category, htmlContent: processedHtml,
       description: template.templateMetadata?.description || '',
       tags: template.templateMetadata?.tags || [],
       isDefault: template.templateMetadata?.isDefault || false
     });
     try {
-      setPlainTextContent(TextToHtmlService.htmlToText(template.htmlContent));
+      setPlainTextContent(TextToHtmlService.htmlToText(processedHtml));
       setInputMode('text');
     } catch {
       setPlainTextContent(''); setInputMode('html');
     }
-    setPreviewHtml(template.htmlContent); setShowPreview(false);
+    setPreviewHtml(processedHtml); setShowPreview(false);
     setFormErrors({}); setShowEditModal(true);
   }, []);
 
@@ -168,18 +173,24 @@ const DoctorTemplates = () => {
     if (!formData.title.trim()) errors.title = 'Title is required';
     else if (formData.title.trim().length < 3) errors.title = 'Min 3 characters';
     if (!formData.category) errors.category = 'Category is required';
-    if (!formData.htmlContent.trim()) errors.htmlContent = 'Content is required';
+    // Validate against htmlContent — same as admin template page
+    const plainText = (() => {
+      if (!formData.htmlContent) return '';
+      const tmp = document.createElement('div');
+      tmp.innerHTML = formData.htmlContent;
+      return (tmp.textContent || tmp.innerText || '').trim();
+    })();
+    if (!plainText) errors.content = 'Content is required';
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
   const handleSubmitTemplate = async (e) => {
     e.preventDefault();
-    if (inputMode === 'text' && plainTextContent.trim() && !formData.htmlContent.trim()) {
-      handleTextToHtml();
-      await new Promise(r => setTimeout(r, 100));
+    if (!validateForm()) {
+      toast.error('Please fill in all required fields');
+      return;
     }
-    if (!validateForm()) return;
 
     try {
       const isEdit = showEditModal && selectedTemplate;
@@ -187,6 +198,7 @@ const DoctorTemplates = () => {
       const method = isEdit ? 'put' : 'post';
       const submissionData = {
         ...formData,
+        htmlContent: formData.htmlContent,
         templateMetadata: {
           description: formData.description, tags: formData.tags,
           isDefault: formData.isDefault,
@@ -231,6 +243,23 @@ const DoctorTemplates = () => {
     setShowTableDialog(false);
   };
 
+  const additionalActions = [
+    {
+      label: 'Back',
+      icon: ArrowLeft,
+      onClick: () => navigate(-1),
+      variant: 'secondary',
+      tooltip: 'Back to dashboard'
+    },
+    {
+      label: 'Create Template',
+      icon: Plus,
+      onClick: handleCreateTemplate,
+      variant: 'primary',
+      tooltip: 'Create new template'
+    }
+  ];
+
   // ── Render ──
 
   return (
@@ -240,10 +269,7 @@ const DoctorTemplates = () => {
         subtitle={`${currentOrganizationContext || 'Organization'} • Report Templates`}
         showOrganizationSelector={false}
         onRefresh={fetchTemplates}
-        additionalActions={[{
-          label: 'Create Template', icon: Plus, onClick: handleCreateTemplate,
-          variant: 'primary', tooltip: 'Create new template'
-        }]}
+        additionalActions={additionalActions}
         notifications={0}
       />
 
@@ -453,203 +479,189 @@ const DoctorTemplates = () => {
 
       {/* ── Create/Edit Modal ── */}
       {(showCreateModal || showEditModal) && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl border border-gray-200/60 flex flex-col" style={{ maxHeight: 'min(92vh, 780px)' }}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
+        <div className="fixed inset-0 bg-black/20 backdrop-blur-[1px] flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl w-[97vw] h-[96vh] max-w-none overflow-hidden flex flex-col">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-teal-600 to-teal-700">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center">
-                  <FileText className="w-4 h-4 text-white" />
-                </div>
-                <div>
-                  <h3 className="text-[14px] font-bold text-gray-900">{showEditModal ? 'Edit Template' : 'Create Template'}</h3>
-                  <p className="text-[10px] text-gray-400">Paste text — auto-converts to HTML</p>
-                </div>
+                <Building2 className="w-6 h-6 text-white" />
+                <h2 className="text-xl font-bold text-white">
+                  {showEditModal ? 'Edit Template' : 'Create Template'}
+                </h2>
               </div>
-              <button onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-all">
-                <X className="w-4 h-4" />
+              <button
+                onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                className="text-white hover:text-gray-200 transition-colors"
+              >
+                <X className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmitTemplate} className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-1 flex overflow-hidden">
+            {/* Modal Body — Two-column: form (left) + editor (right) */}
+            <form onSubmit={handleSubmitTemplate} className="flex-1 flex min-h-0 overflow-hidden">
 
-                {/* Left — Fields */}
-                <div className="w-[280px] shrink-0 border-r border-gray-100 overflow-y-auto p-4 space-y-3">
-                  {/* Title */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
-                    <input
-                      type="text" value={formData.title}
-                      onChange={(e) => handleFormChange('title', e.target.value)}
-                      placeholder="Template title"
-                      className={`w-full h-8 px-2.5 text-[12px] border rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-green-500/20 focus:border-green-400 outline-none transition-all
-                        ${formErrors.title ? 'border-red-300 bg-red-50/50' : 'border-gray-200'}`}
+              {/* LEFT: Form fields */}
+              <div className="w-[340px] shrink-0 border-r border-gray-200 bg-gray-50/50 overflow-y-auto p-4 space-y-3">
+                {/* Title */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Title *</label>
+                  <input
+                    type="text" value={formData.title}
+                    onChange={(e) => handleFormChange('title', e.target.value)}
+                    placeholder="Template title"
+                    className={`w-full h-8 px-2.5 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 focus:border-teal-400 outline-none ${
+                      formErrors.title ? 'border-red-400' : 'border-gray-200'
+                    }`}
+                  />
+                  {formErrors.title && <p className="text-[10px] text-red-500 mt-0.5">{formErrors.title}</p>}
+                </div>
+
+                {/* Category */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
+                  <select
+                    value={formData.category}
+                    onChange={(e) => handleFormChange('category', e.target.value)}
+                    className={`w-full h-8 px-2 text-[12px] border rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none ${
+                      formErrors.category ? 'border-red-400' : 'border-gray-200'
+                    }`}
+                  >
+                    {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => handleFormChange('description', e.target.value)}
+                    placeholder="Brief description"
+                    rows={3}
+                    className="w-full px-2.5 py-1.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none resize-none"
+                  />
+                </div>
+
+                {/* Tags */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
+                  <input
+                    type="text" value={formData.tags.join(', ')}
+                    onChange={(e) => handleTagsChange(e.target.value)}
+                    placeholder="chest, xray, normal"
+                    className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg focus:ring-2 focus:ring-teal-500/20 outline-none"
+                  />
+                  <p className="text-[9px] text-gray-400 mt-0.5">Comma-separated</p>
+                </div>
+
+                {/* Input Mode */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Input Mode</label>
+                  <div className="flex bg-gray-100 rounded-lg p-0.5">
+                    <button type="button" onClick={() => handleInputModeChange('text')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                        inputMode === 'text' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                      <Type className="w-3.5 h-3.5" /> Text
+                    </button>
+                    <button type="button" onClick={() => handleInputModeChange('html')}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all ${
+                        inputMode === 'html' ? 'bg-teal-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}>
+                      <Code className="w-3.5 h-3.5" /> HTML
+                    </button>
+                  </div>
+                  <p className="text-[9px] text-gray-400 mt-0.5 italic">
+                    {inputMode === 'text' ? 'WYSIWYG editor' : 'Raw HTML textarea'}
+                  </p>
+                </div>
+
+                {/* Default checkbox */}
+                <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer pt-1">
+                  <input
+                    type="checkbox" checked={formData.isDefault}
+                    onChange={(e) => handleFormChange('isDefault', e.target.checked)}
+                    className="w-3.5 h-3.5 text-teal-600 rounded border-gray-300 focus:ring-teal-500"
+                  />
+                  <span className="font-medium">Set as default</span>
+                </label>
+
+                {formErrors.content && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+                    <p className="text-[10px] text-red-600 font-semibold">{formErrors.content}</p>
+                  </div>
+                )}
+
+                {/* Form Actions */}
+                <div className="pt-3 border-t border-gray-200 flex flex-col gap-2">
+                  <button type="submit"
+                    className="w-full flex items-center justify-center gap-1.5 px-4 h-9 text-[12px] font-bold text-white bg-teal-600 rounded-lg hover:bg-teal-700 transition-all">
+                    <Save className="w-3.5 h-3.5" />
+                    {showEditModal ? 'Update Template' : 'Create Template'}
+                  </button>
+                  <button type="button"
+                    onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
+                    className="w-full px-3 h-9 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+
+              {/* RIGHT: Editor fills remaining space */}
+              <div className="flex-1 min-w-0 min-h-0 flex flex-col bg-white">
+                <div className="px-4 py-2 border-b border-gray-200 bg-gray-50/50 shrink-0">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Content *</label>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {inputMode === 'text' ? (
+                    <ReportEditor
+                      content={formData.htmlContent}
+                      onChange={(html) => handleFormChange('htmlContent', html)}
                     />
-                    {formErrors.title && <p className="text-[10px] text-red-500 mt-0.5">{formErrors.title}</p>}
-                  </div>
-
-                  {/* Category */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Category *</label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) => handleFormChange('category', e.target.value)}
-                      className={`w-full h-8 px-2.5 text-[12px] border rounded-lg bg-gray-50/50 focus:ring-2 focus:ring-green-500/20 outline-none
-                        ${formErrors.category ? 'border-red-300' : 'border-gray-200'}`}
-                    >
-                      {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Description */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Description</label>
-                    <textarea
-                      value={formData.description}
-                      onChange={(e) => handleFormChange('description', e.target.value)}
-                      placeholder="Brief description"
-                      rows={2}
-                      className="w-full px-2.5 py-2 text-[12px] border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-green-500/20 outline-none resize-none"
-                    />
-                  </div>
-
-                  {/* Tags */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Tags</label>
-                    <input
-                      type="text" value={formData.tags.join(', ')}
-                      onChange={(e) => handleTagsChange(e.target.value)}
-                      placeholder="chest, xray, normal"
-                      className="w-full h-8 px-2.5 text-[12px] border border-gray-200 rounded-lg bg-gray-50/50 focus:bg-white focus:ring-2 focus:ring-green-500/20 outline-none"
-                    />
-                  </div>
-
-                  {/* WYSIWYG hint */}
-                  {inputMode === 'text' && (
-                    <div className="rounded-lg border border-green-200 bg-green-50/50 p-3">
-                      <p className="text-[10px] text-green-700 italic">WYSIWYG editor — use the toolbar to format text directly</p>
+                  ) : (
+                    <div className="flex flex-col h-full gap-1 p-3">
+                      {/* Table insert for HTML mode */}
+                      <div className="flex items-center gap-1.5 mb-1 shrink-0">
+                        {showTableDialog ? (
+                          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
+                            <span className="text-[10px] text-gray-500 font-medium">Rows:</span>
+                            <input type="number" min="1" max="20" value={tableRows}
+                              onChange={e => setTableRows(e.target.value)}
+                              className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <span className="text-[10px] text-gray-500 font-medium">Cols:</span>
+                            <input type="number" min="1" max="10" value={tableCols}
+                              onChange={e => setTableCols(e.target.value)}
+                              className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
+                            <button type="button" onClick={() => { insertTableToContent(); setShowTableDialog(false); }}
+                              className="px-2 py-0.5 text-[10px] font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded">
+                              Insert
+                            </button>
+                            <button type="button" onClick={() => setShowTableDialog(false)}
+                              className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">✕</button>
+                          </div>
+                        ) : (
+                          <button type="button" onClick={() => setShowTableDialog(true)}
+                            className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
+                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
+                            </svg>
+                            Insert Table
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        value={formData.htmlContent}
+                        onChange={(e) => handleFormChange('htmlContent', e.target.value)}
+                        placeholder="Enter HTML content..."
+                        className={`flex-1 w-full px-4 py-3 text-[12px] border-0 font-mono resize-none focus:outline-none ${
+                          formErrors.content ? 'bg-red-50' : ''
+                        }`}
+                      />
                     </div>
                   )}
-
-                  {/* Default checkbox */}
-                  <label className="flex items-center gap-2 text-[11px] text-gray-600 cursor-pointer pt-1">
-                    <input
-                      type="checkbox" checked={formData.isDefault}
-                      onChange={(e) => handleFormChange('isDefault', e.target.checked)}
-                      className="w-3.5 h-3.5 text-green-600 rounded border-gray-300 focus:ring-green-500"
-                    />
-                    <span className="font-medium">Set as default</span>
-                  </label>
-                </div>
-
-                {/* Right — Content + Preview */}
-                <div className="flex-1 flex flex-col min-w-0">
-                  {/* Mode toggle bar */}
-                  <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 bg-gray-50/30 shrink-0">
-                    <div className="flex bg-white rounded-lg p-0.5 border border-gray-200">
-                      {[
-                        { key: 'text', icon: Type, label: 'Text' },
-                        { key: 'html', icon: Code, label: 'HTML' }
-                      ].map(({ key, icon: Icon, label }) => (
-                        <button key={key} type="button" onClick={() => handleInputModeChange(key)}
-                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all
-                            ${inputMode === key ? 'bg-green-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                          <Icon className="w-3.5 h-3.5" /> {label}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button type="button" onClick={() => setShowPreview(!showPreview)}
-                        className={`flex items-center gap-1 px-2.5 h-7 text-[10px] font-bold rounded-lg transition-all
-                          ${showPreview ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                        <Eye className="w-3 h-3" /> {showPreview ? 'Hide' : 'Preview'}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Textarea + optional preview */}
-                  <div className="flex-1 flex overflow-hidden">
-                    <div className={`${showPreview ? 'w-1/2' : 'w-full'} p-3 overflow-y-auto`}>
-                      {inputMode === 'text' ? (
-                        <div className="h-full flex flex-col">
-                          <RichTextEditor
-                            value={formData.htmlContent}
-                            onChange={(html) => handleFormChange('htmlContent', html)}
-                            placeholder="Start typing your template content..."
-                            minHeight="300px"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex flex-col h-full gap-1">
-                          {/* Table insert for HTML mode */}
-                          <div className="flex items-center gap-1.5 mb-1 shrink-0">
-                            {showTableDialog ? (
-                              <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-2 py-1">
-                                <span className="text-[10px] text-gray-500 font-medium">Rows:</span>
-                                <input type="number" min="1" max="20" value={tableRows}
-                                  onChange={e => setTableRows(e.target.value)}
-                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                                <span className="text-[10px] text-gray-500 font-medium">Cols:</span>
-                                <input type="number" min="1" max="10" value={tableCols}
-                                  onChange={e => setTableCols(e.target.value)}
-                                  className="w-10 px-1 py-0.5 text-[10px] border border-gray-300 rounded" />
-                                <button type="button" onClick={() => { insertTableToContent(); setShowTableDialog(false); }}
-                                  className="px-2 py-0.5 text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 rounded">
-                                  Insert
-                                </button>
-                                <button type="button" onClick={() => setShowTableDialog(false)}
-                                  className="px-1.5 py-0.5 text-[10px] text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 rounded">✕</button>
-                              </div>
-                            ) : (
-                              <button type="button" onClick={() => setShowTableDialog(true)}
-                                className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-lg transition-colors">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M5 4a3 3 0 00-3 3v6a3 3 0 003 3h10a3 3 0 003-3V7a3 3 0 00-3-3H5zm-1 9v-1h5v2H5a1 1 0 01-1-1zm7 1h4a1 1 0 001-1v-1h-5v2zm0-4h5V8h-5v2zM9 8H4v2h5V8z"/>
-                                </svg>
-                                Insert Table
-                              </button>
-                            )}
-                          </div>
-                          <textarea
-                            value={formData.htmlContent}
-                            onChange={(e) => handleFormChange('htmlContent', e.target.value)}
-                            placeholder="Enter HTML content..."
-                            className={`flex-1 w-full px-3 py-2.5 text-[12px] border rounded-lg font-mono resize-none focus:ring-2 focus:ring-green-500/20 outline-none
-                              ${formErrors.htmlContent ? 'border-red-300 bg-red-50/50' : 'border-gray-200 bg-gray-50/30'}`}
-                          />
-                        </div>
-                      )}
-                      {formErrors.htmlContent && <p className="text-[10px] text-red-500 mt-1">{formErrors.htmlContent}</p>}
-                    </div>
-
-                    {showPreview && (
-                      <div className="w-1/2 border-l border-gray-100 p-3 overflow-y-auto bg-gray-50/30">
-                        <div className="border border-gray-200 rounded-lg bg-white p-4 prose max-w-none"
-                          style={{ fontSize: '11pt', fontFamily: 'Arial, sans-serif', lineHeight: '1.5', minHeight: '300px' }}
-                          dangerouslySetInnerHTML={{ __html: previewHtml || formData.htmlContent || '<p style="color:#aaa">No content to preview</p>' }}
-                        />
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
 
-              {/* Footer */}
-              <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-gray-100 bg-gray-50/50 shrink-0">
-                <button type="button"
-                  onClick={() => { setShowCreateModal(false); setShowEditModal(false); }}
-                  className="px-3 h-8 text-[12px] font-semibold text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all">
-                  Cancel
-                </button>
-                <button type="submit"
-                  disabled={inputMode === 'text' && !plainTextContent.trim()}
-                  className="flex items-center gap-1.5 px-4 h-8 text-[12px] font-bold text-white bg-gradient-to-r from-green-600 to-emerald-500 rounded-lg hover:from-green-700 hover:to-emerald-600 shadow-sm shadow-green-200 transition-all disabled:opacity-50">
-                  <Save className="w-3.5 h-3.5" /> {showEditModal ? 'Update' : 'Create'}
-                </button>
-              </div>
             </form>
           </div>
         </div>
