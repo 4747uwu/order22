@@ -9,7 +9,6 @@ export const r2Config = {
     secretAccessKey: '1a925bae4d85529b3c8e68460b29d03de672a4d9fbba2a7fd430af0edc4f2a91',
     zipBucket: 'studyzip',
     
-    // ✅ FIXED: Your actual public URL
     publicUrlPattern: 'https://pub-6f09f78e289e4cbab0a82e99a603f535.r2.dev',
     
     customDomain: process.env.R2_CUSTOM_DOMAIN || null,

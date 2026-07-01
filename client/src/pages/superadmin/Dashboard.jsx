@@ -172,7 +172,9 @@ const SuperAdminDashboard = () => {
           notes: orgData.notes || '',
           adminEmail: orgData.primaryAdmin?.email || '',
           adminPassword: orgData.primaryAdmin?.tempPassword || '',
-          adminFullName: orgData.primaryAdmin?.fullName || ''
+          adminFullName: orgData.primaryAdmin?.fullName || '',
+          hasAdmin: !!orgData.primaryAdmin,
+          adminStatus: orgData.adminStatus || 'none' // 'active', 'inactive', or 'none'
         });
         setFormErrors({});
         setShowEditModal(true);
@@ -229,7 +231,9 @@ const SuperAdminDashboard = () => {
     if (!formData.displayName?.trim()) errors.displayName = 'Display name is required';
     if (!formData.companyType) errors.companyType = 'Company type is required';
     
-    if (!showEditModal) {
+    // Validate admin fields when creating OR when editing with no admin
+    const needsAdminValidation = !showEditModal || formData.adminStatus === 'none';
+    if (needsAdminValidation) {
       if (!formData.adminEmail?.trim()) errors.adminEmail = 'Admin username is required';
       if (!formData.adminPassword?.trim()) errors.adminPassword = 'Admin password is required';
       if (!formData.adminFullName?.trim()) errors.adminFullName = 'Admin full name is required';
@@ -247,7 +251,12 @@ const SuperAdminDashboard = () => {
     setIsSubmitting(true);
     try {
       if (showEditModal) {
-        await api.put(`/superadmin/organizations/${formData._id}`, formData);
+        const submitData = { ...formData };
+        // If editing and no admin exists, tell backend to create one
+        if (formData.adminStatus === 'none' && formData.adminEmail && formData.adminPassword && formData.adminFullName) {
+          submitData.adminAction = 'create';
+        }
+        await api.put(`/superadmin/organizations/${submitData._id}`, submitData);
       } else {
         await api.post('/superadmin/organizations', formData);
       }
@@ -565,7 +574,7 @@ const SuperAdminDashboard = () => {
           formErrors={formErrors}
           isSubmitting={isSubmitting}
           onSubmit={handleSubmit}
-          isEditMode={showEditModal}
+          isEdit={showEditModal}
         />
       )}
     </div>

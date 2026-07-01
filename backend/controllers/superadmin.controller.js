@@ -104,19 +104,36 @@ export const getOrganizationById = async (req, res) => {
             });
         }
 
-        // Get detailed stats and admin users WITH tempPassword
-        const [userCount, labCount, doctorCount, adminUsers] = await Promise.all([
+        // Get detailed stats
+        const [userCount, labCount, doctorCount] = await Promise.all([
             User.countDocuments({ organization: organization._id, isActive: true }),
             Lab.countDocuments({ organization: organization._id, isActive: true }),
-            Doctor.countDocuments({ organization: organization._id, isActiveProfile: true }),
-            User.find({ 
-                organization: organization._id, 
-                role: 'admin',
-                isActive: true 
-            }).select('fullName email username tempPassword') // ✅ ADD tempPassword
+            Doctor.countDocuments({ organization: organization._id, isActiveProfile: true })
         ]);
 
-        // Get the primary admin user (first one created)
+        // Find admin users - first try active, then fall back to any (including inactive)
+        let adminUsers = await User.find({ 
+            organization: organization._id, 
+            role: 'admin',
+            isActive: true 
+        }).select('fullName email username tempPassword isActive').sort({ createdAt: 1 });
+
+        let adminStatus = 'active'; // active admin found
+
+        if (adminUsers.length === 0) {
+            // No active admin — look for inactive admins
+            adminUsers = await User.find({ 
+                organization: organization._id, 
+                role: 'admin'
+            }).select('fullName email username tempPassword isActive').sort({ createdAt: 1 });
+
+            if (adminUsers.length > 0) {
+                adminStatus = 'inactive'; // admin exists but is inactive
+            } else {
+                adminStatus = 'none'; // no admin at all
+            }
+        }
+
         const primaryAdmin = adminUsers.length > 0 ? adminUsers[0] : null;
 
         res.json({
@@ -129,13 +146,15 @@ export const getOrganizationById = async (req, res) => {
                     activeDoctors: doctorCount,
                     adminUsers
                 },
-                // ✅ ADD primary admin details for edit form
                 primaryAdmin: primaryAdmin ? {
+                    _id: primaryAdmin._id,
                     email: primaryAdmin.email,
                     fullName: primaryAdmin.fullName,
                     username: primaryAdmin.username,
-                    tempPassword: primaryAdmin.tempPassword // Plain text password for display
-                } : null
+                    tempPassword: primaryAdmin.tempPassword,
+                    isActive: primaryAdmin.isActive
+                } : null,
+                adminStatus // 'active', 'inactive', or 'none'
             }
         });
 
@@ -281,6 +300,9 @@ export const createOrganization = async (req, res) => {
 
 // Update organization
 export const updateOrganization = async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
     try {
         const { id } = req.params;
         const updates = req.body;
@@ -291,6 +313,34 @@ export const updateOrganization = async (req, res) => {
                 message: 'Invalid organization ID'
             });
         }
+
+        // Check if this is a reactivation (status changing to 'active')
+        const isReactivation = updates.status === 'active';
+        let previousOrg = null;
+
+        if (isReactivation) {
+            previousOrg = await Organization.findById(id).session(session);
+            if (!previousOrg) {
+                await session.abortTransaction();
+                session.endSession();
+                return res.status(404).json({
+                    success: false,
+                    message: 'Organization not found'
+                });
+            }
+        }
+
+        // Extract admin fields before updating org (these aren't org model fields)
+        const adminEmail = updates.adminEmail;
+        const adminPassword = updates.adminPassword;
+        const adminFullName = updates.adminFullName;
+        const adminAction = updates.adminAction; // 'create' or 'reactivate'
+        delete updates.adminEmail;
+        delete updates.adminPassword;
+        delete updates.adminFullName;
+        delete updates.adminAction;
+        delete updates.hasAdmin;
+        delete updates.adminStatus;
 
         // Remove fields that shouldn't be updated directly
         delete updates._id;
@@ -306,31 +356,131 @@ export const updateOrganization = async (req, res) => {
             updates,
             { 
                 new: true, 
-                runValidators: true 
+                runValidators: true,
+                session 
             }
         ).populate('createdBy', 'fullName email')
          .populate('lastModifiedBy', 'fullName email');
 
         if (!organization) {
+            await session.abortTransaction();
+            session.endSession();
             return res.status(404).json({
                 success: false,
                 message: 'Organization not found'
             });
         }
 
+        // Handle admin user creation/reactivation
+        let adminResult = null;
+        if (adminAction && adminEmail && adminPassword && adminFullName) {
+            if (adminAction === 'reactivate') {
+                // Reactivate existing inactive admin
+                const existingAdmin = await User.findOne({
+                    organization: organization._id,
+                    role: 'admin'
+                }).session(session);
+
+                if (existingAdmin) {
+                    existingAdmin.isActive = true;
+                    existingAdmin.lastModifiedBy = req.user._id;
+                    await existingAdmin.save({ session });
+                    adminResult = 'reactivated';
+                    console.log(`[Admin] Reactivated admin "${existingAdmin.email}" for org "${organization.name}"`);
+                }
+            } else if (adminAction === 'create') {
+                // Create a brand new admin user
+                const finalAdminEmail = adminEmail.includes('@')
+                    ? adminEmail.toLowerCase().trim()
+                    : `${adminEmail.toLowerCase().trim()}@bharatpacs.com`;
+
+                // Check if email already exists
+                const existingUser = await User.findOne({ email: finalAdminEmail }).session(session);
+                if (existingUser) {
+                    await session.abortTransaction();
+                    session.endSession();
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Admin email already exists'
+                    });
+                }
+
+                const newAdmin = new User({
+                    organization: organization._id,
+                    organizationIdentifier: organization.identifier,
+                    username: finalAdminEmail.split('@')[0].toLowerCase(),
+                    email: finalAdminEmail,
+                    password: adminPassword,
+                    tempPassword: adminPassword,
+                    fullName: adminFullName.trim(),
+                    role: 'admin',
+                    createdBy: req.user._id
+                });
+
+                await newAdmin.save({ session });
+                adminResult = 'created';
+                console.log(`[Admin] Created new admin "${finalAdminEmail}" for org "${organization.name}"`);
+            }
+        }
+
+        // If reactivating, also reactivate all associated users, labs, and doctors
+        if (isReactivation && previousOrg && previousOrg.status !== 'active') {
+            console.log(`[Reactivation] Reactivating all users, labs, and doctors for org "${organization.name}" (${organization.identifier})`);
+
+            await User.updateMany(
+                { organization: organization._id },
+                { 
+                    isActive: true,
+                    lastModifiedBy: req.user._id
+                },
+                { session }
+            );
+
+            await Lab.updateMany(
+                { organization: organization._id },
+                { 
+                    isActive: true,
+                    lastModifiedBy: req.user._id
+                },
+                { session }
+            );
+
+            await Doctor.updateMany(
+                { organization: organization._id },
+                { 
+                    isActiveProfile: true,
+                    lastModifiedBy: req.user._id
+                },
+                { session }
+            );
+        }
+
+        await session.commitTransaction();
+
+        let message = 'Organization updated successfully';
+        if (isReactivation && previousOrg?.status !== 'active') {
+            message = 'Organization reactivated successfully — all users, labs, and doctors restored';
+        }
+        if (adminResult === 'created') {
+            message += '. New admin user created.';
+        } else if (adminResult === 'reactivated') {
+            message += '. Admin user reactivated.';
+        }
+
         res.json({
             success: true,
-            message: 'Organization updated successfully',
+            message,
             data: organization
         });
 
     } catch (error) {
+        await session.abortTransaction();
         console.error('Update organization error:', error);
         
         if (error.code === 11000) {
             return res.status(400).json({
                 success: false,
-                message: 'Duplicate key error'
+                message: 'Duplicate key error — admin email may already exist'
             });
         }
 
@@ -338,6 +488,8 @@ export const updateOrganization = async (req, res) => {
             success: false,
             message: 'Failed to update organization'
         });
+    } finally {
+        session.endSession();
     }
 };
 

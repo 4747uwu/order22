@@ -42,8 +42,7 @@ const OrganizationForm = ({
       id: 2, 
       title: 'Admin', 
       icon: User,
-      description: 'Administrator account',
-      hideInEdit: true
+      description: 'Administrator account'
     },
     { 
       id: 3, 
@@ -177,7 +176,7 @@ const OrganizationForm = ({
   };
 
   const renderStepContent = () => {
-    const actualStep = isEdit && currentStep >= 2 ? currentStep + 1 : currentStep;
+    const actualStep = currentStep;
     
     switch (actualStep) {
       case 1:
@@ -288,23 +287,78 @@ const OrganizationForm = ({
           </div>
         );
 
-      case 2:
+      case 2: {
+        // Determine if admin fields should be editable
+        const adminEditable = !isEdit || formData.adminStatus === 'none';
+        const adminIsInactive = isEdit && formData.adminStatus === 'inactive';
+        const adminIsActive = isEdit && formData.adminStatus === 'active';
+
         return (
           <div className="space-y-6">
-            {isEdit && (
+            {/* Status banners based on admin state */}
+            {adminIsActive && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-green-800">
+                  <strong>✓ Active Admin:</strong> This organization has an active administrator account.
+                </p>
+              </div>
+            )}
+
+            {adminIsInactive && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 mb-4">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-amber-800 font-semibold">
+                      ⚠ Admin Deactivated
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      This admin was deactivated when the organization was deactivated. You can reactivate them or create a new admin.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData(prev => ({
+                        ...prev,
+                        adminAction: 'reactivate',
+                        adminStatus: 'active'
+                      }));
+                    }}
+                    className="ml-3 px-4 py-2 bg-amber-600 text-white text-xs font-bold rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
+                    disabled={isSubmitting}
+                  >
+                    Reactivate Admin
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {isEdit && formData.adminStatus === 'none' && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-red-800 font-semibold">
+                  ✕ No Admin Found
+                </p>
+                <p className="text-xs text-red-700 mt-1">
+                  This organization has no administrator account. Fill in the details below to create one.
+                </p>
+              </div>
+            )}
+
+            {!isEdit && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <p className="text-sm text-blue-800">
-                  <strong>Note:</strong> Admin credentials are displayed from the organization's primary administrator account.
+                  <strong>Note:</strong> Create an administrator account for this organization.
                 </p>
               </div>
             )}
             
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Username * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
+                Admin Username *
+                {adminIsActive && <span className="text-xs text-gray-500 ml-1">(Read-only)</span>}
               </label>
               <div className={`flex rounded-lg border overflow-hidden transition-all ${
-                isEdit
+                !adminEditable
                   ? 'bg-gray-100 border-gray-300'
                   : formErrors.adminEmail
                   ? 'border-red-500 bg-red-50 ring-2 ring-red-300'
@@ -316,14 +370,14 @@ const OrganizationForm = ({
                   onChange={(e) => updateFormData('adminEmail', e.target.value.replace(/[@\s]/g, '').toLowerCase())}
                   className="flex-1 px-4 py-3 outline-none border-none bg-transparent focus:ring-0"
                   placeholder="username"
-                  disabled={isEdit || isSubmitting}
-                  readOnly={isEdit}
+                  disabled={!adminEditable || isSubmitting}
+                  readOnly={!adminEditable}
                 />
                 <span className="flex items-center px-3 bg-gray-100 text-gray-500 text-sm border-l border-gray-300 whitespace-nowrap">
                   @bharatpacs.com
                 </span>
               </div>
-              {!isEdit && formData.adminEmail && (
+              {adminEditable && formData.adminEmail && (
                 <p className="text-xs text-gray-400 mt-1">Login: <strong>{formData.adminEmail}@bharatpacs.com</strong></p>
               )}
               {formErrors.adminEmail && <p className="text-sm text-red-600 mt-1">{formErrors.adminEmail}</p>}
@@ -331,49 +385,52 @@ const OrganizationForm = ({
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Password * {isEdit && <span className="text-xs text-gray-500">(Current password)</span>}
+                Admin Password *
+                {adminIsActive && <span className="text-xs text-gray-500 ml-1">(Current password)</span>}
               </label>
               <input
                 type="text"
                 value={formData.adminPassword || ''}
                 onChange={(e) => updateFormData('adminPassword', e.target.value)}
                 className={`w-full px-4 py-3 border rounded-lg font-mono transition-all ${
-                  isEdit
+                  !adminEditable
                     ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
                     : formErrors.adminPassword 
                     ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
                     : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
                 }`}
-                placeholder={isEdit ? "Current password" : "Strong password"}
-                disabled={isEdit || isSubmitting}
-                readOnly={isEdit}
+                placeholder={adminEditable ? "Strong password" : "Current password"}
+                disabled={!adminEditable || isSubmitting}
+                readOnly={!adminEditable}
               />
               {formErrors.adminPassword && <p className="text-sm text-red-600 mt-1">{formErrors.adminPassword}</p>}
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Admin Full Name * {isEdit && <span className="text-xs text-gray-500">(Read-only in edit mode)</span>}
+                Admin Full Name *
+                {adminIsActive && <span className="text-xs text-gray-500 ml-1">(Read-only)</span>}
               </label>
               <input
                 type="text"
                 value={formData.adminFullName || ''}
                 onChange={(e) => updateFormData('adminFullName', e.target.value)}
                 className={`w-full px-4 py-3 border rounded-lg transition-all ${
-                  isEdit
+                  !adminEditable
                     ? 'bg-gray-100 cursor-not-allowed border-gray-300 text-gray-600'
                     : formErrors.adminFullName 
                     ? 'border-red-500 bg-red-50 focus:outline-none focus:ring-2 focus:ring-black focus:border-black' 
                     : 'border-gray-300 focus:outline-none focus:ring-2 focus:ring-black focus:border-black'
                 }`}
                 placeholder="Administrator's full name"
-                disabled={isEdit || isSubmitting}
-                readOnly={isEdit}
+                disabled={!adminEditable || isSubmitting}
+                readOnly={!adminEditable}
               />
               {formErrors.adminFullName && <p className="text-sm text-red-600 mt-1">{formErrors.adminFullName}</p>}
             </div>
           </div>
         );
+      }
 
       case 3:
         return (

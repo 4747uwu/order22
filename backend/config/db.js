@@ -22,9 +22,9 @@ const connectDB = async () => {
             maxIdleTimeMS: 30000,        // ✅ Good for cloud deployment
 
             // 🚀 LOCAL TIMEOUTS (both Node.js and MongoDB on same droplet)
-            serverSelectionTimeoutMS: 5000,   // ✅ Fast local connection
-            socketTimeoutMS: 20000,            // ✅ Local network speed
-            connectTimeoutMS: 5000,            // ✅ Quick local connection
+            serverSelectionTimeoutMS: 60000,   // increased for large export operations
+            socketTimeoutMS: 600000,           // 10 min — allows large collection exports to complete
+            connectTimeoutMS: 60000,           // increased for large export operations
 
             // 🔄 REPLICA SET SETTINGS (Required for transactions)
             readPreference: 'primary',         // ✅ Required for transactions
