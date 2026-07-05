@@ -7,8 +7,8 @@ import FormData from 'form-data';
 import { generateUID } from '../utils/dicomUtils.js';
 import mongoose from 'mongoose';
 
-const PYTHON_SERVER_URL = process.env.PYTHON_SERVER_URL || 'http://206.189.133.52:8765';
-const ORTHANC_URL = 'http://206.189.133.52:8042';
+const PYTHON_SERVER_URL = 'http://xcentic-dicom-converter:8765';
+const ORTHANC_URL       = 'http://orthanc-server:8042';
 
 export const createManualStudy = async (req, res) => {
     try {
@@ -272,11 +272,22 @@ export const createManualStudy = async (req, res) => {
                 console.log('📥 [Manual Study] Python response keys:', Object.keys(convertResponse.data));
                 console.log('📥 [Manual Study] Python response structure:', JSON.stringify(convertResponse.data, null, 2).slice(0, 500));
 
-                // 🔍 Accept multiple possible response formats
-                const convertedFiles = Array.isArray(convertResponse.data.files) ? convertResponse.data.files
-                    : Array.isArray(convertResponse.data.convertedFiles) ? convertResponse.data.convertedFiles
-                    : Array.isArray(convertResponse.data.dicomFiles) ? convertResponse.data.dicomFiles
-                    : [];
+                // Accept all possible response formats (camelCase, snake_case, single file)
+                const rd = convertResponse.data;
+                const convertedFiles =
+                    Array.isArray(rd.files)            ? rd.files            :
+                    Array.isArray(rd.convertedFiles)   ? rd.convertedFiles   :
+                    Array.isArray(rd.dicomFiles)        ? rd.dicomFiles       :
+                    Array.isArray(rd.converted_files)   ? rd.converted_files  :
+                    Array.isArray(rd.dicom_files)        ? rd.dicom_files      :
+                    Array.isArray(rd.results)            ? rd.results          :
+                    Array.isArray(rd.data)               ? rd.data             :
+                    // single base64 string under any key → wrap in array
+                    (typeof rd.file  === 'string' && rd.file)  ? [rd.file]  :
+                    (typeof rd.dicom === 'string' && rd.dicom) ? [rd.dicom] :
+                    // last resort: find first array value in the whole response
+                    (Object.values(rd).find(v => Array.isArray(v) && v.length > 0)) ||
+                    [];
 
                 console.log(`📊 [Manual Study] Found ${convertedFiles.length} converted files from Python`);
 
@@ -311,8 +322,8 @@ export const createManualStudy = async (req, res) => {
                                         'Content-Type': 'application/dicom'
                                     },
                                     auth: {
-                                        username: process.env.ORTHANC_USERNAME || 'alice',
-                                        password: process.env.ORTHANC_PASSWORD || 'alicePassword'
+                                        username:  'alice',
+                                        password:  'alicePassword'
                                     }
                                 }
                             );

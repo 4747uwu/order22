@@ -33,21 +33,11 @@ class WebSocketService {
 
     this.wss.on('connection', async (ws, request) => {
       try {
-        console.log('🔌 New WebSocket connection attempt...');
-        
-        // Extract token from cookies
+        // Extract token from query string
         let token = null;
-        
-        // if (request.headers.cookie) {
-        //   const cookies = cookie.parse(request.headers.cookie);
-        //   token = cookies[COOKIE_NAME];
-        // }
-        console.log(request.url);
         if (!token) {
           const parsedUrl = url.parse(request.url, true);
           token = parsedUrl.query.token;
-          console.log(parsedUrl);
-          console.log('🔑 Extracted token:', token ? 'Present' : 'Not found');
         }
 
         // if (!token) {
@@ -72,7 +62,6 @@ class WebSocketService {
                               .populate('lab', 'name identifier isActive');
 
         if (!user || !user.isActive) {
-          console.log('❌ WebSocket connection rejected: User not found or inactive');
           ws.close(4002, 'Invalid user');
           return;
         }
@@ -100,10 +89,8 @@ class WebSocketService {
         if (user.role === 'admin' || user.role === 'assignor') {
           this.adminConnections.set(connectionId, connectionData);
           connectionData.subscribedToViewerUpdates = true; // Auto-subscribe admins
-          console.log(`✅ Admin/Assignor WebSocket connected: ${user.fullName || user.email}`);
         } else if (user.role === 'radiologist' || user.role === 'doctor_account' || user.role === 'verifier') {
           this.radiologistConnections.set(connectionId, connectionData);
-          console.log(`✅ Radiologist WebSocket connected: ${user.fullName || user.email}`);
         } else {
           ws.close(4003, 'Unauthorized role');
           return;
@@ -131,17 +118,7 @@ class WebSocketService {
         ws.on('message', (data) => {
           try {
             const rawData = data.toString();
-            console.log('📨 [WebSocket] Raw message received:', rawData.substring(0, 100));
-            
             const message = JSON.parse(rawData);
-            console.log('📨 [WebSocket] Parsed message:', {
-              type: message.type,
-              userId: user._id,
-              userName: user.fullName || user.email,
-              role: user.role,
-              studyId: message.studyId || 'N/A'
-            });
-            
             this.handleClientMessage(connectionId, message, user.role);
           } catch (error) {
             console.error('❌ [WebSocket] Error parsing message:', error);
@@ -151,8 +128,6 @@ class WebSocketService {
 
         // Handle disconnection
         ws.on('close', (code, reason) => {
-          console.log(`❌ WebSocket disconnected: ${user.fullName || user.email} (Code: ${code})`);
-          
           // ✅ Clean up active viewers if radiologist disconnects
           if (user.role === 'radiologist' || user.role === 'doctor_account' || user.role === 'verifier') {
             const connection = this.radiologistConnections.get(connectionId);
@@ -190,23 +165,12 @@ class WebSocketService {
 
     this.startHeartbeat();
     this.startDataStreaming();
-
-    console.log('🔌 WebSocket server initialized with study viewer tracking');
   }
 
   // ✅ NEW: Enhanced message handler with viewer tracking
   async handleClientMessage(connectionId, message, userRole) {
-    console.log('🔧 [handleClientMessage] Processing:', {
-      type: message.type,
-      userRole,
-      connectionId: connectionId.substring(0, 30)
-    });
-    
     const connection = this.adminConnections.get(connectionId) || this.radiologistConnections.get(connectionId);
-    if (!connection) {
-      console.log('❌ [handleClientMessage] Connection not found for:', connectionId.substring(0, 30));
-      return;
-    }
+    if (!connection) return;
 
     switch (message.type) {
       // Existing cases...
@@ -222,16 +186,9 @@ class WebSocketService {
 
       // ✅ NEW: Radiologist opened a study for viewing/reporting
       case 'study_opened':
-        console.log('👁️ [WebSocket] Processing study_opened:', {
-          userRole,
-          studyId: message.studyId,
-          mode: message.mode
-        });
-
         if (userRole === 'radiologist' || userRole === 'doctor_account' || userRole === 'verifier') {
           const { studyId, mode } = message;
           if (studyId) {
-            console.log('✅ [WebSocket] Valid study_opened, notifying admins');
             this.notifyStudyOpened(studyId, connection.user._id, connection.user.fullName || connection.user.email, mode);
             connection.currentlyViewingStudy = studyId;
 
@@ -250,11 +207,7 @@ class WebSocketService {
             } catch (err) {
               console.error('❌ Error creating view log:', err.message);
             }
-          } else {
-            console.log('❌ [WebSocket] No studyId in message');
           }
-        } else {
-          console.log('❌ [WebSocket] Invalid userRole for study_opened:', userRole);
         }
         break;
 
@@ -303,7 +256,7 @@ class WebSocketService {
         break;
 
       default:
-        console.log(`Unknown message type: ${message.type}`);
+        break;
     }
   }
 
@@ -354,7 +307,6 @@ class WebSocketService {
       }
     });
 
-    console.log(`👁️ Study opened notification sent to ${sentCount} admin(s): ${userName} opened study ${studyId} (${mode})`);
   }
 
   // ✅ NEW: Notify admins that a study was closed
@@ -390,7 +342,6 @@ class WebSocketService {
       }
     });
 
-    console.log(`👁️ Study closed notification sent to ${sentCount} admin(s): ${userName} closed study ${studyId}`);
   }
 
   // ✅ NEW: Send current active viewers to a specific connection
@@ -420,7 +371,6 @@ class WebSocketService {
       data: activeViewers
     }));
 
-    console.log(`📋 Sent active viewers list to ${connection.user.email}`);
   }
 
   async sendInitialStudyData(connectionId) {
@@ -437,7 +387,6 @@ class WebSocketService {
       }));
       
       connection.lastDataSent = Date.now();
-      console.log(`📊 Sent initial study data to ${connection.user.email}`);
     } catch (error) {
       console.error('Error sending initial study data:', error);
     }
@@ -566,8 +515,6 @@ class WebSocketService {
         await this.sendStudyData(connection.connectionId);
       }
     }, 5000); // Every 5 seconds
-
-    console.log('📊 Started data streaming interval');
   }
 
   startHeartbeat() {
@@ -575,7 +522,6 @@ class WebSocketService {
       this.adminConnections.forEach((connection, connectionId) => {
         if (connection.ws.readyState === connection.ws.OPEN) {
           if (connection.isAlive === false) {
-            console.log(`Terminating unresponsive connection: ${connectionId}`);
             connection.ws.terminate();
             this.adminConnections.delete(connectionId);
             return;
@@ -623,7 +569,6 @@ class WebSocketService {
       }
     });
 
-    console.log(`📢 New study notification sent to ${sentCount} admin(s): ${studyData.patientName}`);
     
     // Also trigger data refresh for live data subscribers
     await this.broadcastDataRefresh();
@@ -658,7 +603,6 @@ class WebSocketService {
       }
     });
 
-    console.log(`📢 Simple "New Study Arrived" notification sent to ${sentCount} admin(s)`);
   }
 
   // Get connection stats
