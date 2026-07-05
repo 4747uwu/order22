@@ -15,8 +15,8 @@ const mkdir = promisify(fs.mkdir);
 // ✅ Configuration
 const BACKUP_ORTHANC_URL =  'http://206.189.133.52:8042';
 // const BACKUP_ORTHANC_URL =  'http://orthanc-server:8042';
-const BACKUP_ORTHANC_USERNAME = process.env.BACKUP_ORTHANC_USERNAME || 'orthanc';
-const BACKUP_ORTHANC_PASSWORD = process.env.BACKUP_ORTHANC_PASSWORD || 'orthanc';
+const BACKUP_ORTHANC_USERNAME =  'alice';
+const BACKUP_ORTHANC_PASSWORD = 'alicePassword';
 const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' + BACKUP_ORTHANC_PASSWORD).toString('base64');
 
 
