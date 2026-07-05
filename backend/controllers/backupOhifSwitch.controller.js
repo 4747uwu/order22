@@ -13,8 +13,8 @@ const unlink = promisify(fs.unlink);
 const mkdir = promisify(fs.mkdir);
 
 // ✅ Configuration
-const BACKUP_ORTHANC_URL =  'http://206.189.133.52:8042';
-// const BACKUP_ORTHANC_URL =  'http://orthanc-server:8042';
+// const BACKUP_ORTHANC_URL =  'http://206.189.133.52:8042';
+const BACKUP_ORTHANC_URL =  'http://orthanc-server:8042';
 const BACKUP_ORTHANC_USERNAME =  'alice';
 const BACKUP_ORTHANC_PASSWORD = 'alicePassword';
 const backupOrthancAuth = 'Basic ' + Buffer.from(BACKUP_ORTHANC_USERNAME + ':' + BACKUP_ORTHANC_PASSWORD).toString('base64');
@@ -377,7 +377,7 @@ export const checkOrthancAvailability = async (req, res) => {
         return res.json({ success: true, available: false, reason: 'Not found on Orthanc' });
       }
       console.error(`❌ [AvailabilityCheck] Orthanc request failed: ${orthancErr.message}`);
-      throw orthancErr;
+      return res.json({ success: true, available: false, reason: `Orthanc unreachable: ${orthancErr.message}` });
     }
   } catch (err) {
     console.error('❌ [AvailabilityCheck] Error:', err.message);
