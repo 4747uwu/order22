@@ -106,6 +106,8 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'http://206.189.133.52',
         'http://206.189.133.52:8080',
         'https://pacs.bharatpacs.com',
+        'https://portal.bharatpacs.com',
+        'http://portal.bharatpacs.com',
         'chrome-extension://njnbplpejbonkhencclebaiklckemapm',
         'chrome-extension://kmfcbonioiknadpjfefbglggfibjniad'
 
@@ -129,6 +131,8 @@ const allowedOrigins = process.env.NODE_ENV === 'production'
         'http://206.189.133.52',
         'http://206.189.133.52:8080',
         'https://pacs.bharatpacs.com',
+        'https://portal.bharatpacs.com',
+        'http://portal.bharatpacs.com',
         'chrome-extension://njnbplpejbonkhencclebaiklckemapm',
         'chrome-extension://kmfcbonioiknadpjfefbglggfibjniad'
 

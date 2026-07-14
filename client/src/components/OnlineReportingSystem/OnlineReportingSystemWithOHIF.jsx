@@ -338,9 +338,14 @@ const OnlineReportingSystemWithOHIF = () => {
 
           if (studyUIDs) {
             // Apply conditional formatting
-            const formattedUrl = viewerPref === 'viewer2'
-              ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Path format
-              : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Query format
+            const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+
+            let formattedUrl = `/ohif/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            if (isPortal) {
+              formattedUrl = viewerPref === 'viewer2'
+                ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Path format
+                : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Query format
+            }
 
             setOhifViewerUrl(formattedUrl);
           }

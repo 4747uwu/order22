@@ -1017,9 +1017,14 @@ const UnifiedStudyRow = ({
                 viewer2: 'https://viewer2.bharatpacs.com/viewer',
             };
 
-            const finalUrl = selectedViewer === 'viewer2'
-                ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}`
-                : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+
+            let finalUrl = `/ohif/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            if (isPortal) {
+                finalUrl = selectedViewer === 'viewer2'
+                    ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}`
+                    : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            }
 
             const strategy = getStudyOpenStrategy(study.studyDate);
 

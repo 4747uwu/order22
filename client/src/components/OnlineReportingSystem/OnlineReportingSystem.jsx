@@ -27,6 +27,9 @@ const OnlineReportingSystem = () => {
   const [exportFormat, setExportFormat] = useState('docx');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedViewer, setSelectedViewer] = useState(
+    () => localStorage.getItem('preferredOhifViewer') || 'viewer1'
+  );
 
   // 🆕 NEW: Add state for download options
   const [downloadOptions, setDownloadOptions] = useState(null);
@@ -678,6 +681,20 @@ const OnlineReportingSystem = () => {
         }
       };
       
+      const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+
+      if (isPortal) {
+        const viewerPref = localStorage.getItem('preferredOhifViewer') || 'viewer1';
+        const finalUrl = viewerPref === 'viewer2'
+          ? `https://viewer2.bharatpacs.com/viewer/${ohifId}`
+          : `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(ohifId)}`;
+        
+        window.open(finalUrl, '_blank');
+        console.log('✅ [OHIF] OHIF Viewer opened successfully (Portal)');
+        toast.success('OHIF Viewer opened in new tab');
+        return;
+      }
+
       ohifUrl.searchParams.set('dataSources', JSON.stringify([dataSourceConfig]));
       
       console.log('🔍 [OHIF] Final OHIF URL:', ohifUrl.toString());
@@ -1212,20 +1229,36 @@ const OnlineReportingSystem = () => {
               </button>
 
               {/* OHIF Button */}
-              <button
-                onClick={() => {
-                  console.log('👁️ [UI] OHIF button clicked');
-                  handleOpenOHIF();
-                }}
-                className="flex flex-col items-center justify-center p-2 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                title="Open in OHIF Viewer"
-              >
-                <svg className="w-4 h-4 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                </svg>
-                OHIF
-              </button>
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => {
+                    console.log('👁️ [UI] OHIF button clicked');
+                    handleOpenOHIF();
+                  }}
+                  className="flex flex-col items-center justify-center p-2 text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors w-full h-full"
+                  title="Open in OHIF Viewer"
+                >
+                  <svg className="w-4 h-4 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  OHIF
+                </button>
+                {(window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com') && (
+                  <select
+                    className="w-full text-[10px] p-1 border border-blue-200 rounded bg-blue-50 text-blue-700 outline-none"
+                    value={selectedViewer}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSelectedViewer(v);
+                      localStorage.setItem('preferredOhifViewer', v);
+                    }}
+                  >
+                    <option value="viewer1">Viewer 1</option>
+                    <option value="viewer2">Viewer 2</option>
+                  </select>
+                )}
+              </div>
             </div>
           </div>
         </div>
