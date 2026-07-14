@@ -1012,18 +1012,16 @@ const UnifiedStudyRow = ({
 
             studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
 
-            const OHIF_VIEWERS = {
-                viewer1: 'https://viewer.bharatpacs.com/viewer',
-                viewer2: 'https://viewer2.bharatpacs.com/viewer',
-            };
-
             const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+            const isPacs = window.location.origin === 'https://pacs.bharatpacs.com' || window.location.origin === 'http://pacs.bharatpacs.com';
 
             let finalUrl = `/ohif/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-            if (isPortal) {
+            if (isPacs) {
+                finalUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+            } else if (isPortal) {
                 finalUrl = selectedViewer === 'viewer2'
-                    ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}`
-                    : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+                    ? `https://viewer2.bharatpacs.com/viewer/${studyUIDs}`
+                    : `https://portalviewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
             }
 
             const strategy = getStudyOpenStrategy(study.studyDate);

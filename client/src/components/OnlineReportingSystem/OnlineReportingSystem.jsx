@@ -682,12 +682,18 @@ const OnlineReportingSystem = () => {
       };
       
       const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+      const isPacs = window.location.origin === 'https://pacs.bharatpacs.com' || window.location.origin === 'http://pacs.bharatpacs.com';
 
-      if (isPortal) {
+      if (isPacs) {
+        window.open(`https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(ohifId)}`, '_blank');
+        console.log('✅ [OHIF] OHIF Viewer opened successfully (PACS)');
+        toast.success('OHIF Viewer opened in new tab');
+        return;
+      } else if (isPortal) {
         const viewerPref = localStorage.getItem('preferredOhifViewer') || 'viewer1';
         const finalUrl = viewerPref === 'viewer2'
           ? `https://viewer2.bharatpacs.com/viewer/${ohifId}`
-          : `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(ohifId)}`;
+          : `https://portalviewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(ohifId)}`;
         
         window.open(finalUrl, '_blank');
         console.log('✅ [OHIF] OHIF Viewer opened successfully (Portal)');

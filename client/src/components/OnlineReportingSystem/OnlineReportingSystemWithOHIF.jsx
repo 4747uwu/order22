@@ -51,6 +51,10 @@ const OnlineReportingSystemWithOHIF = () => {
   const [verifying, setVerifying] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(50);
+  const [selectedViewer, setSelectedViewer] = useState(() => {
+    const urlParams = new URLSearchParams(location.search);
+    return urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
+  });
 
   // ✅ MULTI-REPORT STATE — replaces single reportContent
   const [reports, setReports] = useState([{ id: 1, name: '', content: '', capturedImages: [], template: null }]);
@@ -62,6 +66,29 @@ const OnlineReportingSystemWithOHIF = () => {
   const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
   const [saveTemplateForm, setSaveTemplateForm] = useState({ name: '', category: '' });
   const [savingAsTemplate, setSavingAsTemplate] = useState(false);
+
+  useEffect(() => {
+    if (!studyData) return;
+    const orthancStudyID = studyData.orthancStudyID || studyData.studyId || null;
+    const studyInstanceUID = studyData.studyInstanceUID || studyData.studyId || null;
+    let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
+    studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
+    
+    if (studyUIDs) {
+      const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
+      const isPacs = window.location.origin === 'https://pacs.bharatpacs.com' || window.location.origin === 'http://pacs.bharatpacs.com';
+
+      let formattedUrl = `/ohif/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+      if (isPacs) {
+        formattedUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+      } else if (isPortal) {
+        formattedUrl = selectedViewer === 'viewer2'
+          ? `https://viewer2.bharatpacs.com/viewer/${studyUIDs}`
+          : `https://portalviewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
+      }
+      setOhifViewerUrl(formattedUrl);
+    }
+  }, [selectedViewer, studyData]);
 
   const editorRef = useRef(null);
   const [showTemplateSearch, setShowTemplateSearch] = useState(false);
@@ -326,28 +353,17 @@ const OnlineReportingSystemWithOHIF = () => {
 
         if (studyInstanceUID) {
           const OHIF_VIEWERS = {
-            viewer1: 'https://viewer.bharatpacs.com/viewer',
+            viewer1: 'https://portalviewer.bharatpacs.com/viewer',
             viewer2: 'https://viewer2.bharatpacs.com/viewer',
           };
 
-          const viewerPref = urlParams.get('viewer') || localStorage.getItem('preferredOhifViewer') || 'viewer1';
           let studyUIDs = Array.isArray(studyInstanceUID) ? studyInstanceUID.join(',') : (typeof studyInstanceUID === 'string' && studyInstanceUID.trim()) ? studyInstanceUID.trim() : orthancStudyID;
 
           // Strip `_COPY_<timestamp>` suffix added when a study is copied cross-org
           studyUIDs = sanitizeStudyInstanceUID(studyUIDs);
 
           if (studyUIDs) {
-            // Apply conditional formatting
-            const isPortal = window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com';
-
-            let formattedUrl = `/ohif/viewer?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`;
-            if (isPortal) {
-              formattedUrl = viewerPref === 'viewer2'
-                ? `${OHIF_VIEWERS.viewer2}/${studyUIDs}` // Path format
-                : `${OHIF_VIEWERS.viewer1}?StudyInstanceUIDs=${encodeURIComponent(studyUIDs)}`; // Query format
-            }
-
-            setOhifViewerUrl(formattedUrl);
+            // Initial render formattedUrl is set in useEffect below
           }
         }
 
@@ -1026,6 +1042,22 @@ const OnlineReportingSystemWithOHIF = () => {
                       <select value={leftPanelWidth} onChange={(e) => setLeftPanelWidth(parseInt(e.target.value))} className="px-1 py-0.5 text-[10px] bg-white text-gray-700 border border-gray-200 rounded cursor-pointer focus:outline-none">
                         {widthOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
+
+                      {(window.location.origin === 'https://portal.bharatpacs.com' || window.location.origin === 'http://portal.bharatpacs.com') && (
+                        <select
+                          className="px-1 py-0.5 text-[10px] bg-white text-gray-700 border border-gray-200 rounded cursor-pointer focus:outline-none"
+                          value={selectedViewer}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setSelectedViewer(v);
+                            localStorage.setItem('preferredOhifViewer', v);
+                          }}
+                        >
+                          <option value="viewer1">Viewer 1</option>
+                          <option value="viewer2">Viewer 2</option>
+                        </select>
+                      )}
+                      
                       <div className="h-4 w-px bg-gray-200"></div>
                       <button onClick={handleUpdateReport} disabled={saving || !reportContent.trim()} className="px-2 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-700 border border-gray-200 rounded hover:bg-gray-200 disabled:opacity-30 transition-colors" title="Save edits without verifying">
                         {saving ? <div className="animate-spin rounded-full h-2.5 w-2.5 border border-gray-400 border-t-transparent" /> : 'Save'}
