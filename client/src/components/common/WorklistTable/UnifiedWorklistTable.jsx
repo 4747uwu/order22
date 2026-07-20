@@ -30,12 +30,10 @@ const ShareModal = ({ study, isOpen, onClose }) => {
 
     if (!isOpen) return null;
 
-    const rawStudyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
-    const studyInstanceUID = sanitizeStudyInstanceUID(rawStudyInstanceUID);
-    const viewerUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`;
+    const shareLink = `${window.location.origin}/qr/${study?._id}?mode=viewer`;
 
     const handleCopy = () => {
-        navigator.clipboard.writeText(viewerUrl).then(() => {
+        navigator.clipboard.writeText(shareLink).then(() => {
             setCopied(true);
             toast.success('Viewer link copied!');
             setTimeout(() => setCopied(false), 3000);
@@ -72,7 +70,7 @@ const ShareModal = ({ study, isOpen, onClose }) => {
                         <div className="flex items-center gap-2 p-2 bg-gray-50 border border-gray-200 rounded-lg">
                             <input
                                 readOnly
-                                value={viewerUrl}
+                                value={shareLink}
                                 className="flex-1 text-[9px] font-mono bg-transparent text-gray-700 truncate outline-none"
                             />
                             <button

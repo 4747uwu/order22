@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
 import api from '../../services/api';
 import { Monitor, FileText, AlertCircle, Loader2, ChevronRight, Lock, Clock } from 'lucide-react';
 
 const QRStudyDecisionPage = () => {
   const { studyId } = useParams();
+  const [searchParams] = useSearchParams();
+  const autoViewMode = searchParams.get('mode') === 'viewer';
+  const autoViewTriggered = useRef(false);
+
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -26,6 +30,35 @@ const QRStudyDecisionPage = () => {
     };
     if (studyId) loadInfo();
   }, [studyId]);
+
+  // When ?mode=viewer: auto-check availability, restore if needed, then redirect in-tab.
+  // Using window.location.href instead of window.open() avoids popup-blocking from async handlers.
+  useEffect(() => {
+    if (!data || !autoViewMode || autoViewTriggered.current) return;
+    autoViewTriggered.current = true;
+
+    const ohifUrl = data?.viewer?.ohifUrl;
+    if (!ohifUrl) { setViewStatus('error'); return; }
+
+    (async () => {
+      try {
+        setViewStatus('checking');
+        const availRes = await api.get(`/qr/${studyId}/check-availability`);
+
+        if (availRes.data.available) {
+          setViewStatus('done');
+          window.location.href = ohifUrl;
+        } else {
+          setViewStatus('restoring');
+          await api.post(`/qr/${studyId}/restore`);
+          setViewStatus('done');
+          window.location.href = ohifUrl;
+        }
+      } catch {
+        setViewStatus('error');
+      }
+    })();
+  }, [data, autoViewMode, studyId]);
 
   const VIEW_LABELS = {
     '': 'View Study',
@@ -68,6 +101,19 @@ const QRStudyDecisionPage = () => {
     const reportUrl = `https://pacs.bharatpacs.com${data.report.downloadUrl}`;
     window.open(reportUrl, '_blank', 'noopener,noreferrer');
   };
+
+  // ── Auto-view redirect loading screen ──
+  const autoViewBusy = autoViewMode && (loading || viewStatus === 'checking' || viewStatus === 'restoring' || viewStatus === 'done');
+  if (autoViewBusy) return (
+    <div className="min-h-[100dvh] bg-white flex items-center justify-center px-5">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="w-5 h-5 text-black animate-spin" />
+        <p className="text-[12px] text-neutral-400 font-medium tracking-wide">
+          {loading ? 'Loading…' : (VIEW_LABELS[viewStatus] || 'Opening viewer…')}
+        </p>
+      </div>
+    </div>
+  );
 
   // ── Loading ──
   if (loading) return (

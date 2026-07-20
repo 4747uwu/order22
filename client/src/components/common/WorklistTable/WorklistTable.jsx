@@ -42,13 +42,14 @@ const ShareModal = ({ study, isOpen, onClose }) => {
 
   const rawStudyInstanceUID = study?.studyInstanceUID || study?.studyInstanceUIDs || study?._id || '';
   const studyInstanceUID = sanitizeStudyInstanceUID(rawStudyInstanceUID);
-  const viewerUrl = `https://viewer.bharatpacs.com/viewer?StudyInstanceUIDs=${encodeURIComponent(studyInstanceUID)}`;
   const qrLink = `${window.location.origin}/qr/${study?._id}`;
-  
+
   const patientName = study?.patientName || study?.patientInfo?.patientName || 'Patient';
   const hasCompletedReport = ['report_verified', 'report_completed', 'final_report_downloaded', 'archived'].includes(study?.workflowStatus) || study?.reportInfo?.reportId;
 
-  const linkToShare = shareType === 'ohif' ? viewerUrl : qrLink;
+  // Both share types go through the QR decision page (which does availability check + restore).
+  // mode=viewer auto-redirects to the OHIF viewer after the check; without it shows the full decision page.
+  const linkToShare = shareType === 'ohif' ? `${qrLink}?mode=viewer` : qrLink;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(linkToShare).then(() => {
