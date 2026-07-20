@@ -8,6 +8,7 @@ const QRStudyDecisionPage = () => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
+  const [viewStatus, setViewStatus] = useState(''); // '' | 'checking' | 'restoring' | 'done' | 'error'
 
   useEffect(() => {
     const loadInfo = async () => {
@@ -26,9 +27,40 @@ const QRStudyDecisionPage = () => {
     if (studyId) loadInfo();
   }, [studyId]);
 
-  const openStudy = () => {
+  const VIEW_LABELS = {
+    '': 'View Study',
+    checking: 'Checking availability…',
+    restoring: 'Restoring study…',
+    done: 'Opening viewer…',
+    error: 'Failed — tap to retry',
+  };
+
+  const openStudy = async () => {
     if (!data?.viewer?.ohifUrl) return;
-    window.open(data.viewer.ohifUrl, '_blank', 'noopener,noreferrer');
+    if (viewStatus === 'checking' || viewStatus === 'restoring') return;
+
+    const ohifUrl = data.viewer.ohifUrl;
+
+    try {
+      setViewStatus('checking');
+      const availRes = await api.get(`/qr/${studyId}/check-availability`);
+      const { available } = availRes.data;
+
+      if (available) {
+        setViewStatus('done');
+        window.open(ohifUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => setViewStatus(''), 1500);
+      } else {
+        setViewStatus('restoring');
+        await api.post(`/qr/${studyId}/restore`);
+        setViewStatus('done');
+        window.open(ohifUrl, '_blank', 'noopener,noreferrer');
+        setTimeout(() => setViewStatus(''), 1500);
+      }
+    } catch {
+      setViewStatus('error');
+      setTimeout(() => setViewStatus(''), 4000);
+    }
   };
 
   const openReport = () => {
@@ -66,6 +98,8 @@ const QRStudyDecisionPage = () => {
   const initials = (data?.patientName || 'U').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const hasReport = !!data?.report?.downloadUrl;
   const hasViewer = !!data?.viewer?.ohifUrl;
+  const viewBusy = viewStatus === 'checking' || viewStatus === 'restoring';
+  const viewLabel = VIEW_LABELS[viewStatus] || 'View Study';
 
   return (
     <div className="min-h-[100dvh] bg-white flex flex-col items-center justify-center px-5 py-10">
@@ -86,17 +120,20 @@ const QRStudyDecisionPage = () => {
         <div className="space-y-2">
           <button
             onClick={openStudy}
-            disabled={!hasViewer}
+            disabled={!hasViewer || viewBusy}
             className="group w-full flex items-center gap-3 px-4 h-14 bg-black text-white rounded-xl
               hover:bg-neutral-800 active:scale-[0.98] transition-all
-              disabled:opacity-25 disabled:cursor-not-allowed disabled:active:scale-100"
+              disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
           >
-            <Monitor className="w-[18px] h-[18px] shrink-0" />
+            {viewBusy
+              ? <Loader2 className="w-[18px] h-[18px] shrink-0 animate-spin" />
+              : <Monitor className="w-[18px] h-[18px] shrink-0" />
+            }
             <div className="flex-1 text-left">
-              <p className="text-[13px] font-semibold leading-tight">View Study</p>
+              <p className="text-[13px] font-semibold leading-tight">{viewLabel}</p>
               <p className="text-[10px] text-neutral-400">OHIF DICOM Viewer</p>
             </div>
-            <ChevronRight className="w-4 h-4 text-neutral-500 group-hover:translate-x-0.5 transition-transform shrink-0" />
+            {!viewBusy && <ChevronRight className="w-4 h-4 text-neutral-500 group-hover:translate-x-0.5 transition-transform shrink-0" />}
           </button>
 
           <button

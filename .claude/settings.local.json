@@ -16,7 +16,9 @@
       "Bash(xargs grep:*)",
       "Bash(node -e \"console.log\\(require\\('pdfjs-dist/package.json'\\).version\\)\")",
       "Bash(node -e \"console.log\\(require\\('d:/website/devops/order2/client/node_modules/pdfjs-dist/package.json'\\).version\\)\")",
-      "Bash(curl -sI \"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.6.205/pdf.worker.min.mjs\")"
+      "Bash(curl -sI \"https://cdnjs.cloudflare.com/ajax/libs/pdf.js/5.6.205/pdf.worker.min.mjs\")",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)"
     ]
   }
 }

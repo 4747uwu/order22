@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import DicomStudy from '../models/dicomStudyModel.js';
 import Report from '../models/reportModel.js';
 import ReportDownloadController from './ReportDownload.controller.js';
+import { checkOrthancAvailability, restoreFromBackup } from './backupOhifSwitch.controller.js';
 
 class QRDownloaderController {
 
@@ -127,6 +128,23 @@ class QRDownloaderController {
             console.error('❌ [QR Info] Error:', error);
             res.status(500).json({ success: false, message: 'Error fetching report info', error: error.message });
         }
+    }
+
+    /**
+     * CHECK AVAILABILITY
+     * Route: GET /api/qr/:studyId/check-availability
+     */
+    static async checkStudyAvailability(req, res) {
+        return checkOrthancAvailability(req, res);
+    }
+
+    /**
+     * RESTORE STUDY FROM R2
+     * Route: POST /api/qr/:studyId/restore
+     */
+    static async restoreStudy(req, res) {
+        req.body = { ...req.body, studyId: req.params.studyId };
+        return restoreFromBackup(req, res);
     }
 }
 
